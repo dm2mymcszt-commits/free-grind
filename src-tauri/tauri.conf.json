@@ -4,10 +4,10 @@
 	"version": "0.5.1",
 	"identifier": "dev.estopia.free-grind",
 	"build": {
-		"beforeDevCommand": "bun run dev:web",
+		"beforeDevCommand": "npm run dev:web",
 		"devUrl": "http://localhost:1420",
-		"beforeBuildCommand": "bun run build",
-		"frontendDist": "../dist"
+		"beforeBuildCommand": "npm run build",
+		"frontendDist": "http://localhost:1420"
 	},
 	"app": {
 		"windows": [
@@ -23,9 +23,6 @@
 		}
 	},
 	"plugins": {
-		"hotswap": {
-			"endpoint": "https://grindapi.imaoreo.dev/api/updates/{{current_sequence}}",
-			"pubkey": "RWRJW9mxbpaZjWQ7RPUHMYHtIPXb5r3uRCxnf/IrVaNHGr70C/MewrYZ"
-		}
+		"hotswap": {}
 	}
 }

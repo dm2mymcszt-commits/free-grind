@@ -804,28 +804,33 @@ export function ChatThreadMessages({
 												) : null}
 
 												{!isMediaOnlyBubble ? (
-													<p className="whitespace-pre-wrap break-words">
-														{messageText}
-													</p>
-												) : null}
-
-														{!isLocalClientMessageId(message.messageId) ? (
-													<button
-														type="button"
-														onClick={() => void handleReact(message)}
-														disabled={isMutatingMessageId === message.messageId}
-																className={`${fireButtonClass} z-10 cursor-pointer transition-opacity ${
-															message.reactions.length > 0
-																? "opacity-100"
-																: "opacity-0 group-hover/bubble:opacity-60"
-														} hover:opacity-80`}
-													>
-														<span className={`chat-reaction-flame text-2xl inline-flex ${
-															reactionBurstMessageId === message.messageId ? "chat-reaction-flame--burst" : ""
-														}`}>
-															🔥
-														</span>
-													</button>
+													<div className="flex flex-col gap-1">
+														{/* --- GRINDR REPLY BOX --- */}
+														{message.type === "ProfilePhotoReply" || message.type === "AlbumReply" || (message.body as any)?.reply ? (
+															<div className={`mb-1 overflow-hidden rounded-lg border border-[var(--border)] p-2 text-xs opacity-90 shadow-sm ${mine ? "bg-white/10" : "bg-black/10"}`}>
+																<div className="flex items-start justify-between gap-2">
+																	<div className="flex-1">
+																		<p className="font-semibold">{t("chat.actions.reply", { defaultValue: "Reply" })}</p>
+																		<p className="opacity-80">
+																			{message.type === "ProfilePhotoReply" ? "Profile Photo" : "Album Photo"}
+																		</p>
+																	</div>
+																	{/* Show the thumbnail of the photo they replied to! */}
+																	{((message.body as any)?.imageHash || (message.body as any)?.reply?.thumbUrl) ? (
+																		<img 
+																			src={getThumbImageUrl((message.body as any).imageHash || (message.body as any).reply?.thumbUrl, "320x320")} 
+																			className="h-10 w-10 rounded-md object-cover border border-white/10" 
+																			alt="Thumbnail"
+																		/>
+																	) : null}
+																</div>
+															</div>
+														) : null}
+														{/* ------------------------ */}
+														<p className="whitespace-pre-wrap break-words">
+															{messageText}
+														</p>
+													</div>
 												) : null}
 
 												{!isMediaOnlyBubble ? (

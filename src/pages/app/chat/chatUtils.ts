@@ -252,15 +252,9 @@ export function getMessagePreviewLabel(message: Message, t: TranslateFn): string
 	const body = message.body as Record<string, unknown> | null;
 	
 	if (body) {
-		if (typeof body.text === "string") {
-			return body.text;
-		}
-		if (body.reply && typeof body.reply === "object") {
-			const replyObj = body.reply as Record<string, unknown>;
-			if (typeof replyObj.text === "string") {
-				return replyObj.text;
-			}
-		}
+		if (typeof body.text === "string") return body.text;
+		if (body.reply && typeof (body.reply as any).text === "string") return (body.reply as any).text;
+		if (typeof body.photoContentReply === "string") return body.photoContentReply;
 	}
 
 	switch (message.type) {
@@ -308,15 +302,17 @@ export function getMessageText(message: UiMessage, t: TranslateFn): string {
 
 	const body = message.body as Record<string, unknown>;
 	
-	// Support for ProfilePhotoReply, AlbumReply, and standard text messages
 	let extractedText = "";
 	if (typeof body.text === "string") {
 		extractedText = body.text;
-	} else if (body.reply && typeof body.reply === "object") {
-		const replyObj = body.reply as Record<string, unknown>;
-		if (typeof replyObj.text === "string") {
-			extractedText = replyObj.text;
-		}
+	} else if (body.reply && typeof (body.reply as any).text === "string") {
+		extractedText = (body.reply as any).text;
+	} else if (typeof body.photoContentReply === "string") {
+		extractedText = body.photoContentReply; // <-- This is the secret Grindr payload!
+	}
+	
+	if (extractedText.trim().length > 0) {
+		return extractedText;
 	}
 	
 	if (extractedText.trim().length > 0) {

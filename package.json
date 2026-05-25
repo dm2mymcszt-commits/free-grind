@@ -7,7 +7,7 @@
     "scripts": {
         "docs": "bun run --cwd docs start",
         "build": "vite build",
-        "ota": "bun run scripts/publish-ota.mjs",
+        "ota": "node scripts/publish-ota.mjs",
         "dev": "bun run dev:desktop",
         "dev:web": "vite dev",
         "dev:desktop": "sh scripts/dev-desktop.sh",
@@ -22,7 +22,7 @@
         "logs:push:global": "adb logcat -v time | grep --line-buffered -E 'FCM|PUSH_SYNC|Tauri/Notification|gcm-push-tokens|sync_push_token|dev.estopia.free_grind'",
         "logs:clear": "adb logcat -c",
         "preview": "vite preview",
-        "tauri": "sh scripts/tauri.sh",
+        "tauri": "tauri",
         "type-check": "tsc --noEmit"
     },
     "dependencies": {
