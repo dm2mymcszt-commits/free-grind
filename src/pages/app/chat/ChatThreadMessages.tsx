@@ -331,6 +331,14 @@ export function ChatThreadMessages({
 								const albumId = getMessageAlbumId(message);
 								const albumCover = getMessageAlbumCoverUrl(message);
 								const messageText = getMessageText(message, t);
+								
+								// --- LOUD DEBUG ---
+								if (message.type === "ProfilePhotoReply" || messageText.includes("ProfilePhotoReply")) {
+									console.warn("🚨 FOUND PROFILE PHOTO REPLY 🚨");
+									console.warn(message);
+									console.warn("BODY IS:", message.body);
+								}
+								// ------------------
 								const isExpiringImage = message.type === "ExpiringImage";
 								const isAlbumMessage =
 									message.type === "Album" ||

@@ -249,10 +249,18 @@ export function getPreviewText(conversation: ConversationEntry, t: TranslateFn):
 }
 
 export function getMessagePreviewLabel(message: Message, t: TranslateFn): string {
-	if (
-		typeof (message.body as Record<string, unknown> | null)?.text === "string"
-	) {
-		return String((message.body as Record<string, unknown>).text);
+	const body = message.body as Record<string, unknown> | null;
+	
+	if (body) {
+		if (typeof body.text === "string") {
+			return body.text;
+		}
+		if (body.reply && typeof body.reply === "object") {
+			const replyObj = body.reply as Record<string, unknown>;
+			if (typeof replyObj.text === "string") {
+				return replyObj.text;
+			}
+		}
 	}
 
 	switch (message.type) {
@@ -271,6 +279,8 @@ export function getMessagePreviewLabel(message: Message, t: TranslateFn): string
 			return t("chat.preview.sent_video");
 		case "Location":
 			return t("chat.preview.sent_location");
+		case "ProfilePhotoReply":
+			return "Replied to a photo";
 		default:
 			return t("chat.preview.sent_message");
 	}
@@ -297,8 +307,20 @@ export function getMessageText(message: UiMessage, t: TranslateFn): string {
 	}
 
 	const body = message.body as Record<string, unknown>;
-	if (typeof body.text === "string" && body.text.trim().length > 0) {
-		return body.text;
+	
+	// Support for ProfilePhotoReply, AlbumReply, and standard text messages
+	let extractedText = "";
+	if (typeof body.text === "string") {
+		extractedText = body.text;
+	} else if (body.reply && typeof body.reply === "object") {
+		const replyObj = body.reply as Record<string, unknown>;
+		if (typeof replyObj.text === "string") {
+			extractedText = replyObj.text;
+		}
+	}
+	
+	if (extractedText.trim().length > 0) {
+		return extractedText;
 	}
 
 	if (
