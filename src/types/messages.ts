@@ -120,6 +120,7 @@ export const messagesResponseSchema = z.object({
 
 export const sendMessagePayloadSchema = z.object({
 	type: z.string(),
+	replyMessageId: z.string().optional(), // <--- WE ADDED THIS!
 	target: z.object({
 		type: z.enum(["Direct", "Group", "HumanWingman"]),
 		targetId: z.coerce.number().int(),

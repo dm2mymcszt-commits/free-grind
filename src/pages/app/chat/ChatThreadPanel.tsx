@@ -1342,10 +1342,12 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 											<button
 												type="button"
 												onClick={() => {
+													toast.success("Opening media...");
 													const a = document.createElement("a");
 													a.href = mediaUrl;
-													a.download = `media-${Date.now()}`;
 													a.target = "_blank";
+													a.rel = "noopener noreferrer";
+													a.download = `free-grind-media-${Date.now()}`;
 													document.body.appendChild(a);
 													a.click();
 													document.body.removeChild(a);

@@ -252,9 +252,16 @@ export function getMessagePreviewLabel(message: Message, t: TranslateFn): string
 	const body = message.body as Record<string, unknown> | null;
 	
 	if (body) {
-		if (typeof body.text === "string") return body.text;
-		if (body.reply && typeof (body.reply as any).text === "string") return (body.reply as any).text;
-		if (typeof body.photoContentReply === "string") return body.photoContentReply;
+		let text = "";
+		if (typeof body.text === "string") text = body.text;
+		else if (body.reply && typeof (body.reply as any).text === "string") text = (body.reply as any).text;
+		else if (typeof body.photoContentReply === "string") text = body.photoContentReply;
+
+		// Scrub the ugly text quote from the inbox preview!
+		if (text.startsWith("> ") && text.includes("\n")) {
+			return text.substring(text.indexOf("\n") + 1).trim();
+		}
+		if (text) return text;
 	}
 
 	switch (message.type) {

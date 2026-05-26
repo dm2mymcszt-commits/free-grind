@@ -78,6 +78,7 @@ import type { ChatContactIndexRecord } from "../../types/chat-contact-index";
 import { markInboxSeen } from "../../services/seenStore";
 import { shouldAutoBlock, isOutsideAgeLimits } from "../../utils/autoblock";
 import { isChatGhosted } from "../../utils/privacy";
+import { ReplyWarningModal } from "../../components/ReplyWarningModal";
 
 export function ChatPage() {
 	const { t } = useTranslation();
@@ -188,6 +189,7 @@ export function ChatPage() {
 	const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false);
 	const [threadError, setThreadError] = useState<string | null>(null);
 	const [draft, setDraft] = useState("");
+    const [pendingReplyMessage, setPendingReplyMessage] = useState<UiMessage | null>(null);
 	const [replyTargetMessageId, setReplyTargetMessageId] = useState<string | null>(null);
 	const [isSending, setIsSending] = useState(false);
 	const [isUpdatingConversationState, setIsUpdatingConversationState] =
@@ -2143,9 +2145,7 @@ export function ChatPage() {
 			retryMessageId?: string,
 			options?: { includeReplyContext?: boolean },
 		) => {
-			if (!userId) {
-				return;
-			}
+			if (!userId) return;
 
 			const targetProfileIdValue = selectedConversation
 				? (getOtherParticipant(selectedConversation, userId)?.profileId ?? null)
@@ -2157,9 +2157,7 @@ export function ChatPage() {
 			}
 
 			const trimmed = text.trim();
-			if (!trimmed) {
-				return;
-			}
+			if (!trimmed) return;
 
 			const includeReplyContext = options?.includeReplyContext ?? true;
 			const selectedReplyMessage =
@@ -2168,15 +2166,18 @@ export function ChatPage() {
 							(message) => message.messageId === replyTargetMessageId,
 						) ?? null)
 					: null;
+					
 			const replySnippet = selectedReplyMessage
 				? getMessagePreviewLabel(selectedReplyMessage, t).trim()
 				: "";
+
+			// Re-add the string builder so it creates the > quote
 			const textWithReplyContext =
 				replySnippet.length > 0 ? `> ${replySnippet}\n${trimmed}` : trimmed;
 
 			setIsSending(true);
-			const localMessageId =
-				retryMessageId ?? `local:${Date.now()}:${Math.random()}`;
+			const localMessageId = retryMessageId ?? `local:${Date.now()}:${Math.random()}`;
+			
 			if (!retryMessageId) {
 				setThreadMessages((previous) => [
 					...previous,
@@ -2191,7 +2192,7 @@ export function ChatPage() {
 						reactions: [],
 						type: "Text",
 						chat1Type: "text",
-						body: { text: textWithReplyContext },
+						body: { text: textWithReplyContext }, // Save the quoted version locally
 						replyToMessage: selectedReplyMessage
 							? { messageId: selectedReplyMessage.messageId }
 							: null,
@@ -2213,6 +2214,7 @@ export function ChatPage() {
 			);
 
 			try {
+				// Safely send the text string to bypass Grindr's firewall
 				const sentMessage = await service.sendText({
 					targetProfileId: targetProfileIdValue,
 					text: textWithReplyContext,
@@ -2236,14 +2238,12 @@ export function ChatPage() {
 							...conversation.data,
 							lastActivityTimestamp: sentMessage.timestamp,
 							preview: {
-								conversationId: {
-									value: conversation.data.conversationId,
-								},
+								conversationId: { value: conversation.data.conversationId },
 								messageId: sentMessage.messageId,
 								senderId: sentMessage.senderId,
 								type: sentMessage.type,
 								chat1Type: sentMessage.chat1Type ?? "text",
-								text: trimmed,
+								text: trimmed, // Show clean text in the inbox preview
 								albumId: null,
 								imageHash: null,
 							},
@@ -2251,7 +2251,7 @@ export function ChatPage() {
 					}));
 				} else {
 					openConversationById(sentMessage.conversationId);
-					void loadInbox({ page: 1, replace: true });
+					void loadInbox({ page: 1, replace: true, silent: true });
 				}
 
 				setDraft("");
@@ -2552,8 +2552,8 @@ export function ChatPage() {
 		if (isLocalClientMessageId(message.messageId)) {
 			return;
 		}
-		setReplyTargetMessageId(message.messageId);
-		setOpenMessageActionId(null);
+		// Instead of replying instantly, trigger the warning modal!
+		setPendingReplyMessage(message);
 	}, []);
 
 	const handleReact = async (message: UiMessage) => {
@@ -3338,6 +3338,20 @@ export function ChatPage() {
 				onClose={closeFullScreenImage}
 				photos={fullScreenImageUrl ? [fullScreenImageUrl] : []}
 			/>
+
+			{/* --- REPLY WARNING MODAL --- */}
+			<ReplyWarningModal 
+				isOpen={pendingReplyMessage !== null}
+				onCancel={() => setPendingReplyMessage(null)}
+				onProceed={() => {
+					if (pendingReplyMessage) {
+						setReplyTargetMessageId(pendingReplyMessage.messageId);
+						setOpenMessageActionId(null);
+					}
+					setPendingReplyMessage(null);
+				}}
+			/>
+			{/* --------------------------- */}
 		</section>
 	);
 }

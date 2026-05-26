@@ -331,13 +331,30 @@ export function ChatThreadMessages({
 								const albumId = getMessageAlbumId(message);
 								const albumCover = getMessageAlbumCoverUrl(message);
 								const messageText = getMessageText(message, t);
-								
-								// --- LOUD DEBUG ---
-								if (message.type === "ProfilePhotoReply" || messageText.includes("ProfilePhotoReply")) {
-									console.warn("🚨 FOUND PROFILE PHOTO REPLY 🚨");
-									console.warn(message);
-									console.warn("BODY IS:", message.body);
+
+                                let displayMessageText = messageText;
+								let localReplyText = "";
+								let isLocalReply = false;
+
+								// 1. Catch our fake firewall-bypass quotes
+								if (typeof displayMessageText === "string" && displayMessageText.startsWith("> ")) {
+									const splitIndex = displayMessageText.indexOf("\n");
+									if (splitIndex !== -1) {
+										isLocalReply = true;
+										localReplyText = displayMessageText.substring(2, splitIndex).trim();
+										displayMessageText = displayMessageText.substring(splitIndex + 1).trim();
+									}
 								}
+
+								// 2. Catch ALL forms of Grindr native replies
+								const isNativeReply = 
+									message.type === "Reply" || 
+									message.type === "ProfilePhotoReply" || 
+									message.type === "AlbumReply" || 
+									!!(message.body as any)?.reply || 
+									!!message.replyToMessage || 
+									!!message.replyPreview;
+
 								// ------------------
 								const isExpiringImage = message.type === "ExpiringImage";
 								const isAlbumMessage =
@@ -806,13 +823,15 @@ export function ChatThreadMessages({
 												{!isMediaOnlyBubble ? (
 													<div className="flex flex-col gap-1">
 														{/* --- GRINDR REPLY BOX --- */}
-														{message.type === "ProfilePhotoReply" || message.type === "AlbumReply" || (message.body as any)?.reply ? (
+														{isNativeReply || isLocalReply ? (
 															<div className={`mb-1 overflow-hidden rounded-lg border border-[var(--border)] p-2 text-xs opacity-90 shadow-sm ${mine ? "bg-white/10" : "bg-black/10"}`}>
 																<div className="flex items-start justify-between gap-2">
 																	<div className="flex-1">
 																		<p className="font-semibold">{t("chat.actions.reply", { defaultValue: "Reply" })}</p>
-																		<p className="opacity-80">
-																			{message.type === "ProfilePhotoReply" ? "Profile Photo" : "Album Photo"}
+																		<p className="opacity-80 line-clamp-2">
+																			{message.type === "ProfilePhotoReply" ? "Profile Photo" : 
+																			 message.type === "AlbumReply" ? "Album Photo" : 
+																			 localReplyText || (message as any).replyPreview?.text || (message.body as any)?.reply?.text || "Message"}
 																		</p>
 																	</div>
 																	{/* Show the thumbnail of the photo they replied to! */}
@@ -828,7 +847,7 @@ export function ChatThreadMessages({
 														) : null}
 														{/* ------------------------ */}
 														<p className="whitespace-pre-wrap break-words">
-															{messageText}
+															{displayMessageText}
 														</p>
 													</div>
 												) : null}
@@ -923,10 +942,12 @@ export function ChatThreadMessages({
 																			onClick={() => {
 																				const url = imageUrl || videoUrl || audioUrl;
 																				if (!url) return;
+																				toast.success("Opening media...");
 																				const a = document.createElement("a");
 																				a.href = url;
-																				a.download = `media-${Date.now()}`;
 																				a.target = "_blank";
+																				a.rel = "noopener noreferrer";
+																				a.download = `free-grind-media-${Date.now()}`;
 																				document.body.appendChild(a);
 																				a.click();
 																				document.body.removeChild(a);
