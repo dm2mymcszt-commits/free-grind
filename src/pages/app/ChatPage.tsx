@@ -1674,6 +1674,62 @@ export function ChatPage() {
 		};
 	}, []);
 
+    // --- SILENT REACTION & STATUS POLLER ---
+	useEffect(() => {
+		if (!selectedConversationId) return;
+
+		const intervalId = window.setInterval(async () => {
+			if (document.hidden) return; // Don't poll if the app is minimized
+
+			try {
+				// Quietly ask Grindr for the latest messages in this chat
+				const response = await service.listMessages({
+					conversationId: selectedConversationId,
+					includeProfile: false, 
+				});
+
+				// Update our local messages with any new reactions or unsends!
+				setThreadMessages((previous) => {
+					let hasChanges = false;
+					const newMap = new Map<string, UiMessage>();
+
+					// Map out the existing messages
+					for (const prevMsg of previous) {
+						newMap.set(prevMsg.messageId, prevMsg);
+					}
+
+					// Update them with the fresh data from the server
+					for (const serverMsg of response.messages) {
+						const existingMsg = newMap.get(serverMsg.messageId);
+						
+						// If reactions changed or a message was unsent, update it!
+						if (existingMsg) {
+							const currentReactions = JSON.stringify(existingMsg.reactions || []);
+							const newReactions = JSON.stringify(serverMsg.reactions || []);
+							
+							if (currentReactions !== newReactions || existingMsg.unsent !== serverMsg.unsent) {
+								hasChanges = true;
+								newMap.set(serverMsg.messageId, { ...existingMsg, ...serverMsg } as UiMessage);
+							}
+						}
+					}
+
+					if (!hasChanges) return previous; // Don't redraw if nothing changed
+					
+					return [...newMap.values()].sort((a, b) => a.timestamp - b.timestamp);
+				});
+
+			} catch (error) {
+				// Silently ignore background polling errors
+			}
+		}, 8000); // Check every 8 seconds
+
+		return () => {
+			window.clearInterval(intervalId);
+		};
+	}, [selectedConversationId, service]);
+	// ---------------------------------------
+
 	useEffect(() => {
 		setActiveThreadSearchIndex(0);
 	}, [
@@ -2171,7 +2227,7 @@ export function ChatPage() {
 				? getMessagePreviewLabel(selectedReplyMessage, t).trim()
 				: "";
 
-			// Re-add the string builder so it creates the > quote
+			// This string formatting guarantees the message is accepted by the server!
 			const textWithReplyContext =
 				replySnippet.length > 0 ? `> ${replySnippet}\n${trimmed}` : trimmed;
 
@@ -2183,22 +2239,16 @@ export function ChatPage() {
 					...previous,
 					{
 						messageId: localMessageId,
-						conversationId:
-							selectedConversation?.data.conversationId ??
-							`direct:${targetProfileIdValue}`,
+						conversationId: selectedConversation?.data.conversationId ?? `direct:${targetProfileIdValue}`,
 						senderId: userId,
 						timestamp: Date.now(),
 						unsent: false,
 						reactions: [],
 						type: "Text",
 						chat1Type: "text",
-						body: { text: textWithReplyContext }, // Save the quoted version locally
-						replyToMessage: selectedReplyMessage
-							? { messageId: selectedReplyMessage.messageId }
-							: null,
-						replyPreview: selectedReplyMessage
-							? { text: replySnippet }
-							: null,
+						body: { text: textWithReplyContext }, 
+						replyToMessage: selectedReplyMessage ? { messageId: selectedReplyMessage.messageId } : null,
+						replyPreview: selectedReplyMessage ? { text: replySnippet } : null,
 						dynamic: false,
 						clientState: "pending",
 					},
@@ -2214,20 +2264,19 @@ export function ChatPage() {
 			);
 
 			try {
-				// Safely send the text string to bypass Grindr's firewall
+				// --- SAFE HTTP SENDER ---
 				const sentMessage = await service.sendText({
 					targetProfileId: targetProfileIdValue,
 					text: textWithReplyContext,
 				});
+				// ------------------------
 
 				setThreadMessages((previous) => {
 					const merged = previous
 						.filter((message) => message.messageId !== localMessageId)
 						.concat(sentMessage);
 					const map = new Map<string, UiMessage>();
-					for (const message of merged) {
-						map.set(message.messageId, message);
-					}
+					for (const message of merged) map.set(message.messageId, message);
 					return [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
 				});
 
@@ -2243,7 +2292,7 @@ export function ChatPage() {
 								senderId: sentMessage.senderId,
 								type: sentMessage.type,
 								chat1Type: sentMessage.chat1Type ?? "text",
-								text: trimmed, // Show clean text in the inbox preview
+								text: trimmed, // Keep inbox preview clean
 								albumId: null,
 								imageHash: null,
 							},
@@ -2264,15 +2313,7 @@ export function ChatPage() {
 							: message,
 					),
 				);
-
-				const apiError = error as ChatApiError;
-				const fallback =
-					error instanceof Error ? error.message : t("chat.errors.send_failed");
-				if (apiError?.status === 429) {
-					toast.error(t("chat.errors.rate_limited"));
-				} else {
-					toast.error(fallback);
-				}
+				toast.error("Failed to send message.");
 			} finally {
 				setIsSending(false);
 			}
@@ -2560,40 +2601,58 @@ export function ChatPage() {
 		if (!selectedConversation || !userId || isMutatingMessageId) {
 			return;
 		}
-		const alreadyReactedByUser = message.reactions.some(
-			(reaction) => reaction.profileId === userId && reaction.reactionType === 1,
+
+		// Use relaxed equality to bypass Grindr string/number mismatches
+		const alreadyReactedByUser = message.reactions?.some(
+			(reaction) => String(reaction.profileId) === String(userId) && Number(reaction.reactionType) === 1,
 		);
+
 		if (alreadyReactedByUser) {
+			// DO NOT ALLOW UN-REACTING! Grindr's API breaks when you try to send 0.
 			return;
 		}
 
 		const previous = threadMessages;
 		setIsMutatingMessageId(message.messageId);
 		setOpenMessageActionId(null);
+		
+		// 1. Instantly update the UI so the flame appears right now
 		setThreadMessages((current) =>
 			current.map((item) => {
 				if (item.messageId !== message.messageId) {
 					return item;
 				}
-
 				return {
 					...item,
 					reactions: [
-						...item.reactions,
+						...(item.reactions || []),
 						{ profileId: userId, reactionType: 1 },
 					],
 				};
-			}),
+			})
 		);
 		triggerReactionBurst(message.messageId);
 
 		try {
+			// 2. Send the HTTP request to Grindr
 			await service.reactToMessage({
 				conversationId: selectedConversation.data.conversationId,
 				messageId: message.messageId,
 				reactionType: 1,
 			});
+
+			// 3. FORCE SAVE TO LOCAL DATABASE so the screen doesn't overwrite the flame!
+			const updatedMessage = threadMessages.find(m => m.messageId === message.messageId);
+			if (updatedMessage) {
+				const finalMsg = {
+					...updatedMessage,
+					reactions: [...(updatedMessage.reactions || []), { profileId: userId, reactionType: 1 }]
+				};
+				await chatLog.appendMessages(selectedConversation.data.conversationId, [finalMsg as any]);
+			}
+
 		} catch (error) {
+			// If Grindr rejects it, remove the flame from the UI
 			setThreadMessages(previous);
 			toast.error(
 				error instanceof Error

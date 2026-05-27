@@ -269,6 +269,13 @@ export function ChatRealtimeBridge() {
 					}
 				}
 
+                // --- REACTION TRAP ---
+				if (envelope.type && envelope.type.includes("reaction")) {
+					console.warn("🚨 CAUGHT REACTION EVENT 🚨");
+					console.warn(JSON.stringify(envelope, null, 2));
+				}
+				// ---------------------
+
 				const messages = extractMessages(envelope);
 				if (messages.length > 0) {
 					const byConv = new Map<string, Message[]>();
@@ -328,7 +335,13 @@ export function ChatRealtimeBridge() {
 				);
 			},
 			onRawMessage: (raw) => {
-				// appLog.debug(`[chat-ws:bridge:raw] ${JSON.stringify(raw)}`);
+				// --- ULTIMATE TRAP ---
+				const rawStr = typeof raw === "string" ? raw : JSON.stringify(raw);
+				// We don't want to log "read" or "typing" events because they spam the console
+				if (!rawStr.includes("read") && !rawStr.includes("typing")) {
+					console.warn("🚨 RAW GRINDR DATA 🚨", raw);
+				}
+				// ---------------------
 			},
 			onParseError: (raw, error) => {
 				appLog.warn("[chat-ws:bridge:parse-error]", { raw, error });
@@ -339,6 +352,13 @@ export function ChatRealtimeBridge() {
 		});
 
 		manager.start();
+
+        manager.start();
+
+		// Expose it to the app!
+		(window as any).sendChatRealtimePayload = (payload: any) => {
+			return manager.sendPayload(payload);
+		};
 
 		// Handle Foreground/Background shifts on Android
 		const handleVisibilityChange = () => {

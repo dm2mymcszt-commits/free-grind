@@ -185,5 +185,51 @@ export function useApi() {
 		[asAppError],
 	);
 
-	return { callMethod, asAppError, fetchRest };
+	// --- ADDED NATIVE WEBSOCKET SENDER ---
+	// This invokes the Rust backend's ws_send command directly to bypass HTTP restrictions!
+	const sendWebsocket = useCallback(
+		async (payload: unknown) => {
+			const startedAt = Date.now();
+			try {
+				await invoke("ws_send", {
+					payload: JSON.stringify(payload),
+				});
+				addApiTraceEntry({
+					id: traceId(),
+					kind: "command",
+					timestamp: startedAt,
+					durationMs: Date.now() - startedAt,
+					method: "INVOKE",
+					path: "ws_send",
+					status: 200,
+					success: true,
+					requestBody: toTracePreview(payload),
+					responseBody: null,
+					error: null,
+				});
+			} catch (error) {
+				const appError = asAppError(error);
+				addApiTraceEntry({
+					id: traceId(),
+					kind: "command",
+					timestamp: startedAt,
+					durationMs: Date.now() - startedAt,
+					method: "INVOKE",
+					path: "ws_send",
+					status: null,
+					success: false,
+					requestBody: toTracePreview(payload),
+					responseBody: null,
+					error: toTracePreview(appError ?? error),
+				});
+				if (appError) throw appError;
+				throw error;
+			}
+		},
+		[asAppError],
+	);
+	// -------------------------------------
+
+	// Expose our new command to the rest of the app!
+	return { callMethod, asAppError, fetchRest, sendWebsocket };
 }

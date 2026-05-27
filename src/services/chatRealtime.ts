@@ -234,6 +234,21 @@ export class ChatRealtimeManager {
 		);
 	}
 
+    // --- FRONTEND WEBSOCKET SENDER ---
+	public sendPayload(payload: any): boolean {
+		if (this.stopped || !this.socket || this.socket.readyState !== WebSocket.OPEN) {
+			return false;
+		}
+		try {
+			this.socket.send(JSON.stringify(payload));
+			this.markActivity();
+			return true;
+		} catch (error) {
+			return false;
+		}
+	}
+	// ---------------------------------
+
 	private async connect() {
 		if (this.stopped) {
 			return;

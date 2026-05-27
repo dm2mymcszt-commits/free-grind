@@ -24,8 +24,13 @@ export {
 
 export type { RightNowFeedItem, RightNowCreatePostRequest, RightNowCreatePostMedia, RightNowUpdatePostRequest };
 
-export function createApiFunctions(fetchRest: RestFetcher, t: (key: string) => string) {
-	const chatService = createChatService(fetchRest, t);
+export function createApiFunctions(
+	fetchRest: RestFetcher, 
+	sendWebsocket: (payload: unknown) => Promise<void>, // <-- WE ADDED THIS
+	t: (key: string) => string
+) {
+	// Pass sendWebsocket into the chat service
+	const chatService = createChatService(fetchRest, sendWebsocket, t);
 
 	return {
 		...chatService,

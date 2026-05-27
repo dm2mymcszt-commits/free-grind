@@ -100,7 +100,11 @@ function sortMessages(messages: Message[]): Message[] {
 	return [...messages].sort((a, b) => a.timestamp - b.timestamp);
 }
 
-export function createChatService(fetchRest: RestFetcher, t: (key: string) => string) {
+export function createChatService(
+    fetchRest: RestFetcher, 
+    sendWebsocket: (payload: unknown) => Promise<void>, 
+    t: (key: string) => string
+) {
 	return {
 		async searchProfiles(
 			params: SearchProfilesParams,
@@ -401,6 +405,16 @@ export function createChatService(fetchRest: RestFetcher, t: (key: string) => st
 				body: safePayload,
 			});
 			await assertSuccess(response, t("chat.errors.react_failed"));
+		},
+
+        async sendNativeReplyViaWebsocket(payload: any): Promise<void> {
+			try {
+				// We wrap the payload in the standard WebSocket envelope
+				await sendWebsocket(payload);
+			} catch (error) {
+				console.error("WebSocket reply failed", error);
+				throw new ChatApiError(t("chat.errors.send_failed"), 500, error);
+			}
 		},
 
 		async getSharedConversationImages(

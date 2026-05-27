@@ -4,7 +4,10 @@ import { useApi } from "./useApi";
 import { createApiFunctions } from "../services/apiFunctions";
 
 export function useApiFunctions() {
-	const { fetchRest } = useApi();
+	// Grab our new sendWebsocket tool from the base API hook
+	const { fetchRest, sendWebsocket } = useApi();
 	const { t } = useTranslation();
-	return useMemo(() => createApiFunctions(fetchRest, t), [fetchRest, t]);
+	
+	// Pass both tools down the chain!
+	return useMemo(() => createApiFunctions(fetchRest, sendWebsocket, t), [fetchRest, sendWebsocket, t]);
 }

@@ -24,6 +24,7 @@ import {
 	getMessageText,
 	getMessageVideoUrl,
 	isLocalClientMessageId,
+    getMessagePreviewLabel
 } from "./chatUtils";
 
 type ChatThreadMessagesProps = {
@@ -235,13 +236,36 @@ export function ChatThreadMessages({
 		triggered: boolean;
 	} | null>(null);
 
+	// A new ref to track exactly when the last tap happened
+	const lastTapTimeRef = useRef<Record<string, number>>({});
+
 	const handleMobileTouchStart = useCallback(
 		(event: React.TouchEvent<HTMLDivElement>, message: UiMessage) => {
-			startMessageLongPress(message.messageId);
+			// Instantly bail out if they are on a PC, using multi-touch, or it's a pending message
 			if (isDesktop || event.touches.length !== 1 || isLocalClientMessageId(message.messageId)) {
 				swipeStateRef.current = null;
 				return;
 			}
+
+			const now = Date.now();
+			const lastTap = lastTapTimeRef.current[message.messageId] || 0;
+
+			// STRICT DOUBLE TAP DETECTOR (Less than 350ms between taps)
+			if (now - lastTap > 0 && now - lastTap < 350) {
+				// Prevent long-press from triggering
+				endMessageLongPress();
+				// Clean up the timer so it doesn't trigger three times
+				lastTapTimeRef.current[message.messageId] = 0; 
+				// FIRE THE FLAME!
+				void handleReact(message);
+				return;
+			}
+
+			// Record this tap time for the next comparison
+			lastTapTimeRef.current[message.messageId] = now;
+
+			// Normal long-press and swipe setup
+			startMessageLongPress(message.messageId);
 			const touch = event.touches[0];
 			swipeStateRef.current = {
 				messageId: message.messageId,
@@ -250,7 +274,7 @@ export function ChatThreadMessages({
 				triggered: false,
 			};
 		},
-		[isDesktop, startMessageLongPress],
+		[isDesktop, startMessageLongPress, endMessageLongPress, handleReact],
 	);
 
 	const handleMobileTouchMove = useCallback(
@@ -356,6 +380,27 @@ export function ChatThreadMessages({
 									!!message.replyPreview;
 
 								// ------------------
+
+                                // --- FIND THE ORIGINAL MESSAGE ---
+								const replyTargetId = (message as any).replyToMessage?.messageId || (message.body as any)?.reply?.messageId || (message.body as any)?.replyMessageId;
+								const originalMessage = replyTargetId ? threadMessages.find(m => m.messageId === replyTargetId) : null;
+								
+								let resolvedReplyText = localReplyText || (message as any).replyPreview?.text || (message.body as any)?.reply?.text;
+								let resolvedThumb = (message.body as any)?.imageHash || (message.body as any)?.reply?.thumbUrl;
+
+								if (originalMessage) {
+									// If Grindr didn't give us the text, grab it from the original message!
+									if (!resolvedReplyText) {
+										resolvedReplyText = getMessagePreviewLabel(originalMessage, t);
+									}
+									// If Grindr didn't give us the thumbnail, grab it from the original message!
+									if (!resolvedThumb) {
+										resolvedThumb = getMessageImageUrl(originalMessage) || getMessageAlbumCoverUrl(originalMessage);
+									}
+								}
+								if (!resolvedReplyText) resolvedReplyText = "Message";
+								// ---------------------------------
+
 								const isExpiringImage = message.type === "ExpiringImage";
 								const isAlbumMessage =
 									message.type === "Album" ||
@@ -459,7 +504,10 @@ export function ChatThreadMessages({
 									>
 										<div className={`flex flex-col ${mine ? "items-end" : "items-start"} max-w-[85%]`}>
 											<div
-												onDoubleClick={() => void handleMessageTap(message)}
+												onDoubleClick={(e) => {
+													e.preventDefault();
+													void handleReact(message);
+												}}
 												onTouchStart={(event) => handleMobileTouchStart(event, message)}
 												onTouchEnd={handleMobileTouchEnd}
 												onTouchCancel={handleMobileTouchEnd}
@@ -851,6 +899,37 @@ export function ChatThreadMessages({
 														</p>
 													</div>
 												) : null}
+
+                                                {/* --- REACTION BUTTON --- */}
+												{!isLocalClientMessageId(message.messageId) ? (
+													<button
+														type="button"
+														onClick={(e) => {
+															e.stopPropagation();
+															void handleReact(message);
+														}}
+														disabled={isMutatingMessageId === message.messageId}
+														className={`${fireButtonClass} z-10 cursor-pointer transition-all ${
+															message.reactions?.some(r => Number(r.reactionType) === 1)
+																? "opacity-100 pointer-events-auto"
+																: "opacity-0 pointer-events-none group-hover/bubble:opacity-60 group-hover/bubble:pointer-events-auto"
+														} hover:opacity-80`}
+													>
+														<span className={`chat-reaction-flame text-2xl inline-flex ${
+															reactionBurstMessageId === message.messageId ? "chat-reaction-flame--burst" : ""
+														}`}>
+															🔥
+														</span>
+														
+														{/* SHOW REACTION COUNT IF > 1 */}
+														{message.reactions && message.reactions.filter(r => Number(r.reactionType) === 1).length > 1 ? (
+															<span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--surface-2)] text-[9px] font-bold text-[var(--text)] shadow-sm">
+																{message.reactions.filter(r => Number(r.reactionType) === 1).length}
+															</span>
+														) : null}
+													</button>
+												) : null}
+												{/* ----------------------- */}
 
 												{!isMediaOnlyBubble ? (
 												<div className="mt-1 flex items-center justify-between gap-2 text-[10px] opacity-80">
