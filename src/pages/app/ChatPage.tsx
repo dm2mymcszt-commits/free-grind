@@ -969,11 +969,11 @@ export function ChatPage() {
 					}
 				}
 
-// --- AUTO BLOCK CHECK (HISTORICAL CHAT SCANNER) ---
+                // --- AUTO BLOCK CHECK (HISTORICAL CHAT SCANNER) ---
 				let shouldNukeThread = false;
 				let blockReason = "";
 
-				// 1. Check if their historical messages contain bad words
+				// 1. Check for exact keywords
 				for (const m of responseMessages) {
 					let messageText = "";
 					const msgBody: any = m.body;
@@ -987,6 +987,33 @@ export function ChatPage() {
 						shouldNukeThread = true;
 						blockReason = "Keyword in message history";
 						break;
+					}
+				}
+
+				// 2. BOT EVASION CHECK (Check if the entire thread is just an incoming image)
+				if (!shouldNukeThread && window.localStorage.getItem("fg-block-first-media") === "true") {
+					let hasOutgoing = false;
+					let hasIncomingText = false;
+					let hasIncomingMedia = false;
+
+					for (const m of responseMessages) {
+						if (userId != null && Number(m.senderId) === Number(userId)) {
+							hasOutgoing = true;
+							break; // If we sent a message, it's a real chat! Keep it safe.
+						}
+						const msgBody: any = m.body;
+						if (msgBody && typeof msgBody.text === "string" && msgBody.text.trim().length > 0) {
+							hasIncomingText = true;
+						}
+						if (m.type === "Image" || m.type === "ExpiringImage" || m.type?.includes("Album") || m.type === "Video") {
+							hasIncomingMedia = true;
+						}
+					}
+
+					// If we never replied, they never sent text, and they sent media -> NUKE THEM.
+					if (!hasOutgoing && !hasIncomingText && hasIncomingMedia) {
+						shouldNukeThread = true;
+						blockReason = "First message was media (Bot evasion)";
 					}
 				}
 

@@ -10,6 +10,7 @@ export function SettingsAutoBlockPage() {
 	const [blockName, setBlockName] = useState(() => window.localStorage.getItem("fg-block-name") !== "false");
 	const [blockBio, setBlockBio] = useState(() => window.localStorage.getItem("fg-block-bio") !== "false");
 	const [blockMessage, setBlockMessage] = useState(() => window.localStorage.getItem("fg-block-message") !== "false");
+    const [blockFirstMedia, setBlockFirstMedia] = useState(() => window.localStorage.getItem("fg-block-first-media") === "true");
 	
 	const [forbiddenWords, setForbiddenWords] = useState(() => window.localStorage.getItem("fg-forbidden-words") || "");
 	const [minAge, setMinAge] = useState(() => window.localStorage.getItem("fg-block-min-age") || "");
@@ -24,6 +25,7 @@ export function SettingsAutoBlockPage() {
 		window.localStorage.setItem("fg-block-min-age", minAge);
 		window.localStorage.setItem("fg-block-max-age", maxAge);
 		window.localStorage.setItem("fg-block-max-distance", maxDistance);
+        window.localStorage.setItem("fg-block-first-media", String(blockFirstMedia));
 		toast.success("Auto-Block settings saved!");
 	};
 
@@ -86,6 +88,16 @@ export function SettingsAutoBlockPage() {
 							<input type="checkbox" checked={blockMessage} onChange={(e) => setBlockMessage(e.target.checked)} className="h-4 w-4 accent-[var(--accent)]" />
 							Incoming Chat Messages
 						</label>
+                        <div className="mt-2 border-t border-[var(--border)] pt-3">
+							<p className="text-xs font-semibold text-red-400 uppercase tracking-widest mb-2">Bot Evasion</p>
+							<label className="flex items-start gap-3 text-sm cursor-pointer">
+								<input type="checkbox" checked={blockFirstMedia} onChange={(e) => setBlockFirstMedia(e.target.checked)} className="mt-0.5 h-4 w-4 accent-red-500 shrink-0" />
+								<span>
+									<span className="block font-medium">Block if first message is Media/Album</span>
+									<span className="text-xs text-[var(--text-muted)] block mt-0.5">Catches bots that put spam text inside pictures. (Note: This will also block real people if they open with a picture and no text).</span>
+								</span>
+							</label>
+						</div>
 					</div>
 				</div>
 

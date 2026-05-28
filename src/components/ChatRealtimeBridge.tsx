@@ -283,15 +283,29 @@ export function ChatRealtimeBridge() {
 						const isIncoming = userIdRef.current != null && Number(m.senderId) !== Number(userIdRef.current);
 						const matchedWord = getMatchedForbiddenWord(messageText, "message");
 
-						if (isIncoming && matchedWord) {
-							notifyAutoBlock(`Spam Intercepted`, `Keyword: "${matchedWord}"\nMessage: "${messageText}"`);
+						// --- BOT EVASION CHECK (LIVE) ---
+						let isBotMedia = false;
+						if (isIncoming && !matchedWord && window.localStorage.getItem("fg-block-first-media") === "true") {
+							const isMedia = m.type === "Image" || m.type === "ExpiringImage" || m.type?.includes("Album") || m.type === "Video";
+							if (isMedia && (!messageText || messageText.trim() === "")) {
+								// Check if we have any prior history with them!
+								const existingLog = await chatLog.readLog(m.conversationId);
+								if (existingLog.messages.length <= 1) { // If it's just this 1 incoming message, it's a bot!
+									isBotMedia = true;
+								}
+							}
+						}
 
+						if (isIncoming && (matchedWord || isBotMedia)) {
+							const reason = isBotMedia ? "First message was media (Bot evasion)" : `Keyword: "${matchedWord}"`;
+							notifyAutoBlock(`Spam Intercepted`, reason);
+							
 							if (m.senderId) {
 								apiFunctions.blockProfile(String(m.senderId)).catch(() => {});
 							}
 							continue; // Skip processing this message entirely!
 						}
-						// -----------------------------
+						// --------------------------------
 
 						const list = byConv.get(m.conversationId) ?? [];
 						list.push(m);
