@@ -1012,7 +1012,6 @@ export function ChatPage() {
 						}
 					}
 
-					// If we never replied, they never sent text, and they sent media -> NUKE THEM.
 					if (!hasOutgoing && !hasIncomingText && hasIncomingMedia) {
 						shouldNukeThread = true;
 						blockReason = "First message was media (Bot evasion)";
@@ -1023,10 +1022,10 @@ export function ChatPage() {
 				const blockId = otherParticipant?.profileId || (responseMessages[0] && responseMessages[0].senderId);
 
 				if (shouldNukeThread) {
-					appLog.info(`[AutoBlock] Sweeping historical conversation. Reason: ${blockReason}`);
+					console.log(`[AutoBlock] Sweeping historical conversation. Reason: ${blockReason}`);
 					
 					if (blockId) {
-						blockProfileMutation(String(blockId)).catch(() => {});
+						service.blockProfile(String(blockId)).catch(() => {});
 					}
 
 					setThreadMessages([]);
@@ -1040,7 +1039,7 @@ export function ChatPage() {
 					return; // Stop loading the rest of the thread!
 				}
 
-				// 2. Fetch their profile in the background to check their Age, Dist, and Bio
+				// 3. Fetch their profile in the background to check their Age, Dist, and Bio
 				if (blockId) {
 					service.getProfileDetail(String(blockId)).then((profile) => {
 						const matchedBioWord = shouldAutoBlock(profile.aboutMe, "bio");
@@ -1048,22 +1047,13 @@ export function ChatPage() {
 						const isBadAge = isOutsideAgeLimits(profile.age);
 						const isBadDist = isOutsideDistanceLimits(profile.distance);
 
-<<<<<<< HEAD
 						if (matchedBioWord || matchedNameWord || isBadAge || isBadDist) {
 							let reason = `Keyword match`;
 							if (isBadAge) reason = `Age limit (${profile.age})`;
-							// Safely fallback to 0 for TypeScript so the math doesn't crash
 							if (isBadDist) reason = `Distance limit (${Math.round((profile.distance || 0)/1000)}km)`;
 							
 							console.log(`[AutoBlock] Sweeping conversation due to: ${reason}`);
 							service.blockProfile(String(blockId)).catch(() => {});
-=======
-						if (matchedBioWord || isBadAge) {
-							const reason = isBadAge ? `Age limit (${profile.age})` : `Keyword in Bio`;
-							appLog.info(`[AutoBlock] Sweeping conversation due to: ${reason}`);
-							
-							blockProfileMutation(String(blockId)).catch(() => {});
->>>>>>> 153ae6f40c01f60e48b16d5e177346af663977fa
 							
 							setThreadMessages([]);
 							setThreadConversationId(null);

@@ -280,7 +280,6 @@ export function ChatRealtimeBridge() {
 							messageText = msgBody.text;
 						}
 
-<<<<<<< HEAD
 						const isIncoming = userIdRef.current != null && Number(m.senderId) !== Number(userIdRef.current);
 						const matchedWord = getMatchedForbiddenWord(messageText, "message");
 
@@ -300,10 +299,6 @@ export function ChatRealtimeBridge() {
 						if (isIncoming && (matchedWord || isBotMedia)) {
 							const reason = isBotMedia ? "First message was media (Bot evasion)" : `Keyword: "${matchedWord}"`;
 							notifyAutoBlock(`Spam Intercepted`, reason);
-=======
-						if (isIncoming && matchedWord) {
-							notifyAutoBlock("Spam Intercepted", `Keyword: "${matchedWord}"`);
->>>>>>> 153ae6f40c01f60e48b16d5e177346af663977fa
 							
 							if (m.senderId) {
 								apiFunctions.blockProfile(String(m.senderId)).catch(() => {});

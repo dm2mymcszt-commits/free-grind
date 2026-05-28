@@ -179,10 +179,6 @@ export function createChatService(
 			const safeEntries: ConversationEntry[] = [];
 			for (const entry of parsed.entries) {
 				const data: any = entry.data;
-<<<<<<< HEAD
-=======
-                // appLog.debug(`[Age Debug] Who is this?`, data.participants?.[0]);
->>>>>>> 153ae6f40c01f60e48b16d5e177346af663977fa
 				
 				const displayName = data.name || (data.participants && data.participants[0]?.displayName) || "";
 				const aboutMe = data.participants?.[0]?.aboutMe || "";
@@ -374,16 +370,6 @@ export function createChatService(
 				body: safePayload,
 			});
 			await assertSuccess(response, t("chat.errors.react_failed"));
-		},
-
-        async sendNativeReplyViaWebsocket(payload: any): Promise<void> {
-			try {
-				// We wrap the payload in the standard WebSocket envelope
-				await sendWebsocket(payload);
-			} catch (error) {
-				console.error("WebSocket reply failed", error);
-				throw new ChatApiError(t("chat.errors.send_failed"), 500, error);
-			}
 		},
 
 		async getSharedConversationImages(
