@@ -12,16 +12,17 @@ export function SettingsAutomationPage() {
     // Auto-Block State
     const [blockOnChat, setBlockOnChat] = useState(() => window.localStorage.getItem("fg-block-chat") === "true");
     
-    // --- ADDED: Specific Keyword Toggles ---
+    // Specific Keyword Toggles
     const [blockName, setBlockName] = useState(() => window.localStorage.getItem("fg-block-name") !== "false");
     const [blockBio, setBlockBio] = useState(() => window.localStorage.getItem("fg-block-bio") !== "false");
     const [blockMessage, setBlockMessage] = useState(() => window.localStorage.getItem("fg-block-message") !== "false");
     
+    // Bot Evasion Toggle
+    const [blockFirstMedia, setBlockFirstMedia] = useState(() => window.localStorage.getItem("fg-block-first-media") === "true");
+    
     const [forbiddenWords, setForbiddenWords] = useState(() => window.localStorage.getItem("fg-forbidden-words") || "");
     const [minAge, setMinAge] = useState(() => window.localStorage.getItem("fg-block-min-age") || "18");
     const [maxAge, setMaxAge] = useState(() => window.localStorage.getItem("fg-block-max-age") || "99");
-    
-    // --- ADDED: Distance Filter ---
     const [maxDistance, setMaxDistance] = useState(() => window.localStorage.getItem("fg-block-max-distance") || "50");
 
     // Auto-Refresh State
@@ -46,6 +47,7 @@ export function SettingsAutomationPage() {
         window.localStorage.setItem("fg-block-name", String(blockName));
         window.localStorage.setItem("fg-block-bio", String(blockBio));
         window.localStorage.setItem("fg-block-message", String(blockMessage));
+        window.localStorage.setItem("fg-block-first-media", String(blockFirstMedia));
         window.localStorage.setItem("fg-forbidden-words", forbiddenWords);
         window.localStorage.setItem("fg-block-min-age", minAge);
         window.localStorage.setItem("fg-block-max-age", maxAge);
@@ -103,7 +105,7 @@ export function SettingsAutomationPage() {
                             <div className="flex items-center justify-between gap-4 mb-4">
                                 <div className="grid gap-0.5">
                                     <p className="text-sm font-semibold">{t("settings_automation.apply_to_inbox", { defaultValue: "Enable Inbox Auto-Blocking" })}</p>
-                                    <p className="text-xs text-[var(--text-muted)]">{t("settings_automation.apply_to_inbox_desc", { defaultValue: "Scan and block incoming chats automatically." })}</p>
+                                    <p className="text-xs text-[var(--text-muted)]">{t("settings_automation.apply_to_inbox_desc", { defaultValue: "Instantly blocks new chats that match your criteria." })}</p>
                                 </div>
                                 <button
                                     type="button"
@@ -120,7 +122,7 @@ export function SettingsAutomationPage() {
                                 </button>
                             </div>
 
-                            {/* --- ADDED: Specific Checking Targets --- */}
+                            {/* --- ADDED: Specific Checking Targets & Bot Evasion --- */}
                             <div className="bg-[var(--surface-1)] rounded-lg p-3 border border-[var(--border)]">
                                 <p className="text-xs font-semibold mb-2 text-[var(--text-muted)]">Check Keywords In:</p>
                                 <div className="flex flex-col gap-2">
@@ -137,7 +139,19 @@ export function SettingsAutomationPage() {
                                         Incoming Chat Messages
                                     </label>
                                 </div>
+
+                                <div className="mt-4 pt-3 border-t border-[var(--border)]">
+                                    <p className="text-xs font-semibold mb-2 text-red-400 uppercase tracking-widest">Bot Evasion</p>
+                                    <label className="flex items-start gap-3 text-sm cursor-pointer">
+                                        <input type="checkbox" checked={blockFirstMedia} onChange={(e) => setBlockFirstMedia(e.target.checked)} className="mt-0.5 h-4 w-4 accent-red-500 shrink-0" />
+                                        <span>
+                                            <span className="block font-medium">Block if first message is Media/Album</span>
+                                            <span className="text-xs text-[var(--text-muted)] block mt-0.5">Catches bots that put spam text inside pictures. (Note: This will also block real people if they open with a picture and no text).</span>
+                                        </span>
+                                    </label>
+                                </div>
                             </div>
+                            {/* ---------------------------------------------------- */}
                         </div>
 
                         {/* Keywords */}
@@ -146,12 +160,12 @@ export function SettingsAutomationPage() {
                                 {t("settings_automation.forbidden_keywords_title", { defaultValue: "Forbidden Keywords" })}
                             </p>
                             <p className="text-sm text-[var(--text-muted)] mb-4">
-                                {t("settings_automation.forbidden_keywords_desc", { defaultValue: "Block profiles/chats containing exact words or phrases. Separate with commas." })}
+                                {t("settings_automation.forbidden_keywords_desc", { defaultValue: "Block profiles or messages containing these words. Separate with commas (e.g. snapchat, crypto, bot)." })}
                             </p>
                             <textarea
                                 value={forbiddenWords}
                                 onChange={(e) => setForbiddenWords(e.target.value)}
-                                placeholder={t("settings_automation.keywords_placeholder", { defaultValue: "e.g. snapchat, crypto, bot" })}
+                                placeholder={t("settings_automation.keywords_placeholder", { defaultValue: "telegram, bot, menu..." })}
                                 className="w-full min-h-[120px] rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm text-[var(--text)] outline-none transition focus:border-[var(--accent)]"
                             />
                             <div className="flex gap-2 mt-4">
@@ -171,17 +185,34 @@ export function SettingsAutomationPage() {
                                 {t("settings_automation.age_limits_title", { defaultValue: "Age & Distance Limits" })}
                             </p>
                             <p className="text-sm text-[var(--text-muted)] mb-4">
-                                {t("settings_automation.age_limits_desc", { defaultValue: "Block anyone outside of this range." })}
+                                {t("settings_automation.age_limits_desc", { defaultValue: "Block anyone outside of this range. Leave blank to ignore." })}
                             </p>
                             
-                            <div className="flex flex-col gap-6">
+                            {/* TEXT INPUTS (Fully Customizable) */}
+                            <div className="grid grid-cols-2 gap-4 mb-6">
+                                <div>
+                                    <label className="text-xs text-[var(--text-muted)]">Minimum Age</label>
+                                    <input type="number" value={minAge} onChange={(e) => setMinAge(e.target.value)} placeholder="18 (or empty)" className="w-full rounded-md border border-[var(--border)] bg-[var(--surface-1)] px-3 py-2 text-sm mt-1 focus:border-[var(--accent)] outline-none" />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-[var(--text-muted)]">Maximum Age</label>
+                                    <input type="number" value={maxAge} onChange={(e) => setMaxAge(e.target.value)} placeholder="99 (or empty)" className="w-full rounded-md border border-[var(--border)] bg-[var(--surface-1)] px-3 py-2 text-sm mt-1 focus:border-[var(--accent)] outline-none" />
+                                </div>
+                                <div className="col-span-2">
+                                    <label className="text-xs text-[var(--text-muted)]">Maximum Distance (Kilometers)</label>
+                                    <input type="number" value={maxDistance} onChange={(e) => setMaxDistance(e.target.value)} placeholder="e.g. 50 (or empty for no limit)" className="w-full rounded-md border border-[var(--border)] bg-[var(--surface-1)] px-3 py-2 text-sm mt-1 focus:border-[var(--accent)] outline-none" />
+                                </div>
+                            </div>
+
+                            {/* SLIDERS (Quick Adjust) */}
+                            <div className="flex flex-col gap-6 pt-4 border-t border-[var(--border)]">
                                 <div className="px-2">
                                     <RangeSlider
-                                        label={t("browse_filters.age", { defaultValue: "Age Range" })}
+                                        label={t("browse_filters.age", { defaultValue: "Quick Age Slider" })}
                                         min={18}
                                         max={99}
-                                        minDefault={Number(minAge)}
-                                        maxDefault={Number(maxAge)}
+                                        minDefault={Number(minAge) || 18}
+                                        maxDefault={Number(maxAge) || 99}
                                         onChange={(min, max) => {
                                             setMinAge(String(min));
                                             setMaxAge(String(max));
@@ -189,16 +220,19 @@ export function SettingsAutomationPage() {
                                     />
                                 </div>
 
-                                {/* --- ADDED: Distance Slider --- */}
                                 <div className="px-2">
                                     <Slider
-                                        label="Maximum Distance"
+                                        label="Distance Slider"
                                         min={1}
-                                        max={200}
+                                        max={500}
                                         step={1}
-                                        defaultValue={Number(maxDistance)}
-                                        displayValue={`${maxDistance} km`}
-                                        onChange={(val) => setMaxDistance(String(val))}
+                                        defaultValue={Math.min(Number(maxDistance) || 500, 500)}
+                                        // Only say "No Limit" if the box is actually empty! Otherwise, show the real number.
+                                        displayValue={!maxDistance || maxDistance.trim() === "" ? "No Limit" : `${maxDistance} km`}
+                                        onChange={(val) => {
+                                            if (val >= 500) setMaxDistance("");
+                                            else setMaxDistance(String(val));
+                                        }}
                                     />
                                 </div>
                             </div>
@@ -213,7 +247,7 @@ export function SettingsAutomationPage() {
                                 className="w-full"
                             >
                                 <Save className="h-4 w-4" />
-                                {t("settings_automation.update_block_rules", { defaultValue: "Update Block Rules" })}
+                                {t("settings_automation.update_block_rules", { defaultValue: "Save Auto-Block Settings" })}
                             </Button>
                         </div>
                     </div>
