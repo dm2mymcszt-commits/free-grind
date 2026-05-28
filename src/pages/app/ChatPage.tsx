@@ -76,7 +76,7 @@ import {
 } from "../../services/chatContactIndex";
 import type { ChatContactIndexRecord } from "../../types/chat-contact-index";
 import { markInboxSeen } from "../../services/seenStore";
-import { shouldAutoBlock, isOutsideAgeLimits } from "../../utils/autoblock";
+import { shouldAutoBlock, isOutsideAgeLimits, isOutsideDistanceLimits } from "../../utils/autoblock";
 import { isChatGhosted } from "../../utils/privacy";
 import { ReplyWarningModal } from "../../components/ReplyWarningModal";
 
@@ -983,7 +983,7 @@ export function ChatPage() {
 					
 					const isIncoming = userId != null && Number(m.senderId) !== Number(userId);
 
-					if (isIncoming && shouldAutoBlock(messageText, "chat")) {
+					if (isIncoming && shouldAutoBlock(messageText, "message")) {
 						shouldNukeThread = true;
 						blockReason = "Keyword in message history";
 						break;
@@ -1011,16 +1011,21 @@ export function ChatPage() {
 					return; // Stop loading the rest of the thread!
 				}
 
-				// 2. Fetch their profile in the background to check their Age AND Bio
+				// 2. Fetch their profile in the background to check their Age, Dist, and Bio
 				if (blockId) {
 					service.getProfileDetail(String(blockId)).then((profile) => {
-						const matchedBioWord = shouldAutoBlock(profile.aboutMe, "chat");
-						const isBadAge = isOutsideAgeLimits(profile.age, "chat");
+						const matchedBioWord = shouldAutoBlock(profile.aboutMe, "bio");
+						const matchedNameWord = shouldAutoBlock(profile.displayName, "name");
+						const isBadAge = isOutsideAgeLimits(profile.age);
+						const isBadDist = isOutsideDistanceLimits(profile.distance);
 
-						if (matchedBioWord || isBadAge) {
-							const reason = isBadAge ? `Age limit (${profile.age})` : `Keyword in Bio`;
-							console.log(`[AutoBlock] Sweeping conversation due to: ${reason}`);
+						if (matchedBioWord || matchedNameWord || isBadAge || isBadDist) {
+							let reason = `Keyword match`;
+							if (isBadAge) reason = `Age limit (${profile.age})`;
+							// Safely fallback to 0 for TypeScript so the math doesn't crash
+							if (isBadDist) reason = `Distance limit (${Math.round((profile.distance || 0)/1000)}km)`;
 							
+							console.log(`[AutoBlock] Sweeping conversation due to: ${reason}`);
 							service.blockProfile(String(blockId)).catch(() => {});
 							
 							setThreadMessages([]);

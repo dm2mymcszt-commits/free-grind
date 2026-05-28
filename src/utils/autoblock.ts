@@ -28,7 +28,7 @@ export async function notifyAutoBlock(profileName: string, reason: string) {
 export function getMatchedForbiddenWord(text: string | null | undefined, target: "name" | "bio" | "message"): string | null {
     if (!text) return null;
 
-    // Check our new specific toggles!
+    // Check our specific toggles!
     if (target === "name" && window.localStorage.getItem("fg-block-name") === "false") return null;
     if (target === "bio" && window.localStorage.getItem("fg-block-bio") === "false") return null;
     if (target === "message" && window.localStorage.getItem("fg-block-message") === "false") return null;
@@ -74,7 +74,7 @@ export function isOutsideAgeLimits(age: number | null | undefined): boolean {
     return false;
 }
 
-// NEW: Distance Blocker
+// RESTORED: Distance Blocker
 export function isOutsideDistanceLimits(distanceMeters: number | null | undefined): boolean {
     if (distanceMeters == null || isNaN(distanceMeters)) return false; 
     
@@ -92,18 +92,21 @@ export function isOutsideDistanceLimits(distanceMeters: number | null | undefine
 export function isChatGhosted(conversationId: string): boolean {
     const globalGhost = window.localStorage.getItem("fg-ghost-mode") === "true";
     const exceptionsStr = window.localStorage.getItem("fg-ghost-exceptions") || "{}";
+    
     try {
         const exceptions = JSON.parse(exceptionsStr) as Record<string, boolean>;
         if (typeof exceptions[conversationId] === "boolean") {
             return exceptions[conversationId];
         }
     } catch {}
+    
     return globalGhost;
 }
 
 export function toggleChatGhost(conversationId: string): boolean {
     const currentState = isChatGhosted(conversationId);
     const exceptionsStr = window.localStorage.getItem("fg-ghost-exceptions") || "{}";
+    
     try {
         const exceptions = JSON.parse(exceptionsStr) as Record<string, boolean>;
         exceptions[conversationId] = !currentState;

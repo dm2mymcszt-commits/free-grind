@@ -171,7 +171,10 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
     const apiFunctions = useApiFunctions();
 
 	const [dontAskDeleteAgain, setDontAskDeleteAgain] = useState(false);
-	const [skipDeleteConfirm, setSkipDeleteConfirm] = useState(() => localStorage.getItem("chat_skip_delete_confirm") === "true");
+	const [skipDeleteConfirm, setSkipDeleteConfirm] = useState(() => {
+		if (typeof window === "undefined") return false;
+		return localStorage.getItem("chat_skip_delete_confirm") === "true";
+	});
 	const { unitsPreset, geohash } = usePreferences();
 	const [selectedExpirationType, setSelectedExpirationType] = useState("INDEFINITE");
 	const [pendingLocationShare, setPendingLocationShare] = useState<{ lat: number; lon: number } | null>(null);
