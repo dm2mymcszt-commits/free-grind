@@ -176,7 +176,7 @@ if (!isContributorChannel && keyValue) {
 try {
   console.log(`Publishing OTA channel=${otaChannel} version=${otaVersion}`);
 
-  run("npm", ["run", "build"]);
+  run("cmd.exe", ["/c", "npm", "run", "build"]);
   run("tar", ["-czf", "frontend.tar.gz", "-C", "dist", "."]);
   let signature = null;
   if (signingEnabled) {

@@ -15,6 +15,8 @@ import {
 } from "../../utils/locales";
 import { type UnitsPreset } from "../../utils/units";
 
+const SKIP_BLOCK_CONFIRM_KEY = "profile_skip_block_confirm";
+
 function normalizeHex(value: string): string {
 	const cleaned = value.trim().replace(/^#/, "");
 	if (/^[0-9a-fA-F]{3}$/.test(cleaned)) {
@@ -454,6 +456,29 @@ export function CustomizabilityPage() {
 					</div>
 				</div>
 
+                {/* Reset Warnings */}
+				<div className="surface-card p-4 sm:p-5 border border-red-500/30">
+					<p className="mb-2 text-sm font-semibold uppercase tracking-widest text-red-400">
+						Reset Hidden Warnings
+					</p>
+					<p className="mb-4 text-sm text-[var(--text-muted)]">
+						If you checked "Don't ask again" for deleting chats, blocking profiles, or the reply warning, click this to restore them.
+					</p>
+					<button
+						type="button"
+						onClick={() => {
+							localStorage.removeItem(SKIP_BLOCK_CONFIRM_KEY); // Note: might need to add `const SKIP_BLOCK_CONFIRM_KEY = "profile_skip_block_confirm";` at the top of the file!
+							localStorage.removeItem("profile_skip_unblock_confirm");
+							localStorage.removeItem("chat_skip_delete_confirm");
+							localStorage.removeItem("fg-reply-warning-seen");
+							toast.success("All warning pop-ups have been restored!");
+						}}
+						className="inline-flex h-10 items-center justify-center rounded-lg border border-red-500/50 bg-red-500/10 px-4 text-sm font-semibold text-red-400 transition hover:bg-red-500/20"
+					>
+						Reset All Confirmation Pop-ups
+					</button>
+				</div>
+
                 {/* Navigation Tabs Customization */}
 				<div className="surface-card p-4 sm:p-5">
 					<p className="mb-3 text-sm font-semibold uppercase tracking-widest text-[var(--text-muted)]">
@@ -493,7 +518,6 @@ export function CustomizabilityPage() {
 						</label>
 					</div>
 
-					{/* --- PUT IT RIGHT HERE --- */}
 					<div className="mt-4 border-t border-[var(--border)] pt-4">
 						<p className="mb-2 text-sm font-semibold text-[var(--text)]">Default Interest View</p>
 						<select

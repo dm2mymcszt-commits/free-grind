@@ -35,7 +35,7 @@ import type {
 	UploadChatMediaResponse,
 } from "../types/chat-service";
 
-import { shouldAutoBlock, isOutsideAgeLimits, notifyAutoBlock } from "../utils/autoblock";
+import { shouldAutoBlock, isOutsideAgeLimits, isOutsideDistanceLimits, notifyAutoBlock } from "../utils/autoblock";
 import { isChatGhosted } from "../utils/privacy";
 
 export class ChatApiError extends Error {
@@ -224,25 +224,30 @@ export function createChatService(
 				const aboutMe = data.participants?.[0]?.aboutMe || "";
 				const lastMessageText = data.previewText || (data.lastMessage?.body?.text) || "";
 				
-				// Grab their age!
+				// Grab their age and distance!
 				const profileAge = data.participants?.[0]?.age;
+				const distance = data.participants?.[0]?.distanceMetres || data.participants?.[0]?.distanceMeters;
 
-				// Check Keywords OR Age
+				// Check Keywords OR Age OR Distance
 				const shouldBlock = 
-					shouldAutoBlock(displayName, "chat") || 
-					shouldAutoBlock(aboutMe, "chat") || 
-					shouldAutoBlock(lastMessageText, "chat") ||
-					isOutsideAgeLimits(profileAge, "chat");
+					shouldAutoBlock(displayName, "name") || 
+					shouldAutoBlock(aboutMe, "bio") || 
+					shouldAutoBlock(lastMessageText, "message") ||
+					isOutsideAgeLimits(profileAge) ||
+					isOutsideDistanceLimits(distance);
 
 				if (shouldBlock) {
- 				const profileId = data.participants?.[0]?.profileId;
- 				if (profileId) {
- 					const reason = isOutsideAgeLimits(profileAge, "chat") ? `Age Limit (${profileAge})` : "Keyword match";
- 					notifyAutoBlock(displayName || profileId, reason);
- 					fetchRest(`/v3/me/blocks/${encodeURIComponent(profileId)}`, { method: "POST" }).catch(() => {});
- 				}
- 				continue; // Do NOT show them in the inbox!
- 			}
+					const profileId = data.participants?.[0]?.profileId;
+					if (profileId) {
+						let reason = "Keyword match";
+						if (isOutsideAgeLimits(profileAge)) reason = `Age Limit (${profileAge})`;
+						else if (isOutsideDistanceLimits(distance)) reason = `Distance Limit (${Math.round(distance/1000)}km)`;
+						
+						notifyAutoBlock(displayName || profileId, reason);
+						fetchRest(`/v3/me/blocks/${encodeURIComponent(profileId)}`, { method: "POST" }).catch(() => {});
+					}
+					continue; // Do NOT show them in the inbox!
+				}
 				
 				safeEntries.push(entry);
 			}
@@ -367,18 +372,18 @@ export function createChatService(
 		},
 
 		async markRead(conversationId: string, messageId: string): Promise<void> {
- 		// --- GHOST MODE CHECK ---
- 		if (isChatGhosted(conversationId)) {
- 			return; // Silently do nothing. They will never know you read it!
- 		}
- 		// ------------------------
+			// --- GHOST MODE CHECK ---
+			if (isChatGhosted(conversationId)) {
+				return; // Silently do nothing. They will never know you read it!
+			}
+			// ------------------------
 
- 		const response = await fetchRest(
- 			`/v4/chat/conversation/${conversationId}/read/${messageId}`,
- 			{ method: "POST" },
- 		);
- 		await assertSuccess(response, t("chat.errors.mark_read_failed"));
- 	},
+			const response = await fetchRest(
+				`/v4/chat/conversation/${conversationId}/read/${messageId}`,
+				{ method: "POST" },
+			);
+			await assertSuccess(response, t("chat.errors.mark_read_failed"));
+		},
 
 		async unsendMessage(payload: ChatMessageMutation) {
 			const safePayload = chatMessageMutationSchema.parse(payload);
