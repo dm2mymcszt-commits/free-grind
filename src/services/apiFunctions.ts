@@ -39,7 +39,7 @@ export function createApiFunctions(
 		...createProfileMethods(fetchRest, t),
 		...createAgeVerificationMethods(fetchRest, t),
 		...createFeedMethods(fetchRest, t),
-		...createPresenceMethods(),
+		...createPresenceMethods(fetchRest),
 		...createFavoritesMethods(fetchRest, t),
 
 		async request(

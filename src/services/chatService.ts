@@ -37,50 +37,10 @@ import type {
 
 import { shouldAutoBlock, isOutsideAgeLimits, isOutsideDistanceLimits, notifyAutoBlock } from "../utils/autoblock";
 import { isChatGhosted } from "../utils/privacy";
+import { ApiFunctionError, assertSuccess, parseJsonSafe } from "./apiHelpers";
+import { appLog } from "../utils/logger";
 
-export class ChatApiError extends Error {
-	status: number;
-	payload: unknown;
-
-	constructor(message: string, status: number, payload: unknown) {
-		super(message);
-		this.name = "ChatApiError";
-		this.status = status;
-		this.payload = payload;
-	}
-}
-
-async function parseJsonSafe(response: RestResponse): Promise<unknown> {
-	try {
-		return response.json();
-	} catch {
-		return null;
-	}
-}
-
-async function assertSuccess(
-	response: RestResponse,
-	fallbackMessage: string,
-): Promise<void> {
-	if (response.status >= 200 && response.status < 300) {
-		return;
-	}
-
-	const payload = await parseJsonSafe(response);
-	const parsed = z
-		.object({
-			message: z.string().optional(),
-			error: z.string().optional(),
-		})
-		.safeParse(payload);
-
-	const message =
-		parsed.success && (parsed.data.message || parsed.data.error)
-			? parsed.data.message || parsed.data.error || fallbackMessage
-			: fallbackMessage;
-
-	throw new ChatApiError(message, response.status, payload);
-}
+export { ApiFunctionError as ChatApiError };
 
 function sortConversations(entries: ConversationEntry[]): ConversationEntry[] {
 	return [...entries].sort((a, b) => {
@@ -219,6 +179,10 @@ export function createChatService(
 			const safeEntries: ConversationEntry[] = [];
 			for (const entry of parsed.entries) {
 				const data: any = entry.data;
+<<<<<<< HEAD
+=======
+                // appLog.debug(`[Age Debug] Who is this?`, data.participants?.[0]);
+>>>>>>> 153ae6f40c01f60e48b16d5e177346af663977fa
 				
 				const displayName = data.name || (data.participants && data.participants[0]?.displayName) || "";
 				const aboutMe = data.participants?.[0]?.aboutMe || "";

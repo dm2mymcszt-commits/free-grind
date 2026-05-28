@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import z from "zod";
 import { ChevronLeft } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { appLog } from "../../utils/logger";
 import { usePreferences } from "../../contexts/PreferencesContext";
 import { encodeGeohash, decodeGeohash } from "../../utils/geohash";
 import {
@@ -12,9 +13,12 @@ import {
 } from "./GridPage.types";
 import { LocationSettingsPanel } from "./gridpage/components/LocationSettingsPanel";
 
+import { useApi } from "../../hooks/useApi";
+
 export function BrowseLocationPage() {
 	const navigate = useNavigate();
 	const { t } = useTranslation();
+	const { fetchRest } = useApi();
 	const { setPreferences, geohash, locationName } = usePreferences();
 	const [isDetectingLocation, setIsDetectingLocation] = useState(false);
 	const [locationQuery, setLocationQuery] = useState("");
@@ -54,7 +58,7 @@ export function BrowseLocationPage() {
 					label: locationName ?? t("browse_location.current_location_label"),
 				});
 			} catch (e) {
-				console.error("Failed to decode geohash from preferences", e);
+				appLog.error("Failed to decode geohash from preferences", e);
 			}
 		}
 	}, [geohash, locationName, t]);
@@ -114,7 +118,7 @@ export function BrowseLocationPage() {
 		}
 	};
 
-	const performSearch = async (query: string, signal?: AbortSignal) => {
+	const performSearch = async (query: string) => {
 		if (!query || query === lastSearchedQuery) {
 			setIsSearchingLocation(false);
 			return;
@@ -124,29 +128,19 @@ export function BrowseLocationPage() {
 		setIsSearchingLocation(true);
 
 		try {
-			const response = await fetch(
+			const response = await fetchRest(
 				`https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(
 					query,
 				)}`,
 				{
-					signal,
-					headers: {
-						"User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
-					},
+					method: "GET",
 				},
 			);
-
-			if (!response.ok) {
-				throw new Error("Failed to search location");
-			}
 
 			const parsed = z.array(geocodeResultSchema).parse(await response.json());
 			setLocationResults(parsed);
 			setLocationError(null);
-		} catch (error) {
-			if (error instanceof Error && error.name === "AbortError") {
-				return;
-			}
+		} catch {
 			setLocationError(t("browse_location.error_search_failed"));
 		} finally {
 			setIsSearchingLocation(false);
@@ -163,14 +157,12 @@ export function BrowseLocationPage() {
 			return;
 		}
 
-		const controller = new AbortController();
 		const timer = setTimeout(() => {
-			void performSearch(query, controller.signal);
+			void performSearch(query);
 		}, 800);
 
 		return () => {
 			clearTimeout(timer);
-			controller.abort();
 		};
 	}, [locationQuery]);
 

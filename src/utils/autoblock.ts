@@ -24,11 +24,15 @@ export async function notifyAutoBlock(profileName: string, reason: string) {
     }
 }
 
+// --- JAY'S PERFORMANCE CACHE + YOUR EXACT MATCH REGEX ---
+let lastSavedWords: string | null = null;
+let cachedRegexes: { keyword: string, regex: RegExp }[] = [];
+
 // Target can be: "name", "bio", or "message"
 export function getMatchedForbiddenWord(text: string | null | undefined, target: "name" | "bio" | "message"): string | null {
     if (!text) return null;
 
-    // Check our specific toggles!
+    // Check specific toggles
     if (target === "name" && window.localStorage.getItem("fg-block-name") === "false") return null;
     if (target === "bio" && window.localStorage.getItem("fg-block-bio") === "false") return null;
     if (target === "message" && window.localStorage.getItem("fg-block-message") === "false") return null;
@@ -36,21 +40,31 @@ export function getMatchedForbiddenWord(text: string | null | undefined, target:
     const savedWords = window.localStorage.getItem("fg-forbidden-words");
     if (!savedWords || savedWords.trim() === "") return null;
 
-    const keywords = savedWords.split(',').map(word => word.trim().toLowerCase()).filter(word => word.length > 0);
-    if (keywords.length === 0) return null;
+    // Jay's Cache Logic: Only re-compile the Regexes if you changed your settings!
+    if (savedWords !== lastSavedWords) {
+        lastSavedWords = savedWords;
+        cachedRegexes = savedWords.split(',')
+            .map(word => word.trim().toLowerCase())
+            .filter(word => word.length > 0)
+            .map(keyword => {
+                const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                return {
+                    keyword,
+                    regex: new RegExp(`(?:^|\\W)${escaped}(?:$|\\W)`, 'i') // Your exact match rule
+                };
+            });
+    }
 
-    const lowerText = text.toLowerCase();
-    
-    for (const keyword of keywords) {
-        const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const regex = new RegExp(`(?:^|\\W)${escaped}(?:$|\\W)`, 'i');
-        
-        if (regex.test(lowerText)) {
-            return keyword;
+    if (cachedRegexes.length === 0) return null;
+
+    for (const item of cachedRegexes) {
+        if (item.regex.test(text)) {
+            return item.keyword; // Boom. Caught.
         }
     }
     return null;
 }
+// --------------------------------------------------------
 
 export function shouldAutoBlock(text: string | null | undefined, target: "name" | "bio" | "message"): boolean {
     return getMatchedForbiddenWord(text, target) !== null;
@@ -74,7 +88,7 @@ export function isOutsideAgeLimits(age: number | null | undefined): boolean {
     return false;
 }
 
-// RESTORED: Distance Blocker
+// Distance Blocker
 export function isOutsideDistanceLimits(distanceMeters: number | null | undefined): boolean {
     if (distanceMeters == null || isNaN(distanceMeters)) return false; 
     

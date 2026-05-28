@@ -3,6 +3,7 @@ import { Fragment, useEffect, useState, useMemo, useCallback, useRef } from "rea
 
 import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
+import { appLog } from "../../../utils/logger";
 import type { ConversationEntry, Message } from "../../../types/messages";
 import type { UiMessage } from "../../../types/chat-page";
 import { Avatar } from "../../../components/ui/avatar";
@@ -173,7 +174,7 @@ export function ChatThreadMessages({
 			await navigator.clipboard.writeText(content);
 			toast.success(t("chat.toasts.copied", { defaultValue: "Copied to clipboard" }));
 		} catch (error) {
-			console.error("Copy failed", error);
+			appLog.error("Copy failed", error);
 		}
 		setOpenMessageActionId(null);
 	}, [t, setOpenMessageActionId]);
@@ -995,18 +996,30 @@ export function ChatThreadMessages({
 																		<button
 																			type="button"
 																			onClick={() => {
-																				const wordToBan = window.prompt("Trim this message down to the specific keyword you want to ban:", hasText ? body.text : "");
+																				const wordToBan = window.prompt(
+																					t("chat.actions.ban_word_prompt", {
+																						defaultValue:
+																							"Trim this message down to the specific keyword you want to ban:",
+																					}),
+																					hasText ? body.text : "",
+																				);
 																				if (wordToBan && wordToBan.trim()) {
 																					const currentList = window.localStorage.getItem("fg-forbidden-words") || "";
 																					const newList = currentList ? `${currentList}, ${wordToBan.trim()}` : wordToBan.trim();
 																					window.localStorage.setItem("fg-forbidden-words", newList);
-																					toast.success(`Added "${wordToBan.trim()}" to Forbidden Keywords!`);
+																					toast.success(
+																						t("chat.actions.ban_word_added", {
+																							defaultValue:
+																								"Added \"{{word}}\" to forbidden keywords!",
+																							word: wordToBan.trim(),
+																						}),
+																					);
 																					setOpenMessageActionId(null);
 																				}
 																			}}
 																			className="rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-red-500 transition hover:bg-red-500/20"
 																		>
-																			Ban Word
+																			{t("chat.actions.ban_word", { defaultValue: "Ban word" })}
 																		</button>
 																	) : null}
 																</>
@@ -1034,7 +1047,7 @@ export function ChatThreadMessages({
 																			}}
 																			className="rounded-md border border-black/20 px-2 py-1 transition hover:bg-black/10"
 																		>
-																			Download
+																			{t("chat.actions.download", { defaultValue: "Download" })}
 																		</button>
 																	) : null}
 																	{/* --------------------------------- */}

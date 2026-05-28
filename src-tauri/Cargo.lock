@@ -1381,7 +1381,7 @@ dependencies = [
 
 [[package]]
 name = "free-grind"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "android-native-keyring-store",
  "apple-native-keyring-store",
@@ -4047,6 +4047,7 @@ dependencies = [
  "cookie",
  "cookie_store 0.22.1",
  "encoding_rs",
+ "futures-channel",
  "futures-core",
  "futures-util",
  "h2",
