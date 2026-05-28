@@ -21,9 +21,18 @@ export function SettingsAutomationPage() {
     const [blockFirstMedia, setBlockFirstMedia] = useState(() => window.localStorage.getItem("fg-block-first-media") === "true");
     
     const [forbiddenWords, setForbiddenWords] = useState(() => window.localStorage.getItem("fg-forbidden-words") || "");
-    const [minAge, setMinAge] = useState(() => window.localStorage.getItem("fg-block-min-age") || "18");
-    const [maxAge, setMaxAge] = useState(() => window.localStorage.getItem("fg-block-max-age") || "99");
-    const [maxDistance, setMaxDistance] = useState(() => window.localStorage.getItem("fg-block-max-distance") || "50");
+    const [minAge, setMinAge] = useState(() => {
+            const val = window.localStorage.getItem("fg-block-min-age");
+            return val !== null ? val : "18"; // If it's explicitly empty, keep it empty!
+        });
+        const [maxAge, setMaxAge] = useState(() => {
+            const val = window.localStorage.getItem("fg-block-max-age");
+            return val !== null ? val : "99";
+        });
+        const [maxDistance, setMaxDistance] = useState(() => {
+            const val = window.localStorage.getItem("fg-block-max-distance");
+            return val !== null ? val : "50";
+        });
 
     // Auto-Refresh State
     const [refreshEnabled, setRefreshEnabled] = useState(() => window.localStorage.getItem("fg-auto-refresh-enabled") === "true");
@@ -226,9 +235,9 @@ export function SettingsAutomationPage() {
                                         min={1}
                                         max={500}
                                         step={1}
-                                        defaultValue={Math.min(Number(maxDistance) || 500, 500)}
-                                        // Only say "No Limit" if the box is actually empty! Otherwise, show the real number.
-                                        displayValue={!maxDistance || maxDistance.trim() === "" ? "No Limit" : `${maxDistance} km`}
+                                        // Change back to defaultValue, but fix the math so "" safely equals 500 (No Limit)
+                                        defaultValue={maxDistance === "" ? 500 : Math.min(Number(maxDistance), 500)}
+                                        displayValue={maxDistance === "" || Number(maxDistance) >= 500 ? "No Limit" : `${maxDistance} km`}
                                         onChange={(val) => {
                                             if (val >= 500) setMaxDistance("");
                                             else setMaxDistance(String(val));
