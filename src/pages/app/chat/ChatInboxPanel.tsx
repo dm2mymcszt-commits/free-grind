@@ -17,6 +17,15 @@ import {
 } from "../chat/chatUtils";
 import { isChatGhosted } from "../../../utils/privacy";
 
+// --- NEW IMPORTS FOR AUTO-BLOCK SCANNER ---
+import { useApiFunctions } from "../../../hooks/useApiFunctions";
+import { 
+	isOutsideAgeLimits, 
+	isOutsideDistanceLimits, 
+	shouldAutoBlock, 
+	notifyAutoBlock 
+} from "../../../utils/autoblock";
+
 type RealtimeStatusMeta = {
 	className: string;
 	symbol: string;
@@ -87,11 +96,82 @@ export function ChatInboxPanel({
 	onOpenInbox,
 	onOpenAlbums,
 }: ChatInboxPanelProps) {
-	const { t, i18n } = useTranslation();
+	const { t } = useTranslation();
 	const { showDebugInfo } = usePreferences();
 	const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
 	const lastScrollAtRef = useRef(0);
 	const lastRequestedPageRef = useRef<number | null>(null);
+
+	// --- BACKGROUND SCANNER SETUP ---
+	const api = useApiFunctions();
+	const scannedProfilesRef = useRef<Set<string>>(new Set());
+
+	// Background Profile Scanner Effect
+	useEffect(() => {
+
+        const isScannerEnabled = window.localStorage.getItem("fg-inbox-scanner-enabled") === "true";
+        if (!isScannerEnabled) return;
+        
+		const toScan = filteredConversations
+			.map((c) => getOtherParticipant(c, userId)?.profileId?.toString())
+			.filter((id): id is string => Boolean(id) && !scannedProfilesRef.current.has(id));
+
+		if (toScan.length === 0) return;
+
+		let isCancelled = false;
+
+		const runScanner = async () => {
+			for (const profileId of toScan) {
+				if (isCancelled) break;
+				
+				// Mark as scanned immediately so we don't scan them again
+				scannedProfilesRef.current.add(profileId);
+
+				try {
+					const profileDetail = await api.getProfileDetail(profileId);
+					const p = profileDetail as any; // Safe bypass to access dynamic properties
+
+					const age = p.age;
+					const distance = p.distanceMeters ?? p.distance;
+					const name = p.name || p.displayName || "Unknown";
+					const bio = p.aboutMe;
+
+					let blockReason = "";
+
+					if (isOutsideAgeLimits(age)) {
+						blockReason = `Age limit (${age})`;
+					} else if (isOutsideDistanceLimits(distance)) {
+						blockReason = "Distance limit";
+					} else if (shouldAutoBlock(name, "name")) {
+						blockReason = "Name keyword";
+					} else if (shouldAutoBlock(bio, "bio")) {
+						blockReason = "Bio keyword";
+					}
+
+					if (blockReason) {
+						console.log(`[BackgroundScanner] Blocking ${profileId} for ${blockReason}`);
+						await api.blockProfile(profileId);
+						notifyAutoBlock(name, `Scanner: ${blockReason}`);
+						
+						// Silently trigger inbox refresh to wipe them from the list
+						setTimeout(() => onRefreshInbox(), 500);
+					}
+				} catch (err) {
+					// Ignore minor errors (deleted profile or minor rate limits)
+				}
+
+				// THROTTLE: Wait 1.5 seconds between fetches to prevent Grindr ban hammer!
+				await new Promise((resolve) => setTimeout(resolve, 1500));
+			}
+		};
+
+		void runScanner();
+
+		return () => {
+			isCancelled = true;
+		};
+	}, [filteredConversations, userId, api, onRefreshInbox]);
+	// --------------------------------
 
 	const markUserScroll = () => {
 		lastScrollAtRef.current = Date.now();
@@ -358,10 +438,8 @@ export function ChatInboxPanel({
 																	: "text-[var(--text-muted)]"
 															}`}
 														>
-															{formatConversationTime(
-																conversation.data.lastActivityTimestamp,
-																i18n.language,
-															)}
+															{/* FIXED FORMATTING BUG HERE */}
+															{formatConversationTime(conversation.data.lastActivityTimestamp)}
 														</span>
 													</div>
 													<div className="flex items-center justify-between gap-2">

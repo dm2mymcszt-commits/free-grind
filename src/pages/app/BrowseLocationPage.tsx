@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import z from "zod";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, AlertTriangle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { appLog } from "../../utils/logger";
 import { usePreferences } from "../../contexts/PreferencesContext";
@@ -14,6 +14,17 @@ import {
 import { LocationSettingsPanel } from "./gridpage/components/LocationSettingsPanel";
 
 import { useApi } from "../../hooks/useApi";
+
+// Helper to check if coordinates fall within the UK bounding box
+// You can easily add more bounding boxes here later if you find other age-gated countries
+// Helper to check if coordinates fall within restricted bounding boxes
+const isAgeRestrictedRegion = (lat: number, lon: number) => {
+	// UK Bounding Box (Approximate: covers England, Scotland, Wales, Northern Ireland)
+	const inUK = lat >= 49.8 && lat <= 60.9 && lon >= -8.6 && lon <= 1.8;
+
+	// Trigger the warning if they teleport to EITHER region
+	return inUK
+};
 
 export function BrowseLocationPage() {
 	const navigate = useNavigate();
@@ -30,6 +41,14 @@ export function BrowseLocationPage() {
 	const [selectedLocation, setSelectedLocation] =
 		useState<SelectedLocation | null>(null);
 	const [locationError, setLocationError] = useState<string | null>(null);
+
+	// State for the Age Verification Warning Modal
+	const [pendingRestrictedLocation, setPendingRestrictedLocation] = useState<{
+		lat: number;
+		lon: number;
+		label?: string;
+		isAuto?: boolean;
+	} | null>(null);
 
 	const initialCenter = (() => {
 		if (geohash) {
@@ -63,18 +82,24 @@ export function BrowseLocationPage() {
 		}
 	}, [geohash, locationName, t]);
 
-	const updateLocationPreference = async (
+	// This is the ACTUAL function that saves the location
+	const confirmLocationUpdate = async (
 		lat: number,
 		lon: number,
 		label?: string,
 		isAuto?: boolean,
 	) => {
 		const nextGeohash = encodeGeohash(lat, lon);
-		const finalLabel = label ?? t("browse_location.lat_lon_label", { lat: lat.toFixed(4), lon: lon.toFixed(4) });
+		const finalLabel =
+			label ??
+			t("browse_location.lat_lon_label", {
+				lat: lat.toFixed(4),
+				lon: lon.toFixed(4),
+			});
 		await setPreferences({
 			geohash: nextGeohash,
 			locationName: finalLabel,
-			useAutoLocation: isAuto ?? false
+			useAutoLocation: isAuto ?? false,
 		});
 		setSelectedLocation({
 			lat,
@@ -83,7 +108,24 @@ export function BrowseLocationPage() {
 		});
 		setMapPickerError(null);
 		setLocationError(null);
+		setPendingRestrictedLocation(null);
 		navigate("/");
+	};
+
+	// We intercept the location update request here!
+	const requestLocationUpdate = (
+		lat: number,
+		lon: number,
+		label?: string,
+		isAuto?: boolean,
+	) => {
+		if (isAgeRestrictedRegion(lat, lon)) {
+			// Halt and show warning modal
+			setPendingRestrictedLocation({ lat, lon, label, isAuto });
+		} else {
+			// Proceed normally
+			void confirmLocationUpdate(lat, lon, label, isAuto);
+		}
 	};
 
 	const handleUseCurrentLocation = async () => {
@@ -105,7 +147,7 @@ export function BrowseLocationPage() {
 				},
 			);
 
-			await updateLocationPreference(
+			requestLocationUpdate(
 				position.coords.latitude,
 				position.coords.longitude,
 				t("browse_location.current_location_label"),
@@ -199,10 +241,9 @@ export function BrowseLocationPage() {
 					locationQuery={locationQuery}
 					onLocationQueryChange={setLocationQuery}
 					isSearchingLocation={isSearchingLocation}
-
 					locationResults={locationResults}
 					onChooseLocation={(lat, lon, label) => {
-						void updateLocationPreference(lat, lon, label);
+						requestLocationUpdate(lat, lon, label);
 					}}
 					selectedLocation={selectedLocation}
 					isMapPickerOpen={isMapPickerOpen}
@@ -215,7 +256,10 @@ export function BrowseLocationPage() {
 						setSelectedLocation({
 							lat,
 							lon,
-							label: t("browse_location.lat_lon_label", { lat: lat.toFixed(4), lon: lon.toFixed(4) }),
+							label: t("browse_location.lat_lon_label", {
+								lat: lat.toFixed(4),
+								lon: lon.toFixed(4),
+							}),
 						});
 					}}
 					onMapPickerError={setMapPickerError}
@@ -223,8 +267,7 @@ export function BrowseLocationPage() {
 						if (!selectedLocation) {
 							return;
 						}
-
-						void updateLocationPreference(
+						requestLocationUpdate(
 							selectedLocation.lat,
 							selectedLocation.lon,
 							selectedLocation.label,
@@ -233,6 +276,49 @@ export function BrowseLocationPage() {
 					initialCenter={initialCenter}
 				/>
 			</div>
+
+			{/* AGE VERIFICATION WARNING MODAL */}
+			{pendingRestrictedLocation && (
+				<div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+					<div className="w-full max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-2xl">
+						<div className="mb-4 flex items-center gap-3 text-amber-500">
+							<AlertTriangle className="h-8 w-8" />
+							<h2 className="text-lg font-bold">
+								{t("browse_location.age_verification_title", "Age Verification Area")}
+							</h2>
+						</div>
+						<p className="mb-6 text-sm leading-relaxed text-[var(--text-muted)]">
+							{t(
+								"browse_location.age_verification_desc",
+								"You are about to teleport to a region (UK/EU) that strictly requires Grindr Age Verification. If your account is not verified, you may get soft-locked and forced to verify on the official app before you can use Free Grind again."
+							)}
+						</p>
+						<div className="flex justify-end gap-3">
+							<button
+								type="button"
+								onClick={() => setPendingRestrictedLocation(null)}
+								className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-2 text-sm font-semibold hover:bg-[var(--surface-3)]"
+							>
+								{t("browse_location.cancel", "Cancel")}
+							</button>
+							<button
+								type="button"
+								onClick={() =>
+									confirmLocationUpdate(
+										pendingRestrictedLocation.lat,
+										pendingRestrictedLocation.lon,
+										pendingRestrictedLocation.label,
+										pendingRestrictedLocation.isAuto,
+									)
+								}
+								className="btn-accent rounded-xl px-4 py-2 text-sm font-semibold"
+							>
+								{t("browse_location.teleport_anyway", "Teleport Anyway")}
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
 		</section>
 	);
 }
