@@ -76,6 +76,7 @@ export function SmoothScroll({
 			smoothWheel: true,
 			wheelMultiplier: wheelMultiplier,
 			touchMultiplier: SMOOTH_SCROLL_CONFIG.touchMultiplier,
+			// @ts-ignore - The newest lenis types dropped smoothTouch, so we tell TS to ignore it
 			smoothTouch: smoothTouch,
 		});
 
