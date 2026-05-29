@@ -17,6 +17,22 @@ import { type UnitsPreset } from "../../utils/units";
 
 const SKIP_BLOCK_CONFIRM_KEY = "profile_skip_block_confirm";
 
+const TRANSLATE_LANGUAGES = [
+    { code: "", label: "Use App/System Language" },
+    { code: "en", label: "English" },
+    { code: "es", label: "Spanish" },
+    { code: "fr", label: "French" },
+    { code: "de", label: "German" },
+    { code: "pt", label: "Portuguese" },
+    { code: "it", label: "Italian" },
+    { code: "nl", label: "Dutch" },
+    { code: "ar", label: "Arabic" },
+    { code: "ru", label: "Russian" },
+    { code: "zh-CN", label: "Chinese (Simplified)" },
+    { code: "ja", label: "Japanese" },
+    { code: "ko", label: "Korean" },
+];
+
 function normalizeHex(value: string): string {
 	const cleaned = value.trim().replace(/^#/, "");
 	if (/^[0-9a-fA-F]{3}$/.test(cleaned)) {
@@ -76,6 +92,11 @@ export function CustomizabilityPage() {
     const [showGhostButton, setShowGhostButton] = useState(() => window.localStorage.getItem("fg-show-ghost-btn") !== "false");
     const [defaultInterestTab, setDefaultInterestTab] = useState(() => window.localStorage.getItem("fg-interest-default-tab") || "taps");
     
+    // --- TRANSLATION STATE ---
+    const [translateEnabled, setTranslateEnabled] = useState(() => window.localStorage.getItem("fg-translate-enabled") !== "false");
+    const [autoTranslate, setAutoTranslate] = useState(() => window.localStorage.getItem("fg-translate-auto") === "true");
+    const [translateLanguage, setTranslateLanguage] = useState(() => window.localStorage.getItem("fg-translate-language") || "");
+
 	const [analyticsConsent, setAnalyticsConsent] = useState<AnalyticsConsentChoice | null>(
 		() => readAnalyticsConsentChoice(),
 	);
@@ -213,6 +234,68 @@ export function CustomizabilityPage() {
 						<option value="american">{t("customizability.units_american")}</option>
 					</select>
 				</div>
+
+                {/* --- CHAT TRANSLATION SECTION --- */}
+                <div className="surface-card p-4 sm:p-5 border border-[var(--border)]">
+                    <p className="mb-2 text-sm font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+                        Chat Translation
+                    </p>
+                    <p className="mb-4 text-sm text-[var(--text-muted)]">
+                        Instantly translate incoming messages on the fly using Google Translate (Free).
+                    </p>
+                    <div className="flex flex-col gap-3">
+                        <label className="flex items-start gap-3 text-sm cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={translateEnabled}
+                                onChange={(e) => {
+                                    setTranslateEnabled(e.target.checked);
+                                    window.localStorage.setItem("fg-translate-enabled", String(e.target.checked));
+                                }}
+                                className="mt-1 h-4 w-4 accent-[var(--accent)] shrink-0"
+                            />
+                            <span>
+                                <span className="font-semibold block">Enable Translation</span>
+                                <span className="text-xs text-[var(--text-muted)]">Shows a translate icon next to incoming messages.</span>
+                            </span>
+                        </label>
+                        {translateEnabled && (
+                            <>
+                                <label className="flex items-start gap-3 text-sm cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={autoTranslate}
+                                        onChange={(e) => {
+                                            setAutoTranslate(e.target.checked);
+                                            window.localStorage.setItem("fg-translate-auto", String(e.target.checked));
+                                        }}
+                                        className="mt-1 h-4 w-4 accent-[var(--accent)] shrink-0"
+                                    />
+                                    <span>
+                                        <span className="font-semibold block">Auto-Translate</span>
+                                        <span className="text-xs text-[var(--text-muted)]">Automatically translates new messages as they arrive.</span>
+                                    </span>
+                                </label>
+                                <div className="mt-2 pt-3 border-t border-[var(--border)]">
+                                    <p className="mb-2 text-sm font-semibold text-[var(--text)]">Target Language</p>
+                                    <select
+                                        value={translateLanguage}
+                                        onChange={(e) => {
+                                            setTranslateLanguage(e.target.value);
+                                            window.localStorage.setItem("fg-translate-language", e.target.value);
+                                        }}
+                                        className="h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm text-[var(--text)] outline-none transition focus:border-[var(--accent)]"
+                                    >
+                                        {TRANSLATE_LANGUAGES.map(lang => (
+                                            <option key={lang.code} value={lang.code}>{lang.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+                {/* -------------------------------- */}
 
 				<div className="surface-card p-4 sm:p-5">
 					<p className="mb-3 text-sm font-semibold uppercase tracking-widest text-[var(--text-muted)]">
@@ -467,7 +550,7 @@ export function CustomizabilityPage() {
 					<button
 						type="button"
 						onClick={() => {
-							localStorage.removeItem(SKIP_BLOCK_CONFIRM_KEY); // Note: might need to add `const SKIP_BLOCK_CONFIRM_KEY = "profile_skip_block_confirm";` at the top of the file!
+							localStorage.removeItem(SKIP_BLOCK_CONFIRM_KEY);
 							localStorage.removeItem("profile_skip_unblock_confirm");
 							localStorage.removeItem("chat_skip_delete_confirm");
 							localStorage.removeItem("fg-reply-warning-seen");
@@ -496,7 +579,7 @@ export function CustomizabilityPage() {
 									const isChecked = e.target.checked;
 									setShowRightNow(isChecked);
 									window.localStorage.setItem("fg-show-right-now", String(isChecked));
-									window.location.reload(); // Refresh to apply tab changes immediately
+									window.location.reload(); 
 								}}
 								className="h-4 w-4 accent-[var(--accent)]"
 							/>
@@ -510,7 +593,7 @@ export function CustomizabilityPage() {
 									const isChecked = e.target.checked;
 									setShowInterest(isChecked);
 									window.localStorage.setItem("fg-show-interest", String(isChecked));
-									window.location.reload(); // Refresh to apply tab changes immediately
+									window.location.reload(); 
 								}}
 								className="h-4 w-4 accent-[var(--accent)]"
 							/>
@@ -533,7 +616,6 @@ export function CustomizabilityPage() {
 							<option value="views">Show Views First</option>
 						</select>
 					</div>
-					{/* --------------------------- */}
 				</div>
 
 				{/* Browse Grid (Mobile) */}

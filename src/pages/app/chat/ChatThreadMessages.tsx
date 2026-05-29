@@ -1,4 +1,4 @@
-import { Album, Ellipsis, Hourglass, Lock, MapPin, Reply } from "lucide-react";
+import { Album, Ellipsis, Hourglass, Lock, MapPin, Reply, Loader2, Languages } from "lucide-react";
 import { Fragment, useEffect, useState, useMemo, useCallback, useRef } from "react";
 
 import { useTranslation } from "react-i18next";
@@ -146,12 +146,79 @@ export function ChatThreadMessages({
 	handleReply,
 	threadBottomRef,
 }: ChatThreadMessagesProps) {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
 	const { blurIncomingMedia } = usePreferences();
 	const [revealedMediaMessageIds, setRevealedMediaMessageIds] = useState<Set<string>>(
 		() => new Set(),
 	);
 	const [hoveredMediaMessageId, setHoveredMediaMessageId] = useState<string | null>(null);
+	
+	// --- IN-CHAT TRANSLATION STATE ---
+	const [translations, setTranslations] = useState<Record<string, { text?: string; loading?: boolean }>>({});
+	
+	const isTranslateEnabled = window.localStorage.getItem("fg-translate-enabled") !== "false";
+	const isAutoTranslate = window.localStorage.getItem("fg-translate-auto") === "true";
+	const translateTargetLanguage = window.localStorage.getItem("fg-translate-language") || (i18n.language ? i18n.language.split("-")[0] : "en");
+
+	const handleTranslate = async (messageId: string, text: string, isAuto = false) => {
+		if (!text || !isTranslateEnabled) return;
+		setTranslations((prev) => ({ ...prev, [messageId]: { loading: true } }));
+		setOpenMessageActionId(null); 
+
+		try {
+			const response = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${translateTargetLanguage}&dt=t&q=${encodeURIComponent(text)}`);
+			const data = (await response.json()) as any[];
+
+			let translatedText = "";
+			if (Array.isArray(data) && Array.isArray(data[0])) {
+				data[0].forEach((item: any) => {
+					if (Array.isArray(item) && item[0]) {
+						translatedText += String(item[0]);
+					}
+				});
+			}
+
+			setTranslations((prev) => ({
+				...prev,
+				[messageId]: { text: translatedText, loading: false },
+			}));
+		} catch (error) {
+			appLog.error("Translation failed", error);
+			if (!isAuto) {
+				toast.error(t("chat.toasts.translation_failed", { defaultValue: "Translation failed" }));
+			}
+			setTranslations((prev) => ({
+				...prev,
+				[messageId]: { loading: false },
+			}));
+		}
+	};
+
+	// --- AUTO TRANSLATE HOOK ---
+	useEffect(() => {
+		if (!isTranslateEnabled || !isAutoTranslate) return;
+
+		threadMessages.forEach((message) => {
+			const mine = userId != null && Number(message.senderId) === Number(userId);
+			if (mine) return; // Don't auto-translate our own messages
+			if (translations[message.messageId]) return; // Already translated or loading
+			if (isLocalClientMessageId(message.messageId)) return; // Don't translate locally pending messages
+
+			let text = typeof getMessageText(message, t) === "string" ? getMessageText(message, t) as string : "";
+			if (!text) return;
+
+			// Strip out our fake local reply quotes so they don't get translated
+			if (text.startsWith("> ")) {
+				const splitIndex = text.indexOf("\n");
+				if (splitIndex !== -1) text = text.substring(splitIndex + 1).trim();
+			}
+
+			if (text.trim().length > 0) {
+				void handleTranslate(message.messageId, text.trim(), true);
+			}
+		});
+	}, [threadMessages, isTranslateEnabled, isAutoTranslate, translations, userId, t]);
+	// ----------------------------------
 
 	const handleCopy = useCallback(async (message: UiMessage) => {
 		const location = getMessageLocation(message);
@@ -237,12 +304,10 @@ export function ChatThreadMessages({
 		triggered: boolean;
 	} | null>(null);
 
-	// A new ref to track exactly when the last tap happened
 	const lastTapTimeRef = useRef<Record<string, number>>({});
 
 	const handleMobileTouchStart = useCallback(
 		(event: React.TouchEvent<HTMLDivElement>, message: UiMessage) => {
-			// Instantly bail out if they are on a PC, using multi-touch, or it's a pending message
 			if (isDesktop || event.touches.length !== 1 || isLocalClientMessageId(message.messageId)) {
 				swipeStateRef.current = null;
 				return;
@@ -251,21 +316,15 @@ export function ChatThreadMessages({
 			const now = Date.now();
 			const lastTap = lastTapTimeRef.current[message.messageId] || 0;
 
-			// STRICT DOUBLE TAP DETECTOR (Less than 350ms between taps)
 			if (now - lastTap > 0 && now - lastTap < 350) {
-				// Prevent long-press from triggering
 				endMessageLongPress();
-				// Clean up the timer so it doesn't trigger three times
 				lastTapTimeRef.current[message.messageId] = 0; 
-				// FIRE THE FLAME!
 				void handleReact(message);
 				return;
 			}
 
-			// Record this tap time for the next comparison
 			lastTapTimeRef.current[message.messageId] = now;
 
-			// Normal long-press and swipe setup
 			startMessageLongPress(message.messageId);
 			const touch = event.touches[0];
 			swipeStateRef.current = {
@@ -328,7 +387,6 @@ export function ChatThreadMessages({
 
 						<div className={`flex flex-col gap-2 ${!isDesktop ? "px-[var(--app-px)] pt-4" : ""}`}>
                         {(() => {
-                            // Track the last header label to detect day transitions during rendering
                             let lastHeader = "";
                             return threadMessages.map((message) => {
 								const currentHeader = formatDateHeader(
@@ -361,7 +419,6 @@ export function ChatThreadMessages({
 								let localReplyText = "";
 								let isLocalReply = false;
 
-								// 1. Catch our fake firewall-bypass quotes
 								if (typeof displayMessageText === "string" && displayMessageText.startsWith("> ")) {
 									const splitIndex = displayMessageText.indexOf("\n");
 									if (splitIndex !== -1) {
@@ -371,7 +428,6 @@ export function ChatThreadMessages({
 									}
 								}
 
-								// 2. Catch ALL forms of Grindr native replies
 								const isNativeReply = 
 									message.type === "Reply" || 
 									message.type === "ProfilePhotoReply" || 
@@ -380,9 +436,6 @@ export function ChatThreadMessages({
 									!!message.replyToMessage || 
 									!!message.replyPreview;
 
-								// ------------------
-
-                                // --- FIND THE ORIGINAL MESSAGE ---
 								const replyTargetId = (message as any).replyToMessage?.messageId || (message.body as any)?.reply?.messageId || (message.body as any)?.replyMessageId;
 								const originalMessage = replyTargetId ? threadMessages.find(m => m.messageId === replyTargetId) : null;
 								
@@ -390,17 +443,14 @@ export function ChatThreadMessages({
 								let resolvedThumb = (message.body as any)?.imageHash || (message.body as any)?.reply?.thumbUrl;
 
 								if (originalMessage) {
-									// If Grindr didn't give us the text, grab it from the original message!
 									if (!resolvedReplyText) {
 										resolvedReplyText = getMessagePreviewLabel(originalMessage, t);
 									}
-									// If Grindr didn't give us the thumbnail, grab it from the original message!
 									if (!resolvedThumb) {
 										resolvedThumb = getMessageImageUrl(originalMessage) || getMessageAlbumCoverUrl(originalMessage);
 									}
 								}
 								if (!resolvedReplyText) resolvedReplyText = "Message";
-								// ---------------------------------
 
 								const isExpiringImage = message.type === "ExpiringImage";
 								const isAlbumMessage =
@@ -471,14 +521,9 @@ export function ChatThreadMessages({
 
 								const isExpiringMedia = isAlbumMessage && !isIndefinite && isLatestShare && (expiresAt > 0 || isOnce);
 
-								// isViewable is the explicit API field for whether the album can be opened.
-								// ownerProfileId is null when expired/locked, but isViewable is more reliable
-								// (e.g. sender may lock the album while ownerProfileId is still present).
-								// My own sent albums are never locked from my perspective.
 								const isLocked = isAlbumMessage && (!isLatestShare || !msgBody?.isViewable) && message.senderId !== userId;
 
 								return (
-								/* Use Fragment to allow rendering the separator and the message as a single map item */
                                 <Fragment key={message.messageId}>
                                     {isNewDay && (
                                         <div className={`my-6 flex items-center gap-4 ${!isDesktop ? "" : "px-4"} opacity-80`}>
@@ -871,7 +916,6 @@ export function ChatThreadMessages({
 
 												{!isMediaOnlyBubble ? (
 													<div className="flex flex-col gap-1">
-														{/* --- GRINDR REPLY BOX --- */}
 														{isNativeReply || isLocalReply ? (
 															<div className={`mb-1 overflow-hidden rounded-lg border border-[var(--border)] p-2 text-xs opacity-90 shadow-sm ${mine ? "bg-white/10" : "bg-black/10"}`}>
 																<div className="flex items-start justify-between gap-2">
@@ -883,7 +927,6 @@ export function ChatThreadMessages({
 																			 localReplyText || (message as any).replyPreview?.text || (message.body as any)?.reply?.text || "Message"}
 																		</p>
 																	</div>
-																	{/* Show the thumbnail of the photo they replied to! */}
 																	{((message.body as any)?.imageHash || (message.body as any)?.reply?.thumbUrl) ? (
 																		<img 
 																			src={getThumbImageUrl((message.body as any).imageHash || (message.body as any).reply?.thumbUrl, "320x320")} 
@@ -894,14 +937,33 @@ export function ChatThreadMessages({
 																</div>
 															</div>
 														) : null}
-														{/* ------------------------ */}
+														
 														<p className="whitespace-pre-wrap break-words">
 															{displayMessageText}
 														</p>
+
+														{/* --- TRANSLATION DISPLAY --- */}
+														{translations[message.messageId]?.loading && (
+															<div className="mt-1.5 flex items-center gap-1.5 text-xs italic opacity-70">
+																<Loader2 className="h-3.5 w-3.5 animate-spin" />
+																<span>{t("chat.translating", { defaultValue: "Translating..." })}</span>
+															</div>
+														)}
+														{translations[message.messageId]?.text && (
+															<div className="mt-1.5 flex flex-col border-t border-black/10 dark:border-white/10 pt-1.5">
+																<span className="mb-0.5 flex items-center text-[9px] font-bold uppercase tracking-wider opacity-60">
+																	<Languages className="mr-1 h-3 w-3" />
+																	{t("chat.translated", { defaultValue: "Translated" })}
+																</span>
+																<p className="whitespace-pre-wrap break-words text-[13px] opacity-90">
+																	{translations[message.messageId].text}
+																</p>
+															</div>
+														)}
+														{/* --------------------------- */}
 													</div>
 												) : null}
 
-                                                {/* --- REACTION BUTTON --- */}
 												{!isLocalClientMessageId(message.messageId) ? (
 													<button
 														type="button"
@@ -922,7 +984,6 @@ export function ChatThreadMessages({
 															🔥
 														</span>
 														
-														{/* SHOW REACTION COUNT IF > 1 */}
 														{message.reactions && message.reactions.filter(r => Number(r.reactionType) === 1).length > 1 ? (
 															<span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--surface-2)] text-[9px] font-bold text-[var(--text)] shadow-sm">
 																{message.reactions.filter(r => Number(r.reactionType) === 1).length}
@@ -930,7 +991,6 @@ export function ChatThreadMessages({
 														) : null}
 													</button>
 												) : null}
-												{/* ----------------------- */}
 
 												{!isMediaOnlyBubble ? (
 												<div className="mt-1 flex items-center justify-between gap-2 text-[10px] opacity-80">
@@ -942,6 +1002,23 @@ export function ChatThreadMessages({
 														<span>
 															{formatMessageTime(message.timestamp, nowTimestamp, t)}
 														</span>
+
+                                                        {/* --- QUICK TRANSLATE BUTTON (Desktop + Mobile) --- */}
+                                                        {isTranslateEnabled && !mine && displayMessageText && !translations[message.messageId]?.text && !translations[message.messageId]?.loading ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    void handleTranslate(message.messageId, typeof displayMessageText === "string" ? displayMessageText : "");
+                                                                }}
+                                                                className="rounded-md p-1 opacity-70 transition hover:bg-black/10 hover:opacity-100"
+                                                                title={t("chat.actions.translate", { defaultValue: "Translate" })}
+                                                            >
+                                                                <Languages className="h-3.5 w-3.5" />
+                                                            </button>
+                                                        ) : null}
+                                                        {/* ------------------------------------------------ */}
+
 														{isDesktop &&
 														!pending &&
 														!isLocalClientMessageId(message.messageId) ? (
@@ -991,6 +1068,19 @@ export function ChatThreadMessages({
 																	>
 																		{t("chat.actions.copy", { defaultValue: "Copy" })}
 																	</button>
+
+                                                                    {/* --- DESKTOP ACTION MENU TRANSLATE --- */}
+                                                                    {isTranslateEnabled && hasText && !mine && !translations[message.messageId]?.text ? (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => void handleTranslate(message.messageId, typeof displayMessageText === "string" ? displayMessageText : "")}
+                                                                            className="rounded-md border border-black/20 px-2 py-1 transition hover:bg-black/10"
+                                                                        >
+                                                                            <Languages className="mr-1 inline-block h-3 w-3 align-text-bottom" />
+                                                                            {t("chat.actions.translate", { defaultValue: "Translate" })}
+                                                                        </button>
+                                                                    ) : null}
+                                                                    {/* ------------------------------------- */}
 																	
 																	{!mine ? (
 																		<button
@@ -1026,8 +1116,6 @@ export function ChatThreadMessages({
 															);
 														})()}
                                                         
-
-                                                        {/* --- DOWNLOAD BUTTON (DESKTOP) --- */}
 																	{imageUrl || videoUrl || audioUrl ? (
 																		<button
 																			type="button"
@@ -1050,7 +1138,6 @@ export function ChatThreadMessages({
 																			{t("chat.actions.download", { defaultValue: "Download" })}
 																		</button>
 																	) : null}
-																	{/* --------------------------------- */}
 
 														{mine && !message.unsent ? (
 															<button
