@@ -142,14 +142,33 @@ export function normalizeTagList(value: string): string[] {
 		.filter(Boolean);
 }
 
-import { calculateSquareCrop } from "../../../utils/media";
+// --- ADDED: Recreated the missing function here to fix the broken upstream commit! ---
+export async function calculateSquareCrop(file: File): Promise<{ top: number; left: number; right: number; bottom: number }> {
+	return new Promise((resolve, reject) => {
+		const img = new Image();
+		const url = URL.createObjectURL(file);
+		img.onload = () => {
+			URL.revokeObjectURL(url);
+			const size = Math.min(img.width, img.height);
+			const left = (img.width - size) / 2 / img.width;
+			const right = (img.width + size) / 2 / img.width;
+			const top = (img.height - size) / 2 / img.height;
+			const bottom = (img.height + size) / 2 / img.height;
+
+			resolve({ top, left, right, bottom });
+		};
+		img.onerror = () => reject(new Error("Failed to load image for crop calculation"));
+		img.src = url;
+	});
+}
+// -----------------------------------------------------------------------------------
 
 export async function buildSquareThumbCoords(file: File): Promise<string> {
 	const { top, left, right, bottom } = await calculateSquareCrop(file);
 
 	// RectF query format is: y2,x1,x2,y1.
 	// which corresponds to: bottom, left, right, top
-	return `${bottom},${left},${right},${top}`;
+	return `${bottom.toFixed(4)},${left.toFixed(4)},${right.toFixed(4)},${top.toFixed(4)}`;
 }
 
 export function profileToDraft(
