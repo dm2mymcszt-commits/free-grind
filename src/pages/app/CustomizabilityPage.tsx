@@ -96,6 +96,10 @@ export function CustomizabilityPage() {
     const [translateEnabled, setTranslateEnabled] = useState(() => window.localStorage.getItem("fg-translate-enabled") !== "false");
     const [autoTranslate, setAutoTranslate] = useState(() => window.localStorage.getItem("fg-translate-auto") === "true");
     const [translateLanguage, setTranslateLanguage] = useState(() => window.localStorage.getItem("fg-translate-language") || "");
+    const [translateEngine, setTranslateEngine] = useState(() => window.localStorage.getItem("fg-translate-engine") || "google");
+    const [deepLXUrl, setDeepLXUrl] = useState(() => window.localStorage.getItem("fg-deeplx-url") || "");
+    const [openAIKey, setOpenAIKey] = useState(() => window.localStorage.getItem("fg-openai-key") || "");
+    const [geminiKey, setGeminiKey] = useState(() => window.localStorage.getItem("fg-gemini-key") || "");
 
     // --- OUTGOING BLUR STATE ---
     const [blurOutgoingMedia, setBlurOutgoingMedia] = useState(() => window.localStorage.getItem("fg-blur-outgoing-media") === "true");
@@ -244,7 +248,7 @@ export function CustomizabilityPage() {
                         Chat Translation
                     </p>
                     <p className="mb-4 text-sm text-[var(--text-muted)]">
-                        Instantly translate incoming messages on the fly using Google Translate (Free).
+                        Instantly translate incoming messages on the fly.
                     </p>
                     <div className="flex flex-col gap-3">
                         <label className="flex items-start gap-3 text-sm cursor-pointer">
@@ -294,6 +298,81 @@ export function CustomizabilityPage() {
                                         ))}
                                     </select>
                                 </div>
+
+                                <div className="mt-2 pt-3 border-t border-[var(--border)]">
+                                    <p className="mb-2 text-sm font-semibold text-[var(--text)]">Translation Engine</p>
+                                    <select
+                                        value={translateEngine}
+                                        onChange={(e) => {
+                                            setTranslateEngine(e.target.value);
+                                            window.localStorage.setItem("fg-translate-engine", e.target.value);
+                                        }}
+                                        className="h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm text-[var(--text)] outline-none transition focus:border-[var(--accent)]"
+                                    >
+                                        <option value="google">Google Translate (Free & Fast)</option>
+                                        <option value="gemini">Google Gemini AI (Free API Key)</option>
+                                        <option value="deeplx">DeepLX (Free Custom URL)</option>
+                                        <option value="openai">OpenAI ChatGPT (Paid API Key)</option>
+                                    </select>
+                                </div>
+
+                                {translateEngine === "deeplx" && (
+                                    <div className="mt-2">
+                                        <p className="mb-1 text-sm font-semibold text-[var(--text)]">DeepLX URL</p>
+                                        <p className="mb-2 text-xs text-[var(--text-muted)]">e.g. <code>https://api.deeplx.org/translate</code></p>
+                                        <input
+                                            type="text"
+                                            value={deepLXUrl}
+                                            onChange={(e) => {
+                                                setDeepLXUrl(e.target.value);
+                                                window.localStorage.setItem("fg-deeplx-url", e.target.value.trim());
+                                            }}
+                                            placeholder="https://api.deeplx.org/translate"
+                                            className="h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm text-[var(--text)] outline-none transition focus:border-[var(--accent)]"
+                                        />
+                                    </div>
+                                )}
+
+                                {translateEngine === "openai" && (
+                                    <div className="mt-2">
+                                        <p className="mb-1 text-sm font-semibold text-[var(--text)]">OpenAI API Key</p>
+                                        <p className="mb-2 text-xs text-[var(--text-muted)]">
+                                            Translate conversational dating slang naturally using ChatGPT (gpt-5.4-mini). <br />
+                                            <strong className="text-amber-500">Note: Requires a paid OpenAI developer account with prepaid credits.</strong>
+                                        </p>
+                                        <input
+                                            type="password"
+                                            value={openAIKey}
+                                            onChange={(e) => {
+                                                setOpenAIKey(e.target.value);
+                                                window.localStorage.setItem("fg-openai-key", e.target.value.trim());
+                                            }}
+                                            placeholder="sk-proj-..."
+                                            className="h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm text-[var(--text)] outline-none transition focus:border-[var(--accent)]"
+                                        />
+                                    </div>
+                                )}
+
+                                {translateEngine === "gemini" && (
+                                    <div className="mt-2">
+                                        <p className="mb-1 text-sm font-semibold text-[var(--text)]">Gemini API Key</p>
+                                        <p className="mb-2 text-xs text-[var(--text-muted)]">
+                                            Use Google's free developer Gemini AI (gemini-3.5-flash) to translate natural slang. <br />
+                                            <strong>(Generous free tier available without a credit card).</strong>
+                                        </p>
+                                        <input
+                                            type="password"
+                                            value={geminiKey}
+                                            onChange={(e) => {
+                                                setGeminiKey(e.target.value);
+                                                window.localStorage.setItem("fg-gemini-key", e.target.value.trim());
+                                            }}
+                                            placeholder="AIza..."
+                                            className="h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm text-[var(--text)] outline-none transition focus:border-[var(--accent)]"
+                                        />
+                                    </div>
+                                )}
+
                             </>
                         )}
                     </div>
@@ -327,7 +406,7 @@ export function CustomizabilityPage() {
                         <div className="pt-4 border-t border-[var(--border)]">
                             <p className="mb-1 text-sm font-semibold text-[var(--text)]">Blur Outgoing Media</p>
                             <p className="mb-3 text-xs text-[var(--text-muted)]">
-                                Automatically blur images and videos that you send in chats.
+                                Automatically blur images and videos that YOU send in chats. Prevents people around you from peeking at your screen.
                             </p>
                             <button
                                 type="button"

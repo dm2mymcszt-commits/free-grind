@@ -41,7 +41,6 @@ type ChatThreadMessagesProps = {
     threadMessages: UiMessage[];
     threadLastReadTimestamp: number | null;
     messageElementRefs: { current: Map<string, HTMLDivElement> };
-    handleMessageTap: (message: Message) => void | Promise<void>;
     startMessageLongPress: (messageId: string) => void;
     endMessageLongPress: () => void;
     messageLongPressTriggeredRef: { current: boolean };
@@ -127,7 +126,6 @@ export function ChatThreadMessages({
     threadMessages,
     threadLastReadTimestamp,
     messageElementRefs,
-    handleMessageTap,
     startMessageLongPress,
     endMessageLongPress,
     messageLongPressTriggeredRef,
@@ -158,11 +156,12 @@ export function ChatThreadMessages({
     const [hoveredMediaMessageId, setHoveredMediaMessageId] = useState<string | null>(null);
 	
     // --- IN-CHAT TRANSLATION STATE ---
-    const [translations, setTranslations] = useState<Record<string, { text?: string; loading?: boolean }>>({});
+    const [translations, setTranslations] = useState<Record<string, { text?: string; loading?: boolean; service?: "Google" | "DeepL" | "OpenAI" | "Gemini" }>>({});
 	
     const isTranslateEnabled = window.localStorage.getItem("fg-translate-enabled") !== "false";
     const isAutoTranslate = window.localStorage.getItem("fg-translate-auto") === "true";
     const translateTargetLanguage = window.localStorage.getItem("fg-translate-language") || (i18n.language ? i18n.language.split("-")[0] : "en");
+    const translateEngine = window.localStorage.getItem("fg-translate-engine") || "google";
 
     const handleTranslate = async (messageId: string, text: string, isAuto = false) => {
         if (!text || !isTranslateEnabled) return;
@@ -170,26 +169,121 @@ export function ChatThreadMessages({
         setOpenMessageActionId(null); 
 
         try {
-            const response = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${translateTargetLanguage}&dt=t&q=${encodeURIComponent(text)}`);
-            const data = (await response.json()) as any[];
-
             let translatedText = "";
-            if (Array.isArray(data) && Array.isArray(data[0])) {
-                data[0].forEach((item: any) => {
-                    if (Array.isArray(item) && item[0]) {
-                        translatedText += String(item[0]);
-                    }
-                });
+            let usedService: "Google" | "DeepL" | "OpenAI" | "Gemini" = "Google";
+
+            // 1. OpenAI ChatGPT Engine (Updated to 2026 gpt-5.4-mini)
+            if (translateEngine === "openai") {
+                try {
+                    const key = window.localStorage.getItem("fg-openai-key") || "";
+                    if (!key) throw new Error("Missing OpenAI Key");
+                    
+                    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key.trim()}` },
+                        body: JSON.stringify({
+                            model: "gpt-5.4-mini",
+                            messages: [
+                                { role: "system", content: `You are a translator for a dating app. Translate the casual slang message to ${translateTargetLanguage}. Respond ONLY with the translated text, no quotes or filler.` },
+                                { role: "user", content: text }
+                            ]
+                        })
+                    });
+                    const data = (await response.json()) as any;
+                    if (data.choices && data.choices[0] && data.choices[0].message) {
+                        translatedText = data.choices[0].message.content.trim();
+                        usedService = "OpenAI";
+                    } else throw new Error("Invalid OpenAI response");
+                } catch (e) {
+                    appLog.warn("OpenAI failed, falling back to Google...", e);
+                }
             }
+
+            // 2. Google Gemini Engine (Updated to 2026 gemini-3.5-flash)
+            if (translateEngine === "gemini" && !translatedText) {
+                try {
+                    const key = window.localStorage.getItem("fg-gemini-key") || "";
+                    if (!key) throw new Error("Missing Gemini Key");
+                    
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${key.trim()}`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: `Translate the following casual dating app message to ${translateTargetLanguage}. Respond ONLY with the translated text, no quotes or filler. Text: "${text}"` }] }]
+                        })
+                    });
+                    const data = (await response.json()) as any;
+                    if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) {
+                        translatedText = data.candidates[0].content.parts[0].text.trim();
+                        usedService = "Gemini";
+                    } else throw new Error("Invalid Gemini response");
+                } catch (e) {
+                    appLog.warn("Gemini failed, falling back to Google...", e);
+                }
+            }
+
+            // 3. DeepLX Free Engine
+            if (translateEngine === "deeplx" && !translatedText) {
+                try {
+                    const rawUrl = window.localStorage.getItem("fg-deeplx-url") || "";
+                    if (!rawUrl) throw new Error("Missing DeepLX URL");
+
+                    let dlTarget = translateTargetLanguage.toUpperCase() || "EN";
+                    if (dlTarget === "EN-US" || dlTarget === "EN-GB") dlTarget = "EN";
+                    if (dlTarget === "PT-BR" || dlTarget === "PT-PT") dlTarget = "PT";
+
+                    let finalUrl = rawUrl.trim();
+                    if (!finalUrl.startsWith("http")) finalUrl = `https://${finalUrl}`;
+
+                    const response = await fetch(finalUrl, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            text: text,
+                            source_lang: "auto",
+                            target_lang: dlTarget
+                        })
+                    });
+                    const data = (await response.json()) as any;
+                    
+                    if (data && data.data) {
+                        if (typeof data.data === "string" && data.data.includes("linux.do")) throw new Error("DeepLX URL Hijacked by Linux.do");
+                        translatedText = data.data;
+                        usedService = "DeepL";
+                    } else if (data && data.translations && data.translations[0]) {
+                        translatedText = data.translations[0].text;
+                        usedService = "DeepL";
+                    } else throw new Error("Invalid DeepLX response");
+                } catch (e) {
+                    appLog.warn("DeepLX URL failed or was hijacked, falling back to Google Translate...", e);
+                }
+            }
+
+            // 4. Default Fallback to Google Free
+            if (!translatedText) {
+                const response = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${translateTargetLanguage}&dt=t&q=${encodeURIComponent(text)}`);
+                const data = (await response.json()) as any[];
+
+                if (Array.isArray(data) && Array.isArray(data[0])) {
+                    data[0].forEach((item: any) => {
+                        if (Array.isArray(item) && item[0]) {
+                            translatedText += String(item[0]);
+                        }
+                    });
+                    usedService = "Google";
+                }
+            }
+
+            if (!translatedText) throw new Error("All translation engines failed.");
 
             setTranslations((prev) => ({
                 ...prev,
-                [messageId]: { text: translatedText, loading: false },
+                [messageId]: { text: translatedText, loading: false, service: usedService },
             }));
         } catch (error) {
             appLog.error("Translation failed", error);
             if (!isAuto) {
-                toast.error(t("chat.toasts.translation_failed", { defaultValue: "Translation failed" }));
+                toast.error(t("chat.toasts.translation_failed", { defaultValue: "Translation failed completely." }));
             }
             setTranslations((prev) => ({
                 ...prev,
@@ -958,7 +1052,7 @@ export function ChatThreadMessages({
                                                             <div className="mt-1.5 flex flex-col border-t border-black/10 dark:border-white/10 pt-1.5">
                                                                 <span className="mb-0.5 flex items-center text-[9px] font-bold uppercase tracking-wider opacity-60">
                                                                     <Languages className="mr-1 h-3 w-3" />
-                                                                    {t("chat.translated", { defaultValue: "Translated" })}
+                                                                    {t("chat.translated", { defaultValue: "Translated" })} {translations[message.messageId].service ? `(${translations[message.messageId].service})` : ""}
                                                                 </span>
                                                                 <p className="whitespace-pre-wrap break-words text-[13px] opacity-90">
                                                                     {translations[message.messageId].text}
