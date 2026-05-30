@@ -674,10 +674,14 @@ export function ChatThreadMessages({
                                                         {t("chat.thread.from_local_history")}
                                                     </p>
                                                 ) : null}
+												
+                                                {/* FIX: Changed button wrappers to divs to prevent React nesting errors */}
                                                 {imageUrl ? (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
+                                                    <div
+                                                        role="button"
+                                                        tabIndex={0}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
                                                             if (messageLongPressTriggeredRef.current) {
                                                                 messageLongPressTriggeredRef.current = false;
                                                                 return;
@@ -688,7 +692,7 @@ export function ChatThreadMessages({
                                                             }
                                                             openFullScreenImage(imageUrl);
                                                         }}
-                                                        className={`group/media ${isImageOnlyBubble ? "block w-full overflow-hidden rounded-2xl" : "mb-2 block overflow-hidden rounded-xl border border-black/10"}`}
+                                                        className={`group/media cursor-pointer ${isImageOnlyBubble ? "block w-full overflow-hidden rounded-2xl" : "mb-2 block overflow-hidden rounded-xl border border-black/10"}`}
                                                         onMouseEnter={() => handleMediaMouseEnter(message.messageId)}
                                                         onMouseLeave={() => handleMediaMouseLeave(message.messageId)}
                                                     >
@@ -775,13 +779,15 @@ export function ChatThreadMessages({
                                                                 </div>
                                                             ) : null}
                                                         </div>
-                                                    </button>
+                                                    </div>
                                                 ) : null}
 
                                                 {isAlbumOnlyBubble ? (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
+                                                    <div
+                                                        role="button"
+                                                        tabIndex={0}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
                                                             if (shouldBlurMedia && !isDesktop) {
                                                                 revealMediaMessage(message.messageId);
                                                                 return;
@@ -790,14 +796,13 @@ export function ChatThreadMessages({
                                                                 messageLongPressTriggeredRef.current = false;
                                                                 return;
                                                             }
-                                                            if (albumId) {
+                                                            if (albumId && !isLocked) {
                                                                 void openAlbumViewerById(albumId);
                                                             }
                                                         }}
-                                                        className="group/media block w-full overflow-hidden rounded-2xl"
+                                                        className={`group/media block w-full overflow-hidden rounded-2xl ${(!albumId || isLocked) ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'}`}
                                                         onMouseEnter={() => handleMediaMouseEnter(message.messageId)}
                                                         onMouseLeave={() => handleMediaMouseLeave(message.messageId)}
-                                                        disabled={!albumId || isLocked}
                                                     >
                                                         <div className="relative h-56 w-64 max-w-full overflow-hidden bg-[var(--surface-2)] sm:w-72">
                                                             <div className="absolute inset-0 flex items-center justify-center text-[var(--text-muted)]">
@@ -870,12 +875,12 @@ export function ChatThreadMessages({
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                    </button>
+                                                    </div>
                                                 ) : null}
 
                                                 {videoUrl ? (
                                                         <div
-                                                            className="group/media mb-2 overflow-hidden rounded-xl border border-black/10 bg-black"
+                                                            className="group/media mb-2 overflow-hidden rounded-xl border border-black/10 bg-black cursor-pointer"
                                                             onMouseEnter={() => handleMediaMouseEnter(message.messageId)}
                                                             onMouseLeave={() => handleMediaMouseLeave(message.messageId)}
                                                             onClick={() => {
@@ -905,15 +910,17 @@ export function ChatThreadMessages({
                                                 ) : null}
 
                                                 {location ? (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
+                                                    <div
+                                                        role="button"
+                                                        tabIndex={0}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
                                                             const url = isDesktop
                                                                 ? `https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lon}`
                                                                 : `geo:${location.lat},${location.lon}?q=${location.lat},${location.lon}`;
                                                             window.open(url, "_blank");
                                                         }}
-                                                        className={`mb-2 flex w-full flex-col gap-2 rounded-xl border border-black/10 p-3 text-left transition hover:brightness-110 ${
+                                                        className={`mb-2 flex w-full flex-col gap-2 rounded-xl border border-black/10 p-3 text-left transition hover:brightness-110 cursor-pointer ${
                                                             mine
                                                                 ? "bg-white/10 text-white"
                                                                 : "bg-[var(--surface)] text-[var(--text)]"
@@ -970,7 +977,7 @@ export function ChatThreadMessages({
                                                                 ) : null}
                                                             </div>
                                                         )}
-                                                    </button>
+                                                    </div>
                                                 ) : null}
 
                                                 {isAlbumMessage && !isAlbumOnlyBubble ? (
@@ -993,7 +1000,8 @@ export function ChatThreadMessages({
                                                             </span>
                                                             <button
                                                                 type="button"
-                                                                onClick={() => {
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
                                                                     if (albumId) {
                                                                         void openAlbumViewerById(albumId);
                                                                     }
@@ -1120,7 +1128,10 @@ export function ChatThreadMessages({
                                                         !isLocalClientMessageId(message.messageId) ? (
                                                             <button
                                                                 type="button"
-                                                                onClick={() => void handleReply(message)}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    void handleReply(message);
+                                                                }}
                                                                 className="rounded-md p-1 hover:bg-black/10"
                                                             >
                                                                 <Reply className="h-3.5 w-3.5" />
@@ -1131,13 +1142,14 @@ export function ChatThreadMessages({
                                                         !isLocalClientMessageId(message.messageId) ? (
                                                             <button
                                                                 type="button"
-                                                                onClick={() =>
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
                                                                     setOpenMessageActionId((current) =>
                                                                         current === message.messageId
                                                                             ? null
                                                                             : message.messageId,
-                                                                    )
-                                                                }
+                                                                    );
+                                                                }}
                                                                 className="rounded-md p-1 hover:bg-black/10"
                                                             >
                                                                 <Ellipsis className="h-3.5 w-3.5" />
