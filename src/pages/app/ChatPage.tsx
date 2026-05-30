@@ -1,2804 +1,2825 @@
 import {
-	ChevronLeft,
-	ChevronRight,
-	Loader2,
-	X,
+    ChevronLeft,
+    Loader2,
+    X,
 } from "lucide-react";
 import {
-	type FormEvent,
-	type TouchEvent,
-	useCallback,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
+    type FormEvent,
+    type TouchEvent,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from "react";
 import { useTranslation } from "react-i18next";
 import {
-	useLocation,
-	useNavigate,
-	useParams,
-	useSearchParams,
+    useLocation,
+    useNavigate,
+    useParams,
+    useSearchParams,
 } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useApiFunctions } from "../../hooks/useApiFunctions";
 import { useBlockProfile } from "../../hooks/queries/useProfileQueries";
 import { usePresenceCheckBatch } from "../../hooks/usePresenceCheck";
 import { useAuth } from "../../contexts/useAuth";
-import { type ChatApiError } from "../../services/chatService";
 import { setConversationDirectory } from "../../services/conversationDirectory";
 import {
-	CHAT_REALTIME_EVENT,
-	CHAT_REALTIME_STATUS,
-	getChatRealtimeStatus,
+    CHAT_REALTIME_EVENT,
+    CHAT_REALTIME_STATUS,
+    getChatRealtimeStatus,
 } from "../../components/ChatRealtimeBridge";
 import { PhotoViewer, type PhotoViewerMedia } from "../../components/PhotoViewer";
 import {
-	messageSchema,
-	type ConversationEntry,
-	type InboxFilters,
-	type Message,
+    messageSchema,
+    type ConversationEntry,
+    type InboxFilters,
+    type Message,
 } from "../../types/messages";
 import type { RealtimeEnvelope, RealtimeStatus } from "../../types/chat-realtime";
 import type {
-	AlbumListItem,
-	AlbumViewerState,
-	UiMessage,
+    AlbumListItem,
+    AlbumViewerState,
+    UiMessage,
 } from "../../types/chat-page";
 import type { DrawerMedia } from "./chat/ChatDrawerPanel";
 import {
-	indexConversations,
-	indexMessages,
-	searchMessagesLocal,
+    indexConversations,
+    indexMessages,
+    searchMessagesLocal,
 } from "./chat/cache";
 import { ChatSearchPage } from "./ChatSearchPage";
 import { ChatInboxPanel } from "./chat/ChatInboxPanel";
 import { ChatThreadPanel } from "./chat/ChatThreadPanel";
 import * as chatLog from "../../services/chatLog";
 import {
-	buildBinaryUpload,
-	extractImageHashFromSignedUrl,
-	getMessageImageUrl,
-	getMessageMediaId,
-	getMessagePreviewLabel,
-	getOtherParticipant,
-	isLocalClientMessageId,
-	parseChatFiltersFromLocationState,
+    buildBinaryUpload,
+    extractImageHashFromSignedUrl,
+    getMessageImageUrl,
+    getMessageMediaId,
+    getMessagePreviewLabel,
+    getOtherParticipant,
+    isLocalClientMessageId,
+    parseChatFiltersFromLocationState,
 } from "./chat/chatUtils";
 import { useDesktopBreakpoint } from "../../hooks/useDesktopBreakpoint";
 import { appLog } from "../../utils/logger";
 import {
-	clearUnreadCountForProfile,
-	getChatContactIndexForProfiles,
-	getLocalNicknamesForProfiles,
-	indexChatContactRecordsByProfileId,
-	setLocalNicknameForProfile,
-	upsertChatContactIndexFromInbox,
+    clearUnreadCountForProfile,
+    getChatContactIndexForProfiles,
+    getLocalNicknamesForProfiles,
+    indexChatContactRecordsByProfileId,
+    setLocalNicknameForProfile,
+    upsertChatContactIndexFromInbox,
 } from "../../services/chatContactIndex";
 import type { ChatContactIndexRecord } from "../../types/chat-contact-index";
 import { markInboxSeen } from "../../services/seenStore";
 import { shouldAutoBlock, isOutsideAgeLimits, isOutsideDistanceLimits } from "../../utils/autoblock";
 import { isChatGhosted } from "../../utils/privacy";
 import { ReplyWarningModal } from "../../components/ReplyWarningModal";
+import { processAutoDownload } from "../../services/autoDownloader";
 
 export function ChatPage() {
-	const { t } = useTranslation();
-	const location = useLocation();
-	const navigate = useNavigate();
-	const { conversationId: routeConversationId } = useParams();
-	const [searchParams, setSearchParams] = useSearchParams();
-	const service = useApiFunctions();
-	const { mutateAsync: blockProfileMutation } = useBlockProfile();
-	const { userId } = useAuth();
-	const isDesktop = useDesktopBreakpoint();
-	const threadBottomRef = useRef<HTMLDivElement | null>(null);
-	const threadScrollContainerRef = useRef<HTMLDivElement | null>(null);
-	const attachmentInputRef = useRef<HTMLInputElement | null>(null);
-	const messageElementRefs = useRef(new Map<string, HTMLDivElement>());
-	const selectedConversationIdRef = useRef<string | null>(null);
-	const conversationsRef = useRef<ConversationEntry[]>([]);
-	const messagePageKeyRef = useRef<string | null>(null);
-	const isLoadingOlderMessagesRef = useRef(false);
-	const preserveThreadScrollRef = useRef(false);
-	const olderLoadSnapshotRef = useRef<{
-		scrollTop: number;
-		scrollHeight: number;
-	} | null>(null);
-	const selectedConversationUnreadCountRef = useRef(0);
-	const lastLoadedConversationIdRef = useRef<string | null>(null);
-	const lastMessageIdRef = useRef<string | null>(null);
-	const conversationsWithPendingUnreadRef = useRef(new Set<string>());
+    const { t } = useTranslation();
+    const location = useLocation();
+    const navigate = useNavigate();
+    const { conversationId: routeConversationId } = useParams();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const service = useApiFunctions();
+    const { mutateAsync: blockProfileMutation } = useBlockProfile();
+    const { userId } = useAuth();
+    const isDesktop = useDesktopBreakpoint();
+    const threadBottomRef = useRef<HTMLDivElement | null>(null);
+    const threadScrollContainerRef = useRef<HTMLDivElement | null>(null);
+    const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+    const messageElementRefs = useRef(new Map<string, HTMLDivElement>());
+    const selectedConversationIdRef = useRef<string | null>(null);
+    const conversationsRef = useRef<ConversationEntry[]>([]);
+    const messagePageKeyRef = useRef<string | null>(null);
+    const isLoadingOlderMessagesRef = useRef(false);
+    const preserveThreadScrollRef = useRef(false);
+    const olderLoadSnapshotRef = useRef<{
+        scrollTop: number;
+        scrollHeight: number;
+    } | null>(null);
+    const selectedConversationUnreadCountRef = useRef(0);
+    const lastLoadedConversationIdRef = useRef<string | null>(null);
+    const lastMessageIdRef = useRef<string | null>(null);
+    const conversationsWithPendingUnreadRef = useRef(new Set<string>());
 
-	const [conversations, setConversations] = useState<ConversationEntry[]>([]);
-	const [nextPage, setNextPage] = useState<number | null>(null);
-	const [isLoadingInbox, setIsLoadingInbox] = useState(true);
-	const [isLoadingMoreInbox, setIsLoadingMoreInbox] = useState(false);
-	const [inboxError, setInboxError] = useState<string | null>(null);
-	const [inboxFilters, setInboxFilters] = useState<InboxFilters>({});
-	const [selectedDesktopConversationId, setSelectedDesktopConversationId] =
-		useState<string | null>(null);
+    const [conversations, setConversations] = useState<ConversationEntry[]>([]);
+    const [nextPage, setNextPage] = useState<number | null>(null);
+    const [isLoadingInbox, setIsLoadingInbox] = useState(true);
+    const [isLoadingMoreInbox, setIsLoadingMoreInbox] = useState(false);
+    const [inboxError, setInboxError] = useState<string | null>(null);
+    const [inboxFilters, setInboxFilters] = useState<InboxFilters>({});
+    const [selectedDesktopConversationId, setSelectedDesktopConversationId] =
+        useState<string | null>(null);
 
-	const [hidePinned, setHidePinned] = useState(() => {
-		return localStorage.getItem("chat_hide_pinned") === "true";
-	});
+    const [hidePinned, setHidePinned] = useState(() => {
+        return localStorage.getItem("chat_hide_pinned") === "true";
+    });
 
-	useEffect(() => {
-		localStorage.setItem("chat_hide_pinned", String(hidePinned));
-	}, [hidePinned]);
+    useEffect(() => {
+        localStorage.setItem("chat_hide_pinned", String(hidePinned));
+    }, [hidePinned]);
 
-	useEffect(() => {
-		const nextFilters = parseChatFiltersFromLocationState(location.state);
-		if (nextFilters) {
-			setInboxFilters(nextFilters);
+    useEffect(() => {
+        const nextFilters = parseChatFiltersFromLocationState(location.state);
+        if (nextFilters) {
+            setInboxFilters(nextFilters);
 
-			// Clear the state from the history entry so it doesn't re-apply when returning to this page
-			const safeState =
-				typeof location.state === "object" && location.state !== null
-					? (location.state as Record<string, unknown>)
-					: {};
-			navigate(location.pathname + location.search, {
-				replace: true,
-				state: { ...safeState, inboxFiltersDraft: undefined },
-			});
-		}
-	}, [location.key, location.state, navigate, location.pathname, location.search]);
+            // Clear the state from the history entry so it doesn't re-apply when returning to this page
+            const safeState =
+                typeof location.state === "object" && location.state !== null
+                    ? (location.state as Record<string, unknown>)
+                    : {};
+            navigate(location.pathname + location.search, {
+                replace: true,
+                state: { ...safeState, inboxFiltersDraft: undefined },
+            });
+        }
+    }, [location.key, location.state, navigate, location.pathname, location.search]);
 
-	const activeInboxFilters = useMemo(() => {
-		const next: InboxFilters = {
-			unreadOnly: inboxFilters.unreadOnly ?? false,
-			chemistryOnly: inboxFilters.chemistryOnly ?? false,
-			favoritesOnly: inboxFilters.favoritesOnly ?? false,
-			rightNowOnly: inboxFilters.rightNowOnly ?? false,
-			onlineNowOnly: inboxFilters.onlineNowOnly ?? false,
-			positions: inboxFilters.positions ?? [],
-		};
-		if (inboxFilters.distanceMeters != null) {
-			next.distanceMeters = inboxFilters.distanceMeters;
-		}
-		return next;
-	}, [inboxFilters]);
+    const activeInboxFilters = useMemo(() => {
+        const next: InboxFilters = {
+            unreadOnly: inboxFilters.unreadOnly ?? false,
+            chemistryOnly: inboxFilters.chemistryOnly ?? false,
+            favoritesOnly: inboxFilters.favoritesOnly ?? false,
+            rightNowOnly: inboxFilters.rightNowOnly ?? false,
+            onlineNowOnly: inboxFilters.onlineNowOnly ?? false,
+            positions: inboxFilters.positions ?? [],
+        };
+        if (inboxFilters.distanceMeters != null) {
+            next.distanceMeters = inboxFilters.distanceMeters;
+        }
+        return next;
+    }, [inboxFilters]);
 
-	const hasActiveInboxFilters =
-		Boolean(inboxFilters.unreadOnly) ||
-		Boolean(inboxFilters.chemistryOnly) ||
-		Boolean(inboxFilters.favoritesOnly) ||
-		Boolean(inboxFilters.rightNowOnly) ||
-		Boolean(inboxFilters.onlineNowOnly) ||
-		(inboxFilters.positions?.length ?? 0) > 0 ||
-		inboxFilters.distanceMeters != null;
+    const hasActiveInboxFilters =
+        Boolean(inboxFilters.unreadOnly) ||
+        Boolean(inboxFilters.chemistryOnly) ||
+        Boolean(inboxFilters.favoritesOnly) ||
+        Boolean(inboxFilters.rightNowOnly) ||
+        Boolean(inboxFilters.onlineNowOnly) ||
+        (inboxFilters.positions?.length ?? 0) > 0 ||
+        inboxFilters.distanceMeters != null;
 
-	const activeInboxFiltersRef = useRef(activeInboxFilters);
-	activeInboxFiltersRef.current = activeInboxFilters;
+    const activeInboxFiltersRef = useRef(activeInboxFilters);
+    activeInboxFiltersRef.current = activeInboxFilters;
 
-	const clearInboxFilters = useCallback(() => {
-		setInboxFilters({});
-	}, []);
+    const clearInboxFilters = useCallback(() => {
+        setInboxFilters({});
+    }, []);
 
-	const toggleInboxFavoritesOnly = useCallback(() => {
-		setInboxFilters((previous) => ({
-			...previous,
-			favoritesOnly: previous.favoritesOnly ? undefined : true,
-		}));
-	}, []);
+    const toggleInboxFavoritesOnly = useCallback(() => {
+        setInboxFilters((previous) => ({
+            ...previous,
+            favoritesOnly: previous.favoritesOnly ? undefined : true,
+        }));
+    }, []);
 
-	const [threadConversationId, setThreadConversationId] = useState<
-		string | null
-	>(null);
-	const [threadMessages, setThreadMessages] = useState<UiMessage[]>([]);
-	const [threadLastReadTimestamp, setThreadLastReadTimestamp] = useState<number | null>(null);
-	const [messagePageKey, setMessagePageKey] = useState<string | null>(null);
-	const [isLoadingThread, setIsLoadingThread] = useState(false);
-	const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false);
-	const [threadError, setThreadError] = useState<string | null>(null);
-	const [draft, setDraft] = useState("");
+    const [threadConversationId, setThreadConversationId] = useState<
+        string | null
+    >(null);
+    const [threadMessages, setThreadMessages] = useState<UiMessage[]>([]);
+    const [threadLastReadTimestamp, setThreadLastReadTimestamp] = useState<number | null>(null);
+    const [messagePageKey, setMessagePageKey] = useState<string | null>(null);
+    const [isLoadingThread, setIsLoadingThread] = useState(false);
+    const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false);
+    const [threadError, setThreadError] = useState<string | null>(null);
+    const [draft, setDraft] = useState("");
     const [pendingReplyMessage, setPendingReplyMessage] = useState<UiMessage | null>(null);
-	const [replyTargetMessageId, setReplyTargetMessageId] = useState<string | null>(null);
-	const [isSending, setIsSending] = useState(false);
-	const [isUpdatingConversationState, setIsUpdatingConversationState] =
-		useState(false);
-	const [isBlockingProfileId, setIsBlockingProfileId] = useState<string | null>(
-		null,
-	);
-	const [isDeletingConversationId, setIsDeletingConversationId] = useState<string | null>(
-		null,
-	);
-	const [isTogglingFavoriteProfileId, setIsTogglingFavoriteProfileId] = useState<string | null>(null);
-	const [localNicknamesByProfileId, setLocalNicknamesByProfileId] = useState<
-		Record<string, string>
-	>({});
-	const [chatContactIndexByProfileId, setChatContactIndexByProfileId] = useState<
-		Record<string, ChatContactIndexRecord>
-	>({});
-
-	const [openMessageActionId, setOpenMessageActionId] = useState<string | null>(
-		null,
-	);
-	const [isHeaderActionsMenuOpen, setIsHeaderActionsMenuOpen] =
-		useState(false);
-	const headerActionsMenuRef = useRef<HTMLDivElement | null>(null);
-	const messageLongPressTimeoutRef = useRef<number | null>(null);
-	const messageLongPressTriggeredRef = useRef(false);
-	const [isMutatingMessageId, setIsMutatingMessageId] = useState<string | null>(
-		null,
-	);
-	const [reactionBurstMessageId, setReactionBurstMessageId] = useState<
-		string | null
-	>(null);
-
-	// Extract profile IDs from conversations for batch presence check
-	const conversationProfileIds = useMemo(
-		() =>
-			conversations
-				.map((conv) => {
-					const otherParticipant = getOtherParticipant(conv, userId);
-					return otherParticipant?.profileId != null
-						? String(otherParticipant.profileId)
-						: null;
-				})
-				.filter((id): id is string => id != null)
-				.slice(0, 50), // Limit to 50
-		[conversations, userId],
-	);
-	const presenceResults = usePresenceCheckBatch(
-		conversationProfileIds.length > 0 ? conversationProfileIds : null,
-	);
-
-	const conversationProfileIdsJson = JSON.stringify(conversationProfileIds);
-
-	useEffect(() => {
-		if (conversationProfileIds.length === 0) {
-			setChatContactIndexByProfileId({});
-			return;
-		}
-
-		let cancelled = false;
-		void getChatContactIndexForProfiles(conversationProfileIds)
-			.then((records) => {
-				if (cancelled) {
-					return;
-				}
-				setChatContactIndexByProfileId(indexChatContactRecordsByProfileId(records));
-			})
-			.catch((error) => {
-								appLog.warn("[chat-index] failed to hydrate chat list contact index", error);
-			});
-
-		return () => {
-			cancelled = true;
-		};
-	}, [conversationProfileIdsJson]);
-
-	const reactionBurstTimeoutRef = useRef<number | null>(null);
-
-	const triggerReactionBurst = useCallback((messageId: string) => {
-		if (reactionBurstTimeoutRef.current != null) {
-			window.clearTimeout(reactionBurstTimeoutRef.current);
-		}
-		setReactionBurstMessageId(messageId);
-		reactionBurstTimeoutRef.current = window.setTimeout(() => {
-			setReactionBurstMessageId((current) =>
-				current === messageId ? null : current,
-			);
-			reactionBurstTimeoutRef.current = null;
-		}, 520);
-	}, []);
-
-	useEffect(() => {
-		return () => {
-			if (reactionBurstTimeoutRef.current != null) {
-				window.clearTimeout(reactionBurstTimeoutRef.current);
-			}
-			if (messageLongPressTimeoutRef.current != null) {
-				window.clearTimeout(messageLongPressTimeoutRef.current);
-			}
-			// Cleanup double tap timeouts
-			for (const id of Object.values(doubleTapTimeoutRef.current)) {
-				window.clearTimeout(id);
-			}
-		};
-	}, []);
-
-	useEffect(() => {
-		setIsHeaderActionsMenuOpen(false);
-	}, [routeConversationId, isDesktop]);
-
-	useEffect(() => {
-		if (!isHeaderActionsMenuOpen) {
-			return;
-		}
-
-		const handlePointerDown = (event: PointerEvent) => {
-			const target = event.target;
-			if (
-				headerActionsMenuRef.current &&
-				target instanceof Node &&
-				!headerActionsMenuRef.current.contains(target)
-			) {
-				setIsHeaderActionsMenuOpen(false);
-			}
-		};
-
-		window.addEventListener("pointerdown", handlePointerDown);
-		return () => {
-			window.removeEventListener("pointerdown", handlePointerDown);
-		};
-	}, [isHeaderActionsMenuOpen]);
-
-	const clearMessageLongPress = useCallback(() => {
-		if (messageLongPressTimeoutRef.current != null) {
-			window.clearTimeout(messageLongPressTimeoutRef.current);
-			messageLongPressTimeoutRef.current = null;
-		}
-	}, []);
-
-	const startMessageLongPress = useCallback(
-		(messageId: string) => {
-			if (isDesktop || isLocalClientMessageId(messageId)) {
-				return;
-			}
-
-			messageLongPressTriggeredRef.current = false;
-			clearMessageLongPress();
-			messageLongPressTimeoutRef.current = window.setTimeout(() => {
-				messageLongPressTriggeredRef.current = true;
-				setOpenMessageActionId((current) =>
-					current === messageId ? null : messageId,
-				);
-			}, 420);
-		},
-		[clearMessageLongPress, isDesktop],
-	);
-
-	const endMessageLongPress = useCallback(() => {
-		clearMessageLongPress();
-	}, [clearMessageLongPress]);
-
-	const [isAlbumPickerOpen, setIsAlbumPickerOpen] = useState(false);
-	const [isLoadingAlbums, setIsLoadingAlbums] = useState(false);
-	const [isSharingAlbum, setIsSharingAlbum] = useState(false);
-	const [shareableAlbums, setShareableAlbums] = useState<AlbumListItem[]>([]);
-	const [pendingAlbumShare, setPendingAlbumShare] = useState<{
-		albumId: number;
-		albumName: string;
-	} | null>(null);
-	const [albumViewer, setAlbumViewer] = useState<AlbumViewerState | null>(null);
-	const [albumViewerMediaIndex, setAlbumViewerMediaIndex] = useState<
-		number | null
-	>(null);
-	const [isAlbumViewerLoading, setIsAlbumViewerLoading] = useState(false);
-	const [fullScreenImageUrl, setFullScreenImageUrl] = useState<string | null>(
-		null,
-	);
-
-	const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
-	const [uploadProgress, setUploadProgress] = useState(0);
-	const [pendingAttachmentFile, setPendingAttachmentFile] =
-		useState<File | null>(null);
-	const [attachmentLooping, setAttachmentLooping] = useState(false);
-	const [attachmentTakenOnGrindr, setAttachmentTakenOnGrindr] = useState(false);
-	const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-	const [isLoadingDrawer, setIsLoadingDrawer] = useState(false);
-	const [drawerError, setDrawerError] = useState<string | null>(null);
-	const [drawerMedia, setDrawerMedia] = useState<DrawerMedia[]>([]);
-	const [isSendingDrawerMedia, setIsSendingDrawerMedia] = useState(false);
-	const [isAddingDrawerMedia, setIsAddingDrawerMedia] = useState(false);
-	const [deletingDrawerMediaId, setDeletingDrawerMediaId] = useState<number | null>(null);
-	const [nowTimestamp, setNowTimestamp] = useState(() => Date.now());
-	const searchQuery = "";
-	const imageViewerHistoryPushedRef = useRef(false);
-	const inboxTouchStartXRef = useRef<number | null>(null);
-	const inboxListRef = useRef<HTMLDivElement | null>(null);
-	const [pendingMessageScrollId, setPendingMessageScrollId] = useState<
-		string | null
-	>(null);
-	const [activeThreadSearchIndex, setActiveThreadSearchIndex] = useState(0);
-	const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>(() => getChatRealtimeStatus());
-
-	const albumViewerPhotos = useMemo<PhotoViewerMedia[]>(() => {
-		if (!albumViewer) return [];
-		return albumViewer.content.map((item) => ({
-			url: item.url || item.thumbUrl || item.coverUrl || "",
-			type: item.contentType?.startsWith("video/") ? "video" : "image",
-		}));
-	}, [albumViewer]);
-
-	const maxActivityTimestamp = useMemo(() => {
-		return conversations.reduce(
-			(max, conv) => Math.max(max, conv.data.lastActivityTimestamp ?? 0),
-			0,
-		);
-	}, [conversations]);
-
-	// Mark the inbox as "seen" whenever the user visits this page or new messages arrive.
-	useEffect(() => {
-		markInboxSeen(Math.max(Date.now(), maxActivityTimestamp));
-	}, [location.pathname, maxActivityTimestamp]);
-
-	const targetProfileId = useMemo(() => {
-		const raw = searchParams.get("targetProfileId");
-		if (!raw) {
-			return null;
-		}
-		const parsed = Number(raw);
-		return Number.isFinite(parsed) ? parsed : null;
-	}, [searchParams]);
-	const chatReturnTo = useMemo(() => {
-		const raw = searchParams.get("returnTo");
-		if (!raw || !raw.startsWith("/")) {
-			return null;
-		}
-		return raw;
-	}, [searchParams]);
-	const isSearchRoute = routeConversationId === "search";
-
-	const selectedConversationId = targetProfileId || isSearchRoute
-		? null
-		: isDesktop
-			? selectedDesktopConversationId
-			: (routeConversationId ?? null);
-
-	// Keep selection in sync when the layout breakpoint flips (e.g. fullscreen toggle).
-	const prevIsDesktopRef = useRef(isDesktop);
-	useEffect(() => {
-		const wasDesktop = prevIsDesktopRef.current;
-		prevIsDesktopRef.current = isDesktop;
-		if (wasDesktop === isDesktop) return;
-
-		if (isDesktop) {
-			// Switched to desktop: pull the active route conversation into state.
-			if (routeConversationId && routeConversationId !== "search") {
-				setSelectedDesktopConversationId(routeConversationId);
-			}
-		} else {
-			// Switched to mobile: push the desktop selection into the URL.
-			if (selectedDesktopConversationId) {
-				navigate(`/chat/${encodeURIComponent(selectedDesktopConversationId)}`, {
-					replace: true,
-				});
-			}
-		}
-	}, [isDesktop, routeConversationId, selectedDesktopConversationId, navigate]);
-
-	// On desktop, initialize selection from route when landing on /chat/:id
-	// (e.g. returning from profile). Do not keep forcing it afterward.
-	useEffect(() => {
-		if (!isDesktop || targetProfileId) {
-			return;
-		}
-
-		if (!routeConversationId || routeConversationId === "search") {
-			return;
-		}
-
-		if (selectedDesktopConversationId !== null) {
-			return;
-		}
-
-		setSelectedDesktopConversationId(routeConversationId);
-	}, [
-		isDesktop,
-		routeConversationId,
-		selectedDesktopConversationId,
-		targetProfileId,
-		isSearchRoute,
-	]);
-
-	const selectedConversation = useMemo(
-		() =>
-			conversations.find(
-				(conversation) =>
-					conversation.data.conversationId === selectedConversationId,
-			) ?? null,
-		[conversations, selectedConversationId],
-	);
-
-	const selectedConversationOtherProfileId = useMemo(() => {
-		if (!selectedConversation || userId == null) {
-			return null;
-		}
-		const otherParticipant = getOtherParticipant(selectedConversation, userId);
-		return otherParticipant?.profileId != null
-			? String(otherParticipant.profileId)
-			: null;
-	}, [selectedConversation, userId]);
-
-	useEffect(() => {
-		const profileIds = conversations
-			.map((conversation) => {
-				if (userId == null) {
-					return null;
-				}
-				const otherParticipant = getOtherParticipant(conversation, userId);
-				return otherParticipant?.profileId != null
-					? String(otherParticipant.profileId)
-					: null;
-			})
-			.filter((id): id is string => id !== null);
-
-		if (profileIds.length === 0) {
-			setLocalNicknamesByProfileId({});
-			return;
-		}
-
-		let cancelled = false;
-		void getLocalNicknamesForProfiles(profileIds)
-			.then((nicknames) => {
-				if (cancelled) {
-					return;
-				}
-				setLocalNicknamesByProfileId(nicknames);
-			})
-			.catch((error) => {
-								appLog.warn("[chat] failed to hydrate local nicknames", error);
-			});
-
-		return () => {
-			cancelled = true;
-		};
-	}, [conversations, userId]);
-
-	const handleInboxTouchStart = useCallback(
-		(event: TouchEvent<HTMLDivElement>) => {
-			inboxTouchStartXRef.current = event.touches[0]?.clientX ?? null;
-		},
-		[],
-	);
-
-	const handleInboxTouchEnd = useCallback(
-		(event: TouchEvent<HTMLDivElement>) => {
-			const startX = inboxTouchStartXRef.current;
-			if (startX == null) {
-				return;
-			}
-
-			const endX = event.changedTouches[0]?.clientX ?? startX;
-			const deltaX = startX - endX;
-
-			if (deltaX > 70) {
-				navigate("/settings/shared-albums");
-			}
-
-			inboxTouchStartXRef.current = null;
-		},
-		[navigate],
-	);
-
-	useEffect(() => {
-		selectedConversationIdRef.current = selectedConversationId;
-		if (selectedConversationId) {
-			conversationsWithPendingUnreadRef.current.delete(selectedConversationId);
-		}
-	}, [selectedConversationId]);
-
-	useEffect(() => {
-		conversationsRef.current = conversations;
-		setConversationDirectory(conversations);
-	}, [conversations]);
-
-	useEffect(() => {
-		messagePageKeyRef.current = messagePageKey;
-	}, [messagePageKey]);
-
-	useEffect(() => {
-		isLoadingOlderMessagesRef.current = isLoadingOlderMessages;
-	}, [isLoadingOlderMessages]);
-
-	useEffect(() => {
-		selectedConversationUnreadCountRef.current =
-			selectedConversation?.data.unreadCount ?? 0;
-	}, [selectedConversation]);
-	useEffect(() => {
-		setPendingAlbumShare(null);
-	}, [selectedConversationId]);
-
-	const messageSearchResults = useMemo(
-		() => searchMessagesLocal(searchQuery, { limit: 80 }),
-		[searchQuery],
-	);
-
-	const selectedThreadMessageMatches = useMemo(
-		() =>
-			messageSearchResults.filter(
-				(result) => result.conversationId === selectedConversationId,
-			),
-		[messageSearchResults, selectedConversationId],
-	);
-
-	const syncConversation = useCallback(
-		(update: (conversation: ConversationEntry) => ConversationEntry) => {
-			setConversations((previous) =>
-				previous.map((conversation) =>
-					conversation.data.conversationId === selectedConversationId
-						? update(conversation)
-						: conversation,
-				),
-			);
-		},
-		[selectedConversationId],
-	);
-
-	const loadAlbums = useCallback(async (): Promise<AlbumListItem[]> => {
-		setIsLoadingAlbums(true);
-		try {
-			const items = await service.listAlbums();
-			const mapped = items
-				.map((item) => {
-					const albumId =
-						typeof item.albumId === "number"
-							? item.albumId
-							: Number(item.albumId);
-					return {
-						albumId,
-						albumName: item.albumName ?? null,
-						isShareable: item.isShareable !== false,
-					};
-				})
-				.filter((item) => Number.isFinite(item.albumId));
-			setShareableAlbums(mapped);
-			return mapped;
-		} catch (error) {
-			toast.error(
-				error instanceof Error ? error.message : t("chat.errors.load_albums"),
-			);
-			return [];
-		} finally {
-			setIsLoadingAlbums(false);
-		}
-	}, [service]);
-
-	const loadInbox = useCallback(
-		async ({
-			page,
-			replace,
-			silent,
-		}: { page: number; replace: boolean; silent?: boolean }) => {
-			if (replace) {
-				if (!silent) {
-					setIsLoadingInbox(true);
-				}
-				setInboxError(null);
-			} else {
-				setIsLoadingMoreInbox(true);
-			}
-
-			try {
-				const response = await service.listConversations({
-					page,
-					filters: activeInboxFiltersRef.current,
-				});
-
-				if (userId != null) {
-					const inboxContactEntries = response.entries
-						.map((entry) => {
-							const otherParticipant = getOtherParticipant(entry, userId);
-							if (!otherParticipant?.profileId) {
-								return null;
-							}
-
-							return {
-								profileId: String(otherParticipant.profileId),
-								conversationId: entry.data.conversationId,
-								lastMessageTimestamp: entry.data.lastActivityTimestamp ?? null,
-								unreadCount: entry.data.unreadCount ?? 0,
-							};
-						})
-						.filter((entry): entry is NonNullable<typeof entry> => entry !== null);
-
-					void upsertChatContactIndexFromInbox(inboxContactEntries).catch((error) => {
-												appLog.warn("[chat-index] failed to persist inbox metadata", error);
-					});
-				}
-
-				setConversations((previous) => {
-					const entriesWithUnreadFixed = response.entries.map((entry) => {
-						const cid = entry.data.conversationId;
-
-						// If this is the active conversation, it's definitely read.
-						if (cid === selectedConversationIdRef.current) {
-							return {
-								...entry,
-								data: { ...entry.data, unreadCount: 0 },
-							};
-						}
-
-						if (conversationsWithPendingUnreadRef.current.has(cid)) {
-							conversationsWithPendingUnreadRef.current.delete(cid);
-							if (entry.data.unreadCount === 0) {
-								return {
-									...entry,
-									data: { ...entry.data, unreadCount: 1 },
-								};
-							}
-						}
-						return entry;
-					});
-
-					if (replace) {
-						return entriesWithUnreadFixed;
-					}
-
-					const map = new Map<string, ConversationEntry>();
-					for (const entry of previous) {
-						map.set(entry.data.conversationId, entry);
-					}
-					for (const entry of entriesWithUnreadFixed) {
-						map.set(entry.data.conversationId, entry);
-					}
-					return [...map.values()].sort((a, b) => {
-						if (a.data.pinned && !b.data.pinned) {
-							return -1;
-						}
-						if (b.data.pinned && !a.data.pinned) {
-							return 1;
-						}
-						return (
-							(b.data.lastActivityTimestamp ?? 0) -
-							(a.data.lastActivityTimestamp ?? 0)
-						);
-					});
-				});
-
-				setNextPage(response.nextPage ?? null);
-				if (replace && response.entries.length > 0) {
-					setSelectedDesktopConversationId((previous) =>
-						previous &&
-						response.entries.some(
-							(conversation) => conversation.data.conversationId === previous,
-						)
-							? previous
-							: targetProfileId
-								? null
-								: (response.entries[0]?.data.conversationId ?? null),
-					);
-				}
-			} catch (error) {
-				const message =
-					error instanceof Error ? error.message : t("chat.errors.load_inbox");
-				setInboxError(message);
-			} finally {
-				setIsLoadingInbox(false);
-				setIsLoadingMoreInbox(false);
-			}
-		},
-		[service, targetProfileId, t, userId],
-	);
-
-	const loadThread = useCallback(
-		async ({
-			conversationId,
-			older,
-			silent,
-		}: {
-			conversationId: string;
-			older: boolean;
-			silent?: boolean;
-		}) => {
-			if (older) {
-				if (!messagePageKeyRef.current || isLoadingOlderMessagesRef.current) {
-					return;
-				}
-				const container = threadScrollContainerRef.current;
-				if (container) {
-					preserveThreadScrollRef.current = true;
-					olderLoadSnapshotRef.current = {
-						scrollTop: container.scrollTop,
-						scrollHeight: container.scrollHeight,
-					};
-				}
-				isLoadingOlderMessagesRef.current = true;
-				setIsLoadingOlderMessages(true);
-			} else {
-				if (!silent) {
-					setIsLoadingThread(true);
-				}
-				setThreadError(null);
-				setThreadConversationId(conversationId);
-
-				// Load initial state from local log if available.
-				void chatLog.readLog(conversationId).then((localData) => {
-					if (selectedConversationIdRef.current === conversationId) {
-						setThreadLastReadTimestamp(localData.lastReadTimestamp ?? null);
-					}
-				});
-			}
-
-			try {
-				const response = await service.listMessages({
-					conversationId,
-					pageKey: older ? (messagePageKeyRef.current ?? undefined) : undefined,
-					includeProfile: true,
-				});
-
-				const localData = await chatLog.readLog(conversationId);
-				const localMessages = localData.messages;
-				const localMessageMap = new Map(
-					localMessages.map((message) => [message.messageId, message] as const),
-				);
-				const responseMessages = response.messages.map((message) => {
-					const localMessage = localMessageMap.get(message.messageId);
-					const localBody =
-						localMessage?.body && typeof localMessage.body === "object"
-							? (localMessage.body as Record<string, unknown>)
-							: null;
-					const currentBody =
-						message.body && typeof message.body === "object"
-							? (message.body as Record<string, unknown>)
-							: null;
-
-					if (!localBody?.url || currentBody?.url) {
-						return message;
-					}
-
-					return {
-						...message,
-						body: { ...(currentBody ?? {}), url: localBody.url },
-					};
-				});
-
-				// Persist API messages to the local log.
-				const normalizedLastRead = response.lastReadTimestamp
-					? (response.lastReadTimestamp < 100_000_000_000 ? response.lastReadTimestamp * 1000 : response.lastReadTimestamp)
-					: null;
-
-				void chatLog.appendMessages(
-					conversationId,
-					responseMessages,
-					older ? undefined : normalizedLastRead,
-				);
-
-				if (!older) {
-					setThreadLastReadTimestamp(normalizedLastRead);
-					const mediaIdImageMessages = responseMessages.filter((message) => {
-						const imageType = message.chat1Type?.toLowerCase();
-						const isImageLike =
-							message.type === "Image" ||
-							message.type === "ExpiringImage" ||
-							imageType === "image" ||
-							imageType === "expiring_image";
-
-						if (!isImageLike) return false;
-						if (getMessageImageUrl(message as UiMessage)) return false;
-						return getMessageMediaId(message as UiMessage) !== null;
-					});
-
-					if (mediaIdImageMessages.length > 0) {
-						const unresolvedMessageIds = new Set(
-							mediaIdImageMessages.map((message) => message.messageId),
-						);
-
-						void Promise.allSettled(
-							mediaIdImageMessages.map((message) =>
-								service.getMessage({
-									conversationId,
-									messageId: message.messageId,
-								}),
-							),
-						).then((results) => {
-							const hydratedMessages: UiMessage[] = [];
-
-							for (let index = 0; index < results.length; index += 1) {
-								const result = results[index];
-								if (result.status !== "fulfilled") {
-									continue;
-								}
-
-								const hydrated = result.value as UiMessage;
-								if (!getMessageImageUrl(hydrated)) {
-									continue;
-								}
-
-								hydratedMessages.push(hydrated);
-								unresolvedMessageIds.delete(hydrated.messageId);
-							}
-
-							if (hydratedMessages.length > 0) {
-								void chatLog.appendMessages(conversationId, hydratedMessages);
-
-								if (selectedConversationIdRef.current !== conversationId) return;
-
-								setThreadMessages((previous) => {
-									const map = new Map<string, UiMessage>();
-									for (const message of previous) {
-										if (message.conversationId === conversationId) {
-											map.set(message.messageId, message);
-										}
-									}
-									for (const message of hydratedMessages) {
-										map.set(message.messageId, message);
-									}
-									return [...map.values()].sort(
-										(a, b) => a.timestamp - b.timestamp,
-									);
-								});
-							}
-
-							const fallbackMessages = mediaIdImageMessages.filter((message) =>
-								unresolvedMessageIds.has(message.messageId),
-							);
-
-							if (fallbackMessages.length === 0) {
-								return;
-							}
-
-						void service
-							.getSharedConversationImages(conversationId)
-							.then((sharedImages) => {
-								if (selectedConversationIdRef.current !== conversationId) return;
-
-								const sharedImageMap = new Map<number, string>();
-								for (const item of sharedImages) {
-									if (item.url) sharedImageMap.set(item.mediaId, item.url);
-								}
-
-								const hydratedMessages: UiMessage[] = [];
-								for (const message of fallbackMessages) {
-									const mediaId = getMessageMediaId(message as UiMessage);
-									if (mediaId == null) continue;
-									const url = sharedImageMap.get(mediaId);
-									if (!url || !message.body || typeof message.body !== "object")
-										continue;
-									const hydrated = {
-										...message,
-										body: { ...(message.body as Record<string, unknown>), url },
-									} as UiMessage;
-									if (getMessageImageUrl(hydrated))
-										hydratedMessages.push(hydrated);
-								}
-
-								if (!hydratedMessages.length) return;
-
-								// Persist resolved image URLs so they survive CloudFront expiry.
-								void chatLog.appendMessages(conversationId, hydratedMessages);
-
-								setThreadMessages((previous) => {
-									const map = new Map<string, UiMessage>();
-									for (const message of previous) {
-										if (message.conversationId === conversationId) {
-											map.set(message.messageId, message);
-										}
-									}
-									for (const message of hydratedMessages)
-										map.set(message.messageId, message);
-									return [...map.values()].sort(
-										(a, b) => a.timestamp - b.timestamp,
-									);
-								});
-							})
-							.catch(() => {
-								// Best effort only.
-							});
-						});
-					}
-				}
+    const [replyTargetMessageId, setReplyTargetMessageId] = useState<string | null>(null);
+    const [isSending, setIsSending] = useState(false);
+    const [isUpdatingConversationState, setIsUpdatingConversationState] =
+        useState(false);
+    const [isBlockingProfileId, setIsBlockingProfileId] = useState<string | null>(
+        null,
+    );
+    const [isDeletingConversationId, setIsDeletingConversationId] = useState<string | null>(
+        null,
+    );
+    const [isTogglingFavoriteProfileId, setIsTogglingFavoriteProfileId] = useState<string | null>(null);
+    const [localNicknamesByProfileId, setLocalNicknamesByProfileId] = useState<
+        Record<string, string>
+    >({});
+    const [chatContactIndexByProfileId, setChatContactIndexByProfileId] = useState<
+        Record<string, ChatContactIndexRecord>
+    >({});
+
+    const [openMessageActionId, setOpenMessageActionId] = useState<string | null>(
+        null,
+    );
+    const [isHeaderActionsMenuOpen, setIsHeaderActionsMenuOpen] =
+        useState(false);
+    const headerActionsMenuRef = useRef<HTMLDivElement | null>(null);
+    const messageLongPressTimeoutRef = useRef<number | null>(null);
+    const messageLongPressTriggeredRef = useRef(false);
+    const [isMutatingMessageId, setIsMutatingMessageId] = useState<string | null>(
+        null,
+    );
+    const [reactionBurstMessageId, setReactionBurstMessageId] = useState<
+        string | null
+    >(null);
+
+    // Extract profile IDs from conversations for batch presence check
+    const conversationProfileIds = useMemo(
+        () =>
+            conversations
+                .map((conv) => {
+                    const otherParticipant = getOtherParticipant(conv, userId);
+                    return otherParticipant?.profileId != null
+                        ? String(otherParticipant.profileId)
+                        : null;
+                })
+                .filter((id): id is string => id != null)
+                .slice(0, 50), // Limit to 50
+        [conversations, userId],
+    );
+    const presenceResults = usePresenceCheckBatch(
+        conversationProfileIds.length > 0 ? conversationProfileIds : null,
+    );
+
+    const conversationProfileIdsJson = JSON.stringify(conversationProfileIds);
+
+    useEffect(() => {
+        if (conversationProfileIds.length === 0) {
+            setChatContactIndexByProfileId({});
+            return;
+        }
+
+        let cancelled = false;
+        void getChatContactIndexForProfiles(conversationProfileIds)
+            .then((records) => {
+                if (cancelled) {
+                    return;
+                }
+                setChatContactIndexByProfileId(indexChatContactRecordsByProfileId(records));
+            })
+            .catch((error) => {
+                                appLog.warn("[chat-index] failed to hydrate chat list contact index", error);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [conversationProfileIdsJson]);
+
+    const reactionBurstTimeoutRef = useRef<number | null>(null);
+
+    const triggerReactionBurst = useCallback((messageId: string) => {
+        if (reactionBurstTimeoutRef.current != null) {
+            window.clearTimeout(reactionBurstTimeoutRef.current);
+        }
+        setReactionBurstMessageId(messageId);
+        reactionBurstTimeoutRef.current = window.setTimeout(() => {
+            setReactionBurstMessageId((current) =>
+                current === messageId ? null : current,
+            );
+            reactionBurstTimeoutRef.current = null;
+        }, 520);
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            if (reactionBurstTimeoutRef.current != null) {
+                window.clearTimeout(reactionBurstTimeoutRef.current);
+            }
+            if (messageLongPressTimeoutRef.current != null) {
+                window.clearTimeout(messageLongPressTimeoutRef.current);
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        setIsHeaderActionsMenuOpen(false);
+    }, [routeConversationId, isDesktop]);
+
+    useEffect(() => {
+        if (!isHeaderActionsMenuOpen) {
+            return;
+        }
+
+        const handlePointerDown = (event: PointerEvent) => {
+            const target = event.target;
+            if (
+                headerActionsMenuRef.current &&
+                target instanceof Node &&
+                !headerActionsMenuRef.current.contains(target)
+            ) {
+                setIsHeaderActionsMenuOpen(false);
+            }
+        };
+
+        window.addEventListener("pointerdown", handlePointerDown);
+        return () => {
+            window.removeEventListener("pointerdown", handlePointerDown);
+        };
+    }, [isHeaderActionsMenuOpen]);
+
+    const clearMessageLongPress = useCallback(() => {
+        if (messageLongPressTimeoutRef.current != null) {
+            window.clearTimeout(messageLongPressTimeoutRef.current);
+            messageLongPressTimeoutRef.current = null;
+        }
+    }, []);
+
+    const startMessageLongPress = useCallback(
+        (messageId: string) => {
+            if (isDesktop || isLocalClientMessageId(messageId)) {
+                return;
+            }
+
+            messageLongPressTriggeredRef.current = false;
+            clearMessageLongPress();
+            messageLongPressTimeoutRef.current = window.setTimeout(() => {
+                messageLongPressTriggeredRef.current = true;
+                setOpenMessageActionId((current) =>
+                    current === messageId ? null : messageId,
+                );
+            }, 420);
+        },
+        [clearMessageLongPress, isDesktop],
+    );
+
+    const endMessageLongPress = useCallback(() => {
+        clearMessageLongPress();
+    }, [clearMessageLongPress]);
+
+    const [isAlbumPickerOpen, setIsAlbumPickerOpen] = useState(false);
+    const [isLoadingAlbums, setIsLoadingAlbums] = useState(false);
+    const [isSharingAlbum, setIsSharingAlbum] = useState(false);
+    const [shareableAlbums, setShareableAlbums] = useState<AlbumListItem[]>([]);
+    const [pendingAlbumShare, setPendingAlbumShare] = useState<{
+        albumId: number;
+        albumName: string;
+    } | null>(null);
+    const [albumViewer, setAlbumViewer] = useState<AlbumViewerState | null>(null);
+    const [albumViewerMediaIndex, setAlbumViewerMediaIndex] = useState<
+        number | null
+    >(null);
+    const [isAlbumViewerLoading, setIsAlbumViewerLoading] = useState(false);
+    const [fullScreenImageUrl, setFullScreenImageUrl] = useState<string | null>(
+        null,
+    );
+
+    const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
+    const [pendingAttachmentFile, setPendingAttachmentFile] =
+        useState<File | null>(null);
+    const [attachmentLooping, setAttachmentLooping] = useState(false);
+    const [attachmentTakenOnGrindr, setAttachmentTakenOnGrindr] = useState(false);
+    const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+    const [isLoadingDrawer, setIsLoadingDrawer] = useState(false);
+    const [drawerError, setDrawerError] = useState<string | null>(null);
+    const [drawerMedia, setDrawerMedia] = useState<DrawerMedia[]>([]);
+    const [isSendingDrawerMedia, setIsSendingDrawerMedia] = useState(false);
+    const [isAddingDrawerMedia, setIsAddingDrawerMedia] = useState(false);
+    const [deletingDrawerMediaId, setDeletingDrawerMediaId] = useState<number | null>(null);
+    const [nowTimestamp, setNowTimestamp] = useState(() => Date.now());
+    const searchQuery = "";
+    const imageViewerHistoryPushedRef = useRef(false);
+    const inboxTouchStartXRef = useRef<number | null>(null);
+    const inboxListRef = useRef<HTMLDivElement | null>(null);
+    const [pendingMessageScrollId, setPendingMessageScrollId] = useState<
+        string | null
+    >(null);
+    const [activeThreadSearchIndex, setActiveThreadSearchIndex] = useState(0);
+    const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>(() => getChatRealtimeStatus());
+
+    const albumViewerPhotos = useMemo<PhotoViewerMedia[]>(() => {
+        if (!albumViewer) return [];
+        return albumViewer.content.map((item) => ({
+            url: item.url || item.thumbUrl || item.coverUrl || "",
+            type: item.contentType?.startsWith("video/") ? "video" : "image",
+        }));
+    }, [albumViewer]);
+
+    const maxActivityTimestamp = useMemo(() => {
+        return conversations.reduce(
+            (max, conv) => Math.max(max, conv.data.lastActivityTimestamp ?? 0),
+            0,
+        );
+    }, [conversations]);
+
+    // Mark the inbox as "seen" whenever the user visits this page or new messages arrive.
+    useEffect(() => {
+        markInboxSeen(Math.max(Date.now(), maxActivityTimestamp));
+    }, [location.pathname, maxActivityTimestamp]);
+
+    const targetProfileId = useMemo(() => {
+        const raw = searchParams.get("targetProfileId");
+        if (!raw) {
+            return null;
+        }
+        const parsed = Number(raw);
+        return Number.isFinite(parsed) ? parsed : null;
+    }, [searchParams]);
+    const chatReturnTo = useMemo(() => {
+        const raw = searchParams.get("returnTo");
+        if (!raw || !raw.startsWith("/")) {
+            return null;
+        }
+        return raw;
+    }, [searchParams]);
+    const isSearchRoute = routeConversationId === "search";
+
+    const selectedConversationId = targetProfileId || isSearchRoute
+        ? null
+        : isDesktop
+            ? selectedDesktopConversationId
+            : (routeConversationId ?? null);
+
+    // Keep selection in sync when the layout breakpoint flips (e.g. fullscreen toggle).
+    const prevIsDesktopRef = useRef(isDesktop);
+    useEffect(() => {
+        const wasDesktop = prevIsDesktopRef.current;
+        prevIsDesktopRef.current = isDesktop;
+        if (wasDesktop === isDesktop) return;
+
+        if (isDesktop) {
+            // Switched to desktop: pull the active route conversation into state.
+            if (routeConversationId && routeConversationId !== "search") {
+                setSelectedDesktopConversationId(routeConversationId);
+            }
+        } else {
+            // Switched to mobile: push the desktop selection into the URL.
+            if (selectedDesktopConversationId) {
+                navigate(`/chat/${encodeURIComponent(selectedDesktopConversationId)}`, {
+                    replace: true,
+                });
+            }
+        }
+    }, [isDesktop, routeConversationId, selectedDesktopConversationId, navigate]);
+
+    // On desktop, initialize selection from route when landing on /chat/:id
+    // (e.g. returning from profile). Do not keep forcing it afterward.
+    useEffect(() => {
+        if (!isDesktop || targetProfileId) {
+            return;
+        }
+
+        if (!routeConversationId || routeConversationId === "search") {
+            return;
+        }
+
+        if (selectedDesktopConversationId !== null) {
+            return;
+        }
+
+        setSelectedDesktopConversationId(routeConversationId);
+    }, [
+        isDesktop,
+        routeConversationId,
+        selectedDesktopConversationId,
+        targetProfileId,
+        isSearchRoute,
+    ]);
+
+    const selectedConversation = useMemo(
+        () =>
+            conversations.find(
+                (conversation) =>
+                    conversation.data.conversationId === selectedConversationId,
+            ) ?? null,
+        [conversations, selectedConversationId],
+    );
+
+    const selectedConversationOtherProfileId = useMemo(() => {
+        if (!selectedConversation || userId == null) {
+            return null;
+        }
+        const otherParticipant = getOtherParticipant(selectedConversation, userId);
+        return otherParticipant?.profileId != null
+            ? String(otherParticipant.profileId)
+            : null;
+    }, [selectedConversation, userId]);
+
+    useEffect(() => {
+        const profileIds = conversations
+            .map((conversation) => {
+                if (userId == null) {
+                    return null;
+                }
+                const otherParticipant = getOtherParticipant(conversation, userId);
+                return otherParticipant?.profileId != null
+                    ? String(otherParticipant.profileId)
+                    : null;
+            })
+            .filter((id): id is string => id !== null);
+
+        if (profileIds.length === 0) {
+            setLocalNicknamesByProfileId({});
+            return;
+        }
+
+        let cancelled = false;
+        void getLocalNicknamesForProfiles(profileIds)
+            .then((nicknames) => {
+                if (cancelled) {
+                    return;
+                }
+                setLocalNicknamesByProfileId(nicknames);
+            })
+            .catch((error) => {
+                                appLog.warn("[chat] failed to hydrate local nicknames", error);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [conversations, userId]);
+
+    const handleInboxTouchStart = useCallback(
+        (event: TouchEvent<HTMLDivElement>) => {
+            inboxTouchStartXRef.current = event.touches[0]?.clientX ?? null;
+        },
+        [],
+    );
+
+    const handleInboxTouchEnd = useCallback(
+        (event: TouchEvent<HTMLDivElement>) => {
+            const startX = inboxTouchStartXRef.current;
+            if (startX == null) {
+                return;
+            }
+
+            const endX = event.changedTouches[0]?.clientX ?? startX;
+            const deltaX = startX - endX;
+
+            if (deltaX > 70) {
+                navigate("/settings/shared-albums");
+            }
+
+            inboxTouchStartXRef.current = null;
+        },
+        [navigate],
+    );
+
+    useEffect(() => {
+        selectedConversationIdRef.current = selectedConversationId;
+        if (selectedConversationId) {
+            conversationsWithPendingUnreadRef.current.delete(selectedConversationId);
+        }
+    }, [selectedConversationId]);
+
+    useEffect(() => {
+        conversationsRef.current = conversations;
+        setConversationDirectory(conversations);
+    }, [conversations]);
+
+    useEffect(() => {
+        messagePageKeyRef.current = messagePageKey;
+    }, [messagePageKey]);
+
+    useEffect(() => {
+        isLoadingOlderMessagesRef.current = isLoadingOlderMessages;
+    }, [isLoadingOlderMessages]);
+
+    useEffect(() => {
+        selectedConversationUnreadCountRef.current =
+            selectedConversation?.data.unreadCount ?? 0;
+    }, [selectedConversation]);
+    useEffect(() => {
+        setPendingAlbumShare(null);
+    }, [selectedConversationId]);
+
+    const messageSearchResults = useMemo(
+        () => searchMessagesLocal(searchQuery, { limit: 80 }),
+        [searchQuery],
+    );
+
+    const selectedThreadMessageMatches = useMemo(
+        () =>
+            messageSearchResults.filter(
+                (result) => result.conversationId === selectedConversationId,
+            ),
+        [messageSearchResults, selectedConversationId],
+    );
+
+    const syncConversation = useCallback(
+        (update: (conversation: ConversationEntry) => ConversationEntry) => {
+            setConversations((previous) =>
+                previous.map((conversation) =>
+                    conversation.data.conversationId === selectedConversationId
+                        ? update(conversation)
+                        : conversation,
+                ),
+            );
+        },
+        [selectedConversationId],
+    );
+
+    const loadAlbums = useCallback(async (): Promise<AlbumListItem[]> => {
+        setIsLoadingAlbums(true);
+        try {
+            const items = await service.listAlbums();
+            const mapped = items
+                .map((item) => {
+                    const albumId =
+                        typeof item.albumId === "number"
+                            ? item.albumId
+                            : Number(item.albumId);
+                    return {
+                        albumId,
+                        albumName: item.albumName ?? null,
+                        isShareable: item.isShareable !== false,
+                    };
+                })
+                .filter((item) => Number.isFinite(item.albumId));
+            setShareableAlbums(mapped);
+            return mapped;
+        } catch (error) {
+            toast.error(
+                error instanceof Error ? error.message : t("chat.errors.load_albums"),
+            );
+            return [];
+        } finally {
+            setIsLoadingAlbums(false);
+        }
+    }, [service]);
+
+    const loadInbox = useCallback(
+        async ({
+            page,
+            replace,
+            silent,
+        }: { page: number; replace: boolean; silent?: boolean }) => {
+            if (replace) {
+                if (!silent) {
+                    setIsLoadingInbox(true);
+                }
+                setInboxError(null);
+            } else {
+                setIsLoadingMoreInbox(true);
+            }
+
+            try {
+                const response = await service.listConversations({
+                    page,
+                    filters: activeInboxFiltersRef.current,
+                });
+
+                if (userId != null) {
+                    const inboxContactEntries = response.entries
+                        .map((entry) => {
+                            const otherParticipant = getOtherParticipant(entry, userId);
+                            if (!otherParticipant?.profileId) {
+                                return null;
+                            }
+
+                            return {
+                                profileId: String(otherParticipant.profileId),
+                                conversationId: entry.data.conversationId,
+                                lastMessageTimestamp: entry.data.lastActivityTimestamp ?? null,
+                                unreadCount: entry.data.unreadCount ?? 0,
+                            };
+                        })
+                        .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+                    void upsertChatContactIndexFromInbox(inboxContactEntries).catch((error) => {
+                                                appLog.warn("[chat-index] failed to persist inbox metadata", error);
+                    });
+                }
+
+                setConversations((previous) => {
+                    const entriesWithUnreadFixed = response.entries.map((entry) => {
+                        const cid = entry.data.conversationId;
+
+                        // If this is the active conversation, it's definitely read.
+                        if (cid === selectedConversationIdRef.current) {
+                            return {
+                                ...entry,
+                                data: { ...entry.data, unreadCount: 0 },
+                            };
+                        }
+
+                        if (conversationsWithPendingUnreadRef.current.has(cid)) {
+                            conversationsWithPendingUnreadRef.current.delete(cid);
+                            if (entry.data.unreadCount === 0) {
+                                return {
+                                    ...entry,
+                                    data: { ...entry.data, unreadCount: 1 },
+                                };
+                            }
+                        }
+                        return entry;
+                    });
+
+                    if (replace) {
+                        return entriesWithUnreadFixed;
+                    }
+
+                    const map = new Map<string, ConversationEntry>();
+                    for (const entry of previous) {
+                        map.set(entry.data.conversationId, entry);
+                    }
+                    for (const entry of entriesWithUnreadFixed) {
+                        map.set(entry.data.conversationId, entry);
+                    }
+                    return [...map.values()].sort((a, b) => {
+                        if (a.data.pinned && !b.data.pinned) {
+                            return -1;
+                        }
+                        if (b.data.pinned && !a.data.pinned) {
+                            return 1;
+                        }
+                        return (
+                            (b.data.lastActivityTimestamp ?? 0) -
+                            (a.data.lastActivityTimestamp ?? 0)
+                        );
+                    });
+                });
+
+                setNextPage(response.nextPage ?? null);
+                if (replace && response.entries.length > 0) {
+                    setSelectedDesktopConversationId((previous) =>
+                        previous &&
+                        response.entries.some(
+                            (conversation) => conversation.data.conversationId === previous,
+                        )
+                            ? previous
+                            : targetProfileId
+                                ? null
+                                : (response.entries[0]?.data.conversationId ?? null),
+                    );
+                }
+            } catch (error) {
+                const message =
+                    error instanceof Error ? error.message : t("chat.errors.load_inbox");
+                setInboxError(message);
+            } finally {
+                setIsLoadingInbox(false);
+                setIsLoadingMoreInbox(false);
+            }
+        },
+        [service, targetProfileId, t, userId],
+    );
+
+    const loadThread = useCallback(
+        async ({
+            conversationId,
+            older,
+            silent,
+        }: {
+            conversationId: string;
+            older: boolean;
+            silent?: boolean;
+        }) => {
+            if (older) {
+                if (!messagePageKeyRef.current || isLoadingOlderMessagesRef.current) {
+                    return;
+                }
+                const container = threadScrollContainerRef.current;
+                if (container) {
+                    preserveThreadScrollRef.current = true;
+                    olderLoadSnapshotRef.current = {
+                        scrollTop: container.scrollTop,
+                        scrollHeight: container.scrollHeight,
+                    };
+                }
+                isLoadingOlderMessagesRef.current = true;
+                setIsLoadingOlderMessages(true);
+            } else {
+                if (!silent) {
+                    setIsLoadingThread(true);
+                }
+                setThreadError(null);
+                setThreadConversationId(conversationId);
+
+                // Load initial state from local log if available.
+                void chatLog.readLog(conversationId).then((localData) => {
+                    if (selectedConversationIdRef.current === conversationId) {
+                        setThreadLastReadTimestamp(localData.lastReadTimestamp ?? null);
+                    }
+                });
+            }
+
+            try {
+                const response = await service.listMessages({
+                    conversationId,
+                    pageKey: older ? (messagePageKeyRef.current ?? undefined) : undefined,
+                    includeProfile: true,
+                });
+
+                const localData = await chatLog.readLog(conversationId);
+                const localMessages = localData.messages;
+                const localMessageMap = new Map(
+                    localMessages.map((message) => [message.messageId, message] as const),
+                );
+                const responseMessages = response.messages.map((message) => {
+                    const localMessage = localMessageMap.get(message.messageId);
+                    const localBody =
+                        localMessage?.body && typeof localMessage.body === "object"
+                            ? (localMessage.body as Record<string, unknown>)
+                            : null;
+                    const currentBody =
+                        message.body && typeof message.body === "object"
+                            ? (message.body as Record<string, unknown>)
+                            : null;
+
+                    if (!localBody?.url || currentBody?.url) {
+                        return message;
+                    }
+
+                    return {
+                        ...message,
+                        body: { ...(currentBody ?? {}), url: localBody.url },
+                    };
+                });
+
+                // --- AUTO DOWNLOAD CHECK (HISTORICAL/MISSED MESSAGES) ---
+                if (window.localStorage.getItem("fg-auto-download-media") === "true") {
+                    for (const m of responseMessages) {
+                        if (userId != null && Number(m.senderId) !== Number(userId)) {
+                            const profileIdStr = String(m.senderId);
+                            let pName = `Profile_${profileIdStr}`;
+                            const conv = conversationsRef.current.find(c => c.data.conversationId === m.conversationId);
+                            if (conv && conv.data.name) pName = conv.data.name;
+							
+                            void processAutoDownload(m as unknown as UiMessage, pName, profileIdStr, service);
+                        }
+                    }
+                }
+                // --------------------------------------------------------
+
+                // Persist API messages to the local log.
+                const normalizedLastRead = response.lastReadTimestamp
+                    ? (response.lastReadTimestamp < 100_000_000_000 ? response.lastReadTimestamp * 1000 : response.lastReadTimestamp)
+                    : null;
+
+                void chatLog.appendMessages(
+                    conversationId,
+                    responseMessages,
+                    older ? undefined : normalizedLastRead,
+                );
+
+                if (!older) {
+                    setThreadLastReadTimestamp(normalizedLastRead);
+                    const mediaIdImageMessages = responseMessages.filter((message) => {
+                        const imageType = message.chat1Type?.toLowerCase();
+                        const isImageLike =
+                            message.type === "Image" ||
+                            message.type === "ExpiringImage" ||
+                            imageType === "image" ||
+                            imageType === "expiring_image";
+
+                        if (!isImageLike) return false;
+                        if (getMessageImageUrl(message as UiMessage)) return false;
+                        return getMessageMediaId(message as UiMessage) !== null;
+                    });
+
+                    if (mediaIdImageMessages.length > 0) {
+                        const unresolvedMessageIds = new Set(
+                            mediaIdImageMessages.map((message) => message.messageId),
+                        );
+
+                        void Promise.allSettled(
+                            mediaIdImageMessages.map((message) =>
+                                service.getMessage({
+                                    conversationId,
+                                    messageId: message.messageId,
+                                }),
+                            ),
+                        ).then((results) => {
+                            const hydratedMessages: UiMessage[] = [];
+
+                            for (let index = 0; index < results.length; index += 1) {
+                                const result = results[index];
+                                if (result.status !== "fulfilled") {
+                                    continue;
+                                }
+
+                                const hydrated = result.value as UiMessage;
+                                if (!getMessageImageUrl(hydrated)) {
+                                    continue;
+                                }
+
+                                hydratedMessages.push(hydrated);
+                                unresolvedMessageIds.delete(hydrated.messageId);
+                            }
+
+                            if (hydratedMessages.length > 0) {
+                                void chatLog.appendMessages(conversationId, hydratedMessages);
+
+                                if (selectedConversationIdRef.current !== conversationId) return;
+
+                                setThreadMessages((previous) => {
+                                    const map = new Map<string, UiMessage>();
+                                    for (const message of previous) {
+                                        if (message.conversationId === conversationId) {
+                                            map.set(message.messageId, message);
+                                        }
+                                    }
+                                    for (const message of hydratedMessages) {
+                                        map.set(message.messageId, message);
+                                    }
+                                    return [...map.values()].sort(
+                                        (a, b) => a.timestamp - b.timestamp,
+                                    );
+                                });
+                            }
+
+                            const fallbackMessages = mediaIdImageMessages.filter((message) =>
+                                unresolvedMessageIds.has(message.messageId),
+                            );
+
+                            if (fallbackMessages.length === 0) {
+                                return;
+                            }
+
+                        void service
+                            .getSharedConversationImages(conversationId)
+                            .then((sharedImages) => {
+                                if (selectedConversationIdRef.current !== conversationId) return;
+
+                                const sharedImageMap = new Map<number, string>();
+                                for (const item of sharedImages) {
+                                    if (item.url) sharedImageMap.set(item.mediaId, item.url);
+                                }
+
+                                const hydratedMessages: UiMessage[] = [];
+                                for (const message of fallbackMessages) {
+                                    const mediaId = getMessageMediaId(message as UiMessage);
+                                    if (mediaId == null) continue;
+                                    const url = sharedImageMap.get(mediaId);
+                                    if (!url || !message.body || typeof message.body !== "object")
+                                        continue;
+                                    const hydrated = {
+                                        ...message,
+                                        body: { ...(message.body as Record<string, unknown>), url },
+                                    } as UiMessage;
+                                    if (getMessageImageUrl(hydrated))
+                                        hydratedMessages.push(hydrated);
+                                }
+
+                                if (!hydratedMessages.length) return;
+
+                                // Persist resolved image URLs so they survive CloudFront expiry.
+                                void chatLog.appendMessages(conversationId, hydratedMessages);
+
+                                setThreadMessages((previous) => {
+                                    const map = new Map<string, UiMessage>();
+                                    for (const message of previous) {
+                                        if (message.conversationId === conversationId) {
+                                            map.set(message.messageId, message);
+                                        }
+                                    }
+                                    for (const message of hydratedMessages)
+                                        map.set(message.messageId, message);
+                                    return [...map.values()].sort(
+                                        (a, b) => a.timestamp - b.timestamp,
+                                    );
+                                });
+                            })
+                            .catch(() => {
+                                // Best effort only.
+                            });
+                        });
+                    }
+                }
 
                 // --- AUTO BLOCK CHECK (HISTORICAL CHAT SCANNER) ---
-				let shouldNukeThread = false;
-				let blockReason = "";
+                let shouldNukeThread = false;
+                let blockReason = "";
 
-				// 1. Check for exact keywords
-				for (const m of responseMessages) {
-					let messageText = "";
-					const msgBody: any = m.body;
-					if (msgBody && typeof msgBody.text === "string") {
-						messageText = msgBody.text;
-					}
+                // 1. Check for exact keywords
+                for (const m of responseMessages) {
+                    let messageText = "";
+                    const msgBody: any = m.body;
+                    if (msgBody && typeof msgBody.text === "string") {
+                        messageText = msgBody.text;
+                    }
 					
-					const isIncoming = userId != null && Number(m.senderId) !== Number(userId);
+                    const isIncoming = userId != null && Number(m.senderId) !== Number(userId);
 
-					if (isIncoming && shouldAutoBlock(messageText, "message")) {
-						shouldNukeThread = true;
-						blockReason = "Keyword in message history";
-						break;
-					}
-				}
+                    if (isIncoming && shouldAutoBlock(messageText, "message")) {
+                        shouldNukeThread = true;
+                        blockReason = "Keyword in message history";
+                        break;
+                    }
+                }
 
-				// 2. BOT EVASION CHECK (Check if the entire thread is just an incoming image)
-				if (!shouldNukeThread && window.localStorage.getItem("fg-block-first-media") === "true") {
-					let hasOutgoing = false;
-					let hasIncomingText = false;
-					let hasIncomingMedia = false;
+                // 2. BOT EVASION CHECK (Check if the entire thread is just an incoming image)
+                if (!shouldNukeThread && window.localStorage.getItem("fg-block-first-media") === "true") {
+                    let hasOutgoing = false;
+                    let hasIncomingText = false;
+                    let hasIncomingMedia = false;
 
-					for (const m of responseMessages) {
-						if (userId != null && Number(m.senderId) === Number(userId)) {
-							hasOutgoing = true;
-							break; // If we sent a message, it's a real chat! Keep it safe.
-						}
-						const msgBody: any = m.body;
-						if (msgBody && typeof msgBody.text === "string" && msgBody.text.trim().length > 0) {
-							hasIncomingText = true;
-						}
-						if (m.type === "Image" || m.type === "ExpiringImage" || m.type?.includes("Album") || m.type === "Video") {
-							hasIncomingMedia = true;
-						}
-					}
+                    for (const m of responseMessages) {
+                        if (userId != null && Number(m.senderId) === Number(userId)) {
+                            hasOutgoing = true;
+                            break; // If we sent a message, it's a real chat! Keep it safe.
+                        }
+                        const msgBody: any = m.body;
+                        if (msgBody && typeof msgBody.text === "string" && msgBody.text.trim().length > 0) {
+                            hasIncomingText = true;
+                        }
+                        if (m.type === "Image" || m.type === "ExpiringImage" || m.type?.includes("Album") || m.type === "Video") {
+                            hasIncomingMedia = true;
+                        }
+                    }
 
-					if (!hasOutgoing && !hasIncomingText && hasIncomingMedia) {
-						shouldNukeThread = true;
-						blockReason = "First message was media (Bot evasion)";
-					}
-				}
+                    if (!hasOutgoing && !hasIncomingText && hasIncomingMedia) {
+                        shouldNukeThread = true;
+                        blockReason = "First message was media (Bot evasion)";
+                    }
+                }
 
-				const otherParticipant = getOtherParticipant(selectedConversation || { data: { participants: [] } } as any, userId);
-				const blockId = otherParticipant?.profileId || (responseMessages[0] && responseMessages[0].senderId);
+                const otherParticipant = getOtherParticipant(selectedConversation || { data: { participants: [] } } as any, userId);
+                const blockId = otherParticipant?.profileId || (responseMessages[0] && responseMessages[0].senderId);
 
-				if (shouldNukeThread) {
-					console.log(`[AutoBlock] Sweeping historical conversation. Reason: ${blockReason}`);
+                if (shouldNukeThread) {
+                    console.log(`[AutoBlock] Sweeping historical conversation. Reason: ${blockReason}`);
 					
-					if (blockId) {
-						service.blockProfile(String(blockId)).catch(() => {});
-					}
+                    if (blockId) {
+                        service.blockProfile(String(blockId)).catch(() => {});
+                    }
 
-					setThreadMessages([]);
-					setThreadConversationId(null);
-					if (isDesktop) {
-						setSelectedDesktopConversationId(null);
-					} else {
-						navigate("/chat", { replace: true });
-					}
-					toast.success(`Auto-blocked: ${blockReason}`);
-					return; // Stop loading the rest of the thread!
-				}
+                    setThreadMessages([]);
+                    setThreadConversationId(null);
+                    if (isDesktop) {
+                        setSelectedDesktopConversationId(null);
+                    } else {
+                        navigate("/chat", { replace: true });
+                    }
+                    toast.success(`Auto-blocked: ${blockReason}`);
+                    return; // Stop loading the rest of the thread!
+                }
 
-				// 3. Fetch their profile in the background to check their Age, Dist, and Bio
-				if (blockId) {
-					service.getProfileDetail(String(blockId)).then((profile) => {
-						const matchedBioWord = shouldAutoBlock(profile.aboutMe, "bio");
-						const matchedNameWord = shouldAutoBlock(profile.displayName, "name");
-						const isBadAge = isOutsideAgeLimits(profile.age);
-						const isBadDist = isOutsideDistanceLimits(profile.distance);
+                // 3. Fetch their profile in the background to check their Age, Dist, and Bio
+                if (blockId) {
+                    service.getProfileDetail(String(blockId)).then((profile) => {
+                        const matchedBioWord = shouldAutoBlock(profile.aboutMe, "bio");
+                        const matchedNameWord = shouldAutoBlock(profile.displayName, "name");
+                        const isBadAge = isOutsideAgeLimits(profile.age);
+                        const isBadDist = isOutsideDistanceLimits(profile.distance);
 
-						if (matchedBioWord || matchedNameWord || isBadAge || isBadDist) {
-							let reason = `Keyword match`;
-							if (isBadAge) reason = `Age limit (${profile.age})`;
-							if (isBadDist) reason = `Distance limit (${Math.round((profile.distance || 0)/1000)}km)`;
+                        if (matchedBioWord || matchedNameWord || isBadAge || isBadDist) {
+                            let reason = `Keyword match`;
+                            if (isBadAge) reason = `Age limit (${profile.age})`;
+                            if (isBadDist) reason = `Distance limit (${Math.round((profile.distance || 0)/1000)}km)`;
 							
-							console.log(`[AutoBlock] Sweeping conversation due to: ${reason}`);
-							service.blockProfile(String(blockId)).catch(() => {});
+                            console.log(`[AutoBlock] Sweeping conversation due to: ${reason}`);
+                            service.blockProfile(String(blockId)).catch(() => {});
 							
-							setThreadMessages([]);
-							setThreadConversationId(null);
-							if (isDesktop) {
-								setSelectedDesktopConversationId(null);
-							} else {
-								navigate("/chat", { replace: true });
-							}
-							toast.success(`Auto-blocked: ${reason}`);
-						}
-					}).catch(() => {});
-				}
-				// --------------------------------------------------
+                            setThreadMessages([]);
+                            setThreadConversationId(null);
+                            if (isDesktop) {
+                                setSelectedDesktopConversationId(null);
+                            } else {
+                                navigate("/chat", { replace: true });
+                            }
+                            toast.success(`Auto-blocked: ${reason}`);
+                        }
+                    }).catch(() => {});
+                }
+                // --------------------------------------------------
 
-				setThreadMessages((previous) => {
-					const map = new Map<string, UiMessage>();
-					if (older) {
-						// Older messages prepended; keep existing (including any local-only).
-						for (const message of responseMessages)
-							map.set(message.messageId, message);
-						for (const message of previous) map.set(message.messageId, message);
-					} else {
-						// Fresh load or poll: preserve already-surfaced messages for this conversation.
-						for (const message of previous) {
-							if (message.conversationId === conversationId) {
-								map.set(message.messageId, message);
-							}
-						}
-						for (const message of responseMessages)
-							map.set(message.messageId, message);
-					}
-					return [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
-				});
+                setThreadMessages((previous) => {
+                    const map = new Map<string, UiMessage>();
+                    if (older) {
+                        // Older messages prepended; keep existing (including any local-only).
+                        for (const message of responseMessages)
+                            map.set(message.messageId, message);
+                        for (const message of previous) map.set(message.messageId, message);
+                    } else {
+                        // Fresh load or poll: preserve already-surfaced messages for this conversation.
+                        for (const message of previous) {
+                            if (message.conversationId === conversationId) {
+                                map.set(message.messageId, message);
+                            }
+                        }
+                        for (const message of responseMessages)
+                            map.set(message.messageId, message);
+                    }
+                    return [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
+                });
 
-				// Surface messages from the local log that don't appear in this API page
-				// (e.g. unsent by the sender, conversation disappeared after a block).
-				if (!older && response.messages.length > 0) {
-					const windowStart = response.messages[0].timestamp;
-					const windowEnd =
-						response.messages[response.messages.length - 1].timestamp;
-					const apiIds = new Set(response.messages.map((m) => m.messageId));
-					void chatLog.readLog(conversationId).then(async (localData) => {
-						const localMessages = localData.messages;
-						const localCandidates = localMessages.filter(
-							(m) =>
-								!apiIds.has(m.messageId) &&
-								m.timestamp >= windowStart &&
-								m.timestamp <= windowEnd,
-						);
-						if (!localCandidates.length) return;
+                // Surface messages from the local log that don't appear in this API page
+                // (e.g. unsent by the sender, conversation disappeared after a block).
+                if (!older && response.messages.length > 0) {
+                    const windowStart = response.messages[0].timestamp;
+                    const windowEnd =
+                        response.messages[response.messages.length - 1].timestamp;
+                    const apiIds = new Set(response.messages.map((m) => m.messageId));
+                    void chatLog.readLog(conversationId).then(async (localData) => {
+                        const localMessages = localData.messages;
+                        const localCandidates = localMessages.filter(
+                            (m) =>
+                                !apiIds.has(m.messageId) &&
+                                m.timestamp >= windowStart &&
+                                m.timestamp <= windowEnd,
+                        );
+                        if (!localCandidates.length) return;
 
-						// Verify candidates are truly absent from API before surfacing
-						// them as local-history messages.
-						const checks = await Promise.allSettled(
-							localCandidates.map((candidate) =>
-								service.getMessage({
-									conversationId,
-									messageId: candidate.messageId,
-								}),
-							),
-						);
+                        // Verify candidates are truly absent from API before surfacing
+                        // them as local-history messages.
+                        const checks = await Promise.allSettled(
+                            localCandidates.map((candidate) =>
+                                service.getMessage({
+                                    conversationId,
+                                    messageId: candidate.messageId,
+                                }),
+                            ),
+                        );
 
-						const localOnly: UiMessage[] = [];
-						for (let i = 0; i < localCandidates.length; i += 1) {
-							const check = checks[i];
-							if (check.status === "fulfilled") {
-								continue;
-							}
-							localOnly.push({
-								...localCandidates[i],
-								_localOnly: true,
-							} as UiMessage);
-						}
+                        const localOnly: UiMessage[] = [];
+                        for (let i = 0; i < localCandidates.length; i += 1) {
+                            const check = checks[i];
+                            if (check.status === "fulfilled") {
+                                continue;
+                            }
+                            localOnly.push({
+                                ...localCandidates[i],
+                                _localOnly: true,
+                            } as UiMessage);
+                        }
 
-				if (localOnly.length > 0) {
-					if (selectedConversationIdRef.current !== conversationId) return;
+                if (localOnly.length > 0) {
+                    if (selectedConversationIdRef.current !== conversationId) return;
 
-					setThreadMessages((previous) => {
-						const map = new Map<string, UiMessage>();
-						for (const message of previous) {
-							if (message.conversationId === conversationId) {
-								map.set(message.messageId, message);
-							}
-						}
-						for (const message of localOnly) {
-							if (!map.has(message.messageId)) {
-								map.set(message.messageId, message);
-							}
-						}
-						return [...map.values()].sort(
-							(a, b) => a.timestamp - b.timestamp,
-						);
-					});
-				}
-					});
-				}
+                    setThreadMessages((previous) => {
+                        const map = new Map<string, UiMessage>();
+                        for (const message of previous) {
+                            if (message.conversationId === conversationId) {
+                                map.set(message.messageId, message);
+                            }
+                        }
+                        for (const message of localOnly) {
+                            if (!map.has(message.messageId)) {
+                                map.set(message.messageId, message);
+                            }
+                        }
+                        return [...map.values()].sort(
+                            (a, b) => a.timestamp - b.timestamp,
+                        );
+                    });
+                }
+                    });
+                }
 
-				const firstMessage = response.messages[0];
-				setMessagePageKey(firstMessage ? firstMessage.messageId : null);
-				messagePageKeyRef.current = firstMessage
-					? firstMessage.messageId
-					: null;
+                const firstMessage = response.messages[0];
+                setMessagePageKey(firstMessage ? firstMessage.messageId : null);
+                messagePageKeyRef.current = firstMessage
+                    ? firstMessage.messageId
+                    : null;
 
-				if (!older) {
-					const newest = response.messages[response.messages.length - 1];
-					if (newest) {
-						const previewText = getMessagePreviewLabel(newest, t);
+                if (!older) {
+                    const newest = response.messages[response.messages.length - 1];
+                    if (newest) {
+                        const previewText = getMessagePreviewLabel(newest, t);
 
-						syncConversation((conversation) => ({
-							...conversation,
-							data: {
-								...conversation.data,
-								lastActivityTimestamp: newest.timestamp,
-								preview: {
-									conversationId: {
-										value: newest.conversationId,
-									},
-									messageId: newest.messageId,
-									senderId: newest.senderId,
-									type: newest.type,
-									chat1Type: newest.chat1Type ?? "text",
-									text: previewText,
-									albumId: null,
-									imageHash: null,
-								},
-							},
-						}));
-					}
-				}
+                        syncConversation((conversation) => ({
+                            ...conversation,
+                            data: {
+                                ...conversation.data,
+                                lastActivityTimestamp: newest.timestamp,
+                                preview: {
+                                    conversationId: {
+                                        value: newest.conversationId,
+                                    },
+                                    messageId: newest.messageId,
+                                    senderId: newest.senderId,
+                                    type: newest.type,
+                                    chat1Type: newest.chat1Type ?? "text",
+                                    text: previewText,
+                                    albumId: null,
+                                    imageHash: null,
+                                },
+                            },
+                        }));
+                    }
+                }
 
-				if (!older && selectedConversationUnreadCountRef.current > 0) {
-					const newest = response.messages[response.messages.length - 1];
-					if (newest?.messageId) {
-						void service
-							.markRead(conversationId, newest.messageId)
-							.then(() => {
-								syncConversation((conversation) => {
- 								// --- GHOST CHECK ---
- 								if (isChatGhosted(conversationId)) return conversation; 
- 								// -------------------
- 								const other = getOtherParticipant(conversation, userId);
- 								if (other?.profileId) {
- 									const pid = String(other.profileId);
- 									void clearUnreadCountForProfile(pid).catch(() => {});
- 									setChatContactIndexByProfileId((prev) => {
-											const existing = prev[pid];
-											if (!existing) return prev;
-											return {
-												...prev,
-												[pid]: { ...existing, unreadCount: 0 },
-											};
-										});
-									}
-									return {
-										...conversation,
-										data: { ...conversation.data, unreadCount: 0 },
-									};
-								});
-							})
-							.catch(() => {
-								// Best effort only.
-							});
-					}
-				}
-			} catch (error) {
-				const message =
-					error instanceof Error ? error.message : t("chat.errors.load_messages");
-				setThreadError(message);
-			} finally {
-				setIsLoadingThread(false);
-				setIsLoadingOlderMessages(false);
-				isLoadingOlderMessagesRef.current = false;
-			}
-		},
-		[service, syncConversation],
-	);
+                if (!older && selectedConversationUnreadCountRef.current > 0) {
+                    const newest = response.messages[response.messages.length - 1];
+                    if (newest?.messageId) {
+                        void service
+                            .markRead(conversationId, newest.messageId)
+                            .then(() => {
+                                syncConversation((conversation) => {
+                                // --- GHOST CHECK ---
+                                if (isChatGhosted(conversationId)) return conversation; 
+                                // -------------------
+                                const other = getOtherParticipant(conversation, userId);
+                                if (other?.profileId) {
+                                    const pid = String(other.profileId);
+                                    void clearUnreadCountForProfile(pid).catch(() => {});
+                                    setChatContactIndexByProfileId((prev) => {
+                                            const existing = prev[pid];
+                                            if (!existing) return prev;
+                                            return {
+                                                ...prev,
+                                                [pid]: { ...existing, unreadCount: 0 },
+                                            };
+                                        });
+                                    }
+                                    return {
+                                        ...conversation,
+                                        data: { ...conversation.data, unreadCount: 0 },
+                                    };
+                                });
+                            })
+                            .catch(() => {
+                                // Best effort only.
+                            });
+                    }
+                }
+            } catch (error) {
+                const message =
+                    error instanceof Error ? error.message : t("chat.errors.load_messages");
+                setThreadError(message);
+            } finally {
+                setIsLoadingThread(false);
+                setIsLoadingOlderMessages(false);
+                isLoadingOlderMessagesRef.current = false;
+            }
+        },
+        [service, syncConversation],
+    );
 
-	const mergeIncomingMessages = useCallback((messages: Message[]) => {
-		if (!messages.length) {
-			return;
-		}
+    const mergeIncomingMessages = useCallback((messages: Message[]) => {
+        if (!messages.length) {
+            return;
+        }
 
-		// Persist incoming realtime messages so they survive deletions/blocks.
-		const byConv = new Map<string, Message[]>();
-		for (const m of messages) {
-			const list = byConv.get(m.conversationId) ?? [];
-			list.push(m);
-			byConv.set(m.conversationId, list);
-		}
-		for (const [cid, msgs] of byConv) {
-			void chatLog.appendMessages(cid, msgs);
-		}
+        // --- AUTO DOWNLOAD CHECK (REALTIME INCOMING MESSAGES) ---
+        if (window.localStorage.getItem("fg-auto-download-media") === "true") {
+            for (const m of messages) {
+                if (userId != null && Number(m.senderId) !== Number(userId)) {
+                    const profileIdStr = String(m.senderId);
+                    let pName = `Profile_${profileIdStr}`;
+                    const conv = conversationsRef.current.find(c => c.data.conversationId === m.conversationId);
+                    if (conv && conv.data.name) pName = conv.data.name;
+					
+                    void processAutoDownload(m as unknown as UiMessage, pName, profileIdStr, service);
+                }
+            }
+        }
+        // --------------------------------------------------------
 
-		setThreadMessages((previous) => {
-			const activeConversationId = selectedConversationIdRef.current;
-			if (!activeConversationId) return [];
+        // Persist incoming realtime messages so they survive deletions/blocks.
+        const byConv = new Map<string, Message[]>();
+        for (const m of messages) {
+            const list = byConv.get(m.conversationId) ?? [];
+            list.push(m);
+            byConv.set(m.conversationId, list);
+        }
+        for (const [cid, msgs] of byConv) {
+            void chatLog.appendMessages(cid, msgs);
+        }
 
-			const map = new Map<string, UiMessage>();
-			// Only preserve messages that belong to the CURRENT active conversation
-			for (const message of previous) {
-				if (message.conversationId === activeConversationId) {
-					map.set(message.messageId, message);
-				}
-			}
+        setThreadMessages((previous) => {
+            const activeConversationId = selectedConversationIdRef.current;
+            if (!activeConversationId) return [];
 
-			for (const message of messages) {
-				if (message.conversationId === activeConversationId) {
-					map.set(message.messageId, message);
-				}
-			}
+            const map = new Map<string, UiMessage>();
+            // Only preserve messages that belong to the CURRENT active conversation
+            for (const message of previous) {
+                if (message.conversationId === activeConversationId) {
+                    map.set(message.messageId, message);
+                }
+            }
 
-			return [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
-		});
+            for (const message of messages) {
+                if (message.conversationId === activeConversationId) {
+                    map.set(message.messageId, message);
+                }
+            }
 
-		const byConversation = new Map<string, Message>();
-		let hasUnknownConversation = false;
-		for (const message of messages) {
-			const previous = byConversation.get(message.conversationId);
-			if (
-				!previous ||
-				previous.timestamp < message.timestamp ||
-				(previous.timestamp === message.timestamp &&
-					previous.messageId < message.messageId)
-			) {
-				byConversation.set(message.conversationId, message);
-			}
+            return [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
+        });
 
-			if (!conversationsRef.current.some(c => c.data.conversationId === message.conversationId)) {
-				hasUnknownConversation = true;
-			}
-		}
+        const byConversation = new Map<string, Message>();
+        let hasUnknownConversation = false;
+        for (const message of messages) {
+            const previous = byConversation.get(message.conversationId);
+            if (
+                !previous ||
+                previous.timestamp < message.timestamp ||
+                (previous.timestamp === message.timestamp &&
+                    previous.messageId < message.messageId)
+            ) {
+                byConversation.set(message.conversationId, message);
+            }
 
-		if (hasUnknownConversation) {
-			void loadInbox({ page: 1, replace: true, silent: true });
-		}
+            if (!conversationsRef.current.some(c => c.data.conversationId === message.conversationId)) {
+                hasUnknownConversation = true;
+            }
+        }
 
-		// Update threadLastReadTimestamp if we receive a message from the other person
-		// in the active chat, because it implies they've read our previous messages.
-		const activeConversationId = selectedConversationIdRef.current;
-		if (activeConversationId) {
-			const otherPersonMessages = messages.filter(
-				(m) =>
-					m.conversationId === activeConversationId &&
-					userId != null &&
-					Number(m.senderId) !== Number(userId),
-			);
-			if (otherPersonMessages.length > 0) {
-				const maxTs = Math.max(...otherPersonMessages.map((m) => m.timestamp));
-				setThreadLastReadTimestamp((prev) => Math.max(prev ?? 0, maxTs));
-			}
-		}
+        if (hasUnknownConversation) {
+            void loadInbox({ page: 1, replace: true, silent: true });
+        }
 
-		// Update unread markers and local index for messages not in the active chat
-		for (const m of messages) {
-			if (
-				userId != null &&
-				Number(m.senderId) !== Number(userId) &&
-				m.conversationId !== activeConversationId
-			) {
-				conversationsWithPendingUnreadRef.current.add(m.conversationId);
+        // Update threadLastReadTimestamp if we receive a message from the other person
+        // in the active chat, because it implies they've read our previous messages.
+        const activeConversationId = selectedConversationIdRef.current;
+        if (activeConversationId) {
+            const otherPersonMessages = messages.filter(
+                (m) =>
+                    m.conversationId === activeConversationId &&
+                    userId != null &&
+                    Number(m.senderId) !== Number(userId),
+            );
+            if (otherPersonMessages.length > 0) {
+                const maxTs = Math.max(...otherPersonMessages.map((m) => m.timestamp));
+                setThreadLastReadTimestamp((prev) => Math.max(prev ?? 0, maxTs));
+            }
+        }
 
-				const pid = String(m.senderId);
-				setChatContactIndexByProfileId((prev) => {
-					const existing = prev[pid];
-					return {
-						...prev,
-						[pid]: {
-							profileId: pid,
-							conversationId: m.conversationId,
-							lastMessageTimestamp: m.timestamp,
-							unreadCount: (existing?.unreadCount ?? 0) + 1,
-							hasChatted: true,
-							updatedAt: Date.now(),
-						},
-					};
-				});
-			}
-		}
+        // Update unread markers and local index for messages not in the active chat
+        for (const m of messages) {
+            if (
+                userId != null &&
+                Number(m.senderId) !== Number(userId) &&
+                m.conversationId !== activeConversationId
+            ) {
+                conversationsWithPendingUnreadRef.current.add(m.conversationId);
 
-		setConversations((previous) => {
-			const updated = previous.map((conversation) => {
-				const latestMessage = byConversation.get(
-					conversation.data.conversationId,
-				);
-				if (!latestMessage) {
-					return conversation;
-				}
+                const pid = String(m.senderId);
+                setChatContactIndexByProfileId((prev) => {
+                    const existing = prev[pid];
+                    return {
+                        ...prev,
+                        [pid]: {
+                            profileId: pid,
+                            conversationId: m.conversationId,
+                            lastMessageTimestamp: m.timestamp,
+                            unreadCount: (existing?.unreadCount ?? 0) + 1,
+                            hasChatted: true,
+                            updatedAt: Date.now(),
+                        },
+                    };
+                });
+            }
+        }
 
-				const text = getMessagePreviewLabel(latestMessage, t);
-				const isMine = userId != null && Number(latestMessage.senderId) === Number(userId);
-				const isActive = selectedConversationIdRef.current === conversation.data.conversationId;
+        setConversations((previous) => {
+            const updated = previous.map((conversation) => {
+                const latestMessage = byConversation.get(
+                    conversation.data.conversationId,
+                );
+                if (!latestMessage) {
+                    return conversation;
+                }
 
-				if (isActive && !isMine) {
- 				void service
- 					.markRead(conversation.data.conversationId, latestMessage.messageId)
- 					.catch(() => {});
+                const text = getMessagePreviewLabel(latestMessage, t);
+                const isMine = userId != null && Number(latestMessage.senderId) === Number(userId);
+                const isActive = selectedConversationIdRef.current === conversation.data.conversationId;
+
+                if (isActive && !isMine) {
+                void service
+                    .markRead(conversation.data.conversationId, latestMessage.messageId)
+                    .catch(() => {});
  				
- 				// --- GHOST CHECK ---
- 				if (!isChatGhosted(conversation.data.conversationId)) {
- 					const other = getOtherParticipant(conversation, userId);
- 					if (other?.profileId) {
- 						const pid = String(other.profileId);
- 						void clearUnreadCountForProfile(pid).catch(() => {});
- 						setChatContactIndexByProfileId((prev) => {
- 							const existing = prev[pid];
- 							if (!existing) return prev;
- 							return {
- 								...prev,
- 								[pid]: { ...existing, unreadCount: 0 },
- 							};
- 						});
- 					}
- 				}
- 				// -------------------
- 			}
+                // --- GHOST CHECK ---
+                if (!isChatGhosted(conversation.data.conversationId)) {
+                    const other = getOtherParticipant(conversation, userId);
+                    if (other?.profileId) {
+                        const pid = String(other.profileId);
+                        void clearUnreadCountForProfile(pid).catch(() => {});
+                        setChatContactIndexByProfileId((prev) => {
+                            const existing = prev[pid];
+                            if (!existing) return prev;
+                            return {
+                                ...prev,
+                                [pid]: { ...existing, unreadCount: 0 },
+                            };
+                        });
+                    }
+                }
+                // -------------------
+            }
 
-				return {
-					...conversation,
-					data: {
-						...conversation.data,
-						lastActivityTimestamp: latestMessage.timestamp,
-						unreadCount: (isMine || isActive) ? conversation.data.unreadCount : (conversation.data.unreadCount + 1),
-						preview: {
-							conversationId: {
-								value: latestMessage.conversationId,
-							},
-							messageId: latestMessage.messageId,
-							senderId: latestMessage.senderId,
-							type: latestMessage.type,
-							chat1Type: latestMessage.chat1Type ?? "text",
-							text,
-							albumId: null,
-							imageHash: null,
-						},
-					},
-				};
-			});
+                return {
+                    ...conversation,
+                    data: {
+                        ...conversation.data,
+                        lastActivityTimestamp: latestMessage.timestamp,
+                        unreadCount: (isMine || isActive) ? conversation.data.unreadCount : (conversation.data.unreadCount + 1),
+                        preview: {
+                            conversationId: {
+                                value: latestMessage.conversationId,
+                            },
+                            messageId: latestMessage.messageId,
+                            senderId: latestMessage.senderId,
+                            type: latestMessage.type,
+                            chat1Type: latestMessage.chat1Type ?? "text",
+                            text,
+                            albumId: null,
+                            imageHash: null,
+                        },
+                    },
+                };
+            });
 
-			// Re-sort so the conversation with the newest message moves to the top
-			return [...updated].sort((a, b) => {
-				if (a.data.pinned && !b.data.pinned) return -1;
-				if (b.data.pinned && !a.data.pinned) return 1;
-				return (b.data.lastActivityTimestamp ?? 0) - (a.data.lastActivityTimestamp ?? 0);
-			});
-		});
-	}, [loadInbox, userId, t]);
+            // Re-sort so the conversation with the newest message moves to the top
+            return [...updated].sort((a, b) => {
+                if (a.data.pinned && !b.data.pinned) return -1;
+                if (b.data.pinned && !a.data.pinned) return 1;
+                return (b.data.lastActivityTimestamp ?? 0) - (a.data.lastActivityTimestamp ?? 0);
+            });
+        });
+    }, [loadInbox, userId, t]);
 
-	const applyRealtimeEnvelope = useCallback(
-		(envelope: RealtimeEnvelope) => {
-			// appLog.debug(`[ChatPage] applyRealtimeEnvelope type=${envelope.type} full=${JSON.stringify(envelope)}`);
+    const applyRealtimeEnvelope = useCallback(
+        (envelope: RealtimeEnvelope) => {
+            // appLog.debug(`[ChatPage] applyRealtimeEnvelope type=${envelope.type} full=${JSON.stringify(envelope)}`);
 
-			// chat.v1.conversation.delete — remove blocked/deleted conversations
-			if (
-				envelope.type === "chat.v1.conversation.delete" &&
-				envelope.payload &&
-				typeof envelope.payload === "object"
-			) {
-				const record = envelope.payload as Record<string, unknown>;
-				const ids = Array.isArray(record.conversationIds)
-					? (record.conversationIds as unknown[]).filter(
-							(id): id is string => typeof id === "string",
-						)
-					: [];
-				if (ids.length > 0) {
-					setConversations((previous) =>
-						previous.filter((c) => !ids.includes(c.data.conversationId)),
-					);
-				}
-				return;
-			}
+            // chat.v1.conversation.delete — remove blocked/deleted conversations
+            if (
+                envelope.type === "chat.v1.conversation.delete" &&
+                envelope.payload &&
+                typeof envelope.payload === "object"
+            ) {
+                const record = envelope.payload as Record<string, unknown>;
+                const ids = Array.isArray(record.conversationIds)
+                    ? (record.conversationIds as unknown[]).filter(
+                            (id): id is string => typeof id === "string",
+                        )
+                    : [];
+                if (ids.length > 0) {
+                    setConversations((previous) =>
+                        previous.filter((c) => !ids.includes(c.data.conversationId)),
+                    );
+                }
+                return;
+            }
 
-			if (envelope.type === "chat.v1.read" || envelope.type === "chat.v1.message_read") {
-				// appLog.debug(`[ChatPage] read event detected type=${envelope.type} payload=${JSON.stringify(envelope.payload)}`);
-				const payloads: unknown[] = [envelope.payload, envelope.data, envelope];
-				for (const payload of payloads) {
-					if (!payload || typeof payload !== "object") continue;
-					const record = payload as Record<string, unknown>;
-					const cid = (record.conversationId || record.cid) as string | undefined;
-					const rawTs = Number(record.timestamp || record.ts);
-					const ts = rawTs < 100_000_000_000 ? rawTs * 1000 : rawTs;
-					const senderId = Number(record.profileId || record.senderId);
+            if (envelope.type === "chat.v1.read" || envelope.type === "chat.v1.message_read") {
+                // appLog.debug(`[ChatPage] read event detected type=${envelope.type} payload=${JSON.stringify(envelope.payload)}`);
+                const payloads: unknown[] = [envelope.payload, envelope.data, envelope];
+                for (const payload of payloads) {
+                    if (!payload || typeof payload !== "object") continue;
+                    const record = payload as Record<string, unknown>;
+                    const cid = (record.conversationId || record.cid) as string | undefined;
+                    const rawTs = Number(record.timestamp || record.ts);
+                    const ts = rawTs < 100_000_000_000 ? rawTs * 1000 : rawTs;
+                    const senderId = Number(record.profileId || record.senderId);
 
-					// appLog.debug(`[ChatPage] parsed read event candidate cid=${cid} ts=${ts} senderId=${senderId} currentUserId=${userId} activeCid=${selectedConversationIdRef.current}`);
+                    // appLog.debug(`[ChatPage] parsed read event candidate cid=${cid} ts=${ts} senderId=${senderId} currentUserId=${userId} activeCid=${selectedConversationIdRef.current}`);
 
-					if (cid && !Number.isNaN(ts) && !Number.isNaN(senderId)) {
-						// If the other person read our messages
-						if (userId != null && senderId !== userId) {
-							if (cid === selectedConversationIdRef.current) {
-								// appLog.debug("[ChatPage] updating threadLastReadTimestamp", { ts });
-								setThreadLastReadTimestamp(ts);
-							}
-							void chatLog.appendMessages(cid, [], ts);
-						}
-						return; // Found it
-					}
-				}
-				return;
-			}
+                    if (cid && !Number.isNaN(ts) && !Number.isNaN(senderId)) {
+                        // If the other person read our messages
+                        if (userId != null && senderId !== userId) {
+                            if (cid === selectedConversationIdRef.current) {
+                                // appLog.debug("[ChatPage] updating threadLastReadTimestamp", { ts });
+                                setThreadLastReadTimestamp(ts);
+                            }
+                            void chatLog.appendMessages(cid, [], ts);
+                        }
+                        return; // Found it
+                    }
+                }
+                return;
+            }
 
-			const candidates: Message[] = [];
+            const candidates: Message[] = [];
 
-			// Try envelope.payload directly as a Message (chat.v1.message_sent payload IS the message)
-			const directPayload = messageSchema.safeParse(envelope.payload);
-			if (directPayload.success) {
-				candidates.push(directPayload.data);
-			}
+            // Try envelope.payload directly as a Message (chat.v1.message_sent payload IS the message)
+            const directPayload = messageSchema.safeParse(envelope.payload);
+            if (directPayload.success) {
+                candidates.push(directPayload.data);
+            }
 
-			const payloads: unknown[] = [envelope.payload, envelope.data, envelope];
-			for (const payload of payloads) {
-				if (!payload || typeof payload !== "object") {
-					continue;
-				}
+            const payloads: unknown[] = [envelope.payload, envelope.data, envelope];
+            for (const payload of payloads) {
+                if (!payload || typeof payload !== "object") {
+                    continue;
+                }
 
-				const record = payload as Record<string, unknown>;
-				if (record.message) {
-					const parsed = messageSchema.safeParse(record.message);
-					if (parsed.success) {
-						candidates.push(parsed.data);
-					}
-				}
+                const record = payload as Record<string, unknown>;
+                if (record.message) {
+                    const parsed = messageSchema.safeParse(record.message);
+                    if (parsed.success) {
+                        candidates.push(parsed.data);
+                    }
+                }
 
-				if (Array.isArray(record.messages)) {
-					for (const candidate of record.messages) {
-						const parsed = messageSchema.safeParse(candidate);
-						if (parsed.success) {
-							candidates.push(parsed.data);
-						}
-					}
-				}
-			}
+                if (Array.isArray(record.messages)) {
+                    for (const candidate of record.messages) {
+                        const parsed = messageSchema.safeParse(candidate);
+                        if (parsed.success) {
+                            candidates.push(parsed.data);
+                        }
+                    }
+                }
+            }
 
-			// Deduplicate by messageId before merging
-			const seen = new Set<string>();
-			const unique = candidates.filter((m) => {
-				if (seen.has(m.messageId)) return false;
-				seen.add(m.messageId);
-				return true;
-			});
+            // Deduplicate by messageId before merging
+            const seen = new Set<string>();
+            const unique = candidates.filter((m) => {
+                if (seen.has(m.messageId)) return false;
+                seen.add(m.messageId);
+                return true;
+            });
 
-			if (unique.length > 0) {
-				mergeIncomingMessages(unique);
-			}
-		},
-		[mergeIncomingMessages, userId],
-	);
+            if (unique.length > 0) {
+                mergeIncomingMessages(unique);
+            }
+        },
+        [mergeIncomingMessages, userId],
+    );
 
-	const handleRealtimeEvent = useCallback(
-		(envelope: RealtimeEnvelope) => {
-			// appLog.debug("[ChatPage] RECEIVED EVENT FROM BRIDGE", { type: envelope.type });
-			applyRealtimeEnvelope(envelope);
-		},
-		[applyRealtimeEnvelope],
-	);
+    const handleRealtimeEvent = useCallback(
+        (envelope: RealtimeEnvelope) => {
+            // appLog.debug("[ChatPage] RECEIVED EVENT FROM BRIDGE", { type: envelope.type });
+            applyRealtimeEnvelope(envelope);
+        },
+        [applyRealtimeEnvelope],
+    );
 
-	const handleRealtimeStatus = useCallback((status: RealtimeStatus) => {
-		// appLog.debug("[chat-ws:status]", status);
-		setRealtimeStatus(status);
-	}, []);
+    const handleRealtimeStatus = useCallback((status: RealtimeStatus) => {
+        // appLog.debug("[chat-ws:status]", status);
+        setRealtimeStatus(status);
+    }, []);
 
-	const scrollThreadToBottom = useCallback((attempts = 10) => {
-		const container = threadScrollContainerRef.current;
-		if (container) {
-			container.scrollTop = container.scrollHeight;
-		}
-		// Also try scrollIntoView as a fallback
-		threadBottomRef.current?.scrollIntoView({ block: "end" });
+    const scrollThreadToBottom = useCallback((attempts = 10) => {
+        const container = threadScrollContainerRef.current;
+        if (container) {
+            container.scrollTop = container.scrollHeight;
+        }
+        // Also try scrollIntoView as a fallback
+        threadBottomRef.current?.scrollIntoView({ block: "end" });
 
-		if (attempts <= 1) {
-			return;
-		}
+        if (attempts <= 1) {
+            return;
+        }
 
-		window.setTimeout(() => {
-			scrollThreadToBottom(attempts - 1);
-		}, 50);
-	}, []);
+        window.setTimeout(() => {
+            scrollThreadToBottom(attempts - 1);
+        }, 50);
+    }, []);
 
-	const handleThreadScroll = useCallback(() => {
-		const container = threadScrollContainerRef.current;
-		if (
-			!container ||
-			isLoadingOlderMessagesRef.current ||
-			!messagePageKeyRef.current
-		) {
-			return;
-		}
+    const handleThreadScroll = useCallback(() => {
+        const container = threadScrollContainerRef.current;
+        if (
+            !container ||
+            isLoadingOlderMessagesRef.current ||
+            !messagePageKeyRef.current
+        ) {
+            return;
+        }
 
-		if (container.scrollTop <= 150 && selectedConversationIdRef.current) {
-			void loadThread({
-				conversationId: selectedConversationIdRef.current,
-				older: true,
-			});
-		}
-	}, [loadThread]);
+        if (container.scrollTop <= 150 && selectedConversationIdRef.current) {
+            void loadThread({
+                conversationId: selectedConversationIdRef.current,
+                older: true,
+            });
+        }
+    }, [loadThread]);
 
-	useEffect(() => {
-		void loadInbox({ page: 1, replace: true });
-	}, [loadInbox, activeInboxFilters]);
+    useEffect(() => {
+        void loadInbox({ page: 1, replace: true });
+    }, [loadInbox, activeInboxFilters]);
 
-	useEffect(() => {
-		if (!isDesktop) {
-			setSelectedDesktopConversationId(null);
-		}
-	}, [isDesktop]);
+    useEffect(() => {
+        if (!isDesktop) {
+            setSelectedDesktopConversationId(null);
+        }
+    }, [isDesktop]);
 
-	useEffect(() => {
-		const onEvent = (event: Event) => {
-			const envelope = (event as CustomEvent<RealtimeEnvelope>).detail;
-			if (envelope) handleRealtimeEvent(envelope);
-		};
-		const onStatus = (event: Event) => {
-			const status = (event as CustomEvent<RealtimeStatus>).detail;
-			if (status) handleRealtimeStatus(status);
-		};
-		window.addEventListener(CHAT_REALTIME_EVENT, onEvent as EventListener);
-		window.addEventListener(CHAT_REALTIME_STATUS, onStatus as EventListener);
-		return () => {
-			window.removeEventListener(CHAT_REALTIME_EVENT, onEvent as EventListener);
-			window.removeEventListener(
-				CHAT_REALTIME_STATUS,
-				onStatus as EventListener,
-			);
-		};
-	}, [handleRealtimeEvent, handleRealtimeStatus]);
+    useEffect(() => {
+        const onEvent = (event: Event) => {
+            const envelope = (event as CustomEvent<RealtimeEnvelope>).detail;
+            if (envelope) handleRealtimeEvent(envelope);
+        };
+        const onStatus = (event: Event) => {
+            const status = (event as CustomEvent<RealtimeStatus>).detail;
+            if (status) handleRealtimeStatus(status);
+        };
+        window.addEventListener(CHAT_REALTIME_EVENT, onEvent as EventListener);
+        window.addEventListener(CHAT_REALTIME_STATUS, onStatus as EventListener);
+        return () => {
+            window.removeEventListener(CHAT_REALTIME_EVENT, onEvent as EventListener);
+            window.removeEventListener(
+                CHAT_REALTIME_STATUS,
+                onStatus as EventListener,
+            );
+        };
+    }, [handleRealtimeEvent, handleRealtimeStatus]);
 
-	useEffect(() => {
-		if (realtimeStatus === "connected") {
-			return;
-		}
+    useEffect(() => {
+        if (realtimeStatus === "connected") {
+            return;
+        }
 
-		const baseIntervalMs =
-			realtimeStatus === "reconnecting" || realtimeStatus === "error"
-					? 12_000
-					: 20_000;
-		const intervalMs = document.hidden
-			? Math.max(baseIntervalMs * 2, 30_000)
-			: baseIntervalMs;
+        const baseIntervalMs =
+            realtimeStatus === "reconnecting" || realtimeStatus === "error"
+                    ? 12_000
+                    : 20_000;
+        const intervalMs = document.hidden
+            ? Math.max(baseIntervalMs * 2, 30_000)
+            : baseIntervalMs;
 
-		const intervalId = window.setInterval(() => {
-			void loadInbox({ page: 1, replace: true, silent: true });
-			if (selectedConversationId) {
-				void loadThread({
-					conversationId: selectedConversationId,
-					older: false,
-					silent: true,
-				});
-			}
-		}, intervalMs);
+        const intervalId = window.setInterval(() => {
+            void loadInbox({ page: 1, replace: true, silent: true });
+            if (selectedConversationId) {
+                void loadThread({
+                    conversationId: selectedConversationId,
+                    older: false,
+                    silent: true,
+                });
+            }
+        }, intervalMs);
 
-		return () => {
-			window.clearInterval(intervalId);
-		};
-	}, [loadInbox, loadThread, realtimeStatus, selectedConversationId]);
+        return () => {
+            window.clearInterval(intervalId);
+        };
+    }, [loadInbox, loadThread, realtimeStatus, selectedConversationId]);
 
-	useEffect(() => {
-		if (!selectedConversationId) {
-			setThreadConversationId(null);
-			setThreadMessages([]);
-			setThreadLastReadTimestamp(null);
-			setThreadError(null);
-			setReplyTargetMessageId(null);
-			lastLoadedConversationIdRef.current = null;
-			return;
-		}
+    useEffect(() => {
+        if (!selectedConversationId) {
+            setThreadConversationId(null);
+            setThreadMessages([]);
+            setThreadLastReadTimestamp(null);
+            setThreadError(null);
+            setReplyTargetMessageId(null);
+            lastLoadedConversationIdRef.current = null;
+            return;
+        }
 
-		setThreadLastReadTimestamp(null);
-		void loadThread({ conversationId: selectedConversationId, older: false });
-	}, [loadThread, selectedConversationId]);
+        setThreadLastReadTimestamp(null);
+        void loadThread({ conversationId: selectedConversationId, older: false });
+    }, [loadThread, selectedConversationId]);
 
-	useEffect(() => {
-		if (!replyTargetMessageId) {
-			return;
-		}
-		const hasTarget = threadMessages.some(
-			(message) => message.messageId === replyTargetMessageId,
-		);
-		if (!hasTarget) {
-			setReplyTargetMessageId(null);
-		}
-	}, [replyTargetMessageId, threadMessages]);
+    useEffect(() => {
+        if (!replyTargetMessageId) {
+            return;
+        }
+        const hasTarget = threadMessages.some(
+            (message) => message.messageId === replyTargetMessageId,
+        );
+        if (!hasTarget) {
+            setReplyTargetMessageId(null);
+        }
+    }, [replyTargetMessageId, threadMessages]);
 
-	useEffect(() => {
-		if (!threadMessages.length) {
-			lastMessageIdRef.current = null;
-			return;
-		}
+    useEffect(() => {
+        if (!threadMessages.length) {
+            lastMessageIdRef.current = null;
+            return;
+        }
 
-		const lastMessage = threadMessages[threadMessages.length - 1];
-		const isNewMessageArrival = lastMessageIdRef.current !== lastMessage.messageId;
-		lastMessageIdRef.current = lastMessage.messageId;
+        const lastMessage = threadMessages[threadMessages.length - 1];
+        const isNewMessageArrival = lastMessageIdRef.current !== lastMessage.messageId;
+        lastMessageIdRef.current = lastMessage.messageId;
 
-		if (preserveThreadScrollRef.current) {
-			const container = threadScrollContainerRef.current;
-			const snapshot = olderLoadSnapshotRef.current;
-			if (container && snapshot) {
-				const heightDelta = container.scrollHeight - snapshot.scrollHeight;
-				container.scrollTop = snapshot.scrollTop + heightDelta;
-			}
-			olderLoadSnapshotRef.current = null;
-			preserveThreadScrollRef.current = false;
-			return;
-		}
+        if (preserveThreadScrollRef.current) {
+            const container = threadScrollContainerRef.current;
+            const snapshot = olderLoadSnapshotRef.current;
+            if (container && snapshot) {
+                const heightDelta = container.scrollHeight - snapshot.scrollHeight;
+                container.scrollTop = snapshot.scrollTop + heightDelta;
+            }
+            olderLoadSnapshotRef.current = null;
+            preserveThreadScrollRef.current = false;
+            return;
+        }
 
-		const container = threadScrollContainerRef.current;
-		const isNewConversation =
-			lastLoadedConversationIdRef.current !== selectedConversationId;
+        const container = threadScrollContainerRef.current;
+        const isNewConversation =
+            lastLoadedConversationIdRef.current !== selectedConversationId;
 
-		const isNearBottom = container
-			? container.scrollHeight - container.scrollTop - container.clientHeight < 250
-			: true;
+        const isNearBottom = container
+            ? container.scrollHeight - container.scrollTop - container.clientHeight < 250
+            : true;
 
-		const iSentLastMessage = userId != null && Number(lastMessage.senderId) === Number(userId);
+        const iSentLastMessage = userId != null && Number(lastMessage.senderId) === Number(userId);
 
-		// Always scroll on new conversation OR if a new message arrived at the end
-		if (isNewConversation || isNewMessageArrival) {
-			scrollThreadToBottom();
-		}
+        // Always scroll on new conversation OR if a new message arrived at the end
+        if (isNewConversation || isNewMessageArrival) {
+            scrollThreadToBottom();
+        }
 
-		lastLoadedConversationIdRef.current = selectedConversationId;
-	}, [threadMessages, selectedConversationId, scrollThreadToBottom, userId]);
+        lastLoadedConversationIdRef.current = selectedConversationId;
+    }, [threadMessages, selectedConversationId, scrollThreadToBottom, userId]);
 
-	useEffect(() => {
-		indexConversations(conversations);
-	}, [conversations]);
+    useEffect(() => {
+        indexConversations(conversations);
+    }, [conversations]);
 
-	useEffect(() => {
-		indexMessages(threadMessages);
-	}, [threadMessages]);
+    useEffect(() => {
+        indexMessages(threadMessages);
+    }, [threadMessages]);
 
-	useEffect(() => {
-		if (!pendingMessageScrollId) {
-			return;
-		}
+    useEffect(() => {
+        if (!pendingMessageScrollId) {
+            return;
+        }
 
-		const target = messageElementRefs.current.get(pendingMessageScrollId);
-		if (!target) {
-			return;
-		}
+        const target = messageElementRefs.current.get(pendingMessageScrollId);
+        if (!target) {
+            return;
+        }
 
-		target.scrollIntoView({ block: "center", behavior: "smooth" });
-		setPendingMessageScrollId(null);
-	}, [pendingMessageScrollId, threadMessages]);
+        target.scrollIntoView({ block: "center", behavior: "smooth" });
+        setPendingMessageScrollId(null);
+    }, [pendingMessageScrollId, threadMessages]);
 
-	useEffect(() => {
-		const intervalId = window.setInterval(() => {
-			setNowTimestamp(Date.now());
-		}, 30_000);
+    useEffect(() => {
+        const intervalId = window.setInterval(() => {
+            setNowTimestamp(Date.now());
+        }, 30_000);
 
-		return () => {
-			window.clearInterval(intervalId);
-		};
-	}, []);
+        return () => {
+            window.clearInterval(intervalId);
+        };
+    }, []);
 
     // --- SILENT REACTION & STATUS POLLER ---
-	useEffect(() => {
-		if (!selectedConversationId) return;
+    useEffect(() => {
+        if (!selectedConversationId) return;
 
-		const intervalId = window.setInterval(async () => {
-			if (document.hidden) return; // Don't poll if the app is minimized
+        const intervalId = window.setInterval(async () => {
+            if (document.hidden) return; // Don't poll if the app is minimized
 
-			try {
-				// Quietly ask Grindr for the latest messages in this chat
-				const response = await service.listMessages({
-					conversationId: selectedConversationId,
-					includeProfile: false, 
-				});
-
-				// Update our local messages with any new reactions or unsends!
-				setThreadMessages((previous) => {
-					let hasChanges = false;
-					const newMap = new Map<string, UiMessage>();
-
-					// Map out the existing messages
-					for (const prevMsg of previous) {
-						newMap.set(prevMsg.messageId, prevMsg);
-					}
-
-					// Update them with the fresh data from the server
-					for (const serverMsg of response.messages) {
-						const existingMsg = newMap.get(serverMsg.messageId);
-						
-						// If reactions changed or a message was unsent, update it!
-						if (existingMsg) {
-							const currentReactions = JSON.stringify(existingMsg.reactions || []);
-							const newReactions = JSON.stringify(serverMsg.reactions || []);
+            try {
+                // Quietly ask Grindr for the latest messages in this chat
+                const response = await service.listMessages({
+                    conversationId: selectedConversationId,
+                    includeProfile: false, 
+                });
+				
+                // --- AUTO DOWNLOAD CHECK (POLLED MESSAGES) ---
+                if (window.localStorage.getItem("fg-auto-download-media") === "true") {
+                    for (const m of response.messages) {
+                        if (userId != null && Number(m.senderId) !== Number(userId)) {
+                            const profileIdStr = String(m.senderId);
+                            let pName = `Profile_${profileIdStr}`;
+                            const conv = conversationsRef.current.find(c => c.data.conversationId === m.conversationId);
+                            if (conv && conv.data.name) pName = conv.data.name;
 							
-							if (currentReactions !== newReactions || existingMsg.unsent !== serverMsg.unsent) {
-								hasChanges = true;
-								newMap.set(serverMsg.messageId, { ...existingMsg, ...serverMsg } as UiMessage);
-							}
-						}
-					}
+                            void processAutoDownload(m as unknown as UiMessage, pName, profileIdStr, service);
+                        }
+                    }
+                }
+                // ---------------------------------------------
 
-					if (!hasChanges) return previous; // Don't redraw if nothing changed
+                // Update our local messages with any new reactions or unsends!
+                setThreadMessages((previous) => {
+                    let hasChanges = false;
+                    const newMap = new Map<string, UiMessage>();
+
+                    // Map out the existing messages
+                    for (const prevMsg of previous) {
+                        newMap.set(prevMsg.messageId, prevMsg);
+                    }
+
+                    // Update them with the fresh data from the server
+                    for (const serverMsg of response.messages) {
+                        const existingMsg = newMap.get(serverMsg.messageId);
+						
+                        // If reactions changed or a message was unsent, update it!
+                        if (existingMsg) {
+                            const currentReactions = JSON.stringify(existingMsg.reactions || []);
+                            const newReactions = JSON.stringify(serverMsg.reactions || []);
+							
+                            if (currentReactions !== newReactions || existingMsg.unsent !== serverMsg.unsent) {
+                                hasChanges = true;
+                                newMap.set(serverMsg.messageId, { ...existingMsg, ...serverMsg } as UiMessage);
+                            }
+                        }
+                    }
+
+                    if (!hasChanges) return previous; // Don't redraw if nothing changed
 					
-					return [...newMap.values()].sort((a, b) => a.timestamp - b.timestamp);
-				});
+                    return [...newMap.values()].sort((a, b) => a.timestamp - b.timestamp);
+                });
 
-			} catch (error) {
-				// Silently ignore background polling errors
-			}
-		}, 8000); // Check every 8 seconds
+            } catch (error) {
+                // Silently ignore background polling errors
+            }
+        }, 8000); // Check every 8 seconds
 
-		return () => {
-			window.clearInterval(intervalId);
-		};
-	}, [selectedConversationId, service]);
-	// ---------------------------------------
+        return () => {
+            window.clearInterval(intervalId);
+        };
+    }, [selectedConversationId, service, userId]);
+    // ---------------------------------------
 
-	useEffect(() => {
-		setActiveThreadSearchIndex(0);
-	}, [
-		selectedThreadMessageMatches.length,
-		selectedConversationId,
-	]);
+    useEffect(() => {
+        setActiveThreadSearchIndex(0);
+    }, [
+        selectedThreadMessageMatches.length,
+        selectedConversationId,
+    ]);
 
-	const realtimeStatusMeta = useMemo(() => {
-		switch (realtimeStatus) {
-			case "connected":
-				return {
-					label: t("chat.realtime.connected"),
-					symbol: "✓",
-					className:
-						"border-emerald-500/40 bg-emerald-500/15 text-emerald-700",
-				};
-			case "disconnected":
-			case "error":
-				return {
-					label:
-						realtimeStatus === "error"
-							? t("chat.realtime.error")
-							: t("chat.realtime.offline"),
-					symbol: "•",
-					className: "border-red-500/40 bg-red-500/15 text-red-700",
-				};
-			default:
-				return {
-					label:
-						realtimeStatus === "reconnecting"
-							? t("chat.realtime.reconnecting")
-							: realtimeStatus === "connecting"
-								? t("chat.realtime.connecting")
-								: realtimeStatus === "polling"
-									? t("chat.realtime.polling")
-									: t("chat.realtime.idle"),
-					symbol: "•",
-					className:
-						"border-amber-500/40 bg-amber-500/15 text-amber-700",
-				};
-		}
-	}, [realtimeStatus, t]);
+    const realtimeStatusMeta = useMemo(() => {
+        switch (realtimeStatus) {
+            case "connected":
+                return {
+                    label: t("chat.realtime.connected"),
+                    symbol: "✓",
+                    className:
+                        "border-emerald-500/40 bg-emerald-500/15 text-emerald-700",
+                };
+            case "disconnected":
+            case "error":
+                return {
+                    label:
+                        realtimeStatus === "error"
+                            ? t("chat.realtime.error")
+                            : t("chat.realtime.offline"),
+                    symbol: "•",
+                    className: "border-red-500/40 bg-red-500/15 text-red-700",
+                };
+            default:
+                return {
+                    label:
+                        realtimeStatus === "reconnecting"
+                            ? t("chat.realtime.reconnecting")
+                            : realtimeStatus === "connecting"
+                                ? t("chat.realtime.connecting")
+                                : realtimeStatus === "polling"
+                                    ? t("chat.realtime.polling")
+                                    : t("chat.realtime.idle"),
+                    symbol: "•",
+                    className:
+                        "border-amber-500/40 bg-amber-500/15 text-amber-700",
+                };
+        }
+    }, [realtimeStatus, t]);
 
-	const selectedActionMessage = useMemo(() => {
-		if (!openMessageActionId) {
-			return null;
-		}
-		return (
-			threadMessages.find((message) => message.messageId === openMessageActionId) ??
-			null
-		);
-	}, [openMessageActionId, threadMessages]);
+    const selectedActionMessage = useMemo(() => {
+        if (!openMessageActionId) {
+            return null;
+        }
+        return (
+            threadMessages.find((message) => message.messageId === openMessageActionId) ??
+            null
+        );
+    }, [openMessageActionId, threadMessages]);
 
-	const selectedActionMessageMine =
-		selectedActionMessage != null &&
-		userId != null &&
-		Number(selectedActionMessage.senderId) === Number(userId);
+    const selectedActionMessageMine =
+        selectedActionMessage != null &&
+        userId != null &&
+        Number(selectedActionMessage.senderId) === Number(userId);
 
-	const replyTargetMessage = useMemo(() => {
-		if (!replyTargetMessageId) {
-			return null;
-		}
-		return (
-			threadMessages.find((message) => message.messageId === replyTargetMessageId) ??
-			null
-		);
-	}, [replyTargetMessageId, threadMessages]);
+    const replyTargetMessage = useMemo(() => {
+        if (!replyTargetMessageId) {
+            return null;
+        }
+        return (
+            threadMessages.find((message) => message.messageId === replyTargetMessageId) ??
+            null
+        );
+    }, [replyTargetMessageId, threadMessages]);
 
-	const filteredConversations = useMemo(() => {
-		if (hidePinned) {
-			return conversations.filter((c) => !c.data.pinned);
-		}
-		return conversations;
-	}, [conversations, hidePinned]);
+    const filteredConversations = useMemo(() => {
+        if (hidePinned) {
+            return conversations.filter((c) => !c.data.pinned);
+        }
+        return conversations;
+    }, [conversations, hidePinned]);
 
-	const handleSelectConversation = (conversation: ConversationEntry) => {
-		const nextId = conversation.data.conversationId;
-		if (targetProfileId) {
-			const nextParams = new URLSearchParams(searchParams);
-			nextParams.delete("targetProfileId");
-			setSearchParams(nextParams, { replace: true });
-		}
-		if (isDesktop) {
-			setSelectedDesktopConversationId(nextId);
-			return;
-		}
-		const nextParams = new URLSearchParams();
-		if (chatReturnTo) {
-			nextParams.set("returnTo", chatReturnTo);
-		}
-		navigate(
-			nextParams.size > 0
-				? `/chat/${encodeURIComponent(nextId)}?${nextParams.toString()}`
-				: `/chat/${encodeURIComponent(nextId)}`,
-		);
-	};
+    const handleSelectConversation = (conversation: ConversationEntry) => {
+        const nextId = conversation.data.conversationId;
+        if (targetProfileId) {
+            const nextParams = new URLSearchParams(searchParams);
+            nextParams.delete("targetProfileId");
+            setSearchParams(nextParams, { replace: true });
+        }
+        if (isDesktop) {
+            setSelectedDesktopConversationId(nextId);
+            return;
+        }
+        const nextParams = new URLSearchParams();
+        if (chatReturnTo) {
+            nextParams.set("returnTo", chatReturnTo);
+        }
+        navigate(
+            nextParams.size > 0
+                ? `/chat/${encodeURIComponent(nextId)}?${nextParams.toString()}`
+                : `/chat/${encodeURIComponent(nextId)}`,
+        );
+    };
 
-	const openConversationById = useCallback(
-		(conversationId: string) => {
-			if (targetProfileId) {
-				const nextParams = new URLSearchParams(searchParams);
-				nextParams.delete("targetProfileId");
-				setSearchParams(nextParams, { replace: true });
-			}
+    const openConversationById = useCallback(
+        (conversationId: string) => {
+            if (targetProfileId) {
+                const nextParams = new URLSearchParams(searchParams);
+                nextParams.delete("targetProfileId");
+                setSearchParams(nextParams, { replace: true });
+            }
 
-			if (isDesktop) {
-				setSelectedDesktopConversationId(conversationId);
-				return;
-			}
-			const nextParams = new URLSearchParams();
-			if (chatReturnTo) {
-				nextParams.set("returnTo", chatReturnTo);
-			}
-			navigate(
-				nextParams.size > 0
-					? `/chat/${encodeURIComponent(conversationId)}?${nextParams.toString()}`
-					: `/chat/${encodeURIComponent(conversationId)}`,
-			);
-		},
-		[
-			chatReturnTo,
-			isDesktop,
-			navigate,
-			searchParams,
-			setSearchParams,
-			targetProfileId,
-		],
-	);
+            if (isDesktop) {
+                setSelectedDesktopConversationId(conversationId);
+                return;
+            }
+            const nextParams = new URLSearchParams();
+            if (chatReturnTo) {
+                nextParams.set("returnTo", chatReturnTo);
+            }
+            navigate(
+                nextParams.size > 0
+                    ? `/chat/${encodeURIComponent(conversationId)}?${nextParams.toString()}`
+                    : `/chat/${encodeURIComponent(conversationId)}`,
+            );
+        },
+        [
+            chatReturnTo,
+            isDesktop,
+            navigate,
+            searchParams,
+            setSearchParams,
+            targetProfileId,
+        ],
+    );
 
-	const getProfileReturnToChatPath = useCallback(
-		(profileId: number) => {
-			if (selectedConversationId) {
-				return `/chat/${encodeURIComponent(selectedConversationId)}`;
-			}
+    const getProfileReturnToChatPath = useCallback(
+        (profileId: number) => {
+            if (selectedConversationId) {
+                return `/chat/${encodeURIComponent(selectedConversationId)}`;
+            }
 
-			const nextParams = new URLSearchParams();
-			nextParams.set("targetProfileId", String(profileId));
-			return `/chat?${nextParams.toString()}`;
-		},
-		[selectedConversationId],
-	);
+            const nextParams = new URLSearchParams();
+            nextParams.set("targetProfileId", String(profileId));
+            return `/chat?${nextParams.toString()}`;
+        },
+        [selectedConversationId],
+    );
 
-	useEffect(() => {
-		if (!targetProfileId) {
-			return;
-		}
+    useEffect(() => {
+        if (!targetProfileId) {
+            return;
+        }
 
-		const existingConversation = conversations.find((conversation) =>
-			conversation.data.participants.some(
-				(participant) => participant.profileId === targetProfileId,
-			),
-		);
+        const existingConversation = conversations.find((conversation) =>
+            conversation.data.participants.some(
+                (participant) => participant.profileId === targetProfileId,
+            ),
+        );
 
-		if (!existingConversation) {
-			return;
-		}
+        if (!existingConversation) {
+            return;
+        }
 
-		if (selectedConversationId === existingConversation.data.conversationId) {
-			return;
-		}
+        if (selectedConversationId === existingConversation.data.conversationId) {
+            return;
+        }
 
-		openConversationById(existingConversation.data.conversationId);
-	}, [
-		conversations,
-		openConversationById,
-		selectedConversationId,
-		targetProfileId,
-	]);
+        openConversationById(existingConversation.data.conversationId);
+    }, [
+        conversations,
+        openConversationById,
+        selectedConversationId,
+        targetProfileId,
+    ]);
 
-	const handleLoadMoreInbox = () => {
-		if (!nextPage || isLoadingMoreInbox) {
-			return;
-		}
+    const handleLoadMoreInbox = () => {
+        if (!nextPage || isLoadingMoreInbox) {
+            return;
+        }
 
-		void loadInbox({ page: nextPage, replace: false });
-	};
+        void loadInbox({ page: nextPage, replace: false });
+    };
 
-	const togglePin = async () => {
-		if (!selectedConversation || isUpdatingConversationState) {
-			return;
-		}
+    const togglePin = async () => {
+        if (!selectedConversation || isUpdatingConversationState) {
+            return;
+        }
 
-		setIsUpdatingConversationState(true);
-		const isPinned = selectedConversation.data.pinned;
+        setIsUpdatingConversationState(true);
+        const isPinned = selectedConversation.data.pinned;
 
-		try {
-			if (isPinned) {
-				await service.unpinConversation(
-					selectedConversation.data.conversationId,
-				);
-			} else {
-				await service.pinConversation(selectedConversation.data.conversationId);
-			}
-			syncConversation((conversation) => ({
-				...conversation,
-				data: { ...conversation.data, pinned: !isPinned },
-			}));
-		} catch (error) {
-			toast.error(
-				error instanceof Error ? error.message : t("chat.errors.update_pin_state"),
-			);
-		} finally {
-			setIsUpdatingConversationState(false);
-		}
-	};
+        try {
+            if (isPinned) {
+                await service.unpinConversation(
+                    selectedConversation.data.conversationId,
+                );
+            } else {
+                await service.pinConversation(selectedConversation.data.conversationId);
+            }
+            syncConversation((conversation) => ({
+                ...conversation,
+                data: { ...conversation.data, pinned: !isPinned },
+            }));
+        } catch (error) {
+            toast.error(
+                error instanceof Error ? error.message : t("chat.errors.update_pin_state"),
+            );
+        } finally {
+            setIsUpdatingConversationState(false);
+        }
+    };
 
-	const toggleMute = async () => {
-		if (!selectedConversation || isUpdatingConversationState) {
-			return;
-		}
+    const toggleMute = async () => {
+        if (!selectedConversation || isUpdatingConversationState) {
+            return;
+        }
 
-		setIsUpdatingConversationState(true);
-		const isMuted = selectedConversation.data.muted;
+        setIsUpdatingConversationState(true);
+        const isMuted = selectedConversation.data.muted;
 
-		try {
-			if (isMuted) {
-				await service.unmuteConversation(
-					selectedConversation.data.conversationId,
-				);
-			} else {
-				await service.muteConversation(
-					selectedConversation.data.conversationId,
-				);
-			}
-			syncConversation((conversation) => ({
-				...conversation,
-				data: { ...conversation.data, muted: !isMuted },
-			}));
-		} catch (error) {
-			toast.error(
-				error instanceof Error ? error.message : t("chat.errors.update_mute_state"),
-			);
-		} finally {
-			setIsUpdatingConversationState(false);
-		}
-	};
+        try {
+            if (isMuted) {
+                await service.unmuteConversation(
+                    selectedConversation.data.conversationId,
+                );
+            } else {
+                await service.muteConversation(
+                    selectedConversation.data.conversationId,
+                );
+            }
+            syncConversation((conversation) => ({
+                ...conversation,
+                data: { ...conversation.data, muted: !isMuted },
+            }));
+        } catch (error) {
+            toast.error(
+                error instanceof Error ? error.message : t("chat.errors.update_mute_state"),
+            );
+        } finally {
+            setIsUpdatingConversationState(false);
+        }
+    };
 
-	const clearLocalHistory = useCallback(async () => {
-		if (!selectedConversation) {
-			return;
-		}
+    const clearLocalHistory = useCallback(async () => {
+        if (!selectedConversation) {
+            return;
+        }
 
-		const conversationId = selectedConversation.data.conversationId;
-		await chatLog.clearLog(conversationId);
-		setThreadMessages((previous) =>
-			previous.filter(
-				(message) =>
-					!(message._localOnly && message.conversationId === conversationId),
-			),
-		);
-		toast.success(t("chat.toasts.cleared_local_history"));
-	}, [selectedConversation]);
+        const conversationId = selectedConversation.data.conversationId;
+        await chatLog.clearLog(conversationId);
+        setThreadMessages((previous) =>
+            previous.filter(
+                (message) =>
+                    !(message._localOnly && message.conversationId === conversationId),
+            ),
+        );
+        toast.success(t("chat.toasts.cleared_local_history"));
+    }, [selectedConversation]);
 
-	const deleteConversationFromChat = useCallback(
-		async (conversationId: string) => {
-			if (isDeletingConversationId) {
-				return;
-			}
+    const deleteConversationFromChat = useCallback(
+        async (conversationId: string) => {
+            if (isDeletingConversationId) {
+                return;
+            }
 
-			setIsDeletingConversationId(conversationId);
-			try {
-				await service.deleteConversation(conversationId);
-				const remainingConversations = conversationsRef.current.filter(
-					(conversation) => conversation.data.conversationId !== conversationId,
-				);
-				setConversations(remainingConversations);
-				setThreadMessages((previous) =>
-					previous.filter(
-						(message) => message.conversationId !== conversationId,
-					),
-				);
+            setIsDeletingConversationId(conversationId);
+            try {
+                await service.deleteConversation(conversationId);
+                const remainingConversations = conversationsRef.current.filter(
+                    (conversation) => conversation.data.conversationId !== conversationId,
+                );
+                setConversations(remainingConversations);
+                setThreadMessages((previous) =>
+                    previous.filter(
+                        (message) => message.conversationId !== conversationId,
+                    ),
+                );
 
-				setThreadConversationId((current) =>
-					current === conversationId ? null : current,
-				);
+                setThreadConversationId((current) =>
+                    current === conversationId ? null : current,
+                );
 
-				if (isDesktop) {
-					setSelectedDesktopConversationId((current) => {
-						if (current !== conversationId) {
-							return current;
-						}
-						return remainingConversations[0]?.data.conversationId ?? null;
-					});
-				} else {
-					navigate("/chat", { replace: true });
-				}
+                if (isDesktop) {
+                    setSelectedDesktopConversationId((current) => {
+                        if (current !== conversationId) {
+                            return current;
+                        }
+                        return remainingConversations[0]?.data.conversationId ?? null;
+                    });
+                } else {
+                    navigate("/chat", { replace: true });
+                }
 
-				toast.success(t("chat.toasts.conversation_deleted"));
-			} catch (error) {
-				toast.error(
-					error instanceof Error
-						? error.message
-						: t("chat.errors.delete_conversation"),
-				);
-			} finally {
-				setIsDeletingConversationId(null);
-			}
-		},
-		[isDeletingConversationId, isDesktop, navigate, service, t],
-	);
+                toast.success(t("chat.toasts.conversation_deleted"));
+            } catch (error) {
+                toast.error(
+                    error instanceof Error
+                        ? error.message
+                        : t("chat.errors.delete_conversation"),
+                );
+            } finally {
+                setIsDeletingConversationId(null);
+            }
+        },
+        [isDeletingConversationId, isDesktop, navigate, service, t],
+    );
 
-	const blockProfileFromChat = useCallback(
-		async (profileId: number) => {
-			if (isBlockingProfileId) {
-				return;
-			}
+    const blockProfileFromChat = useCallback(
+        async (profileId: number) => {
+            if (isBlockingProfileId) {
+                return;
+            }
 
-			const targetProfileId = String(profileId);
-			setIsBlockingProfileId(targetProfileId);
+            const targetProfileId = String(profileId);
+            setIsBlockingProfileId(targetProfileId);
 
-			try {
-				await blockProfileMutation(targetProfileId);
-				setConversations((previous) =>
-					previous.filter(
-						(conversation) =>
-							!conversation.data.participants.some(
-								(participant) =>
-									String(participant.profileId) === targetProfileId,
-							),
-					),
-				);
-				setSelectedDesktopConversationId((current) => {
-					if (!current) {
-						return null;
-					}
-					const activeConversation = conversationsRef.current.find(
-						(conversation) => conversation.data.conversationId === current,
-					);
-					if (!activeConversation) {
-						return null;
-					}
-					const blockedInSelectedConversation =
-						activeConversation.data.participants.some(
-							(participant) =>
-								String(participant.profileId) === targetProfileId,
-						);
-					return blockedInSelectedConversation ? null : current;
-				});
-				setThreadConversationId((current) => {
-					if (!current) {
-						return null;
-					}
-					const activeConversation = conversationsRef.current.find(
-						(conversation) => conversation.data.conversationId === current,
-					);
-					if (!activeConversation) {
-						return null;
-					}
-					const blockedInSelectedConversation =
-						activeConversation.data.participants.some(
-							(participant) =>
-								String(participant.profileId) === targetProfileId,
-						);
-					return blockedInSelectedConversation ? null : current;
-				});
-				setThreadMessages((previous) =>
-					previous.filter(
-						(message) =>
-							message.conversationId !== selectedConversationIdRef.current,
-					),
-				);
-				toast.success(t("profile_details.block_success"));
-				navigate("/chat", { replace: true });
-			} catch (error) {
-				toast.error(
-					error instanceof Error
-						? error.message
-						: t("profile_details.block_failed"),
-				);
-			} finally {
-				setIsBlockingProfileId(null);
-			}
-		},
-		[isBlockingProfileId, navigate, service, t],
-	);
+            try {
+                await blockProfileMutation(targetProfileId);
+                setConversations((previous) =>
+                    previous.filter(
+                        (conversation) =>
+                            !conversation.data.participants.some(
+                                (participant) =>
+                                    String(participant.profileId) === targetProfileId,
+                            ),
+                    ),
+                );
+                setSelectedDesktopConversationId((current) => {
+                    if (!current) {
+                        return null;
+                    }
+                    const activeConversation = conversationsRef.current.find(
+                        (conversation) => conversation.data.conversationId === current,
+                    );
+                    if (!activeConversation) {
+                        return null;
+                    }
+                    const blockedInSelectedConversation =
+                        activeConversation.data.participants.some(
+                            (participant) =>
+                                String(participant.profileId) === targetProfileId,
+                        );
+                    return blockedInSelectedConversation ? null : current;
+                });
+                setThreadConversationId((current) => {
+                    if (!current) {
+                        return null;
+                    }
+                    const activeConversation = conversationsRef.current.find(
+                        (conversation) => conversation.data.conversationId === current,
+                    );
+                    if (!activeConversation) {
+                        return null;
+                    }
+                    const blockedInSelectedConversation =
+                        activeConversation.data.participants.some(
+                            (participant) =>
+                                String(participant.profileId) === targetProfileId,
+                        );
+                    return blockedInSelectedConversation ? null : current;
+                });
+                setThreadMessages((previous) =>
+                    previous.filter(
+                        (message) =>
+                            message.conversationId !== selectedConversationIdRef.current,
+                    ),
+                );
+                toast.success(t("profile_details.block_success"));
+                navigate("/chat", { replace: true });
+            } catch (error) {
+                toast.error(
+                    error instanceof Error
+                        ? error.message
+                        : t("profile_details.block_failed"),
+                );
+            } finally {
+                setIsBlockingProfileId(null);
+            }
+        },
+        [isBlockingProfileId, navigate, service, t],
+    );
 
-	const toggleFavoriteFromChat = useCallback(
-		async (profileId: number, currentlyFavorite: boolean) => {
-			if (isTogglingFavoriteProfileId) return;
-			const strId = String(profileId);
-			setIsTogglingFavoriteProfileId(strId);
-			try {
-				if (currentlyFavorite) {
-					await service.removeFavorite(strId);
-				} else {
-					await service.addFavorite(strId);
-				}
-				setConversations((previous) =>
-					previous.map((conv) => {
-						const isMatch = conv.data.participants.some(
-							(p) => String(p.profileId) === strId,
-						);
-						if (!isMatch) return conv;
-						return {
-							...conv,
-							data: { ...conv.data, favorite: !currentlyFavorite },
-						};
-					}),
-				);
-				toast.success(
-					currentlyFavorite
-						? t("favorites.removed")
-						: t("favorites.added"),
-				);
-			} catch (error) {
-				toast.error(
-					error instanceof Error
-						? error.message
-						: currentlyFavorite
-						? t("favorites.remove_failed")
-						: t("favorites.add_failed"),
-				);
-			} finally {
-				setIsTogglingFavoriteProfileId(null);
-			}
-		},
-		[isTogglingFavoriteProfileId, service, t],
-	);
+    const toggleFavoriteFromChat = useCallback(
+        async (profileId: number, currentlyFavorite: boolean) => {
+            if (isTogglingFavoriteProfileId) return;
+            const strId = String(profileId);
+            setIsTogglingFavoriteProfileId(strId);
+            try {
+                if (currentlyFavorite) {
+                    await service.removeFavorite(strId);
+                } else {
+                    await service.addFavorite(strId);
+                }
+                setConversations((previous) =>
+                    previous.map((conv) => {
+                        const isMatch = conv.data.participants.some(
+                            (p) => String(p.profileId) === strId,
+                        );
+                        if (!isMatch) return conv;
+                        return {
+                            ...conv,
+                            data: { ...conv.data, favorite: !currentlyFavorite },
+                        };
+                    }),
+                );
+                toast.success(
+                    currentlyFavorite
+                        ? t("favorites.removed")
+                        : t("favorites.added"),
+                );
+            } catch (error) {
+                toast.error(
+                    error instanceof Error
+                        ? error.message
+                        : currentlyFavorite
+                        ? t("favorites.remove_failed")
+                        : t("favorites.add_failed"),
+                );
+            } finally {
+                setIsTogglingFavoriteProfileId(null);
+            }
+        },
+        [isTogglingFavoriteProfileId, service, t],
+    );
 
-	const editLocalNicknameFromChat = useCallback(
-		async (profileId: number, defaultName: string) => {
-			const profileKey = String(profileId);
-			const existingNickname = localNicknamesByProfileId[profileKey] ?? "";
-			const input = window.prompt(
-				t("chat.nicknames.prompt"),
-				existingNickname || defaultName,
-			);
-			if (input === null) {
-				return;
-			}
+    const editLocalNicknameFromChat = useCallback(
+        async (profileId: number, defaultName: string) => {
+            const profileKey = String(profileId);
+            const existingNickname = localNicknamesByProfileId[profileKey] ?? "";
+            const input = window.prompt(
+                t("chat.nicknames.prompt"),
+                existingNickname || defaultName,
+            );
+            if (input === null) {
+                return;
+            }
 
-			const normalized = input.trim();
-			try {
-				await setLocalNicknameForProfile(profileKey, normalized || null);
-				setLocalNicknamesByProfileId((previous) => {
-					const next = { ...previous };
-					if (normalized) {
-						next[profileKey] = normalized;
-					} else {
-						delete next[profileKey];
-					}
-					return next;
-				});
-				toast.success(
-					normalized
-						? t("chat.nicknames.saved")
-						: t("chat.nicknames.cleared"),
-				);
-			} catch (error) {
-								appLog.warn("[chat] failed to save local nickname", error);
-				const fallbackMessage = t("chat.nicknames.save_failed");
-				const message =
-					error instanceof Error
-						? error.message
-						: typeof error === "string"
-							? error
-							: JSON.stringify(error) || fallbackMessage;
-				toast.error(
-					message || fallbackMessage,
-				);
-			}
-		},
-		[localNicknamesByProfileId, t],
-	);
+            const normalized = input.trim();
+            try {
+                await setLocalNicknameForProfile(profileKey, normalized || null);
+                setLocalNicknamesByProfileId((previous) => {
+                    const next = { ...previous };
+                    if (normalized) {
+                        next[profileKey] = normalized;
+                    } else {
+                        delete next[profileKey];
+                    }
+                    return next;
+                });
+                toast.success(
+                    normalized
+                        ? t("chat.nicknames.saved")
+                        : t("chat.nicknames.cleared"),
+                );
+            } catch (error) {
+                                appLog.warn("[chat] failed to save local nickname", error);
+                const fallbackMessage = t("chat.nicknames.save_failed");
+                const message =
+                    error instanceof Error
+                        ? error.message
+                        : typeof error === "string"
+                            ? error
+                            : JSON.stringify(error) || fallbackMessage;
+                toast.error(
+                    message || fallbackMessage,
+                );
+            }
+        },
+        [localNicknamesByProfileId, t],
+    );
 
-	const sendTextMessage = useCallback(
-		async (
-			text: string,
-			retryMessageId?: string,
-			options?: { includeReplyContext?: boolean },
-		) => {
-			if (!userId) return;
+    const sendTextMessage = useCallback(
+        async (
+            text: string,
+            retryMessageId?: string,
+            options?: { includeReplyContext?: boolean },
+        ) => {
+            if (!userId) return;
 
-			const targetProfileIdValue = selectedConversation
-				? (getOtherParticipant(selectedConversation, userId)?.profileId ?? null)
-				: targetProfileId;
+            const targetProfileIdValue = selectedConversation
+                ? (getOtherParticipant(selectedConversation, userId)?.profileId ?? null)
+                : targetProfileId;
 
-			if (!targetProfileIdValue) {
-				toast.error(t("chat.errors.missing_recipient"));
-				return;
-			}
+            if (!targetProfileIdValue) {
+                toast.error(t("chat.errors.missing_recipient"));
+                return;
+            }
 
-			const trimmed = text.trim();
-			if (!trimmed) return;
+            const trimmed = text.trim();
+            if (!trimmed) return;
 
-			const includeReplyContext = options?.includeReplyContext ?? true;
-			const selectedReplyMessage =
-				includeReplyContext && replyTargetMessageId
-					? (threadMessages.find(
-							(message) => message.messageId === replyTargetMessageId,
-						) ?? null)
-					: null;
+            const includeReplyContext = options?.includeReplyContext ?? true;
+            const selectedReplyMessage =
+                includeReplyContext && replyTargetMessageId
+                    ? (threadMessages.find(
+                            (message) => message.messageId === replyTargetMessageId,
+                        ) ?? null)
+                    : null;
 					
-			const replySnippet = selectedReplyMessage
-				? getMessagePreviewLabel(selectedReplyMessage, t).trim()
-				: "";
+            const replySnippet = selectedReplyMessage
+                ? getMessagePreviewLabel(selectedReplyMessage, t).trim()
+                : "";
 
-			// This string formatting guarantees the message is accepted by the server!
-			const textWithReplyContext =
-				replySnippet.length > 0 ? `> ${replySnippet}\n${trimmed}` : trimmed;
+            // This string formatting guarantees the message is accepted by the server!
+            const textWithReplyContext =
+                replySnippet.length > 0 ? `> ${replySnippet}\n${trimmed}` : trimmed;
 
-			setIsSending(true);
-			const localMessageId = retryMessageId ?? `local:${Date.now()}:${Math.random()}`;
+            setIsSending(true);
+            const localMessageId = retryMessageId ?? `local:${Date.now()}:${Math.random()}`;
 			
-			if (!retryMessageId) {
-				setThreadMessages((previous) => [
-					...previous,
-					{
-						messageId: localMessageId,
-						conversationId: selectedConversation?.data.conversationId ?? `direct:${targetProfileIdValue}`,
-						senderId: userId,
-						timestamp: Date.now(),
-						unsent: false,
-						reactions: [],
-						type: "Text",
-						chat1Type: "text",
-						body: { text: textWithReplyContext }, 
-						replyToMessage: selectedReplyMessage ? { messageId: selectedReplyMessage.messageId } : null,
-						replyPreview: selectedReplyMessage ? { text: replySnippet } : null,
-						dynamic: false,
-						clientState: "pending",
-					},
-				]);
-			}
+            if (!retryMessageId) {
+                setThreadMessages((previous) => [
+                    ...previous,
+                    {
+                        messageId: localMessageId,
+                        conversationId: selectedConversation?.data.conversationId ?? `direct:${targetProfileIdValue}`,
+                        senderId: userId,
+                        timestamp: Date.now(),
+                        unsent: false,
+                        reactions: [],
+                        type: "Text",
+                        chat1Type: "text",
+                        body: { text: textWithReplyContext }, 
+                        replyToMessage: selectedReplyMessage ? { messageId: selectedReplyMessage.messageId } : null,
+                        replyPreview: selectedReplyMessage ? { text: replySnippet } : null,
+                        dynamic: false,
+                        clientState: "pending",
+                    },
+                ]);
+            }
 
-			setThreadMessages((previous) =>
-				previous.map((message) =>
-					message.messageId === localMessageId
-						? { ...message, clientState: "pending" }
-						: message,
-				),
-			);
+            setThreadMessages((previous) =>
+                previous.map((message) =>
+                    message.messageId === localMessageId
+                        ? { ...message, clientState: "pending" }
+                        : message,
+                ),
+            );
 
-			try {
-				// --- SAFE HTTP SENDER ---
-				const sentMessage = await service.sendText({
-					targetProfileId: targetProfileIdValue,
-					text: textWithReplyContext,
-				});
-				// ------------------------
+            try {
+                // --- SAFE HTTP SENDER ---
+                const sentMessage = await service.sendText({
+                    targetProfileId: targetProfileIdValue,
+                    text: textWithReplyContext,
+                });
+                // ------------------------
 
-				setThreadMessages((previous) => {
-					const merged = previous
-						.filter((message) => message.messageId !== localMessageId)
-						.concat(sentMessage);
-					const map = new Map<string, UiMessage>();
-					for (const message of merged) map.set(message.messageId, message);
-					return [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
-				});
+                setThreadMessages((previous) => {
+                    const merged = previous
+                        .filter((message) => message.messageId !== localMessageId)
+                        .concat(sentMessage);
+                    const map = new Map<string, UiMessage>();
+                    for (const message of merged) map.set(message.messageId, message);
+                    return [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
+                });
 
-				if (selectedConversation) {
-					syncConversation((conversation) => ({
-						...conversation,
-						data: {
-							...conversation.data,
-							lastActivityTimestamp: sentMessage.timestamp,
-							preview: {
-								conversationId: { value: conversation.data.conversationId },
-								messageId: sentMessage.messageId,
-								senderId: sentMessage.senderId,
-								type: sentMessage.type,
-								chat1Type: sentMessage.chat1Type ?? "text",
-								text: trimmed, // Keep inbox preview clean
-								albumId: null,
-								imageHash: null,
-							},
-						},
-					}));
-				} else {
-					openConversationById(sentMessage.conversationId);
-					void loadInbox({ page: 1, replace: true, silent: true });
-				}
+                if (selectedConversation) {
+                    syncConversation((conversation) => ({
+                        ...conversation,
+                        data: {
+                            ...conversation.data,
+                            lastActivityTimestamp: sentMessage.timestamp,
+                            preview: {
+                                conversationId: { value: conversation.data.conversationId },
+                                messageId: sentMessage.messageId,
+                                senderId: sentMessage.senderId,
+                                type: sentMessage.type,
+                                chat1Type: sentMessage.chat1Type ?? "text",
+                                text: trimmed, // Keep inbox preview clean
+                                albumId: null,
+                                imageHash: null,
+                            },
+                        },
+                    }));
+                } else {
+                    openConversationById(sentMessage.conversationId);
+                    void loadInbox({ page: 1, replace: true, silent: true });
+                }
 
-				setDraft("");
-				setReplyTargetMessageId(null);
-			} catch (error) {
-				setThreadMessages((previous) =>
-					previous.map((message) =>
-						message.messageId === localMessageId
-							? { ...message, clientState: "failed" }
-							: message,
-					),
-				);
-				toast.error("Failed to send message.");
-			} finally {
-				setIsSending(false);
-			}
-		},
-		[
-			loadInbox,
-			openConversationById,
-			replyTargetMessageId,
-			selectedConversation,
-			service,
-			syncConversation,
-			targetProfileId,
-			threadMessages,
-			t,
-			userId,
-		],
-	);
+                setDraft("");
+                setReplyTargetMessageId(null);
+            } catch (error) {
+                setThreadMessages((previous) =>
+                    previous.map((message) =>
+                        message.messageId === localMessageId
+                            ? { ...message, clientState: "failed" }
+                            : message,
+                    ),
+                );
+                toast.error("Failed to send message.");
+            } finally {
+                setIsSending(false);
+            }
+        },
+        [
+            loadInbox,
+            openConversationById,
+            replyTargetMessageId,
+            selectedConversation,
+            service,
+            syncConversation,
+            targetProfileId,
+            threadMessages,
+            t,
+            userId,
+        ],
+    );
 
-	const sendLocationMessage = useCallback(
-		async (lat: number, lon: number) => {
-			if (!userId) {
-				return;
-			}
+    const sendLocationMessage = useCallback(
+        async (lat: number, lon: number) => {
+            if (!userId) {
+                return;
+            }
 
-			const targetProfileIdValue = selectedConversation
-				? (getOtherParticipant(selectedConversation, userId)?.profileId ?? null)
-				: targetProfileId;
+            const targetProfileIdValue = selectedConversation
+                ? (getOtherParticipant(selectedConversation, userId)?.profileId ?? null)
+                : targetProfileId;
 
-			if (!targetProfileIdValue) {
-				toast.error(t("chat.errors.missing_recipient"));
-				return;
-			}
+            if (!targetProfileIdValue) {
+                toast.error(t("chat.errors.missing_recipient"));
+                return;
+            }
 
-			setIsSending(true);
+            setIsSending(true);
 
-			try {
-				const sentMessage = await service.sendMessage({
-					type: "Location",
-					target: {
-						type: "Direct",
-						targetId: targetProfileIdValue,
-					},
-					body: { lat, lon },
-				});
+            try {
+                const sentMessage = await service.sendMessage({
+                    type: "Location",
+                    target: {
+                        type: "Direct",
+                        targetId: targetProfileIdValue,
+                    },
+                    body: { lat, lon },
+                });
 
-				if (selectedConversation) {
-					setThreadMessages((previous) => [...previous, sentMessage]);
-				} else {
-					openConversationById(sentMessage.conversationId);
-					void loadInbox({ page: 1, replace: true });
-				}
-			} catch (error) {
-				toast.error(error instanceof Error ? error.message : t("chat.errors.send_failed"));
-			} finally {
-				setIsSending(false);
-			}
-		},
-		[loadInbox, openConversationById, selectedConversation, service, t, targetProfileId, userId],
-	);
+                if (selectedConversation) {
+                    setThreadMessages((previous) => [...previous, sentMessage]);
+                } else {
+                    openConversationById(sentMessage.conversationId);
+                    void loadInbox({ page: 1, replace: true });
+                }
+            } catch (error) {
+                toast.error(error instanceof Error ? error.message : t("chat.errors.send_failed"));
+            } finally {
+                setIsSending(false);
+            }
+        },
+        [loadInbox, openConversationById, selectedConversation, service, t, targetProfileId, userId],
+    );
 
-	const sendMediaAttachment = useCallback(
-		async (
-			file: File,
-			options: { looping: boolean; takenOnGrindr: boolean },
-		) => {
-			if (!userId) {
-				return;
-			}
+    const sendMediaAttachment = useCallback(
+        async (
+            file: File,
+            options: { looping: boolean; takenOnGrindr: boolean },
+        ) => {
+            if (!userId) {
+                return;
+            }
 
-			const targetProfileIdValue = selectedConversation
-				? (getOtherParticipant(selectedConversation, userId)?.profileId ?? null)
-				: targetProfileId;
-			if (!targetProfileIdValue) {
-				toast.error(t("chat.errors.missing_recipient"));
-				return;
-			}
+            const targetProfileIdValue = selectedConversation
+                ? (getOtherParticipant(selectedConversation, userId)?.profileId ?? null)
+                : targetProfileId;
+            if (!targetProfileIdValue) {
+                toast.error(t("chat.errors.missing_recipient"));
+                return;
+            }
 
-			const isImage = file.type.startsWith("image/");
-			const isVideo = file.type.startsWith("video/");
-			if (!isImage && !isVideo) {
-				toast.error("Only image and video attachments are supported.");
-				return;
-			}
+            const isImage = file.type.startsWith("image/");
+            const isVideo = file.type.startsWith("video/");
+            if (!isImage && !isVideo) {
+                toast.error("Only image and video attachments are supported.");
+                return;
+            }
 
-			if (file.size > 12 * 1024 * 1024) {
-				toast.error(t("chat.attachments.too_large"));
-				return;
-			}
+            if (file.size > 12 * 1024 * 1024) {
+                toast.error(t("chat.attachments.too_large"));
+                return;
+            }
 
-			setIsUploadingAttachment(true);
-			setUploadProgress(5);
+            setIsUploadingAttachment(true);
+            setUploadProgress(5);
 
-			if (!selectedConversation?.data.conversationId) {
-				return;
-			}
+            if (!selectedConversation?.data.conversationId) {
+                return;
+            }
 
-			const localMessageId = `local-upload:${Date.now()}:${Math.random()}`;
-			const objectUrl = URL.createObjectURL(file);
-			setThreadMessages((previous) => [
-				...previous,
-				{
-					messageId: localMessageId,
-					conversationId: selectedConversation.data.conversationId,
-					senderId: userId,
-					timestamp: Date.now(),
-					unsent: false,
-					reactions: [],
-					type: isVideo ? "Video" : "Image",
-					chat1Type: isVideo ? "video" : "image",
-					body: { url: objectUrl },
-					replyToMessage: null,
-					replyPreview: null,
-					dynamic: false,
-					clientState: "pending",
-				},
-			]);
+            const localMessageId = `local-upload:${Date.now()}:${Math.random()}`;
+            const objectUrl = URL.createObjectURL(file);
+            setThreadMessages((previous) => [
+                ...previous,
+                {
+                    messageId: localMessageId,
+                    conversationId: selectedConversation.data.conversationId,
+                    senderId: userId,
+                    timestamp: Date.now(),
+                    unsent: false,
+                    reactions: [],
+                    type: isVideo ? "Video" : "Image",
+                    chat1Type: isVideo ? "video" : "image",
+                    body: { url: objectUrl },
+                    replyToMessage: null,
+                    replyPreview: null,
+                    dynamic: false,
+                    clientState: "pending",
+                },
+            ]);
 
-			const progressId = window.setInterval(() => {
-				setUploadProgress((previous) => Math.min(92, previous + 8));
-			}, 260);
+            const progressId = window.setInterval(() => {
+                setUploadProgress((previous) => Math.min(92, previous + 8));
+            }, 260);
 
-			try {
-				const binaryUpload = await buildBinaryUpload(file);
-				const uploaded = await service.uploadChatMedia({
-					multipart: binaryUpload,
-					options: {
-						looping: options.looping,
-						takenOnGrindr: options.takenOnGrindr,
-					},
-				});
-				setUploadProgress(96);
+            try {
+                const binaryUpload = await buildBinaryUpload(file);
+                const uploaded = await service.uploadChatMedia({
+                    multipart: binaryUpload,
+                    options: {
+                        looping: options.looping,
+                        takenOnGrindr: options.takenOnGrindr,
+                    },
+                });
+                setUploadProgress(96);
 
-				const imageUrl = uploaded.url;
-				const imageHash = imageUrl
-					? uploaded.mediaHash || extractImageHashFromSignedUrl(imageUrl)
-					: uploaded.mediaHash;
-				const messageType = isVideo ? "Video" : "Image";
-				const sentMessage = await service.sendMessage({
-					type: messageType,
-					target: {
-						type: "Direct",
-						targetId: targetProfileIdValue,
-					},
-					body: {
-						mediaId: uploaded.mediaId,
-						width: null,
-						height: null,
-						...(imageUrl ? { url: imageUrl } : {}),
-						...(isImage && imageHash ? { imageHash } : {}),
-					},
-				});
+                const imageUrl = uploaded.url;
+                const imageHash = imageUrl
+                    ? uploaded.mediaHash || extractImageHashFromSignedUrl(imageUrl)
+                    : uploaded.mediaHash;
+                const messageType = isVideo ? "Video" : "Image";
+                const sentMessage = await service.sendMessage({
+                    type: messageType,
+                    target: {
+                        type: "Direct",
+                        targetId: targetProfileIdValue,
+                    },
+                    body: {
+                        mediaId: uploaded.mediaId,
+                        width: null,
+                        height: null,
+                        ...(imageUrl ? { url: imageUrl } : {}),
+                        ...(isImage && imageHash ? { imageHash } : {}),
+                    },
+                });
 
-				setThreadMessages((previous) => {
-					const merged = previous
-						.filter((message) => message.messageId !== localMessageId)
-						.concat(sentMessage);
-					const map = new Map<string, UiMessage>();
-					for (const message of merged) {
-						map.set(message.messageId, message);
-					}
-					return [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
-				});
+                setThreadMessages((previous) => {
+                    const merged = previous
+                        .filter((message) => message.messageId !== localMessageId)
+                        .concat(sentMessage);
+                    const map = new Map<string, UiMessage>();
+                    for (const message of merged) {
+                        map.set(message.messageId, message);
+                    }
+                    return [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
+                });
 
-				if (selectedConversation) {
-					syncConversation((conversation) => ({
-						...conversation,
-						data: {
-							...conversation.data,
-							lastActivityTimestamp: sentMessage.timestamp,
-							preview: {
-								conversationId: {
-									value: conversation.data.conversationId,
-								},
-								messageId: sentMessage.messageId,
-								senderId: sentMessage.senderId,
-								type: sentMessage.type,
-								chat1Type:
-									sentMessage.chat1Type ?? (isVideo ? "video" : "image"),
-								text: null,
-								albumId: null,
-								imageHash: null,
-							},
-						},
-					}));
-				} else {
-					openConversationById(sentMessage.conversationId);
-					void loadInbox({ page: 1, replace: true });
-				}
+                if (selectedConversation) {
+                    syncConversation((conversation) => ({
+                        ...conversation,
+                        data: {
+                            ...conversation.data,
+                            lastActivityTimestamp: sentMessage.timestamp,
+                            preview: {
+                                conversationId: {
+                                    value: conversation.data.conversationId,
+                                },
+                                messageId: sentMessage.messageId,
+                                senderId: sentMessage.senderId,
+                                type: sentMessage.type,
+                                chat1Type:
+                                    sentMessage.chat1Type ?? (isVideo ? "video" : "image"),
+                                text: null,
+                                albumId: null,
+                                imageHash: null,
+                            },
+                        },
+                    }));
+                } else {
+                    openConversationById(sentMessage.conversationId);
+                    void loadInbox({ page: 1, replace: true });
+                }
 
-				setUploadProgress(100);
-				window.setTimeout(() => setUploadProgress(0), 240);
-			} catch (error) {
-				setThreadMessages((previous) =>
-					previous.map((message) =>
-						message.messageId === localMessageId
-							? { ...message, clientState: "failed" }
-							: message,
-					),
-				);
-				toast.error(
-					error instanceof Error
-						? error.message
-						: t("chat.errors.attachment_upload_send_failed"),
-				);
-			} finally {
-				window.clearInterval(progressId);
-				setIsUploadingAttachment(false);
-				if (uploadProgress < 100) {
-					setUploadProgress(0);
-				}
-				URL.revokeObjectURL(objectUrl);
-			}
-		},
-		[
-			loadInbox,
-			openConversationById,
-			selectedConversation,
-			service,
-			syncConversation,
-			targetProfileId,
-			uploadProgress,
-			userId,
-		],
-	);
+                setUploadProgress(100);
+                window.setTimeout(() => setUploadProgress(0), 240);
+            } catch (error) {
+                setThreadMessages((previous) =>
+                    previous.map((message) =>
+                        message.messageId === localMessageId
+                            ? { ...message, clientState: "failed" }
+                            : message,
+                    ),
+                );
+                toast.error(
+                    error instanceof Error
+                        ? error.message
+                        : t("chat.errors.attachment_upload_send_failed"),
+                );
+            } finally {
+                window.clearInterval(progressId);
+                setIsUploadingAttachment(false);
+                if (uploadProgress < 100) {
+                    setUploadProgress(0);
+                }
+                URL.revokeObjectURL(objectUrl);
+            }
+        },
+        [
+            loadInbox,
+            openConversationById,
+            selectedConversation,
+            service,
+            syncConversation,
+            targetProfileId,
+            uploadProgress,
+            userId,
+        ],
+    );
 
-	const cancelPendingAttachment = useCallback(() => {
-		setPendingAttachmentFile(null);
-		setAttachmentLooping(false);
-		setAttachmentTakenOnGrindr(false);
-	}, []);
+    const cancelPendingAttachment = useCallback(() => {
+        setPendingAttachmentFile(null);
+        setAttachmentLooping(false);
+        setAttachmentTakenOnGrindr(false);
+    }, []);
 
-	const confirmPendingAttachment = useCallback(() => {
-		if (!pendingAttachmentFile) {
-			return;
-		}
+    const confirmPendingAttachment = useCallback(() => {
+        if (!pendingAttachmentFile) {
+            return;
+        }
 
-		void sendMediaAttachment(pendingAttachmentFile, {
-			looping: attachmentLooping,
-			takenOnGrindr: attachmentTakenOnGrindr,
-		});
-		setPendingAttachmentFile(null);
-		setAttachmentLooping(false);
-		setAttachmentTakenOnGrindr(false);
-	}, [
-		attachmentLooping,
-		attachmentTakenOnGrindr,
-		pendingAttachmentFile,
-		sendMediaAttachment,
-	]);
+        void sendMediaAttachment(pendingAttachmentFile, {
+            looping: attachmentLooping,
+            takenOnGrindr: attachmentTakenOnGrindr,
+        });
+        setPendingAttachmentFile(null);
+        setAttachmentLooping(false);
+        setAttachmentTakenOnGrindr(false);
+    }, [
+        attachmentLooping,
+        attachmentTakenOnGrindr,
+        pendingAttachmentFile,
+        sendMediaAttachment,
+    ]);
 
-	const handleSend = (event: FormEvent<HTMLFormElement>) => {
-		event.preventDefault();
-		void sendTextMessage(draft);
-	};
+    const handleSend = (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        void sendTextMessage(draft);
+    };
 
-	const handleRetry = (message: UiMessage) => {
-		if (!message.body || typeof message.body !== "object") {
-			return;
-		}
+    const handleRetry = (message: UiMessage) => {
+        if (!message.body || typeof message.body !== "object") {
+            return;
+        }
 
-		if (message.type === "Image" || message.type === "ExpiringImage") {
-			toast.error(t("chat.errors.reupload_image"));
-			return;
-		}
+        if (message.type === "Image" || message.type === "ExpiringImage") {
+            toast.error(t("chat.errors.reupload_image"));
+            return;
+        }
 
-		const body = message.body as Record<string, unknown>;
-		if (typeof body.text !== "string") {
-			return;
-		}
+        const body = message.body as Record<string, unknown>;
+        if (typeof body.text !== "string") {
+            return;
+        }
 
-		void sendTextMessage(body.text, message.messageId, {
-			includeReplyContext: false,
-		});
-	};
+        void sendTextMessage(body.text, message.messageId, {
+            includeReplyContext: false,
+        });
+    };
 
-	const handleReplyToMessage = useCallback((message: UiMessage) => {
-		if (isLocalClientMessageId(message.messageId)) {
-			return;
-		}
-		// Instead of replying instantly, trigger the warning modal!
-		setPendingReplyMessage(message);
-	}, []);
+    const handleReplyToMessage = useCallback((message: UiMessage) => {
+        if (isLocalClientMessageId(message.messageId)) {
+            return;
+        }
+        setPendingReplyMessage(message);
+    }, []);
 
-	const handleReact = async (message: UiMessage) => {
-		if (!selectedConversation || !userId || isMutatingMessageId) {
-			return;
-		}
+    const handleReact = async (message: UiMessage) => {
+        if (!selectedConversation || !userId || isMutatingMessageId) {
+            return;
+        }
 
-		// Use relaxed equality to bypass Grindr string/number mismatches
-		const alreadyReactedByUser = message.reactions?.some(
-			(reaction) => String(reaction.profileId) === String(userId) && Number(reaction.reactionType) === 1,
-		);
+        // Use relaxed equality to bypass Grindr string/number mismatches
+        const alreadyReactedByUser = message.reactions?.some(
+            (reaction) => String(reaction.profileId) === String(userId) && Number(reaction.reactionType) === 1,
+        );
 
-		if (alreadyReactedByUser) {
-			// DO NOT ALLOW UN-REACTING! Grindr's API breaks when you try to send 0.
-			return;
-		}
+        if (alreadyReactedByUser) {
+            // DO NOT ALLOW UN-REACTING! Grindr's API breaks when you try to send 0.
+            return;
+        }
 
-		const previous = threadMessages;
-		setIsMutatingMessageId(message.messageId);
-		setOpenMessageActionId(null);
+        const previous = threadMessages;
+        setIsMutatingMessageId(message.messageId);
+        setOpenMessageActionId(null);
 		
-		// 1. Instantly update the UI so the flame appears right now
-		setThreadMessages((current) =>
-			current.map((item) => {
-				if (item.messageId !== message.messageId) {
-					return item;
-				}
-				return {
-					...item,
-					reactions: [
-						...(item.reactions || []),
-						{ profileId: userId, reactionType: 1 },
-					],
-				};
-			})
-		);
-		triggerReactionBurst(message.messageId);
+        // 1. Instantly update the UI so the flame appears right now
+        setThreadMessages((current) =>
+            current.map((item) => {
+                if (item.messageId !== message.messageId) {
+                    return item;
+                }
+                return {
+                    ...item,
+                    reactions: [
+                        ...(item.reactions || []),
+                        { profileId: userId, reactionType: 1 },
+                    ],
+                };
+            })
+        );
+        triggerReactionBurst(message.messageId);
 
-		try {
-			// 2. Send the HTTP request to Grindr
-			await service.reactToMessage({
-				conversationId: selectedConversation.data.conversationId,
-				messageId: message.messageId,
-				reactionType: 1,
-			});
+        try {
+            // 2. Send the HTTP request to Grindr
+            await service.reactToMessage({
+                conversationId: selectedConversation.data.conversationId,
+                messageId: message.messageId,
+                reactionType: 1,
+            });
 
-			// 3. FORCE SAVE TO LOCAL DATABASE so the screen doesn't overwrite the flame!
-			const updatedMessage = threadMessages.find(m => m.messageId === message.messageId);
-			if (updatedMessage) {
-				const finalMsg = {
-					...updatedMessage,
-					reactions: [...(updatedMessage.reactions || []), { profileId: userId, reactionType: 1 }]
-				};
-				await chatLog.appendMessages(selectedConversation.data.conversationId, [finalMsg as any]);
-			}
+            // 3. FORCE SAVE TO LOCAL DATABASE so the screen doesn't overwrite the flame!
+            const updatedMessage = threadMessages.find(m => m.messageId === message.messageId);
+            if (updatedMessage) {
+                const finalMsg = {
+                    ...updatedMessage,
+                    reactions: [...(updatedMessage.reactions || []), { profileId: userId, reactionType: 1 }]
+                };
+                await chatLog.appendMessages(selectedConversation.data.conversationId, [finalMsg as any]);
+            }
 
-		} catch (error) {
-			// If Grindr rejects it, remove the flame from the UI
-			setThreadMessages(previous);
-			toast.error(
-				error instanceof Error
-					? error.message
-					: t("chat.errors.react_failed"),
-			);
-		} finally {
-			setIsMutatingMessageId(null);
-		}
-	};
+        } catch (error) {
+            // If Grindr rejects it, remove the flame from the UI
+            setThreadMessages(previous);
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : t("chat.errors.react_failed"),
+            );
+        } finally {
+            setIsMutatingMessageId(null);
+        }
+    };
 
-	const doubleTapTimeoutRef = useRef<Record<string, number>>({});
-	const handleMessageTap = useCallback(
-		(message: UiMessage) => {
-			const messageId = message.messageId;
-			if (doubleTapTimeoutRef.current[messageId]) {
-				window.clearTimeout(doubleTapTimeoutRef.current[messageId]);
-				delete doubleTapTimeoutRef.current[messageId];
-				void handleReact(message);
-			} else {
-				doubleTapTimeoutRef.current[messageId] = window.setTimeout(() => {
-					delete doubleTapTimeoutRef.current[messageId];
-				}, 300);
-			}
-		},
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-		[],
-	);
+    const handleUnsend = async (message: UiMessage) => {
+        if (isMutatingMessageId) {
+            return;
+        }
 
-	const handleUnsend = async (message: UiMessage) => {
-		if (isMutatingMessageId) {
-			return;
-		}
+        if (isLocalClientMessageId(message.messageId)) {
+            setOpenMessageActionId(null);
+            setThreadMessages((current) =>
+                current.filter((item) => item.messageId !== message.messageId),
+            );
+            return;
+        }
 
-		if (isLocalClientMessageId(message.messageId)) {
-			setOpenMessageActionId(null);
-			setThreadMessages((current) =>
-				current.filter((item) => item.messageId !== message.messageId),
-			);
-			return;
-		}
+        if (!selectedConversation) {
+            return;
+        }
 
-		if (!selectedConversation) {
-			return;
-		}
+        const previous = threadMessages;
+        setIsMutatingMessageId(message.messageId);
+        setOpenMessageActionId(null);
+        setThreadMessages((current) =>
+            current.map((item) =>
+                item.messageId === message.messageId
+                    ? {
+                            ...item,
+                            unsent: true,
+                            body: null,
+                            type: "Retract",
+                        }
+                    : item,
+            ),
+        );
 
-		const previous = threadMessages;
-		setIsMutatingMessageId(message.messageId);
-		setOpenMessageActionId(null);
-		setThreadMessages((current) =>
-			current.map((item) =>
-				item.messageId === message.messageId
-					? {
-							...item,
-							unsent: true,
-							body: null,
-							type: "Retract",
-						}
-					: item,
-			),
-		);
+        try {
+            await service.unsendMessage({
+                conversationId: selectedConversation.data.conversationId,
+                messageId: message.messageId,
+            });
+        } catch (error) {
+            setThreadMessages(previous);
+            toast.error(error instanceof Error ? error.message : t("chat.errors.unsend_failed"));
+        } finally {
+            setIsMutatingMessageId(null);
+        }
+    };
 
-		try {
-			await service.unsendMessage({
-				conversationId: selectedConversation.data.conversationId,
-				messageId: message.messageId,
-			});
-		} catch (error) {
-			setThreadMessages(previous);
-			toast.error(error instanceof Error ? error.message : t("chat.errors.unsend_failed"));
-		} finally {
-			setIsMutatingMessageId(null);
-		}
-	};
+    const handleDelete = async (message: UiMessage) => {
+        if (isMutatingMessageId) {
+            return;
+        }
 
-	const handleDelete = async (message: UiMessage) => {
-		if (isMutatingMessageId) {
-			return;
-		}
+        if (isLocalClientMessageId(message.messageId)) {
+            setOpenMessageActionId(null);
+            setThreadMessages((current) =>
+                current.filter((item) => item.messageId !== message.messageId),
+            );
+            return;
+        }
 
-		if (isLocalClientMessageId(message.messageId)) {
-			setOpenMessageActionId(null);
-			setThreadMessages((current) =>
-				current.filter((item) => item.messageId !== message.messageId),
-			);
-			return;
-		}
+        if (!selectedConversation) {
+            return;
+        }
 
-		if (!selectedConversation) {
-			return;
-		}
+        const previous = threadMessages;
+        setIsMutatingMessageId(message.messageId);
+        setOpenMessageActionId(null);
+        setThreadMessages((current) =>
+            current.filter((item) => item.messageId !== message.messageId),
+        );
 
-		const previous = threadMessages;
-		setIsMutatingMessageId(message.messageId);
-		setOpenMessageActionId(null);
-		setThreadMessages((current) =>
-			current.filter((item) => item.messageId !== message.messageId),
-		);
+        try {
+            await service.deleteMessage({
+                conversationId: selectedConversation.data.conversationId,
+                messageId: message.messageId,
+            });
+        } catch (error) {
+            setThreadMessages(previous);
+            toast.error(error instanceof Error ? error.message : t("chat.errors.delete_failed"));
+        } finally {
+            setIsMutatingMessageId(null);
+        }
+    };
 
-		try {
-			await service.deleteMessage({
-				conversationId: selectedConversation.data.conversationId,
-				messageId: message.messageId,
-			});
-		} catch (error) {
-			setThreadMessages(previous);
-			toast.error(error instanceof Error ? error.message : t("chat.errors.delete_failed"));
-		} finally {
-			setIsMutatingMessageId(null);
-		}
-	};
-
-	const shareAlbumToCurrentConversation = useCallback(
-		async (albumId: number, albumName?: string | null) => {
+    const shareAlbumToCurrentConversation = useCallback(
+        async (albumId: number, albumName?: string | null) => {
         const targetProfile = selectedConversation
             ? getOtherParticipant(selectedConversation, userId)
             : null;
@@ -2815,17 +2836,17 @@ export function ChatPage() {
         });
     },
     [selectedConversation, targetProfileId, t, userId],
-	);
+    );
 
-	const closePendingAlbumShare = useCallback(() => {
-		if (isSharingAlbum) {
-			return;
-		}
+    const closePendingAlbumShare = useCallback(() => {
+        if (isSharingAlbum) {
+            return;
+        }
 
-		setPendingAlbumShare(null);
-	}, [isSharingAlbum]);
+        setPendingAlbumShare(null);
+    }, [isSharingAlbum]);
 
-	const confirmPendingAlbumShare = useCallback(async (expirationType: any = "INDEFINITE") => {
+    const confirmPendingAlbumShare = useCallback(async (expirationType: any = "INDEFINITE") => {
         if (!pendingAlbumShare) return;
 
         const targetProfile = selectedConversation
@@ -2860,589 +2881,617 @@ export function ChatPage() {
         }
     }, [loadThread, pendingAlbumShare, selectedConversation, targetProfileId, service, t, userId]);
 
-	const openAlbumViewerById = useCallback(
-		async (albumId: number) => {
-			setIsAlbumViewerLoading(true);
-			try {
-				const details = await service.getAlbum(albumId);
-				setAlbumViewer({
-					albumId: details.albumId,
-					albumName: details.albumName,
-					content: details.content,
-				});
-				setAlbumViewerMediaIndex(null);
-			} catch (error) {
-				toast.error(
-					error instanceof Error ? error.message : t("chat.errors.album_open_failed"),
-				);
-			} finally {
-				setIsAlbumViewerLoading(false);
-			}
-		},
-		[service],
-	);
+    const openAlbumViewerById = useCallback(
+        async (albumId: number) => {
+            setIsAlbumViewerLoading(true);
+            try {
+                const details = await service.getAlbum(albumId);
+                setAlbumViewer({
+                    albumId: details.albumId,
+                    albumName: details.albumName,
+                    content: details.content,
+                });
+                setAlbumViewerMediaIndex(null);
+            } catch (error) {
+                toast.error(
+                    error instanceof Error ? error.message : t("chat.errors.album_open_failed"),
+                );
+            } finally {
+                setIsAlbumViewerLoading(false);
+            }
+        },
+        [service],
+    );
 
-	const closeAlbumMediaViewer = useCallback(() => {
-		setAlbumViewerMediaIndex(null);
-	}, []);
+    const closeAlbumMediaViewer = useCallback(() => {
+        setAlbumViewerMediaIndex(null);
+    }, []);
 
-	const openAlbumMediaViewer = useCallback(
-		(index: number) => {
-			if (!albumViewer || index < 0 || index >= albumViewer.content.length) {
-				return;
-			}
+    const openAlbumMediaViewer = useCallback(
+        (index: number) => {
+            if (!albumViewer || index < 0 || index >= albumViewer.content.length) {
+                return;
+            }
 
-			const item = albumViewer.content[index];
-			const mediaUrl = item.url || item.thumbUrl || item.coverUrl;
-			if (!mediaUrl) {
-				return;
-			}
+            const item = albumViewer.content[index];
+            const mediaUrl = item.url || item.thumbUrl || item.coverUrl;
+            if (!mediaUrl) {
+                return;
+            }
 
-			setAlbumViewerMediaIndex(index);
-		},
-		[albumViewer],
-	);
+            setAlbumViewerMediaIndex(index);
+        },
+        [albumViewer],
+    );
 
-	const toggleAlbumPicker = useCallback(async () => {
-		if (isAlbumPickerOpen) {
-			setIsAlbumPickerOpen(false);
-			return;
-		}
+    const toggleAlbumPicker = useCallback(async () => {
+        if (isAlbumPickerOpen) {
+            setIsAlbumPickerOpen(false);
+            return;
+        }
 
-		const albums = shareableAlbums.length > 0 ? shareableAlbums : await loadAlbums();
-		const shareable = albums.filter((album) => album.isShareable);
+        const albums = shareableAlbums.length > 0 ? shareableAlbums : await loadAlbums();
+        const shareable = albums.filter((album) => album.isShareable);
 
-		if (shareable.length === 1) {
-			void shareAlbumToCurrentConversation(
-				shareable[0].albumId,
-				shareable[0].albumName,
-			);
-			return;
-		}
+        if (shareable.length === 1) {
+            void shareAlbumToCurrentConversation(
+                shareable[0].albumId,
+                shareable[0].albumName,
+            );
+            return;
+        }
 
-		setIsAlbumPickerOpen(true);
-	}, [
-		isAlbumPickerOpen,
-		loadAlbums,
-		shareAlbumToCurrentConversation,
-		shareableAlbums,
-	]);
+        setIsAlbumPickerOpen(true);
+    }, [
+        isAlbumPickerOpen,
+        loadAlbums,
+        shareAlbumToCurrentConversation,
+        shareableAlbums,
+    ]);
 
-	const loadDrawerMedia = useCallback(async () => {
-		if (!selectedConversationId) {
-			return;
-		}
+    const loadDrawerMedia = useCallback(async () => {
+        if (!selectedConversationId) {
+            return;
+        }
 
-		setIsLoadingDrawer(true);
-		setDrawerError(null);
-		try {
-			const media = await service.getDrawerMedia(selectedConversationId);
-			setDrawerMedia(media);
-		} catch (error) {
-			const message = error instanceof Error ? error.message : t("chat.errors.load_drawer_media");
-			setDrawerError(message);
-			toast.error(message);
-		} finally {
-			setIsLoadingDrawer(false);
-		}
-	}, [selectedConversationId, service, t]);
+        setIsLoadingDrawer(true);
+        setDrawerError(null);
+        try {
+            const media = await service.getDrawerMedia(selectedConversationId);
+            setDrawerMedia(media);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : t("chat.errors.load_drawer_media");
+            setDrawerError(message);
+            toast.error(message);
+        } finally {
+            setIsLoadingDrawer(false);
+        }
+    }, [selectedConversationId, service, t]);
 
-	const toggleDrawer = useCallback(async () => {
-		if (isDrawerOpen) {
-			setIsDrawerOpen(false);
-			return;
-		}
+    const toggleDrawer = useCallback(async () => {
+        if (isDrawerOpen) {
+            setIsDrawerOpen(false);
+            return;
+        }
 
-		setIsDrawerOpen(true);
-		if (drawerMedia.length === 0) {
-			await loadDrawerMedia();
-		}
-	}, [isDrawerOpen, drawerMedia.length, loadDrawerMedia]);
+        setIsDrawerOpen(true);
+        if (drawerMedia.length === 0) {
+            await loadDrawerMedia();
+        }
+    }, [isDrawerOpen, drawerMedia.length, loadDrawerMedia]);
 
-	const sendDrawerMedia = useCallback(
-		async (mediaIds: number[], isExpiring?: boolean) => {
-			if (!selectedConversation || !userId || mediaIds.length === 0) {
-				return;
-			}
+    const sendDrawerMedia = useCallback(
+        async (mediaIds: number[], isExpiring?: boolean) => {
+            if (!selectedConversation || !userId || mediaIds.length === 0) {
+                return;
+            }
 
-			const targetProfileIdValue = getOtherParticipant(selectedConversation, userId)
-				?.profileId ?? null;
-			if (!targetProfileIdValue) {
-				toast.error(t("chat.errors.missing_recipient"));
-				return;
-			}
+            const targetProfileIdValue = getOtherParticipant(selectedConversation, userId)
+                ?.profileId ?? null;
+            if (!targetProfileIdValue) {
+                toast.error(t("chat.errors.missing_recipient"));
+                return;
+            }
 
-			setIsSendingDrawerMedia(true);
-			let finalSentMessage: UiMessage | undefined;
-			try {
-				// Send each media item as a separate image/video message
-				for (const mediaId of mediaIds) {
-					const media = drawerMedia.find((m) => m.id === mediaId);
-					if (!media) continue;
+            setIsSendingDrawerMedia(true);
+            let finalSentMessage: UiMessage | undefined;
+            try {
+                // Send each media item as a separate image/video message
+                for (const mediaId of mediaIds) {
+                    const media = drawerMedia.find((m) => m.id === mediaId);
+                    if (!media) continue;
 
-					const isVideo = media.contentType.startsWith("video");
-					const useExpiring = isExpiring && !isVideo;
-					const messageType = useExpiring ? "ExpiringImage" : isVideo ? "Video" : "Image";
+                    const isVideo = media.contentType.startsWith("video");
+                    const useExpiring = isExpiring && !isVideo;
+                    const messageType = useExpiring ? "ExpiringImage" : isVideo ? "Video" : "Image";
 
-					const sentMessage = await service.sendMessage({
-						type: messageType,
-						target: {
-							type: "Direct",
-							targetId: targetProfileIdValue,
-						},
-						body: {
-							mediaId,
-							width: null,
-							height: null,
-							url: media.url,
-							...(useExpiring ? { viewsRemaining: 1 } : {}),
-						},
-					});
+                    const sentMessage = await service.sendMessage({
+                        type: messageType,
+                        target: {
+                            type: "Direct",
+                            targetId: targetProfileIdValue,
+                        },
+                        body: {
+                            mediaId,
+                            width: null,
+                            height: null,
+                            url: media.url,
+                            ...(useExpiring ? { viewsRemaining: 1 } : {}),
+                        },
+                    });
 
-					// Track the last sent message for preview update
-					finalSentMessage = sentMessage;
-				}
+                    // Track the last sent message for preview update
+                    finalSentMessage = sentMessage;
+                }
 
-				// Update conversation preview with the last sent message
-				if (selectedConversation && finalSentMessage) {
-					const finalMessage = finalSentMessage;
-					syncConversation((conversation) => ({
-						...conversation,
-						data: {
-							...conversation.data,
-							lastActivityTimestamp: finalMessage.timestamp,
-							preview: {
-								conversationId: {
-									value: conversation.data.conversationId,
-								},
-								messageId: finalMessage.messageId,
-								senderId: finalMessage.senderId,
-								type: finalMessage.type,
-								chat1Type: finalMessage.chat1Type ?? "image",
-								text: null,
-								albumId: null,
-								imageHash: null,
-							},
-						},
-					}));
-				}
+                // Update conversation preview with the last sent message
+                if (selectedConversation && finalSentMessage) {
+                    const finalMessage = finalSentMessage;
+                    syncConversation((conversation) => ({
+                        ...conversation,
+                        data: {
+                            ...conversation.data,
+                            lastActivityTimestamp: finalMessage.timestamp,
+                            preview: {
+                                conversationId: {
+                                    value: conversation.data.conversationId,
+                                },
+                                messageId: finalMessage.messageId,
+                                senderId: finalMessage.senderId,
+                                type: finalMessage.type,
+                                chat1Type: finalMessage.chat1Type ?? "image",
+                                text: null,
+                                albumId: null,
+                                imageHash: null,
+                            },
+                        },
+                    }));
+                }
 
-				toast.success(t("chat.toasts.media_sent"));
-				setIsDrawerOpen(false);
+                toast.success(t("chat.toasts.media_sent"));
+                setIsDrawerOpen(false);
 
-				// Reload drawer media to update "used" status
-				await loadDrawerMedia();
-			} catch (error) {
-				toast.error(
-					error instanceof Error ? error.message : t("chat.errors.send_drawer_media"),
-				);
-			} finally {
-				setIsSendingDrawerMedia(false);
-			}
-		},
-		[
-			selectedConversation,
-			userId,
-			drawerMedia,
-			service,
-			t,
-			syncConversation,
-			loadDrawerMedia,
-		],
-	);
+                // Reload drawer media to update "used" status
+                await loadDrawerMedia();
+            } catch (error) {
+                toast.error(
+                    error instanceof Error ? error.message : t("chat.errors.send_drawer_media"),
+                );
+            } finally {
+                setIsSendingDrawerMedia(false);
+            }
+        },
+        [
+            selectedConversation,
+            userId,
+            drawerMedia,
+            service,
+            t,
+            syncConversation,
+            loadDrawerMedia,
+        ],
+    );
 
-	const addDrawerMedia = useCallback(
-		async (file: File, takenOnGrindr: boolean) => {
-			if (!file.type.startsWith("image/")) {
-				toast.error("Only photos are supported in the drawer.");
-				return;
-			}
+    const addDrawerMedia = useCallback(
+        async (file: File, takenOnGrindr: boolean) => {
+            if (!file.type.startsWith("image/")) {
+                toast.error("Only photos are supported in the drawer.");
+                return;
+            }
 
-			if (file.size > 12 * 1024 * 1024) {
-				toast.error(t("chat.attachments.too_large"));
-				return;
-			}
+            if (file.size > 12 * 1024 * 1024) {
+                toast.error(t("chat.attachments.too_large"));
+                return;
+            }
 
-			setIsAddingDrawerMedia(true);
-			try {
-				const binaryUpload = await buildBinaryUpload(file);
-				const uploaded = await service.uploadChatMedia({
-					multipart: binaryUpload,
-					options: {
-						looping: false,
-						takenOnGrindr,
-					},
-				});
-				await service.addMediaToDrawer(uploaded.mediaId);
+            setIsAddingDrawerMedia(true);
+            try {
+                const binaryUpload = await buildBinaryUpload(file);
+                const uploaded = await service.uploadChatMedia({
+                    multipart: binaryUpload,
+                    options: {
+                        looping: false,
+                        takenOnGrindr,
+                    },
+                });
+                await service.addMediaToDrawer(uploaded.mediaId);
 
-				await loadDrawerMedia();
-			} catch (error) {
-				toast.error(
-					error instanceof Error ? error.message : t("chat.errors.upload_media_failed"),
-				);
-			} finally {
-				setIsAddingDrawerMedia(false);
-			}
-		},
-		[loadDrawerMedia, service, t],
-	);
+                await loadDrawerMedia();
+            } catch (error) {
+                toast.error(
+                    error instanceof Error ? error.message : t("chat.errors.upload_media_failed"),
+                );
+            } finally {
+                setIsAddingDrawerMedia(false);
+            }
+        },
+        [loadDrawerMedia, service, t],
+    );
 
-	const deleteDrawerMedia = useCallback(
-		async (mediaId: number) => {
-			setDeletingDrawerMediaId(mediaId);
-			try {
-				await service.deleteDrawerMedia(mediaId);
-				setDrawerMedia((previous) => previous.filter((item) => item.id !== mediaId));
-			} catch (error) {
-				toast.error(
-					error instanceof Error ? error.message : t("chat.errors.delete_failed"),
-				);
-			} finally {
-				setDeletingDrawerMediaId(null);
-			}
-		},
-		[service, t],
-	);
+    const deleteDrawerMedia = useCallback(
+        async (mediaId: number) => {
+            setDeletingDrawerMediaId(mediaId);
+            try {
+                await service.deleteDrawerMedia(mediaId);
+                setDrawerMedia((previous) => previous.filter((item) => item.id !== mediaId));
+            } catch (error) {
+                toast.error(
+                    error instanceof Error ? error.message : t("chat.errors.delete_failed"),
+                );
+            } finally {
+                setDeletingDrawerMediaId(null);
+            }
+        },
+        [service, t],
+    );
 
-	const onAttachmentInput = (event: React.ChangeEvent<HTMLInputElement>) => {
-		const file = event.target.files?.[0];
-		event.target.value = "";
-		if (!file) {
-			return;
-		}
+    const onAttachmentInput = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        event.target.value = "";
+        if (!file) {
+            return;
+        }
 
-		if (!file.type.startsWith("image/") && !file.type.startsWith("video/")) {
-			toast.error("Only image and video attachments are supported.");
-			return;
-		}
+        if (!file.type.startsWith("image/") && !file.type.startsWith("video/")) {
+            toast.error("Only image and video attachments are supported.");
+            return;
+        }
 
-		setPendingAttachmentFile(file);
-		setAttachmentLooping(false);
-		setAttachmentTakenOnGrindr(false);
-	};
+        setPendingAttachmentFile(file);
+        setAttachmentLooping(false);
+        setAttachmentTakenOnGrindr(false);
+    };
 
-	const openFullScreenImage = useCallback((imageUrl: string) => {
-		setFullScreenImageUrl(imageUrl);
-	}, []);
+    const openFullScreenImage = useCallback((imageUrl: string) => {
+        setFullScreenImageUrl(imageUrl);
+    }, []);
 
-	const closeFullScreenImage = useCallback(() => {
-		if (!fullScreenImageUrl) {
-			return;
-		}
+    const closeFullScreenImage = useCallback(() => {
+        if (!fullScreenImageUrl) {
+            return;
+        }
 
-		setFullScreenImageUrl(null);
+        setFullScreenImageUrl(null);
 
-		if (imageViewerHistoryPushedRef.current) {
-			imageViewerHistoryPushedRef.current = false;
-			window.history.back();
-		}
-	}, [fullScreenImageUrl]);
+        if (imageViewerHistoryPushedRef.current) {
+            imageViewerHistoryPushedRef.current = false;
+            window.history.back();
+        }
+    }, [fullScreenImageUrl]);
 
-	useEffect(() => {
-		if (!fullScreenImageUrl || imageViewerHistoryPushedRef.current) {
-			return;
-		}
+    useEffect(() => {
+        if (!fullScreenImageUrl || imageViewerHistoryPushedRef.current) {
+            return;
+        }
 
-		window.history.pushState({ chatImageViewer: true }, "");
-		imageViewerHistoryPushedRef.current = true;
-	}, [fullScreenImageUrl]);
+        window.history.pushState({ chatImageViewer: true }, "");
+        imageViewerHistoryPushedRef.current = true;
+    }, [fullScreenImageUrl]);
 
-	useEffect(() => {
-		const handlePopState = () => {
-			if (!imageViewerHistoryPushedRef.current || !fullScreenImageUrl) {
-				return;
-			}
+    useEffect(() => {
+        const handlePopState = () => {
+            if (!imageViewerHistoryPushedRef.current || !fullScreenImageUrl) {
+                return;
+            }
 
-			imageViewerHistoryPushedRef.current = false;
-			setFullScreenImageUrl(null);
-		};
+            imageViewerHistoryPushedRef.current = false;
+            setFullScreenImageUrl(null);
+        };
 
-		window.addEventListener("popstate", handlePopState);
+        window.addEventListener("popstate", handlePopState);
 
-		return () => {
-			window.removeEventListener("popstate", handlePopState);
-		};
-	}, [fullScreenImageUrl]);
+        return () => {
+            window.removeEventListener("popstate", handlePopState);
+        };
+    }, [fullScreenImageUrl]);
 
-	const renderInbox = (
-		<ChatInboxPanel
-			isDesktop={isDesktop}
-			isLoadingInbox={isLoadingInbox}
-			isLoadingMoreInbox={isLoadingMoreInbox}
-			inboxError={inboxError}
-			inboxFilters={inboxFilters}
-			hidePinned={hidePinned}
-			hasActiveInboxFilters={hasActiveInboxFilters}
-			filteredConversations={filteredConversations}
-			nextPage={nextPage}
-			realtimeStatusMeta={realtimeStatusMeta}
-			selectedConversationId={selectedConversationId}
-			userId={userId}
-			localNicknamesByProfileId={localNicknamesByProfileId}
-			chatContactIndexByProfileId={chatContactIndexByProfileId}
-			nowTimestamp={nowTimestamp}
-			presenceResults={presenceResults}
-			inboxListRef={inboxListRef}
-			onRefreshInbox={() => void loadInbox({ page: 1, replace: true })}
-			onLoadMoreInbox={handleLoadMoreInbox}
-			onInboxTouchStart={handleInboxTouchStart}
-			onInboxTouchEnd={handleInboxTouchEnd}
-			onSelectConversation={handleSelectConversation}
-			onViewProfile={(profileId) => {
-				const returnTo = getProfileReturnToChatPath(profileId);
-				const nextParams = new URLSearchParams();
-				nextParams.set("returnTo", returnTo);
-				navigate(`/profile/${profileId}?${nextParams.toString()}`, { state: { returnTo } });
-			}}
-			onClearInboxFilters={clearInboxFilters}
-			onToggleHidePinned={() => setHidePinned((prev) => !prev)}
-			onToggleFavoritesOnly={toggleInboxFavoritesOnly}
-			onOpenFilters={(inboxFiltersDraft) =>
-				navigate("/chat/filters", {
-					state: {
-						inboxFiltersDraft,
-						returnTo: `${location.pathname}${location.search}`,
-					},
-				})
-			}
-			onOpenSearch={() => navigate("/chat/search")}
-			onOpenInbox={() => navigate("/chat")}
-			onOpenAlbums={() => navigate("/settings/shared-albums")}
-		/>
-	);
+    const renderInbox = (
+        <ChatInboxPanel
+            isDesktop={isDesktop}
+            isLoadingInbox={isLoadingInbox}
+            isLoadingMoreInbox={isLoadingMoreInbox}
+            inboxError={inboxError}
+            inboxFilters={inboxFilters}
+            hidePinned={hidePinned}
+            hasActiveInboxFilters={hasActiveInboxFilters}
+            filteredConversations={filteredConversations}
+            nextPage={nextPage}
+            realtimeStatusMeta={realtimeStatusMeta}
+            selectedConversationId={selectedConversationId}
+            userId={userId}
+            localNicknamesByProfileId={localNicknamesByProfileId}
+            chatContactIndexByProfileId={chatContactIndexByProfileId}
+            nowTimestamp={nowTimestamp}
+            presenceResults={presenceResults}
+            inboxListRef={inboxListRef}
+            onRefreshInbox={() => void loadInbox({ page: 1, replace: true })}
+            onLoadMoreInbox={handleLoadMoreInbox}
+            onInboxTouchStart={handleInboxTouchStart}
+            onInboxTouchEnd={handleInboxTouchEnd}
+            onSelectConversation={handleSelectConversation}
+            onViewProfile={(profileId) => {
+                const returnTo = getProfileReturnToChatPath(profileId);
+                const nextParams = new URLSearchParams();
+                nextParams.set("returnTo", returnTo);
+                navigate(`/profile/${profileId}?${nextParams.toString()}`, { state: { returnTo } });
+            }}
+            onClearInboxFilters={clearInboxFilters}
+            onToggleHidePinned={() => setHidePinned((prev) => !prev)}
+            onToggleFavoritesOnly={toggleInboxFavoritesOnly}
+            onOpenFilters={(inboxFiltersDraft) =>
+                navigate("/chat/filters", {
+                    state: {
+                        inboxFiltersDraft,
+                        returnTo: `${location.pathname}${location.search}`,
+                    },
+                })
+            }
+            onOpenSearch={() => navigate("/chat/search")}
+            onOpenInbox={() => navigate("/chat")}
+            onOpenAlbums={() => navigate("/settings/shared-albums")}
+        />
+    );
 
-	const renderSearch = <ChatSearchPage />;
+    const renderSearch = <ChatSearchPage />;
 
-	const renderThread = (
-		<ChatThreadPanel
-			navigate={navigate}
-			isDesktop={isDesktop}
-			selectedConversation={selectedConversation}
-			targetProfileId={targetProfileId}
-			userId={userId}
-			nowTimestamp={nowTimestamp}
-			presenceResults={presenceResults}
-			isUpdatingConversationState={isUpdatingConversationState}
-			isHeaderActionsMenuOpen={isHeaderActionsMenuOpen}
-			setIsHeaderActionsMenuOpen={setIsHeaderActionsMenuOpen}
-			headerActionsMenuRef={headerActionsMenuRef}
-			togglePin={togglePin}
-			toggleMute={toggleMute}
-			clearLocalHistory={clearLocalHistory}
-			onDeleteConversation={deleteConversationFromChat}
-			isDeletingConversation={isDeletingConversationId !== null}
-			onBlockProfile={blockProfileFromChat}
-			isBlockingProfile={isBlockingProfileId !== null}
-			onToggleFavorite={toggleFavoriteFromChat}
-			isFavorite={selectedConversation?.data.favorite ?? false}
-			isTogglingFavorite={isTogglingFavoriteProfileId !== null}
-			localNickname={
-				selectedConversationOtherProfileId
-					? localNicknamesByProfileId[selectedConversationOtherProfileId] ?? null
-					: null
-			}
-			onEditLocalNickname={editLocalNicknameFromChat}
-			getProfileReturnToChatPath={getProfileReturnToChatPath}
-			isLoadingThread={isLoadingThread}
-			threadConversationId={threadConversationId}
-			threadError={threadError}
-			loadThread={loadThread}
-			threadScrollContainerRef={threadScrollContainerRef}
-			handleThreadScroll={handleThreadScroll}
-			messagePageKey={messagePageKey}
-			isLoadingOlderMessages={isLoadingOlderMessages}
-			threadMessages={threadMessages}
-			threadLastReadTimestamp={threadLastReadTimestamp}
-			messageElementRefs={messageElementRefs}
-			handleMessageTap={handleMessageTap}
-			startMessageLongPress={startMessageLongPress}
-			endMessageLongPress={endMessageLongPress}
-			messageLongPressTriggeredRef={messageLongPressTriggeredRef}
-			openFullScreenImage={openFullScreenImage}
-			openAlbumViewerById={openAlbumViewerById}
-			selectedThreadMessageMatches={selectedThreadMessageMatches}
-			activeThreadSearchIndex={activeThreadSearchIndex}
-			openMessageActionId={openMessageActionId}
-			setOpenMessageActionId={setOpenMessageActionId}
-			isMutatingMessageId={isMutatingMessageId}
-			reactionBurstMessageId={reactionBurstMessageId}
-			handleReact={handleReact}
-			handleUnsend={handleUnsend}
-			handleDelete={handleDelete}
-			handleRetry={handleRetry}
-			handleReply={handleReplyToMessage}
-			threadBottomRef={threadBottomRef}
-			handleSend={handleSend}
-			toggleAlbumPicker={toggleAlbumPicker}
-			toggleDrawer={toggleDrawer}
-			attachmentInputRef={attachmentInputRef}
-			onAttachmentInput={onAttachmentInput}
-			isUploadingAttachment={isUploadingAttachment}
-			pendingAttachmentFile={pendingAttachmentFile}
-			attachmentLooping={attachmentLooping}
-			attachmentTakenOnGrindr={attachmentTakenOnGrindr}
-			setAttachmentLooping={setAttachmentLooping}
-			setAttachmentTakenOnGrindr={setAttachmentTakenOnGrindr}
-			confirmPendingAttachment={confirmPendingAttachment}
-			cancelPendingAttachment={cancelPendingAttachment}
-			isAlbumPickerOpen={isAlbumPickerOpen}
-			isLoadingAlbums={isLoadingAlbums}
-			shareableAlbums={shareableAlbums}
-			isSharingAlbum={isSharingAlbum}
-				pendingAlbumShare={pendingAlbumShare}
-			shareAlbumToCurrentConversation={shareAlbumToCurrentConversation}
-			confirmPendingAlbumShare={confirmPendingAlbumShare}
-			closePendingAlbumShare={closePendingAlbumShare}
-			isDrawerOpen={isDrawerOpen}
-			isLoadingDrawer={isLoadingDrawer}
-			drawerError={drawerError}
-			drawerMedia={drawerMedia}
-			isSendingDrawerMedia={isSendingDrawerMedia}
-			isAddingDrawerMedia={isAddingDrawerMedia}
-			deletingDrawerMediaId={deletingDrawerMediaId}
-			onLoadDrawerMedia={loadDrawerMedia}
-			onSendDrawerMedia={sendDrawerMedia}
-			onAddDrawerMedia={addDrawerMedia}
-			onDeleteDrawerMedia={deleteDrawerMedia}
-			onSendLocation={sendLocationMessage}
-			uploadProgress={uploadProgress}
-			draft={draft}
-			setDraft={setDraft}
-			replyTargetMessage={replyTargetMessage}
-			clearReplyTarget={() => setReplyTargetMessageId(null)}
-			isSending={isSending}
-			selectedActionMessage={selectedActionMessage}
-			selectedActionMessageMine={selectedActionMessageMine}
-			albumViewer={albumViewer}
-		/>
-	);
+    const renderThread = (
+        <ChatThreadPanel
+            navigate={navigate}
+            isDesktop={isDesktop}
+            selectedConversation={selectedConversation}
+            targetProfileId={targetProfileId}
+            userId={userId}
+            nowTimestamp={nowTimestamp}
+            presenceResults={presenceResults}
+            isUpdatingConversationState={isUpdatingConversationState}
+            isHeaderActionsMenuOpen={isHeaderActionsMenuOpen}
+            setIsHeaderActionsMenuOpen={setIsHeaderActionsMenuOpen}
+            headerActionsMenuRef={headerActionsMenuRef}
+            togglePin={togglePin}
+            toggleMute={toggleMute}
+            clearLocalHistory={clearLocalHistory}
+            onDeleteConversation={deleteConversationFromChat}
+            isDeletingConversation={isDeletingConversationId !== null}
+            onBlockProfile={blockProfileFromChat}
+            isBlockingProfile={isBlockingProfileId !== null}
+            onToggleFavorite={toggleFavoriteFromChat}
+            isFavorite={selectedConversation?.data.favorite ?? false}
+            isTogglingFavorite={isTogglingFavoriteProfileId !== null}
+            localNickname={
+                selectedConversationOtherProfileId
+                    ? localNicknamesByProfileId[selectedConversationOtherProfileId] ?? null
+                    : null
+            }
+            onEditLocalNickname={editLocalNicknameFromChat}
+            getProfileReturnToChatPath={getProfileReturnToChatPath}
+            isLoadingThread={isLoadingThread}
+            threadConversationId={threadConversationId}
+            threadError={threadError}
+            loadThread={loadThread}
+            threadScrollContainerRef={threadScrollContainerRef}
+            handleThreadScroll={handleThreadScroll}
+            messagePageKey={messagePageKey}
+            isLoadingOlderMessages={isLoadingOlderMessages}
+            threadMessages={threadMessages}
+            threadLastReadTimestamp={threadLastReadTimestamp}
+            messageElementRefs={messageElementRefs}
+            startMessageLongPress={startMessageLongPress}
+            endMessageLongPress={endMessageLongPress}
+            messageLongPressTriggeredRef={messageLongPressTriggeredRef}
+            openFullScreenImage={openFullScreenImage}
+            openAlbumViewerById={openAlbumViewerById}
+            selectedThreadMessageMatches={selectedThreadMessageMatches}
+            activeThreadSearchIndex={activeThreadSearchIndex}
+            openMessageActionId={openMessageActionId}
+            setOpenMessageActionId={setOpenMessageActionId}
+            isMutatingMessageId={isMutatingMessageId}
+            reactionBurstMessageId={reactionBurstMessageId}
+            handleReact={handleReact}
+            handleUnsend={handleUnsend}
+            handleDelete={handleDelete}
+            handleRetry={handleRetry}
+            handleReply={handleReplyToMessage}
+            threadBottomRef={threadBottomRef}
+            handleSend={handleSend}
+            toggleAlbumPicker={toggleAlbumPicker}
+            toggleDrawer={toggleDrawer}
+            attachmentInputRef={attachmentInputRef}
+            onAttachmentInput={onAttachmentInput}
+            isUploadingAttachment={isUploadingAttachment}
+            pendingAttachmentFile={pendingAttachmentFile}
+            attachmentLooping={attachmentLooping}
+            attachmentTakenOnGrindr={attachmentTakenOnGrindr}
+            setAttachmentLooping={setAttachmentLooping}
+            setAttachmentTakenOnGrindr={setAttachmentTakenOnGrindr}
+            confirmPendingAttachment={confirmPendingAttachment}
+            cancelPendingAttachment={cancelPendingAttachment}
+            isAlbumPickerOpen={isAlbumPickerOpen}
+            isLoadingAlbums={isLoadingAlbums}
+            shareableAlbums={shareableAlbums}
+            isSharingAlbum={isSharingAlbum}
+                pendingAlbumShare={pendingAlbumShare}
+            shareAlbumToCurrentConversation={shareAlbumToCurrentConversation}
+            confirmPendingAlbumShare={confirmPendingAlbumShare}
+            closePendingAlbumShare={closePendingAlbumShare}
+            isDrawerOpen={isDrawerOpen}
+            isLoadingDrawer={isLoadingDrawer}
+            drawerError={drawerError}
+            drawerMedia={drawerMedia}
+            isSendingDrawerMedia={isSendingDrawerMedia}
+            isAddingDrawerMedia={isAddingDrawerMedia}
+            deletingDrawerMediaId={deletingDrawerMediaId}
+            onLoadDrawerMedia={loadDrawerMedia}
+            onSendDrawerMedia={sendDrawerMedia}
+            onAddDrawerMedia={addDrawerMedia}
+            onDeleteDrawerMedia={deleteDrawerMedia}
+            onSendLocation={sendLocationMessage}
+            uploadProgress={uploadProgress}
+            draft={draft}
+            setDraft={setDraft}
+            replyTargetMessage={replyTargetMessage}
+            clearReplyTarget={() => setReplyTargetMessageId(null)}
+            isSending={isSending}
+            selectedActionMessage={selectedActionMessage}
+            selectedActionMessageMine={selectedActionMessageMine}
+            albumViewer={albumViewer}
+        />
+    );
 
-	return (
-		<section
-			className={`app-screen ${isDesktop ? "overflow-hidden" : "!p-0 !max-w-none !w-full"}`}
-		>
-			<div className={isDesktop ? "mx-auto w-full max-w-6xl" : "w-full"}>
+    return (
+        <section
+            className={`app-screen ${isDesktop ? "overflow-hidden" : "!p-0 !max-w-none !w-full"}`}
+        >
+            <div className={isDesktop ? "mx-auto w-full max-w-6xl" : "w-full"}>
 
-        				{isSearchRoute ? (
-        					renderSearch
-        				) : isDesktop ? (
-        					<div
-        						className="grid h-full grid-cols-[360px_minmax(0,1fr)] gap-3"
-        						style={{
-        							height:
-        								"calc(100dvh - (env(safe-area-inset-top, 0px) + 16px) - (env(safe-area-inset-bottom, 0px) + 92px))",
-						}}
-					>
-						{renderInbox}
-						{renderThread}
-					</div>
-				) : selectedConversation ?? targetProfileId ? (
-					renderThread
-				) : (
-					renderInbox
-				)}
-			</div>
+                        {isSearchRoute ? (
+                            renderSearch
+                        ) : isDesktop ? (
+                            <div
+                                className="grid h-full grid-cols-[360px_minmax(0,1fr)] gap-3"
+                                style={{
+                                    height:
+                                        "calc(100dvh - (env(safe-area-inset-top, 0px) + 16px) - (env(safe-area-inset-bottom, 0px) + 92px))",
+                        }}
+                    >
+                        {renderInbox}
+                        {renderThread}
+                    </div>
+                ) : selectedConversation ?? targetProfileId ? (
+                    renderThread
+                ) : (
+                    renderInbox
+                )}
+            </div>
 
-			{isAlbumViewerLoading ? (
-				<div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50">
-					<div className="surface-card flex items-center gap-2 p-4 text-sm text-[var(--text-muted)]">
-						<Loader2 className="h-4 w-4 animate-spin" /> {t("chat.loading_album")}
-					</div>
-				</div>
-			) : null}
+            {isAlbumViewerLoading ? (
+                <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50">
+                    <div className="surface-card flex items-center gap-2 p-4 text-sm text-[var(--text-muted)]">
+                        <Loader2 className="h-4 w-4 animate-spin" /> {t("chat.loading_album")}
+                    </div>
+                </div>
+            ) : null}
 
-			{albumViewer ? (
-				<div
-					className="fixed inset-0 z-40 bg-black/65 p-4"
-					onClick={() => {
-						setAlbumViewerMediaIndex(null);
-						setAlbumViewer(null);
-					}}
-				>
-					<div
-						className="mx-auto flex h-full w-full max-w-4xl flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4"
-						onClick={(event) => event.stopPropagation()}
-					>
-						<div className="mb-3 flex items-center justify-between">
-							<p className="font-semibold">
-								{albumViewer.albumName || "Album"}
-							</p>
-							<button
-								type="button"
-								onClick={() => {
-									setAlbumViewerMediaIndex(null);
-									setAlbumViewer(null);
-								}}
-								className="rounded-lg border border-[var(--border)] p-2"
-							>
-								<X className="h-4 w-4" />
-							</button>
-						</div>
-						<div className="grid flex-1 grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
-							{albumViewer.content.map((item, index) => {
-								const mediaUrl = item.url || item.thumbUrl || item.coverUrl;
-								if (!mediaUrl) {
-									return (
-										<div
-											key={item.contentId}
-											className="flex min-h-24 items-center justify-center rounded-lg bg-[var(--surface-2)] text-xs text-[var(--text-muted)]"
-										>
-											Unavailable
-										</div>
-									);
-								}
+            {albumViewer ? (
+                <div
+                    className="fixed inset-0 z-50 flex flex-col bg-black/80 backdrop-blur-sm sm:p-6 md:p-12"
+                    onClick={() => {
+                        setAlbumViewerMediaIndex(null);
+                        setAlbumViewer(null);
+                    }}
+                >
+                    <div
+                        className="mx-auto flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden bg-[var(--surface)] shadow-2xl sm:h-full sm:rounded-2xl sm:border sm:border-[var(--border)]"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        {/* --- MODERN HEADER --- */}
+                        <div className="z-10 flex flex-col gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-4 py-4 sm:px-6">
+                            <div className="flex items-start justify-between gap-4">
+                                <div className="min-w-0 flex-1">
+                                    <div className="mb-1 flex items-center gap-2">
+                                        <span className="rounded-md bg-[var(--surface-2)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
+                                            {t("shared_albums.album_label", { defaultValue: "Album" })}
+                                        </span>
+                                        <span className="text-xs font-semibold text-[var(--text-muted)]">
+                                            {albumViewer.content.length} {t("shared_albums.items_count", { count: albumViewer.content.length, defaultValue: "Items" })}
+                                        </span>
+                                    </div>
+                                    <h2 className="truncate text-xl font-bold tracking-tight">
+                                        {albumViewer.albumName?.trim() || "Album"}
+                                    </h2>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setAlbumViewerMediaIndex(null);
+                                        setAlbumViewer(null);
+                                    }}
+                                    className="rounded-full bg-[var(--surface-2)] p-2 text-[var(--text-muted)] transition hover:bg-[var(--border)] hover:text-[var(--text)]"
+                                    aria-label={t("shared_albums.close_viewer")}
+                                >
+                                    <X className="h-5 w-5" />
+                                </button>
+                            </div>
+                        </div>
 
-								return (
-									<button
-										type="button"
-										key={item.contentId}
-										onClick={() => openAlbumMediaViewer(index)}
-										className="relative overflow-hidden rounded-lg"
-									>
-										<img
-											src={mediaUrl}
-											alt="Album content"
-											className="h-32 w-full object-cover"
-										/>
-										{item.contentType?.startsWith("video/") ? (
-											<span className="absolute bottom-1.5 right-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
-												Video
-											</span>
-										) : null}
-									</button>
-								);
-							})}
-						</div>
-					</div>
-				</div>
-			) : null}
+                        {/* --- PERFECTLY CROPPED APPLE-PHOTOS STYLE GRID --- */}
+                        <div className="flex-1 overflow-y-auto bg-black sm:bg-[var(--surface-2)] sm:p-4">
+                            <div className="content-start grid grid-cols-3 gap-0.5 sm:grid-cols-4 sm:gap-2 lg:grid-cols-5">
+                                {albumViewer.content.map((item, index) => {
+                                    const mediaUrl = item.url || item.thumbUrl || item.coverUrl;
+                                    if (!mediaUrl) {
+                                        return (
+                                            <div
+                                                key={item.contentId}
+                                                className="flex aspect-square w-full items-center justify-center bg-zinc-900 text-[10px] text-zinc-500 sm:rounded-xl"
+                                            >
+                                                Unavailable
+                                            </div>
+                                        );
+                                    }
 
-			<PhotoViewer
-				isOpen={albumViewer !== null && albumViewerMediaIndex !== null}
-				onClose={closeAlbumMediaViewer}
-				photos={albumViewerPhotos}
-				initialIndex={albumViewerMediaIndex ?? 0}
-			/>
+                                    return (
+                                        <button
+                                            type="button"
+                                            key={item.contentId}
+                                            onClick={() => openAlbumMediaViewer(index)}
+                                            className="group relative aspect-square w-full overflow-hidden bg-zinc-900 sm:rounded-xl"
+                                        >
+                                            {item.contentType?.startsWith("video/") ? (
+                                                <video 
+                                                    src={mediaUrl} 
+                                                    className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" 
+                                                    muted 
+                                                />
+                                            ) : (
+                                                <img
+                                                    src={mediaUrl}
+                                                    alt="Album content"
+                                                    className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                                />
+                                            )}
+											
+                                            <div className="absolute inset-0 bg-black/0 transition-colors duration-300 group-hover:bg-black/20" />
+											
+                                            {item.contentType?.startsWith("video/") ? (
+                                                <span className="absolute bottom-1.5 right-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white backdrop-blur-md">
+                                                    Video
+                                                </span>
+                                            ) : null}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
 
-			<PhotoViewer
-				isOpen={!!fullScreenImageUrl}
-				onClose={closeFullScreenImage}
-				photos={fullScreenImageUrl ? [fullScreenImageUrl] : []}
-			/>
+            <PhotoViewer
+                isOpen={albumViewer !== null && albumViewerMediaIndex !== null}
+                onClose={closeAlbumMediaViewer}
+                photos={albumViewerPhotos}
+                initialIndex={albumViewerMediaIndex ?? 0}
+            />
 
-			{/* --- REPLY WARNING MODAL --- */}
-			<ReplyWarningModal 
-				isOpen={pendingReplyMessage !== null}
-				onCancel={() => setPendingReplyMessage(null)}
-				onProceed={() => {
-					if (pendingReplyMessage) {
-						setReplyTargetMessageId(pendingReplyMessage.messageId);
-						setOpenMessageActionId(null);
-					}
-					setPendingReplyMessage(null);
-				}}
-			/>
-			{/* --------------------------- */}
-		</section>
-	);
+            <PhotoViewer
+                isOpen={!!fullScreenImageUrl}
+                onClose={closeFullScreenImage}
+                photos={fullScreenImageUrl ? [fullScreenImageUrl] : []}
+            />
+
+            {/* --- REPLY WARNING MODAL --- */}
+            <ReplyWarningModal 
+                isOpen={pendingReplyMessage !== null}
+                onCancel={() => setPendingReplyMessage(null)}
+                onProceed={() => {
+                    if (pendingReplyMessage) {
+                        setReplyTargetMessageId(pendingReplyMessage.messageId);
+                        setOpenMessageActionId(null);
+                    }
+                    setPendingReplyMessage(null);
+                }}
+            />
+            {/* --------------------------- */}
+        </section>
+    );
 }

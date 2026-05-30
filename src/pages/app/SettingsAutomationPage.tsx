@@ -13,9 +13,13 @@ export function SettingsAutomationPage() {
     // Auto-Block State
     const [blockOnChat, setBlockOnChat] = useState(() => window.localStorage.getItem("fg-block-chat") === "true");
     
-    // NEW: Background Scanner State
+    // Background Scanner State
     const [inboxScannerEnabled, setInboxScannerEnabled] = useState(() => window.localStorage.getItem("fg-inbox-scanner-enabled") === "true");
     
+    // Auto-Download State
+    const [autoDownloadMedia, setAutoDownloadMedia] = useState(() => window.localStorage.getItem("fg-auto-download-media") === "true");
+    const [downloadBaseDir, setDownloadBaseDir] = useState(() => window.localStorage.getItem("fg-download-base-dir") || "Download");
+
     const [isClearKeywordsConfirmOpen, setIsClearKeywordsConfirmOpen] = useState(false);
 
     const handleClearKeywords = () => {
@@ -131,6 +135,67 @@ export function SettingsAutomationPage() {
             </header>
 
             <div className="grid gap-6">
+                {/* AUTO DOWNLOAD BOX */}
+                <div className="surface-card p-4 sm:p-5 border border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.1)]">
+                    <p className="mb-3 text-sm font-semibold uppercase tracking-widest text-emerald-500">
+                        Auto-Download Media (SnapEnhance Style)
+                    </p>
+                    <p className="text-sm text-[var(--text-muted)] mb-4">
+                        Automatically download all incoming images, videos, and expiring media directly to your device so you never lose them.
+                    </p>
+
+                    <div className="flex items-center justify-between gap-4">
+                        <div className="grid gap-0.5">
+                            <p className="text-sm font-semibold text-[var(--text)]">Enable Background Downloader</p>
+                            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                                Media will be silently saved to your device, perfectly organized into subfolders for each profile.
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const val = !autoDownloadMedia;
+                                setAutoDownloadMedia(val);
+                                window.localStorage.setItem("fg-auto-download-media", String(val));
+                                toast.success(val ? "Auto-Download Enabled" : "Auto-Download Disabled");
+                            }}
+                            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                autoDownloadMedia ? "bg-emerald-500" : "bg-[var(--surface-2)]"
+                            }`}
+                        >
+                            <span
+                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                    autoDownloadMedia ? "translate-x-5" : "translate-x-0"
+                                }`}
+                            />
+                        </button>
+                    </div>
+
+                    {autoDownloadMedia && (
+                        <div className="mt-4 pt-4 border-t border-emerald-500/20">
+                            <p className="mb-2 text-sm font-semibold text-[var(--text)]">Save Location</p>
+                            <p className="mb-3 text-xs text-[var(--text-muted)] leading-relaxed">
+                                Because of local security sandboxing, media must be saved to a standard OS folder. A "FreeGrind_Media" master folder will be created inside the location you choose.
+                            </p>
+                            <select
+                                value={downloadBaseDir}
+                                onChange={(e) => {
+                                    setDownloadBaseDir(e.target.value);
+                                    window.localStorage.setItem("fg-download-base-dir", e.target.value);
+                                    toast.success("Save location updated!");
+                                }}
+                                className="h-10 w-full rounded-lg border border-emerald-500/30 bg-[var(--surface-1)] px-3 text-sm text-[var(--text)] outline-none transition focus:border-emerald-500"
+                            >
+                                <option value="Download">Downloads Folder (Default)</option>
+                                <option value="Picture">Pictures Folder</option>
+                                <option value="Document">Documents Folder</option>
+                                <option value="Video">Videos Folder</option>
+                                <option value="Desktop">Desktop</option>
+                            </select>
+                        </div>
+                    )}
+                </div>
+
                 {/* AUTO BLOCK BOX */}
                 <div className="surface-card p-4 sm:p-5">
                     <div className="grid gap-6">
@@ -188,7 +253,7 @@ export function SettingsAutomationPage() {
                                     </label>
                                 </div>
                                 
-                                {/* NEW: SILENT BACKGROUND SCANNER TOGGLE */}
+                                {/* SILENT BACKGROUND SCANNER TOGGLE */}
                                 <div className="mt-4 pt-4 border-t border-[var(--border)]">
                                     <div className="flex items-center justify-between gap-4 mb-2">
                                         <div className="grid gap-0.5">
@@ -212,8 +277,6 @@ export function SettingsAutomationPage() {
                                         Every time your inbox loads, it creates a queue of profiles you haven't scanned yet. It slowly drips requests in the background (1 request every 1.5 seconds) to fetch their full profile details. <strong>Warning: Consumes high background data/API requests.</strong>
                                     </p>
                                 </div>
-                                {/* --------------------------------------- */}
-
                             </div>
                         </div>
 
