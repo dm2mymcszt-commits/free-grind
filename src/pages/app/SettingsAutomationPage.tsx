@@ -138,7 +138,7 @@ export function SettingsAutomationPage() {
                 {/* AUTO DOWNLOAD BOX */}
                 <div className="surface-card p-4 sm:p-5 border border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.1)]">
                     <p className="mb-3 text-sm font-semibold uppercase tracking-widest text-emerald-500">
-                        Auto-Download Media (SnapEnhance Style)
+                        Auto-Download Media
                     </p>
                     <p className="text-sm text-[var(--text-muted)] mb-4">
                         Automatically download all incoming images, videos, and expiring media directly to your device so you never lose them.
