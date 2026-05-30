@@ -1,89 +1,95 @@
 {
-	"$schema": "../gen/schemas/desktop-schema.json",
-	"identifier": "default",
-	"description": "Capability for the main window",
-	"windows": ["main"],
-	"permissions": [
-		"core:default",
-		"hotswap:default",
-		"opener:default",
-		{
-			"identifier": "opener:allow-open-url",
-			"allow": [
-				{ "url": "geo:*" },
-				{ "url": "https://www.google.com/maps/*" }
-			]
-		},
-		"notification:default",
-		"fs:default",
-		{
-			"identifier": "fs:allow-exists",
-			"allow": [
-				{
-					"path": "$APPDATA/preferences.json"
-				},
-				{
-					"path": "$APPDATA/chat-log"
-				},
-				{
-					"path": "$APPDATA/chat-log/**"
-				}
-			]
-		},
-		{
-			"identifier": "fs:allow-app-read",
-			"allow": [
-				{
-					"path": "$APPDATA/preferences.json"
-				},
-				{
-					"path": "$APPDATA/chat-log/**"
-				}
-			]
-		},
-		{
-			"identifier": "fs:allow-app-write",
-			"allow": [
-				{
-					"path": "$APPDATA/preferences.json"
-				},
-				{
-					"path": "$APPDATA/chat-log/**"
-				}
-			]
-		},
-		{
-			"identifier": "fs:allow-mkdir",
-			"allow": [
-				{
-					"path": "$APPDATA/chat-log"
-				}
-			]
-		},
-		{
-			"identifier": "fs:allow-read-dir",
-			"allow": [
-				{
-					"path": "$APPDATA/chat-log"
-				}
-			]
-		},
-		{
-			"identifier": "fs:allow-remove",
-			"allow": [
-				{
-					"path": "$APPDATA/chat-log/**"
-				}
-			]
-		},
-		"geolocation:allow-check-permissions",
-		"geolocation:allow-request-permissions",
-		"geolocation:allow-get-current-position",
-		"sql:default",
-		"sql:allow-load",
-		"sql:allow-execute",
-		"sql:allow-select",
-		"sql:allow-close",
-		"os:default"
-	]
+    "$schema": "../gen/schemas/desktop-schema.json",
+    "identifier": "default",
+    "description": "Capability for the main window",
+    "windows": ["main"],
+    "permissions": [
+        "core:default",
+        "hotswap:default",
+        "opener:default",
+        {
+            "identifier": "opener:allow-open-url",
+            "allow": [
+                { "url": "geo:*" },
+                { "url": "https://www.google.com/maps/*" },
+                { "url": "https://*.cloudfront.net/*" }
+            ]
+        },
+        "notification:default",
+        "http:default",
+        {
+            "identifier": "http:allow-fetch",
+            "allow": [
+                { "url": "https://**" },
+                { "url": "http://**" }
+            ]
+        },
+        "fs:default",
+        {
+            "identifier": "fs:allow-exists",
+            "allow": [
+                { "path": "$APPDATA/preferences.json" },
+                { "path": "$APPDATA/chat-log" },
+                { "path": "$APPDATA/chat-log/**" },
+                { "path": "$DOWNLOAD/FreeGrind_Media" },
+                { "path": "$DOWNLOAD/FreeGrind_Media/**" }
+            ]
+        },
+        {
+            "identifier": "fs:allow-app-read",
+            "allow": [
+                { "path": "$APPDATA/preferences.json" },
+                { "path": "$APPDATA/chat-log/**" }
+            ]
+        },
+        {
+            "identifier": "fs:allow-app-write",
+            "allow": [
+                { "path": "$APPDATA/preferences.json" },
+                { "path": "$APPDATA/chat-log/**" },
+                { "path": "$DOWNLOAD/FreeGrind_Media/**" },
+                { "path": "$PICTURE/FreeGrind_Media/**" },
+                { "path": "$DOCUMENT/FreeGrind_Media/**" },
+                { "path": "$VIDEO/FreeGrind_Media/**" },
+                { "path": "$DESKTOP/FreeGrind_Media/**" }
+            ]
+        },
+        {
+            "identifier": "fs:allow-mkdir",
+            "allow": [
+                { "path": "$APPDATA/chat-log" },
+                { "path": "$DOWNLOAD/FreeGrind_Media" },
+                { "path": "$DOWNLOAD/FreeGrind_Media/**" },
+                { "path": "$PICTURE/FreeGrind_Media" },
+                { "path": "$PICTURE/FreeGrind_Media/**" },
+                { "path": "$DOCUMENT/FreeGrind_Media" },
+                { "path": "$DOCUMENT/FreeGrind_Media/**" },
+                { "path": "$VIDEO/FreeGrind_Media" },
+                { "path": "$VIDEO/FreeGrind_Media/**" },
+                { "path": "$DESKTOP/FreeGrind_Media" },
+                { "path": "$DESKTOP/FreeGrind_Media/**" }
+            ]
+        },
+        {
+            "identifier": "fs:allow-read-dir",
+            "allow": [
+                { "path": "$APPDATA/chat-log" }
+            ]
+        },
+        {
+            "identifier": "fs:allow-remove",
+            "allow": [
+                { "path": "$APPDATA/chat-log/**" }
+            ]
+        },
+        "geolocation:allow-check-permissions",
+        "geolocation:allow-request-permissions",
+        "geolocation:allow-get-current-position",
+        "sql:default",
+        "sql:allow-load",
+        "sql:allow-execute",
+        "sql:allow-select",
+        "sql:allow-close",
+        "os:default"
+    ]
 }
