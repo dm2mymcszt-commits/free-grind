@@ -321,12 +321,13 @@ jobs:
           mkdir -p src-tauri/gen/android/app/src/main/res/raw
           install -m 0644 src-tauri/sounds/free_grind_message.mp3 src-tauri/gen/android/app/src/main/res/raw/free_grind_message.mp3
 
-      - name: Restore Android keystore
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      # --- HIJACKED KEYSTORE GENERATION ---
+      - name: Generate Fresh Android Keystore
         run: |
           mkdir -p src-tauri/certs
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > src-tauri/certs/free-grind-dev.jks
+          rm -f src-tauri/certs/free-grind-dev.jks
+          keytool -genkey -v -keystore src-tauri/certs/free-grind-dev.jks -keyalg RSA -keysize 2048 -validity 10000 -alias opengrind -storepass android -keypass android -dname "CN=Unknown, OU=Unknown, O=Unknown, L=Unknown, ST=Unknown, C=Unknown"
+      # ------------------------------------
 
       - name: Build Android APK
         run: bunx tauri android build --apk -v
