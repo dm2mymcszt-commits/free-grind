@@ -70,6 +70,32 @@ export function shouldAutoBlock(text: string | null | undefined, target: "name" 
     return getMatchedForbiddenWord(text, target) !== null;
 }
 
+// --- Grindr Tag Blocker ---
+export function isForbiddenLookingFor(profileLookingFor: number[] | null | undefined): boolean {
+    if (!profileLookingFor || profileLookingFor.length === 0) return false;
+    
+    const savedTags = window.localStorage.getItem("fg-block-looking-for");
+    if (!savedTags) return false;
+    
+    const mode = window.localStorage.getItem("fg-block-looking-for-mode") || "any"; // "any" or "only"
+
+    try {
+        const blockedIds = JSON.parse(savedTags) as number[];
+        if (!Array.isArray(blockedIds) || blockedIds.length === 0) return false;
+        
+        if (mode === "only") {
+            // Block ONLY if every single tag they have is in our blocked list
+            return profileLookingFor.every(id => blockedIds.includes(id));
+        } else {
+            // Block if ANY tag they have is in our blocked list
+            return profileLookingFor.some(id => blockedIds.includes(id));
+        }
+    } catch {
+        return false;
+    }
+}
+// --------------------------------------------------------
+
 export function isOutsideAgeLimits(age: number | null | undefined): boolean {
     if (age == null) return false; 
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Save, Download, Upload, Wand2, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "../../components/ui/button";
@@ -6,6 +6,8 @@ import { BackToSettings } from "../../components/BackToSettings";
 import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { RangeSlider, Slider } from "../../components/ui/range-slider";
+import { interestViewsStore } from "../../services/interestViewsStore";
+import { getLookingForOptions } from "./profile-option-builders";
 
 export function SettingsAutomationPage() {
     const { t } = useTranslation();
@@ -16,11 +18,28 @@ export function SettingsAutomationPage() {
     // Background Scanner State
     const [inboxScannerEnabled, setInboxScannerEnabled] = useState(() => window.localStorage.getItem("fg-inbox-scanner-enabled") === "true");
     
+    // Views Recovery State
+    const [viewScannerEnabled, setViewScannerEnabled] = useState(() => window.localStorage.getItem("fg-view-scanner") !== "false");
+    const [viewScannerInterval, setViewScannerInterval] = useState(() => window.localStorage.getItem("fg-view-scanner-interval") || "30");
+    const [unlockedViewsCount, setUnlockedViewsCount] = useState<number | null>(null);
+    const [lastViewScanTime, setLastViewScanTime] = useState(() => window.localStorage.getItem("fg-view-scanner-last-run"));
+
     // Auto-Download State
     const [autoDownloadMedia, setAutoDownloadMedia] = useState(() => window.localStorage.getItem("fg-auto-download-media") === "true");
     const [downloadBaseDir, setDownloadBaseDir] = useState(() => window.localStorage.getItem("fg-download-base-dir") || "Download");
 
     const [isClearKeywordsConfirmOpen, setIsClearKeywordsConfirmOpen] = useState(false);
+
+    // Live update the Views Recovery Stats every 5 seconds
+    useEffect(() => {
+        const fetchStats = () => {
+            void interestViewsStore.getAll().then(rows => setUnlockedViewsCount(rows.length));
+            setLastViewScanTime(window.localStorage.getItem("fg-view-scanner-last-run"));
+        };
+        fetchStats();
+        const interval = setInterval(fetchStats, 5000);
+        return () => clearInterval(interval);
+    }, []);
 
     const handleClearKeywords = () => {
         setForbiddenWords("");
@@ -50,6 +69,17 @@ export function SettingsAutomationPage() {
         return val !== null ? val : "50";
     });
 
+    // Grindr Tags Block State
+    const [blockedLookingForMode, setBlockedLookingForMode] = useState(() => window.localStorage.getItem("fg-block-looking-for-mode") || "any");
+    const [blockedLookingFor, setBlockedLookingFor] = useState<number[]>(() => {
+        try {
+            const saved = window.localStorage.getItem("fg-block-looking-for");
+            return saved ? JSON.parse(saved) as number[] : [];
+        } catch {
+            return [];
+        }
+    });
+
     // Auto-Refresh State
     const [refreshEnabled, setRefreshEnabled] = useState(() => window.localStorage.getItem("fg-auto-refresh-enabled") === "true");
     const [refreshInterval, setRefreshInterval] = useState(() => window.localStorage.getItem("fg-auto-refresh-interval") || "5");
@@ -67,6 +97,12 @@ export function SettingsAutomationPage() {
         toast.success(val ? "Background Scanner Enabled" : "Background Scanner Disabled", { id: "scanner-toggle" });
     };
 
+    const handleToggleViewScanner = (val: boolean) => {
+        setViewScannerEnabled(val);
+        window.localStorage.setItem("fg-view-scanner", String(val));
+        toast.success(val ? "Views Recovery Enabled" : "Views Recovery Disabled", { id: "view-scanner-toggle" });
+    };
+
     const handleToggleRefresh = (val: boolean) => {
         setRefreshEnabled(val);
         window.localStorage.setItem("fg-auto-refresh-enabled", String(val));
@@ -74,6 +110,11 @@ export function SettingsAutomationPage() {
     };
 
     // Section specific save handlers
+    const handleSaveViewScanner = () => {
+        window.localStorage.setItem("fg-view-scanner-interval", viewScannerInterval);
+        toast.success("Views Recovery Settings Updated!");
+    };
+
     const handleSaveAutoBlock = () => {
         const cleanedArray = forbiddenWords
             .split(',')
@@ -93,6 +134,9 @@ export function SettingsAutomationPage() {
         window.localStorage.setItem("fg-block-min-age", minAge);
         window.localStorage.setItem("fg-block-max-age", maxAge);
         window.localStorage.setItem("fg-block-max-distance", maxDistance);
+        window.localStorage.setItem("fg-block-looking-for-mode", blockedLookingForMode);
+        window.localStorage.setItem("fg-block-looking-for", JSON.stringify(blockedLookingFor));
+
         toast.success(t("settings_automation.block_rules_updated", { defaultValue: "Block Rules Updated!" }));
     };
 
@@ -124,6 +168,18 @@ export function SettingsAutomationPage() {
         reader.readAsText(file);
     };
 
+    // Calculate Risk Colors for the Views Scanner Slider
+    const viewIntervalNum = Number(viewScannerInterval);
+    let riskColor = "text-emerald-500";
+    let riskLabel = "Safe (Low risk of rate limits)";
+    if (viewIntervalNum < 15) {
+        riskColor = "text-red-500";
+        riskLabel = "Aggressive (High risk of rate limits / soft-bans)";
+    } else if (viewIntervalNum < 30) {
+        riskColor = "text-amber-500";
+        riskLabel = "Balanced (Moderate risk)";
+    }
+
     return (
         <section className="app-screen">
             <header className="mb-6">
@@ -135,9 +191,80 @@ export function SettingsAutomationPage() {
             </header>
 
             <div className="grid gap-6">
+                
+                {/* VIEWS RECOVERY BOX */}
+                <div className="surface-card p-4 sm:p-5">
+                    <div className="flex items-center justify-between gap-4 mb-3">
+                        <p className="text-sm font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+                            Background Views Recovery
+                        </p>
+                        <button
+                            type="button"
+                            onClick={() => handleToggleViewScanner(!viewScannerEnabled)}
+                            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                viewScannerEnabled ? "bg-[var(--accent)]" : "bg-[var(--surface-2)]"
+                            }`}
+                        >
+                            <span
+                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                    viewScannerEnabled ? "translate-x-5" : "translate-x-0"
+                                }`}
+                            />
+                        </button>
+                    </div>
+                    
+                    <p className="text-sm text-[var(--text-muted)] mb-4">
+                        Silently sweeps Grindr's servers in the background to catch and save real profile IDs before they get pushed down into the paywall.
+                    </p>
+
+                    <div className="grid grid-cols-2 gap-3 pt-4 border-t border-[var(--border)]">
+                        <div className="rounded-lg bg-[var(--surface-1)] border border-[var(--border)] p-3">
+                            <p className="text-[10px] uppercase font-semibold text-[var(--text-muted)] mb-1">Unlocked Cache</p>
+                            <p className="text-xl font-bold text-[var(--accent)]">
+                                {unlockedViewsCount !== null ? unlockedViewsCount : "..."} <span className="text-sm font-medium text-[var(--text-muted)]">profiles</span>
+                            </p>
+                        </div>
+                        <div className="rounded-lg bg-[var(--surface-1)] border border-[var(--border)] p-3">
+                            <p className="text-[10px] uppercase font-semibold text-[var(--text-muted)] mb-1">Last Sweep</p>
+                            <p className="text-sm font-semibold text-[var(--text)] mt-1">
+                                {lastViewScanTime ? new Date(parseInt(lastViewScanTime)).toLocaleTimeString() : "Waiting..."}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-[var(--border)]">
+                        <div className="px-2">
+                            <Slider
+                                label="Scan Interval"
+                                min={10}
+                                max={60}
+                                step={5}
+                                defaultValue={viewIntervalNum}
+                                displayValue={`${viewScannerInterval} seconds`}
+                                onChange={(val) => setViewScannerInterval(String(val))}
+                            />
+                        </div>
+                        <p className={`text-[10px] font-semibold mt-1 px-1 ${riskColor}`}>
+                            {riskLabel}
+                        </p>
+                    </div>
+
+                    <div className="mt-4">
+                        <Button
+                            type="button"
+                            onClick={handleSaveViewScanner}
+                            variant="primary"
+                            className="w-full"
+                        >
+                            <Save className="h-4 w-4" />
+                            Save Views Recovery Settings
+                        </Button>
+                    </div>
+                </div>
+
                 {/* AUTO DOWNLOAD BOX */}
-                <div className="surface-card p-4 sm:p-5 border border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.1)]">
-                    <p className="mb-3 text-sm font-semibold uppercase tracking-widest text-emerald-500">
+                <div className="surface-card p-4 sm:p-5">
+                    <p className="mb-3 text-sm font-semibold uppercase tracking-widest text-[var(--text-muted)]">
                         Auto-Download Media
                     </p>
                     <p className="text-sm text-[var(--text-muted)] mb-4">
@@ -160,7 +287,7 @@ export function SettingsAutomationPage() {
                                 toast.success(val ? "Auto-Download Enabled" : "Auto-Download Disabled");
                             }}
                             className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                autoDownloadMedia ? "bg-emerald-500" : "bg-[var(--surface-2)]"
+                                autoDownloadMedia ? "bg-[var(--accent)]" : "bg-[var(--surface-2)]"
                             }`}
                         >
                             <span
@@ -172,7 +299,7 @@ export function SettingsAutomationPage() {
                     </div>
 
                     {autoDownloadMedia && (
-                        <div className="mt-4 pt-4 border-t border-emerald-500/20">
+                        <div className="mt-4 pt-4 border-t border-[var(--border)]">
                             <p className="mb-2 text-sm font-semibold text-[var(--text)]">Save Location</p>
                             <p className="mb-3 text-xs text-[var(--text-muted)] leading-relaxed">
                                 Because of local security sandboxing, media must be saved to a standard OS folder. A "FreeGrind_Media" master folder will be created inside the location you choose.
@@ -184,7 +311,7 @@ export function SettingsAutomationPage() {
                                     window.localStorage.setItem("fg-download-base-dir", e.target.value);
                                     toast.success("Save location updated!");
                                 }}
-                                className="h-10 w-full rounded-lg border border-emerald-500/30 bg-[var(--surface-1)] px-3 text-sm text-[var(--text)] outline-none transition focus:border-emerald-500"
+                                className="h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-1)] px-3 text-sm text-[var(--text)] outline-none transition focus:border-[var(--accent)]"
                             >
                                 <option value="Download">Downloads Folder (Default)</option>
                                 <option value="Picture">Pictures Folder</option>
@@ -243,9 +370,9 @@ export function SettingsAutomationPage() {
                                 </div>
 
                                 <div className="mt-4 pt-3 border-t border-[var(--border)]">
-                                    <p className="text-xs font-semibold mb-2 text-red-400 uppercase tracking-widest">Bot Evasion</p>
+                                    <p className="text-xs font-semibold mb-2 text-[var(--text-muted)] uppercase tracking-widest">Bot Evasion</p>
                                     <label className="flex items-start gap-3 text-sm cursor-pointer">
-                                        <input type="checkbox" checked={blockFirstMedia} onChange={(e) => setBlockFirstMedia(e.target.checked)} className="mt-0.5 h-4 w-4 accent-red-500 shrink-0" />
+                                        <input type="checkbox" checked={blockFirstMedia} onChange={(e) => setBlockFirstMedia(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--accent)] shrink-0" />
                                         <span>
                                             <span className="block font-medium">Block if first message is Media/Album</span>
                                             <span className="text-xs text-[var(--text-muted)] block mt-0.5">Catches bots that put spam text inside pictures. (Note: This will also block real people if they open with a picture and no text).</span>
@@ -257,13 +384,13 @@ export function SettingsAutomationPage() {
                                 <div className="mt-4 pt-4 border-t border-[var(--border)]">
                                     <div className="flex items-center justify-between gap-4 mb-2">
                                         <div className="grid gap-0.5">
-                                            <p className="text-sm font-semibold text-amber-500">Silent Background Scanner</p>
+                                            <p className="text-sm font-semibold text-[var(--text)]">Silent Inbox Scanner</p>
                                         </div>
                                         <button
                                             type="button"
                                             onClick={() => handleToggleInboxScanner(!inboxScannerEnabled)}
                                             className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                                inboxScannerEnabled ? "bg-amber-500" : "bg-[var(--surface-2)]"
+                                                inboxScannerEnabled ? "bg-[var(--accent)]" : "bg-[var(--surface-2)]"
                                             }`}
                                         >
                                             <span
@@ -277,6 +404,64 @@ export function SettingsAutomationPage() {
                                         Every time your inbox loads, it creates a queue of profiles you haven't scanned yet. It slowly drips requests in the background (1 request every 1.5 seconds) to fetch their full profile details. <strong>Warning: Consumes high background data/API requests.</strong>
                                     </p>
                                 </div>
+                            </div>
+                        </div>
+
+                        {/* Grindr Tags Block */}
+                        <div>
+                            <div className="flex items-center justify-between mb-3">
+                                <p className="text-sm font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+                                    {t("settings_automation.tags_title", { defaultValue: "Block By 'Looking For' Tags" })}
+                                </p>
+                            </div>
+                            
+                            <div className="bg-[var(--surface-1)] rounded-lg p-3 border border-[var(--border)] mb-4">
+                                <p className="text-xs font-semibold mb-2 text-[var(--text-muted)]">Matching Mode:</p>
+                                <div className="flex flex-col gap-2 sm:flex-row sm:gap-6">
+                                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                        <input 
+                                            type="radio" 
+                                            checked={blockedLookingForMode === "any"} 
+                                            onChange={() => setBlockedLookingForMode("any")} 
+                                            className="h-4 w-4 accent-[var(--accent)]" 
+                                        />
+                                        <span className="font-medium">Block if they have ANY of these</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                        <input 
+                                            type="radio" 
+                                            checked={blockedLookingForMode === "only"} 
+                                            onChange={() => setBlockedLookingForMode("only")} 
+                                            className="h-4 w-4 accent-[var(--accent)]" 
+                                        />
+                                        <span className="font-medium">Block ONLY if they exclusively want these</span>
+                                    </label>
+                                </div>
+                                <p className="text-[10px] text-[var(--text-muted)] mt-2 leading-relaxed">
+                                    {blockedLookingForMode === "any" 
+                                        ? "Blocks them immediately if any selected tag is in their profile. (e.g. Blocking 'Hookups' WILL block someone who wants 'Relationship, Hookups')." 
+                                        : "Spares them if they are looking for other things too. (e.g. Blocking 'Hookups' will NOT block someone who wants 'Relationship, Hookups')."}
+                                </p>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                                {getLookingForOptions(t).map((option) => (
+                                    <label key={option.value} className="flex items-center gap-2 text-sm cursor-pointer bg-[var(--surface-1)] p-2 rounded-lg border border-[var(--border)] transition hover:border-[var(--accent)]">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={blockedLookingFor.includes(option.value)}
+                                            onChange={(e) => {
+                                                if (e.target.checked) {
+                                                    setBlockedLookingFor(prev => [...prev, option.value]);
+                                                } else {
+                                                    setBlockedLookingFor(prev => prev.filter(v => v !== option.value));
+                                                }
+                                            }}
+                                            className="h-4 w-4 accent-[var(--accent)] shrink-0" 
+                                        />
+                                        <span className="truncate">{option.label}</span>
+                                    </label>
+                                ))}
                             </div>
                         </div>
 
