@@ -89,7 +89,12 @@ export function ChatPage() {
     const service = useApiFunctions();
     const { mutateAsync: blockProfileMutation } = useBlockProfile();
     const { userId } = useAuth();
-    const isDesktop = useDesktopBreakpoint();
+    const [isDesktop, setIsDesktop] = useState(() => typeof window !== "undefined" && window.innerWidth >= 1024);
+    useEffect(() => {
+        const handleResize = () => setIsDesktop(window.innerWidth >= 1024);
+        window.addEventListener("resize", handleResize);
+        return () => window.removeEventListener("resize", handleResize);
+    }, []);
     const threadBottomRef = useRef<HTMLDivElement | null>(null);
     const threadScrollContainerRef = useRef<HTMLDivElement | null>(null);
     const attachmentInputRef = useRef<HTMLInputElement | null>(null);

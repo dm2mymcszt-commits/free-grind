@@ -1,5 +1,5 @@
 import { ArrowLeft, ChevronLeft, ChevronRight, X } from "lucide-react";
-import React, { type UIEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type UIEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
 	createBackdropCloseHandler,
@@ -40,6 +40,7 @@ import {
 import { ProfileDetailsContent } from "./ProfileDetailsContent";
 import type { ChatContactIndexRecord } from "../../../../types/chat-contact-index";
 import { PhotoViewer } from "../../../../components/PhotoViewer";
+import { FeedScrollContainer } from "../../../../components/ui/FeedScrollContainer";
 
 type ProfileDetailsModalProps = {
 	isOpen: boolean;
@@ -396,25 +397,21 @@ export function ProfileDetailsModal({
 
 	if (variant === "page") {
 		return (
-			<section className="min-h-screen bg-[var(--bg)] pb-24">
-				<div className="w-full">
-					{/* Sticky header container using --app-px for consistent horizontal alignment with the main browse page */}
-					<div className="sticky top-0 z-40 flex items-center gap-3 border-b border-[var(--border)] bg-[var(--surface-2)] px-[var(--app-px)] pb-3 pt-[calc(env(safe-area-inset-top,0px)+10px)] sm:pb-3.5 sm:pt-[calc(env(safe-area-inset-top,0px)+12px)]">
-						<div className="flex flex-1 justify-start">
+			<div className="app-screen relative flex h-dvh flex-col w-full !px-0 !pb-0 !pt-0 overflow-x-hidden bg-[var(--bg)]">
+				<header className="pointer-events-none absolute inset-x-0 top-0 z-40 flex shrink-0 flex-col px-[var(--app-px)] pb-3 pt-[calc(env(safe-area-inset-top,0px)+10px)] sm:pb-3.5 sm:pt-[calc(env(safe-area-inset-top,0px)+12px)]">
+					<div className="flex w-full items-center gap-3">
+						<div className="pointer-events-auto flex flex-1 justify-start">
 							<button
 								type="button"
 								onClick={onClose}
-								className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)]"
+								className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md"
 								aria-label={t("settings.back_to_browse")}
 							>
 								<ArrowLeft className="h-4 w-4" />
 							</button>
 						</div>
 
-						<div className="min-w-0 max-w-[50%] text-center">
-							<p className="truncate text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
-								{t("profile_details.title")}
-							</p>
+						<div className="min-w-0 max-w-[50%] text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.85)]">
 							<div className="flex items-center justify-center gap-2 min-w-0">
 								<p className="truncate text-base font-semibold">{activeProfileName}</p>
 								{usesFreegrind && (
@@ -428,12 +425,12 @@ export function ProfileDetailsModal({
 							</div>
 						</div>
 
-						<div className="flex flex-1 items-center justify-end gap-1">
+						<div className="pointer-events-auto flex flex-1 items-center justify-end gap-1">
 							<button
 								type="button"
 								onClick={onPrevProfile}
 								disabled={!onPrevProfile}
-								className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] disabled:opacity-30"
+								className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md disabled:opacity-30"
 								aria-label={t("profile_details.previous_profile")}
 							>
 								<ChevronLeft className="h-4 w-4" />
@@ -442,16 +439,17 @@ export function ProfileDetailsModal({
 								type="button"
 								onClick={onNextProfile}
 								disabled={!onNextProfile}
-								className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] disabled:opacity-30"
+								className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md disabled:opacity-30"
 								aria-label={t("profile_details.next_profile")}
 							>
 								<ChevronRight className="h-4 w-4" />
 							</button>
 						</div>
 					</div>
+				</header>
 
-					{/* Main content area using --app-px for consistent padding */}
-					<div className="px-[var(--app-px)] pt-4 pb-[calc(env(safe-area-inset-bottom,0px)+7rem)] sm:py-5">
+				<FeedScrollContainer>
+					<div className="mx-auto w-full max-w-4xl px-[var(--app-px)] pt-0 pb-[calc(env(safe-area-inset-bottom,0px)+7rem)] sm:pt-0 sm:pb-5">
 						{isLoadingActiveProfile ? (
 							<p className="text-sm text-[var(--text-muted)]">
 								{t("profile_details.loading")}
@@ -517,9 +515,9 @@ export function ProfileDetailsModal({
 							/>
 						) : null}
 					</div>
-				</div>
+				</FeedScrollContainer>
 				{photoViewerOverlay}
-			</section>
+			</div>
 		);
 	}
 
@@ -534,9 +532,6 @@ export function ProfileDetailsModal({
 			>
 				<div className="flex items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 sm:px-5">
 					<div>
-						<p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
-							{t("profile_details.title")}
-						</p>
 						<p className="text-base font-semibold">{activeProfileName}</p>
 					</div>
 					<button
@@ -549,7 +544,10 @@ export function ProfileDetailsModal({
 					</button>
 				</div>
 
-				<div className="min-h-0 flex-1 overflow-y-auto p-4 pb-[calc(env(safe-area-inset-bottom,0px)+8rem)] sm:p-5 sm:pb-6">
+				<div
+					data-lenis-prevent
+					className="min-h-0 flex-1 overflow-y-auto p-4 pb-[calc(env(safe-area-inset-bottom,0px)+8rem)] sm:p-5 sm:pb-6"
+				>
 					{isLoadingActiveProfile ? (
 						<p className="text-sm text-[var(--text-muted)]">
 							{t("profile_details.loading")}
@@ -575,7 +573,7 @@ export function ProfileDetailsModal({
 							profileDistance={profileDistance}
 							chatContactStatus={chatContactStatus ?? null}
 							messageProfileId={messageProfileId}
-								usesFreegrind={usesFreegrind ?? false}
+							usesFreegrind={usesFreegrind ?? false}
 							onMessageProfile={onMessageProfile}
 							onTapProfile={onTapProfile}
 							onBlockProfile={onBlockProfile}

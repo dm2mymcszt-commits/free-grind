@@ -1,5 +1,5 @@
 import type { BrowseCard } from "../../GridPage.types";
-import { MapPin, MessageCircle, Plane, Star, Zap, Droplet } from "lucide-react";
+import { MapPin, MessageCircle, Plane, Star, Zap, Droplet, User } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
     formatDistance,
@@ -7,7 +7,7 @@ import {
     getDisplayName,
 } from "../utils";
 import { cn } from "../../../../utils/cn";
-import blankProfileImage from "../../../../images/blank-profile.png";
+import { ProfileImage } from "../../../../components/ui/profile-image";
 import freegrindLogo from "../../../../images/freegrind-logo.webp";
 import { usePresenceCheck } from "../../../../hooks/usePresenceCheck";
 import { usePreferences } from "../../../../contexts/PreferencesContext";
@@ -80,14 +80,20 @@ export function BrowseCardTile({
                     )}
 
                     <div className="relative aspect-[5/5] bg-[var(--surface-2)] z-10 rounded-[inherit] overflow-hidden">
-                        <img
-                            src={card.primaryImageUrl ?? blankProfileImage}
-                            alt={t("browse_page.profile_photo_alt", { name })}
-                            className={cn(
-                                "h-full w-full object-cover",
-                                isDemoCard && "blur-md scale-110"
-                            )}
-                        />
+                        {card.primaryImageUrl ? (
+                            <img
+                                src={card.primaryImageUrl}
+                                alt={t("browse_page.profile_photo_alt", { name })}
+                                className={cn(
+                                    "h-full w-full object-cover",
+                                    isDemoCard && "blur-md scale-110"
+                                )}
+                            />
+                        ) : (
+                            <div className="h-full w-full flex items-center justify-center bg-[var(--surface-2)]">
+                                <User className="h-1/3 w-1/3 text-[var(--text-muted)] opacity-50" />
+                            </div>
+                        )}
 
                         {/* Top Header: Name, Age & Status Cluster */}
                         <div className="absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-2 bg-gradient-to-b from-black/60 via-black/20 to-transparent p-2 text-white">

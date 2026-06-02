@@ -1,7 +1,8 @@
-import { Heart, Loader2, MessageCircle, Pin, PinOff, Search, SlidersHorizontal } from "lucide-react";
+import { Heart, Loader2, MessageCircle, Pin, PinOff, Search, SlidersHorizontal, User } from "lucide-react";
 import { useEffect, useRef, useState, type RefObject, type TouchEventHandler } from "react";
 import { useTranslation } from "react-i18next";
 import { usePreferences } from "../../../contexts/PreferencesContext";
+import { ProfileImage } from "../../../components/ui/profile-image";
 import type { ConversationEntry, InboxFilters } from "../../../types/messages";
 import type { ChatContactIndexRecord } from "../../../types/chat-contact-index";
 import freegrindLogo from "../../../images/freegrind-logo.webp";
@@ -261,8 +262,6 @@ export function ChatInboxPanel({
             isDisabled={isLoadingInbox || isLoadingMoreInbox}
             isAtTop={() => (inboxListRef.current?.scrollTop ?? 0) <= 0}
             refreshingLabel={t("chat.refreshing_inbox")}
-            onTouchStartExtra={onInboxTouchStart}
-            onTouchEndExtra={onInboxTouchEnd}
         >
             <div
                 className={`flex shrink-0 flex-col gap-3 ${isDesktop ? "p-4 border-b border-[var(--border)]" : "px-[var(--app-px)] pb-3"}`}
@@ -422,11 +421,21 @@ export function ChatInboxPanel({
                                                 : `border-r ${isSelected ? "border-[var(--accent-contrast)]/10" : "border-[var(--border)]"}`
                                         }`}
                                     >
-                                        <img
-                                            src={getParticipantAvatarUrl(otherParticipant?.primaryMediaHash)}
-                                            alt={displayName}
-                                            className="h-full w-full object-cover"
-                                        />
+                                        
+                                        {/* --- NEW AVATAR FALLBACK LOGIC --- */}
+                                        {getParticipantAvatarUrl(otherParticipant?.primaryMediaHash) ? (
+                                            <img
+                                                src={getParticipantAvatarUrl(otherParticipant?.primaryMediaHash) || undefined}
+                                                alt={displayName}
+                                                className="h-full w-full object-cover"
+                                            />
+                                        ) : (
+                                            <div className="h-full w-full flex items-center justify-center bg-[var(--surface-2)]">
+                                                <User className="h-1/2 w-1/2 text-[var(--text-muted)] opacity-50" />
+                                            </div>
+                                        )}
+                                        {/* --------------------------------- */}
+
                                         {conversation.data.pinned ? (
                                             <div className="absolute right-0.5 top-1 rounded-full bg-black/40 p-1 text-white backdrop-blur-sm">
                                                 <Pin className="h-3 w-3 fill-current" />

@@ -1,13 +1,12 @@
 import { Album, Ellipsis, Hourglass, Lock, MapPin, Reply, Loader2, Languages } from "lucide-react";
 import { Fragment, useEffect, useState, useMemo, useCallback, useRef } from "react";
-
+import { Avatar } from "../../../components/ui/avatar";
 import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
 import { appLog } from "../../../utils/logger";
 import type { ConversationEntry, Message } from "../../../types/messages";
 import type { UiMessage } from "../../../types/chat-page";
-import { Avatar } from "../../../components/ui/avatar";
-import blankProfileImage from "../../../images/blank-profile.png";
+import { ProfileImage } from "../../../components/ui/profile-image";
 import freegrindLogo from "../../../images/freegrind-logo.webp";
 import { usePreferences } from "../../../contexts/PreferencesContext";
 import { getThumbImageUrl, validateMediaHash } from "../../../utils/media";
@@ -582,7 +581,7 @@ export function ChatThreadMessages({
                                     senderParticipant?.primaryMediaHash &&
                                     validateMediaHash(senderParticipant.primaryMediaHash)
                                         ? getThumbImageUrl(senderParticipant.primaryMediaHash, "320x320")
-                                        : blankProfileImage;
+                                        : undefined;
                                 const senderLabel = mine
                                     ? t("chat.you")
                                     : selectedConversation.data.name?.trim() || t("chat.unknown");

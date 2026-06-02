@@ -1,9 +1,11 @@
-import { Eye, History, Lock } from "lucide-react";
+import { Eye, History, Lock, User } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
 import { getThumbImageUrl } from "../../../utils/media";
-import blankProfileImage from "../../../images/blank-profile.png";
+import { ProfileImage } from "../../../components/ui/profile-image";
 import { type InterestItem, type InterestTab, formatTimestamp, getTapEmoji, PREVIEW_ID_PREFIX } from "./interestUtils";
+import { cn } from "../../../utils/cn";
+import { useRevealOnScroll } from "../../../hooks/useRevealOnScroll";
 
 export function InterestTabs({
     activeTab,
@@ -73,7 +75,7 @@ export function InterestRow({
     now: number;
 }) {
     const { t } = useTranslation();
-    const imageSrc = item.imageHash ? getThumbImageUrl(item.imageHash, "320x320") : blankProfileImage;
+    const imageSrc = item.imageHash ? getThumbImageUrl(item.imageHash, "320x320") : undefined;
 
     // Identify if the server hid the ID behind a preview paywall
     const isPreview = item.profileId.startsWith(PREVIEW_ID_PREFIX);
@@ -107,11 +109,17 @@ export function InterestRow({
         >
             <div className="relative h-12 w-12 shrink-0">
                 <div className="h-full w-full overflow-hidden rounded-full bg-[var(--surface-2)]">
-                    <img 
-                        src={imageSrc} 
-                        alt={displayName} 
-                        className="h-full w-full object-cover" 
-                    />
+                    {imageSrc ? (
+                        <img 
+                            src={imageSrc || undefined} 
+                            alt={displayName} 
+                            className="h-full w-full object-cover" 
+                        />
+                    ) : (
+                        <div className="h-full w-full flex items-center justify-center bg-[var(--surface-2)]">
+                            <User className="h-6 w-6 text-[var(--text-muted)] opacity-50" />
+                        </div>
+                    )}
                 </div>
                 {/* Restored Lock Icon! */}
                 {isPreview && (

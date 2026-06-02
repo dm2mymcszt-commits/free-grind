@@ -185,7 +185,11 @@ export function profileToDraft(
 		showAge: profile.showAge ?? true,
 		age: profile.age?.toString() ?? "",
 		height: profile.height?.toString() ?? "",
-		weight: profile.weight?.toString() ?? "",
+		weight: profile.weight
+			? (profile.weight > 500
+				? (profile.weight / 1000).toString()
+				: profile.weight.toString())
+			: "",
 		ethnicity: profile.ethnicity?.toString() ?? "",
 		bodyType: profile.bodyType?.toString() ?? "",
 		showPosition: profile.showPosition ?? false,
@@ -215,6 +219,17 @@ export function parseNullableNumber(value: string): number | null {
 
 	const parsed = Number(value);
 	return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function parseNullableWeight(value: string): number | null {
+	if (!value.trim()) {
+		return null;
+	}
+
+	const parsed = Number(value);
+	if (!Number.isFinite(parsed)) return null;
+
+	return Math.round(parsed * 1000);
 }
 
 export function parseNullableInteger(value: string): number | null {

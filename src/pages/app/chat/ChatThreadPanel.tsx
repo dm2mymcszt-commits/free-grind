@@ -52,6 +52,7 @@ import {
     getMessageAudioUrl,
 } from "./chatUtils";
 import { formatDistance } from "../gridpage/utils";
+import { ProfileImage } from "../../../components/ui/profile-image";
 import { ChatThreadMessages } from "./ChatThreadMessages";
 import { ConfirmDialog } from "../../../components/ui/confirm-dialog";
 import { useApiFunctions } from "../../../hooks/useApiFunctions";
@@ -573,33 +574,30 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        if (!otherParticipant) {
-                                            return;
-                                        }
-                                        const returnTo = getProfileReturnToChatPath(
-                                            otherParticipant.profileId,
-                                        );
+                                        if (!otherParticipant) return;
+                                        const returnTo = getProfileReturnToChatPath(otherParticipant.profileId);
                                         const nextParams = new URLSearchParams();
                                         nextParams.set("returnTo", returnTo);
-                                        navigate(
-                                            `/profile/${otherParticipant.profileId}?${nextParams.toString()}`,
-                                            { state: { returnTo } },
-                                        );
+                                        navigate(`/profile/${otherParticipant.profileId}?${nextParams.toString()}`, { state: { returnTo } });
                                     }}
                                     disabled={!otherParticipant}
                                     aria-label="Open profile"
                                     title={otherParticipantOnlineMeta.label}
-                                    className={`h-10 w-10 shrink-0 overflow-hidden rounded-full border-2 bg-[var(--surface-2)] transition disabled:cursor-default disabled:opacity-80 ${
+                                    className={`h-10 w-10 shrink-0 overflow-hidden rounded-full border-2 bg-[var(--surface-2)] transition disabled:cursor-default disabled:opacity-80 flex items-center justify-center ${
                                         isOtherParticipantOnline
                                             ? "border-emerald-500 shadow-[0_0_0_2px_color-mix(in_srgb,var(--surface)_70%,transparent)] hover:border-emerald-400"
                                             : "border-[var(--border)] hover:border-[var(--accent)]"
                                     }`}
                                 >
-                                    <img
-                                        src={getParticipantAvatarUrl(otherParticipant?.primaryMediaHash)}
-                                        alt={displayName}
-                                        className="h-full w-full object-cover"
-                                    />
+                                    {getParticipantAvatarUrl(otherParticipant?.primaryMediaHash) ? (
+                                        <img
+                                            src={getParticipantAvatarUrl(otherParticipant?.primaryMediaHash) || undefined}
+                                            alt={displayName}
+                                            className="h-full w-full object-cover"
+                                        />
+                                    ) : (
+                                        <User className="h-5 w-5 text-[var(--text-muted)] opacity-70" />
+                                    )}
                                 </button>
                                 <div className="min-w-0">
                                     <div className="flex items-center gap-1.5 min-w-0">

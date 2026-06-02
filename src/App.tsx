@@ -35,7 +35,6 @@ import { PushNotificationBridge } from "./components/PushNotificationBridge";
 import { ChatRealtimeBridge } from "./components/ChatRealtimeBridge";
 import { ActiveRouteBridge } from "./components/ActiveRouteBridge";
 import { EntitlementsBridge } from "./components/EntitlementsBridge";
-import { SmoothScroll } from "./components/SmoothScroll";
 import { usePreferences } from "./contexts/PreferencesContext";
 
 // --- NEW MULTI-SELECT IMPORTS ---
@@ -77,7 +76,6 @@ export default function App() {
     return (
         <AuthProvider>
             <PreferencesProvider>
-                <SmoothScroll>
                     <MultiSelectProvider>
                         <PushNotificationBridge />
                         <ChatRealtimeBridge />
@@ -160,7 +158,6 @@ export default function App() {
                         {/* MULTI-SELECT OVERLAY (Liquid Glass UI) */}
                         <MultiSelectOverlay />
                     </MultiSelectProvider>
-                </SmoothScroll>
             </PreferencesProvider>
         </AuthProvider>
     );
