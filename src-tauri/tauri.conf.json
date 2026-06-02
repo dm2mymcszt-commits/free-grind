@@ -3,12 +3,12 @@
 	"productName": "Free Grind",
 	"version": "0.5.2",
 	"identifier": "dev.estopia.free-grind",
-	"build": {
-		"beforeDevCommand": "npm run dev:web",
-		"devUrl": "http://localhost:1420",
-		"beforeBuildCommand": "npm run build",
-		"frontendDist": "http://localhost:1420"
-	},
+    "build": {
+        "beforeDevCommand": "npm run dev:web",
+        "devUrl": "http://localhost:1420",
+        "beforeBuildCommand": "npm run build",
+        "frontendDist": "../dist"
+    },
 	"app": {
 		"windows": [
 			{

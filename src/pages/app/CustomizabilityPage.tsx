@@ -104,6 +104,9 @@ export function CustomizabilityPage() {
     // --- OUTGOING BLUR STATE ---
     const [blurOutgoingMedia, setBlurOutgoingMedia] = useState(() => window.localStorage.getItem("fg-blur-outgoing-media") === "true");
 
+    // --- ANTI-CATFISH SCANNER STATE ---
+    const [imageScannerEnabled, setImageScannerEnabled] = useState(() => window.localStorage.getItem("fg-image-scanner-enabled") === "true");
+
     const [analyticsConsent, setAnalyticsConsent] = useState<AnalyticsConsentChoice | null>(
         () => readAnalyticsConsentChoice(),
     );
@@ -427,6 +430,34 @@ export function CustomizabilityPage() {
                     </div>
                 </div>
                 {/* ------------------------------------------------ */}
+
+                {/* --- ANTI-CATFISH SCANNER SECTION --- */}
+                <div className="surface-card p-4 sm:p-5 border border-[var(--border)]">
+                    <p className="mb-2 text-sm font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+                        Anti-Catfish Scanner
+                    </p>
+                    <p className="mb-4 text-sm text-[var(--text-muted)]">
+                        Adds a Scanner Hub to profile pictures allowing you to instantly reverse image search to catch catfishes or detect AI watermarks using Google Lens and TinEye.
+                    </p>
+                    <div className="flex flex-col gap-4">
+                        <label className="flex items-start gap-3 text-sm cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={imageScannerEnabled}
+                                onChange={(e) => {
+                                    setImageScannerEnabled(e.target.checked);
+                                    window.localStorage.setItem("fg-image-scanner-enabled", String(e.target.checked));
+                                }}
+                                className="mt-1 h-4 w-4 accent-[var(--accent)] shrink-0"
+                            />
+                            <span>
+                                <span className="font-semibold block">Enable Scanner Hub</span>
+                                <span className="text-xs text-[var(--text-muted)]">Shows a 🔍 button in the top-left of the photo viewer.</span>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+                {/* ------------------------------------------- */}
 
                 {/* Analytics & FreeGrind Discovery */}
                 <div className="surface-card p-4 sm:p-5">
