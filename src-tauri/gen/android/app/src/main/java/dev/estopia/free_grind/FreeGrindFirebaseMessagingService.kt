@@ -159,9 +159,6 @@ class FreeGrindFirebaseMessagingService : FirebaseMessagingService() {
             ?: extractConversationId(rawData)
 
         // Suppress when the user is already looking at the relevant screen
-        // (taps tab for tap notifications; the matching conversation for chat
-        // notifications). The frontend keeps MainActivity informed via the
-        // FreeGrindBridge.setActiveRoute JS hook.
         val suppress = if (isTap) {
             MainActivity.isOnTapsScreen()
         } else {
@@ -172,7 +169,6 @@ class FreeGrindFirebaseMessagingService : FirebaseMessagingService() {
             return
         }
 
-        // _v2 suffix forces re-creation so the custom sound takes effect on existing installs.
         val channelId = if (isTap) "free_grind_taps_notifications_v2" else "free_grind_chat_notifications_v2"
         val channelName = if (isTap) "Taps" else "Chat Messages"
         val notificationKey = resolveNotificationKey(
@@ -185,9 +181,9 @@ class FreeGrindFirebaseMessagingService : FirebaseMessagingService() {
 
         val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
 
-        val soundUri: Uri = Uri.parse(
-            "${ContentResolver.SCHEME_ANDROID_RESOURCE}://${packageName}/${R.raw.free_grind_message}"
-        )
+        // FIXED: Uses the default system notification sound instead of the missing raw file!
+        val soundUri: android.net.Uri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
+        
         val audioAttributes = AudioAttributes.Builder()
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .setUsage(AudioAttributes.USAGE_NOTIFICATION)
@@ -244,14 +240,11 @@ class FreeGrindFirebaseMessagingService : FirebaseMessagingService() {
         }
 
         val builder = NotificationCompat.Builder(this, channelId)
-            // Status-bar icon: monochrome stencil with transparent background only.
             .setSmallIcon(R.drawable.ic_notification_silhouette)
             .setShortcutId(conversationId)
             .addPerson(sender)
-            // Keep the badge overlay neutral and avoid OEM color plates.
             .setColor(Color.TRANSPARENT)
             .setColorized(false)
-            // Notification body avatar: sender profile bitmap.
             .setLargeIcon(senderAvatarBitmap)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
