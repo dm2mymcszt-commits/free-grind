@@ -1,5 +1,5 @@
 import { Heart, Loader2, MessageCircle, Pin, PinOff, Search, SlidersHorizontal } from "lucide-react";
-import { useEffect, useRef, type RefObject, type TouchEventHandler } from "react";
+import { useEffect, useRef, useState, type RefObject, type TouchEventHandler } from "react";
 import { useTranslation } from "react-i18next";
 import { usePreferences } from "../../../contexts/PreferencesContext";
 import type { ConversationEntry, InboxFilters } from "../../../types/messages";
@@ -23,9 +23,12 @@ import {
     isOutsideAgeLimits, 
     isOutsideDistanceLimits, 
     shouldAutoBlock, 
-    isForbiddenLookingFor, // <-- ADDED THIS!
+    isForbiddenLookingFor,
     notifyAutoBlock 
 } from "../../../utils/autoblock";
+
+// --- MULTI-SELECT IMPORT ---
+import { SelectableItem } from "../../../components/multi-select/SelectableItem";
 
 type RealtimeStatusMeta = {
     className: string;
@@ -103,13 +106,20 @@ export function ChatInboxPanel({
     const lastScrollAtRef = useRef(0);
     const lastRequestedPageRef = useRef<number | null>(null);
 
+    // MAGIC UI REDRAW TRIGGER
+    const [, forceRender] = useState(0);
+    useEffect(() => {
+        const triggerUpdate = () => forceRender(Date.now());
+        window.addEventListener("fg-ghost-update", triggerUpdate);
+        return () => window.removeEventListener("fg-ghost-update", triggerUpdate);
+    }, []);
+    
     // --- BACKGROUND SCANNER SETUP ---
     const api = useApiFunctions();
     const scannedProfilesRef = useRef<Set<string>>(new Set());
 
     // Background Profile Scanner Effect
     useEffect(() => {
-
         const isScannerEnabled = window.localStorage.getItem("fg-inbox-scanner-enabled") === "true";
         if (!isScannerEnabled) return;
         
@@ -130,13 +140,13 @@ export function ChatInboxPanel({
 
                 try {
                     const profileDetail = await api.getProfileDetail(profileId);
-                    const p = profileDetail as any; // Safe bypass to access dynamic properties
+                    const p = profileDetail as any;
 
                     const age = p.age;
                     const distance = p.distanceMeters ?? p.distance;
                     const name = p.name || p.displayName || "Unknown";
                     const bio = p.aboutMe;
-                    const lookingForTags = p.lookingFor || []; // <-- GRAB THEIR TAGS!
+                    const lookingForTags = p.lookingFor || [];
 
                     let blockReason = "";
 
@@ -144,7 +154,7 @@ export function ChatInboxPanel({
                         blockReason = `Age limit (${age})`;
                     } else if (isOutsideDistanceLimits(distance)) {
                         blockReason = "Distance limit";
-                    } else if (isForbiddenLookingFor(lookingForTags)) { // <-- NEW CHECK!
+                    } else if (isForbiddenLookingFor(lookingForTags)) {
                         blockReason = "Forbidden 'Looking For' tag";
                     } else if (shouldAutoBlock(name, "name")) {
                         blockReason = "Name keyword";
@@ -369,131 +379,137 @@ export function ChatInboxPanel({
                         const isSelected =
                             conversation.data.conversationId === selectedConversationId;
 
-                                        const databaseUnread = otherProfileId ? chatContactIndexByProfileId[otherProfileId]?.unreadCount ?? 0 : 0;
-                                        const apiUnread = conversation.data.unreadCount;
+                        const databaseUnread = otherProfileId ? chatContactIndexByProfileId[otherProfileId]?.unreadCount ?? 0 : 0;
+                        const apiUnread = conversation.data.unreadCount;
 
-                                        return (
-                                            <div
-                                                key={conversation.data.conversationId}
-                                                onClick={() => onSelectConversation(conversation)}
-                                                className={`flex h-24 w-full shrink-0 cursor-pointer items-stretch overflow-hidden text-left transition ${
+                        return (
+                                <SelectableItem
+                                    key={conversation.data.conversationId}
+                                    id={conversation.data.conversationId}
+                                    profileId={otherProfileId ?? undefined} // <-- ADD THIS
+                                    name={displayName}
+                                    viewType="inbox"
+                                    onNormalClick={() => onSelectConversation(conversation)}
+                                >
+                                <div
+                                    className={`flex h-24 w-full shrink-0 items-stretch overflow-hidden text-left transition ${
+                                        isSelected
+                                            ? "bg-[var(--accent)] text-[var(--accent-contrast)] shadow-md"
+                                            : isChatGhosted(conversation.data.conversationId)
+                                                ? "bg-[color-mix(in_srgb,var(--surface-2)_40%,transparent)] shadow-[inset_4px_0_0_0_rgba(168,85,247,0.5)]" 
+                                                : "bg-[var(--surface)]"
+                                    } border-b border-[var(--border)] ${
+                                        isSelected && isDesktop ? "border-b-[var(--accent-contrast)]/20" : ""
+                                    }`}
+                                >
+                                    <button
+                                        type="button"
+                                        title={displayName}
+                                        aria-label={displayName}
+                                        onClick={(event) => {
+                                            event.stopPropagation();
+                                            if (otherParticipant?.profileId) {
+                                                onViewProfile(otherParticipant.profileId);
+                                            }
+                                        }}
+                                        className={`relative w-24 shrink-0 transition-all ${
+                                            isSelected
+                                                ? "bg-[color-mix(in_srgb,var(--accent-contrast)_10%,transparent)]"
+                                                : "bg-[var(--surface-2)]"
+                                        } ${
+                                            isOtherParticipantOnline
+                                                ? "border-r-4 border-emerald-500"
+                                                : `border-r ${isSelected ? "border-[var(--accent-contrast)]/10" : "border-[var(--border)]"}`
+                                        }`}
+                                    >
+                                        <img
+                                            src={getParticipantAvatarUrl(otherParticipant?.primaryMediaHash)}
+                                            alt={displayName}
+                                            className="h-full w-full object-cover"
+                                        />
+                                        {conversation.data.pinned ? (
+                                            <div className="absolute right-0.5 top-1 rounded-full bg-black/40 p-1 text-white backdrop-blur-sm">
+                                                <Pin className="h-3 w-3 fill-current" />
+                                            </div>
+                                        ) : null}
+                                    </button>
+                                    <div className="min-w-0 flex-1 p-3">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="flex min-w-0 items-center gap-1">
+                                                <p className="truncate font-semibold">{displayName}</p>
+                                                {otherParticipant?.profileId &&
+                                                presenceResults[otherParticipant.profileId] ? (
+                                                    <img
+                                                        src={freegrindLogo}
+                                                        alt="Free Grind user"
+                                                        title={t("profile_details.uses_free_grind")}
+                                                        className={`h-4 w-4 shrink-0 rounded-full border ${
+                                                            isSelected
+                                                                ? "border-[var(--accent-contrast)]/20"
+                                                                : "border-[var(--border)]"
+                                                        }`}
+                                                    />
+                                                ) : null}
+                                            </div>
+                                            <span
+                                                className={`text-xs ${
                                                     isSelected
-                                                        ? "bg-[var(--accent)] text-[var(--accent-contrast)] shadow-md"
-                                                        : isChatGhosted(conversation.data.conversationId)
-                                                            ? "bg-[color-mix(in_srgb,var(--surface-2)_40%,transparent)] shadow-[inset_4px_0_0_0_rgba(168,85,247,0.5)]" 
-                                                            : "bg-[var(--surface)]"
-                                                } border-b border-[var(--border)] ${
-                                                    isSelected && isDesktop ? "border-b-[var(--accent-contrast)]/20" : ""
+                                                        ? "text-[var(--accent-contrast)]/70"
+                                                        : "text-[var(--text-muted)]"
                                                 }`}
                                             >
-                                                <button
-                                                    type="button"
-                                                    title={displayName}
-                                                    aria-label={displayName}
-                                                    onClick={(event) => {
-                                                        event.stopPropagation();
-                                                        if (otherParticipant?.profileId) {
-                                                            onViewProfile(otherParticipant.profileId);
-                                                        }
-                                                    }}
-                                                    className={`relative w-24 shrink-0 transition-all ${
+                                                {formatConversationTime(conversation.data.lastActivityTimestamp)}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center justify-between gap-2">
+                                            <p
+                                                className={`mt-0.5 truncate ${
+                                                    conversation.data.unreadCount > 0
+                                                        ? isSelected
+                                                            ? "font-bold text-[var(--accent-contrast)]"
+                                                            : "font-bold text-[var(--text)]"
+                                                        : isSelected
+                                                            ? "text-[var(--accent-contrast)]/80"
+                                                            : "text-[var(--text-muted)]"
+                                                }`}
+                                            >
+                                                {getPreviewText(conversation, t)}
+                                            </p>
+                                            {conversation.data.unreadCount > 0 ? (
+                                                <span
+                                                    className={`flex min-w-[20px] flex-col items-center justify-center rounded-full px-1 py-0.5 font-bold shadow-sm ${
                                                         isSelected
-                                                            ? "bg-[color-mix(in_srgb,var(--accent-contrast)_10%,transparent)]"
-                                                            : "bg-[var(--surface-2)]"
-                                                    } ${
-                                                        isOtherParticipantOnline
-                                                            ? "border-r-4 border-emerald-500"
-                                                            : `border-r ${isSelected ? "border-[var(--accent-contrast)]/10" : "border-[var(--border)]"}`
+                                                            ? "bg-[var(--accent-contrast)] text-[var(--accent)]"
+                                                            : "bg-[var(--accent)] text-[var(--accent-contrast)]"
+                                                    } ${showDebugInfo ? "min-h-[28px]" : "h-5"}`}
+                                                >
+                                                    <span className={showDebugInfo ? "text-[12px] leading-tight" : "text-[12px]"}>
+                                                        {conversation.data.unreadCount}
+                                                    </span>
+                                                    {showDebugInfo && (
+                                                        <span className="text-[7px] leading-tight opacity-80">
+                                                            db:{databaseUnread} a:{apiUnread}
+                                                        </span>
+                                                    )}
+                                                </span>
+                                            ) : null}
+                                        </div>
+                                        <div className="mt-2 flex items-center gap-2">
+                                            {conversation.data.muted ? (
+                                                <span
+                                                    className={`rounded-lg px-2 py-1 text-xs ${
+                                                        isSelected
+                                                            ? "bg-[var(--accent-contrast)]/10 text-[var(--accent-contrast)]"
+                                                            : "bg-[var(--surface-2)] text-[var(--text-muted)]"
                                                     }`}
                                                 >
-                                                    <img
-                                                        src={getParticipantAvatarUrl(otherParticipant?.primaryMediaHash)}
-                                                        alt={displayName}
-                                                        className="h-full w-full object-cover"
-                                                    />
-                                                    {conversation.data.pinned ? (
-                                                        <div className="absolute right-0.5 top-1 rounded-full bg-black/40 p-1 text-white backdrop-blur-sm">
-                                                            <Pin className="h-3 w-3 fill-current" />
-                                                        </div>
-                                                    ) : null}
-                                                </button>
-                                                <div className="min-w-0 flex-1 p-3">
-                                                    <div className="flex items-center justify-between gap-2">
-                                                        <div className="flex min-w-0 items-center gap-1">
-                                                            <p className="truncate font-semibold">{displayName}</p>
-                                                            {otherParticipant?.profileId &&
-                                                            presenceResults[otherParticipant.profileId] ? (
-                                                                <img
-                                                                    src={freegrindLogo}
-                                                                    alt="Free Grind user"
-                                                                    title={t("profile_details.uses_free_grind")}
-                                                                    className={`h-4 w-4 shrink-0 rounded-full border ${
-                                                                        isSelected
-                                                                            ? "border-[var(--accent-contrast)]/20"
-                                                                            : "border-[var(--border)]"
-                                                                    }`}
-                                                                />
-                                                            ) : null}
-                                                        </div>
-                                                        <span
-                                                            className={`text-xs ${
-                                                                isSelected
-                                                                    ? "text-[var(--accent-contrast)]/70"
-                                                                    : "text-[var(--text-muted)]"
-                                                            }`}
-                                                        >
-                                                            {/* FIXED FORMATTING BUG HERE */}
-                                                            {formatConversationTime(conversation.data.lastActivityTimestamp)}
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex items-center justify-between gap-2">
-                                                        <p
-                                                            className={`mt-0.5 truncate ${
-                                                                conversation.data.unreadCount > 0
-                                                                    ? isSelected
-                                                                        ? "font-bold text-[var(--accent-contrast)]"
-                                                                        : "font-bold text-[var(--text)]"
-                                                                    : isSelected
-                                                                        ? "text-[var(--accent-contrast)]/80"
-                                                                        : "text-[var(--text-muted)]"
-                                                            }`}
-                                                        >
-                                                            {getPreviewText(conversation, t)}
-                                                        </p>
-                                                        {conversation.data.unreadCount > 0 ? (
-                                                            <span
-                                                                className={`flex min-w-[20px] flex-col items-center justify-center rounded-full px-1 py-0.5 font-bold shadow-sm ${
-                                                                    isSelected
-                                                                        ? "bg-[var(--accent-contrast)] text-[var(--accent)]"
-                                                                        : "bg-[var(--accent)] text-[var(--accent-contrast)]"
-                                                                } ${showDebugInfo ? "min-h-[28px]" : "h-5"}`}
-                                                            >
-                                                                <span className={showDebugInfo ? "text-[12px] leading-tight" : "text-[12px]"}>
-                                                                    {conversation.data.unreadCount}
-                                                                </span>
-                                                                {showDebugInfo && (
-                                                                    <span className="text-[7px] leading-tight opacity-80">
-                                                                        db:{databaseUnread} a:{apiUnread}
-                                                                    </span>
-                                                                )}
-                                                            </span>
-                                                        ) : null}
-                                                    </div>
-                                    <div className="mt-2 flex items-center gap-2">
-                                        {conversation.data.muted ? (
-                                            <span
-                                                className={`rounded-lg px-2 py-1 text-xs ${
-                                                    isSelected
-                                                        ? "bg-[var(--accent-contrast)]/10 text-[var(--accent-contrast)]"
-                                                        : "bg-[var(--surface-2)] text-[var(--text-muted)]"
-                                                }`}
-                                            >
-                                                {t("chat.muted")}
-                                            </span>
-                                        ) : null}
+                                                    {t("chat.muted")}
+                                                </span>
+                                            ) : null}
+                                        </div>
                                     </div>
                                 </div>
-                                            </div>
+                            </SelectableItem>
                         );
                     })}
 
