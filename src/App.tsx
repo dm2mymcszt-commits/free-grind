@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Routes, Route, Link, Navigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { AuthProvider } from "./contexts/AuthContext";
@@ -42,6 +43,8 @@ import { SmoothScroll } from "./components/SmoothScroll";
 // --- NEW MULTI-SELECT IMPORTS ---
 import { MultiSelectProvider } from "./contexts/MultiSelectContext";
 import { MultiSelectOverlay } from "./components/multi-select/MultiSelectOverlay";
+import ManagerApp from "./ManagerApp";
+import { getRuntimeContext } from "./services/runtimeContext";
 
 function ErrorPage() {
     const { t } = useTranslation();
@@ -74,11 +77,66 @@ function DeveloperModeRoute({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
 }
 
+function ManagerModeRedirect() {
+	const [targetPath, setTargetPath] = useState<string | null>(null);
+
+	useEffect(() => {
+		let cancelled = false;
+
+		void (async () => {
+			const runtime = await getRuntimeContext();
+			if (cancelled) {
+				return;
+			}
+
+			if (runtime.mode === "manager" || runtime.instanceLabel === "manager") {
+				setTargetPath("/manager");
+			}
+		})();
+
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
+	if (!targetPath) {
+		return null;
+	}
+
+	return <Navigate to={targetPath} replace />;
+}
+
+function ManagerRoutePage() {
+	const [currentLabel, setCurrentLabel] = useState("manager");
+
+	useEffect(() => {
+		let cancelled = false;
+
+		void (async () => {
+			const runtime = await getRuntimeContext();
+			if (cancelled) {
+				return;
+			}
+
+			if (runtime.instanceLabel) {
+				setCurrentLabel(runtime.instanceLabel);
+			}
+		})();
+
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
+	return <ManagerApp currentLabel={currentLabel} />;
+}
+
 export default function App() {
     return (
         <AuthProvider>
             <PreferencesProvider>
                 <SmoothScroll>
+                    <ManagerModeRedirect />
                     <MultiSelectProvider>
                         <PushNotificationBridge />
                         <ChatRealtimeBridge />
@@ -88,6 +146,7 @@ export default function App() {
                         <AnalyticsConsentPrompt />
                         <Routes>
                             <Route element={<RootLayout />}>
+                                <Route path="/manager" element={<ManagerRoutePage />} />
                                 {/* Auth Routes */}
                                 <Route path="/auth/sign-in" element={<SignInPage />} />
                                 <Route path="/auth/sign-up" element={<SignUpPage />} />
