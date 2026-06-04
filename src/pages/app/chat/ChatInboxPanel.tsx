@@ -1,6 +1,7 @@
-import { Heart, Loader2, MessageCircle, Pin, PinOff, Search, SlidersHorizontal, User } from "lucide-react";
+import { Heart, Loader2, MessageCircle, Pin, PinOff, Search, SlidersHorizontal, User, Trash2, EyeOff } from "lucide-react";
 import { useEffect, useRef, useState, type RefObject, type TouchEventHandler } from "react";
 import { useTranslation } from "react-i18next";
+import toast from "react-hot-toast";
 import { usePreferences } from "../../../contexts/PreferencesContext";
 import { ProfileImage } from "../../../components/ui/profile-image";
 import type { ConversationEntry, InboxFilters } from "../../../types/messages";
@@ -30,6 +31,7 @@ import {
 
 // --- MULTI-SELECT IMPORT ---
 import { SelectableItem } from "../../../components/multi-select/SelectableItem";
+import { useMultiSelect } from "../../../contexts/MultiSelectContext";
 
 type RealtimeStatusMeta = {
     className: string;
@@ -106,6 +108,7 @@ export function ChatInboxPanel({
     const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
     const lastScrollAtRef = useRef(0);
     const lastRequestedPageRef = useRef<number | null>(null);
+    const { isActive } = useMultiSelect(); // <-- MULTI-SELECT AWARENESS
 
     // MAGIC UI REDRAW TRIGGER
     const [, forceRender] = useState(0);
@@ -118,6 +121,28 @@ export function ChatInboxPanel({
     // --- BACKGROUND SCANNER SETUP ---
     const api = useApiFunctions();
     const scannedProfilesRef = useRef<Set<string>>(new Set());
+    const activeQueueRef = useRef<string[]>([]);
+    const isProcessingQueueRef = useRef(false);
+
+    const handleDeleteConversation = async (conversationId: string) => {
+        const skipConfirm = localStorage.getItem("chat_skip_delete_confirm") === "true";
+        if (!skipConfirm) {
+            const confirmed = window.confirm(t("chat.delete_conversation_confirm", { defaultValue: "Are you sure you want to delete this conversation?" }));
+            if (!confirmed) return;
+        }
+
+        try {
+            await api.deleteConversation(conversationId);
+            toast.success(t("chat.toasts.conversation_deleted", { defaultValue: "Conversation deleted" }));
+            onRefreshInbox();
+        } catch (error) {
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : t("chat.errors.delete_conversation", { defaultValue: "Failed to delete conversation" }),
+            );
+        }
+    };
 
     // Background Profile Scanner Effect
     useEffect(() => {
@@ -130,14 +155,25 @@ export function ChatInboxPanel({
 
         if (toScan.length === 0) return;
 
+        // Queue all unscanned items and flag them to prevent re-queueing
+        for (const profileId of toScan) {
+            scannedProfilesRef.current.add(profileId);
+            if (!activeQueueRef.current.includes(profileId)) {
+                activeQueueRef.current.push(profileId);
+            }
+        }
+
+        // If the background queue processor is already active, let it run
+        if (isProcessingQueueRef.current) return;
+
         let isCancelled = false;
 
-        const runScanner = async () => {
-            for (const profileId of toScan) {
-                if (isCancelled) break;
-				
-                // Mark as scanned immediately so we don't scan them again
-                scannedProfilesRef.current.add(profileId);
+        const processQueue = async () => {
+            isProcessingQueueRef.current = true;
+
+            while (activeQueueRef.current.length > 0 && !isCancelled) {
+                const profileId = activeQueueRef.current.shift();
+                if (!profileId) continue;
 
                 try {
                     const profileDetail = await api.getProfileDetail(profileId);
@@ -167,23 +203,24 @@ export function ChatInboxPanel({
                         console.log(`[BackgroundScanner] Blocking ${profileId} for ${blockReason}`);
                         await api.blockProfile(profileId);
                         notifyAutoBlock(name, `Scanner: ${blockReason}`);
-						
-                        // Silently trigger inbox refresh to wipe them from the list
-                        setTimeout(() => onRefreshInbox(), 500);
+                        
+                        onRefreshInbox();
                     }
                 } catch (err) {
-                    // Ignore minor errors (deleted profile or minor rate limits)
+                    // Ignore minor errors
                 }
 
                 // THROTTLE: Wait 1.5 seconds between fetches to prevent Grindr ban hammer!
                 await new Promise((resolve) => setTimeout(resolve, 1500));
             }
+            isProcessingQueueRef.current = false;
         };
 
-        void runScanner();
+        void processQueue();
 
         return () => {
             isCancelled = true;
+            isProcessingQueueRef.current = false; // Safely release lock on unmount so next render can proceed immediately
         };
     }, [filteredConversations, userId, api, onRefreshInbox]);
     // --------------------------------
@@ -250,7 +287,7 @@ export function ChatInboxPanel({
     return (
         <PullToRefreshContainer
             className={`flex h-full min-h-0 flex-col overflow-hidden ${
-                isDesktop ? "surface-card" : "p-0"
+                isDesktop ? "bg-transparent" : "p-0"
             }`}
             contentClassName="flex flex-1 flex-col min-h-0"
             style={
@@ -356,7 +393,7 @@ export function ChatInboxPanel({
                 <div
                     ref={inboxListRef}
                     onScroll={markUserScroll}
-                    className={`flex min-h-0 flex-1 flex-col overflow-y-auto ${!isDesktop ? "pb-4" : "gap-0"}`}
+                    className="flex min-h-0 flex-1 flex-col overflow-y-auto pt-3 pb-4 gap-3 px-3"
                 >
                     {filteredConversations.map((conversation) => {
                         const otherParticipant = getOtherParticipant(conversation, userId);
@@ -382,25 +419,29 @@ export function ChatInboxPanel({
                         const apiUnread = conversation.data.unreadCount;
 
                         return (
+                            <SwipeableRow
+                                key={conversation.data.conversationId}
+                                onDelete={() => handleDeleteConversation(conversation.data.conversationId)}
+                                isDisabled={isActive} // Disable individual swipes when bulk multi-selection is active
+                            >
                                 <SelectableItem
-                                    key={conversation.data.conversationId}
                                     id={conversation.data.conversationId}
-                                    profileId={otherProfileId ?? undefined} // <-- ADD THIS
+                                    profileId={otherProfileId ?? undefined}
                                     name={displayName}
                                     viewType="inbox"
                                     onNormalClick={() => onSelectConversation(conversation)}
                                 >
-                                <div
-                                    className={`flex h-24 w-full shrink-0 items-stretch overflow-hidden text-left transition ${
-                                        isSelected
-                                            ? "bg-[var(--accent)] text-[var(--accent-contrast)] shadow-md"
-                                            : isChatGhosted(conversation.data.conversationId)
-                                                ? "bg-[color-mix(in_srgb,var(--surface-2)_40%,transparent)] shadow-[inset_4px_0_0_0_rgba(168,85,247,0.5)]" 
-                                                : "bg-[var(--surface)]"
-                                    } border-b border-[var(--border)] ${
-                                        isSelected && isDesktop ? "border-b-[var(--accent-contrast)]/20" : ""
-                                    }`}
-                                >
+                                    <div
+                                        className={`relative flex h-24 w-full shrink-0 items-stretch overflow-hidden text-left transition-all duration-300 ease-out ${
+                                            isSelected
+                                                ? "bg-[var(--accent)] text-[var(--accent-contrast)]"
+                                                : "bg-transparent hover:bg-white/5"
+                                        }`}
+                                    >
+                                        {/* Glowing Vertical Selection Indicator */}
+                                        {isSelected && (
+                                            <div className="absolute left-0 top-0 bottom-0 w-1 bg-[var(--accent)] shadow-[0_0_12px_var(--accent)] z-10" />
+                                        )}
                                     <button
                                         type="button"
                                         title={displayName}
@@ -413,12 +454,8 @@ export function ChatInboxPanel({
                                         }}
                                         className={`relative w-24 shrink-0 transition-all ${
                                             isSelected
-                                                ? "bg-[color-mix(in_srgb,var(--accent-contrast)_10%,transparent)]"
-                                                : "bg-[var(--surface-2)]"
-                                        } ${
-                                            isOtherParticipantOnline
-                                                ? "border-r-4 border-emerald-500"
-                                                : `border-r ${isSelected ? "border-[var(--accent-contrast)]/10" : "border-[var(--border)]"}`
+                                                ? "bg-transparent"
+                                                : "bg-gradient-to-r from-[#101216] via-[#101216]/75 to-transparent"
                                         }`}
                                     >
                                         
@@ -436,12 +473,21 @@ export function ChatInboxPanel({
                                         )}
                                         {/* --------------------------------- */}
 
+                                        {/* Dynamic Pulsing Green Dot (Online Status) */}
+                                        {isOtherParticipantOnline && (
+                                            <span className="absolute bottom-1.5 right-1.5 flex h-3 w-3 z-20">
+                                                <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-emerald-400/40 opacity-75" />
+                                                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border-2 border-[#101216] dark:border-[#101216] shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+                                            </span>
+                                        )}
+
                                         {conversation.data.pinned ? (
                                             <div className="absolute right-0.5 top-1 rounded-full bg-black/40 p-1 text-white backdrop-blur-sm">
                                                 <Pin className="h-3 w-3 fill-current" />
                                             </div>
                                         ) : null}
                                     </button>
+
                                     <div className="min-w-0 flex-1 p-3">
                                         <div className="flex items-center justify-between gap-2">
                                             <div className="flex min-w-0 items-center gap-1">
@@ -503,10 +549,10 @@ export function ChatInboxPanel({
                                                 </span>
                                             ) : null}
                                         </div>
-                                        <div className="mt-2 flex items-center gap-2">
+                                        <div className="mt-1 flex items-center gap-1.5">
                                             {conversation.data.muted ? (
                                                 <span
-                                                    className={`rounded-lg px-2 py-1 text-xs ${
+                                                    className={`rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
                                                         isSelected
                                                             ? "bg-[var(--accent-contrast)]/10 text-[var(--accent-contrast)]"
                                                             : "bg-[var(--surface-2)] text-[var(--text-muted)]"
@@ -515,10 +561,22 @@ export function ChatInboxPanel({
                                                     {t("chat.muted")}
                                                 </span>
                                             ) : null}
+                                            {isChatGhosted(conversation.data.conversationId) ? (
+                                                <span
+                                                    className={`rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 ${
+                                                        isSelected
+                                                            ? "bg-purple-500/25 text-purple-200 border border-purple-500/35"
+                                                            : "bg-purple-500/15 text-purple-300 border border-purple-500/20"
+                                                    }`}
+                                                >
+                                                    <EyeOff className="h-2.5 w-2.5" /> {t("chat.ghosting", { defaultValue: "Ghosting" })}
+                                                </span>
+                                            ) : null}
                                         </div>
                                     </div>
                                 </div>
                             </SelectableItem>
+                        </SwipeableRow>
                         );
                     })}
 
@@ -535,5 +593,118 @@ export function ChatInboxPanel({
                 </div>
             )}
         </PullToRefreshContainer>
+    );
+}
+
+function SwipeableRow({
+    children,
+    onDelete,
+    isDisabled,
+}: {
+    children: React.ReactNode;
+    onDelete: () => void | Promise<void>;
+    isDisabled?: boolean;
+}) {
+    const [startX, setStartX] = useState<number | null>(null);
+    const [currentX, setCurrentX] = useState(0);
+    const [isSwiping, setIsSwiping] = useState(false);
+    const [isAnimatingOut, setIsAnimatingOut] = useState(false);
+
+    const handlePointerDown = (e: React.PointerEvent) => {
+        if (isDisabled) return;
+        if (e.button !== 0) return;
+        setStartX(e.clientX);
+        setIsSwiping(true);
+    };
+
+    const handlePointerMove = (e: React.PointerEvent) => {
+        if (!isSwiping || startX === null) return;
+        const deltaX = e.clientX - startX;
+        
+        if (deltaX < 0) {
+            if (deltaX < -140) {
+                setCurrentX(-140 + (deltaX + 140) * 0.2);
+            } else {
+                setCurrentX(deltaX);
+            }
+        } else {
+            setCurrentX(0);
+        }
+    };
+
+    const handlePointerUp = (e: React.PointerEvent) => {
+        if (!isSwiping) return;
+        setIsSwiping(false);
+        setStartX(null);
+
+        if (currentX < -90) {
+            triggerDelete();
+        } else {
+            setCurrentX(0);
+        }
+
+        if (Math.abs(currentX) > 10) {
+            e.stopPropagation();
+            e.preventDefault();
+        }
+    };
+
+    const triggerDelete = () => {
+        setIsAnimatingOut(true);
+        setCurrentX(-500);
+        setTimeout(() => {
+            void onDelete();
+        }, 300);
+    };
+
+    return (
+        <div
+            className="relative overflow-hidden shrink-0 rounded-2xl border border-white/5 transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] select-none touch-pan-y"
+            style={{
+                height: isAnimatingOut ? "0px" : "96px",
+                opacity: isAnimatingOut ? 0 : 1,
+                transform: isAnimatingOut ? "scaleY(0.8)" : "none",
+                transformOrigin: "center top",
+            }}
+        >
+            {/* Crimson Liquid Glass Underlay Background (revealed on drag) */}
+            {currentX < 0 && (
+                <div 
+                    className="absolute inset-y-0 right-0 bg-gradient-to-r from-red-600/15 to-red-600/80 backdrop-blur-md z-0 cursor-pointer"
+                    style={{ width: `${Math.abs(currentX)}px` }}
+                    onClick={triggerDelete}
+                />
+            )}
+
+            {/* Crimson Sharp Foreground Label (Z-20: Always crisp, floats on top of the blurred card, never blurred) */}
+            {currentX < -60 && (
+                <div 
+                    className="absolute inset-y-0 right-0 flex items-center justify-end px-6 text-white z-20 pointer-events-none transition-opacity duration-200"
+                    style={{ width: `${Math.abs(currentX)}px` }}
+                >
+                    <div className="flex flex-col items-center gap-1">
+                        <Trash2 className="h-5 w-5 text-red-100 drop-shadow-[0_2px_8px_rgba(239,68,68,0.6)] animate-pulse" />
+                        <span className="text-[10px] font-extrabold uppercase tracking-widest text-red-100">Delete</span>
+                    </div>
+                </div>
+            )}
+
+            {/* Foreground Content Card with dynamic liquid glass blur & dissolve effect proportional to drag progress */}
+            <div
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerLeave={handlePointerUp}
+                className="relative bg-transparent w-full h-full z-10 shrink-0 select-none cursor-grab active:cursor-grabbing"
+                style={{
+                    transform: `translateX(${currentX}px)`,
+                    filter: currentX < 0 ? `blur(${Math.min(6, Math.abs(currentX) / 25)}px)` : "none",
+                    opacity: currentX < 0 ? Math.max(0.3, 1 - Math.abs(currentX) / 250) : 1,
+                    transition: isSwiping ? "none" : "transform 0.25s cubic-bezier(0.25, 1, 0.5, 1), filter 0.25s ease, opacity 0.25s ease",
+                }}
+            >
+                {children}
+            </div>
+        </div>
     );
 }

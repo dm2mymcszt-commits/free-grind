@@ -421,8 +421,16 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
         setDontAskBlockAgain(false);
     }, [selectedConversation?.data.conversationId]);
 
-    useEffect(() => {
+        useEffect(() => {
         if (isDesktop) {
+            setMobileKeyboardInset(0);
+            return;
+        }
+
+        // Strict Mobile Platform check to prevent desktop window resizing from generating fake offsets
+        const isMobilePlatform = typeof window !== "undefined" && 
+            (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
+        if (!isMobilePlatform) {
             setMobileKeyboardInset(0);
             return;
         }
@@ -454,20 +462,17 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
     const handlePendingAlbumShareBackdropClose = createBackdropCloseHandler(
         closePendingAlbumShare,
     );
-    const renderThread = selectedConversation ? (
-        <div
-            className={`flex h-full flex-col ${!isDesktop ? "overflow-hidden p-0" : "overflow-hidden p-3 sm:p-4"} ${
-                isDesktop ? "surface-card" : ""
-            }`}
-            style={
-                !isDesktop
-                    ? {
-                        height:
-                            "calc(100dvh - (env(safe-area-inset-top, 0px) + 16px) - (env(safe-area-inset-bottom, 0px) + 92px))",
-                    }
-                    : undefined
-            }
-        >
+            const renderThread = selectedConversation ? (
+            <div
+                className={`flex h-full flex-col ${!isDesktop ? "overflow-hidden p-0" : "overflow-hidden p-3 sm:p-4"} bg-transparent`}
+                style={
+                    !isDesktop
+                        ? {
+                            height: "100%",
+                        }
+                        : undefined
+                }
+            >
             {(() => {
                 const otherParticipant = getOtherParticipant(
                     selectedConversation,
@@ -544,20 +549,20 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                     void onDeleteConversation(selectedConversation.data.conversationId);
                 };
 
-                return (
-                    <>
-                        <div
-                            className={`mb-3 flex items-center justify-between gap-3 border-b border-[var(--border)] pb-3 ${!isDesktop ? "fixed inset-x-0 top-0 z-20 bg-[var(--surface)] py-3 px-[var(--app-px)]" : ""}`}
-                            style={
-                                !isDesktop
-                                    ? {
-                                        top: 0,
-                                        paddingTop:
-                                            "calc(env(safe-area-inset-top, 0px) + clamp(14px, 2.2vw, 28px))",
-                                    }
-                                    : undefined
-                            }
-                        >
+                            return (
+                            <>
+                            <div
+                                className={`mb-3 flex items-center justify-between gap-3 pb-3 z-20 ${!isDesktop ? "fixed inset-x-0 top-0 py-3 px-[var(--app-px)] bg-zinc-950/70 dark:bg-black/75 backdrop-blur-3xl border-b border-white/5" : "sticky top-0 pt-3 bg-transparent border-none shadow-none"}`}
+                                style={
+                                    !isDesktop
+                                        ? {
+                                            top: 0,
+                                            paddingTop:
+                                                "calc(env(safe-area-inset-top, 0px) + clamp(14px, 2.2vw, 28px))",
+                                        }
+                                        : undefined
+                                }
+                            >
                             <div
                                 className={`min-w-0 flex items-center gap-3 ${!isDesktop ? "pl-0" : ""}`}
                             >
@@ -571,34 +576,40 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                         <ChevronLeft className="h-4 w-4" />
                                     </button>
                                 )}
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        if (!otherParticipant) return;
-                                        const returnTo = getProfileReturnToChatPath(otherParticipant.profileId);
-                                        const nextParams = new URLSearchParams();
-                                        nextParams.set("returnTo", returnTo);
-                                        navigate(`/profile/${otherParticipant.profileId}?${nextParams.toString()}`, { state: { returnTo } });
-                                    }}
-                                    disabled={!otherParticipant}
-                                    aria-label="Open profile"
-                                    title={otherParticipantOnlineMeta.label}
-                                    className={`h-10 w-10 shrink-0 overflow-hidden rounded-full border-2 bg-[var(--surface-2)] transition disabled:cursor-default disabled:opacity-80 flex items-center justify-center ${
-                                        isOtherParticipantOnline
-                                            ? "border-emerald-500 shadow-[0_0_0_2px_color-mix(in_srgb,var(--surface)_70%,transparent)] hover:border-emerald-400"
-                                            : "border-[var(--border)] hover:border-[var(--accent)]"
-                                    }`}
-                                >
-                                    {getParticipantAvatarUrl(otherParticipant?.primaryMediaHash) ? (
-                                        <img
-                                            src={getParticipantAvatarUrl(otherParticipant?.primaryMediaHash) || undefined}
-                                            alt={displayName}
-                                            className="h-full w-full object-cover"
-                                        />
-                                    ) : (
-                                        <User className="h-5 w-5 text-[var(--text-muted)] opacity-70" />
+                                <div className="relative shrink-0 h-10 w-10">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (!otherParticipant) return;
+                                            const returnTo = getProfileReturnToChatPath(otherParticipant.profileId);
+                                            const nextParams = new URLSearchParams();
+                                            nextParams.set("returnTo", returnTo);
+                                            navigate(`/profile/${otherParticipant.profileId}?${nextParams.toString()}`, { state: { returnTo } });
+                                        }}
+                                        disabled={!otherParticipant}
+                                        aria-label="Open profile"
+                                        title={otherParticipantOnlineMeta.label}
+                                        className="h-full w-full overflow-hidden rounded-full border bg-[var(--surface-2)] transition disabled:cursor-default disabled:opacity-80 flex items-center justify-center border-white/10 hover:border-[var(--accent)]"
+                                    >
+                                        {getParticipantAvatarUrl(otherParticipant?.primaryMediaHash) ? (
+                                            <img
+                                                src={getParticipantAvatarUrl(otherParticipant?.primaryMediaHash) || undefined}
+                                                alt={displayName}
+                                                className="h-full w-full object-cover"
+                                            />
+                                        ) : (
+                                            <User className="h-5 w-5 text-[var(--text-muted)] opacity-70" />
+                                        )}
+                                    </button>
+                                    
+                                    {/* Glowing Pulsing Liquid Glass Green Dot (Online Status) - Outside overflow-hidden so it's not clipped */}
+                                    {isOtherParticipantOnline && (
+                                        <span className="absolute bottom-0 right-0 flex h-3 w-3 z-20">
+                                            <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-emerald-400/40 opacity-75" />
+                                            <span className="relative inline-block rounded-full h-3 w-3 bg-emerald-500 border-2 border-[#101216] dark:border-[#101216] shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+                                        </span>
                                     )}
-                                </button>
+                                </div>
                                 <div className="min-w-0">
                                     <div className="flex items-center gap-1.5 min-w-0">
                                         <p className="truncate text-lg font-semibold">
@@ -1005,18 +1016,18 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                         threadBottomRef={threadBottomRef}
                     />
 
-                    <form
-                        onSubmit={onFormSubmit}
-                        className={`${!isDesktop ? "fixed bottom-0 left-0 right-0 z-30 px-[var(--app-px)] py-3" : "mt-3 pt-3"} border-t border-[var(--border)] bg-[var(--surface)]`}
-                        style={
-                            !isDesktop
-                                ? {
-                                    bottom: `${mobileKeyboardInset}px`,
-                                    paddingBottom: "max(12px, env(safe-area-inset-bottom))",
-                                }
-                                : undefined
-                        }
-                    >
+                        <form
+                            onSubmit={onFormSubmit}
+                            className={`border-t border-white/5 ${!isDesktop ? "fixed bottom-0 left-0 right-0 z-30 px-[var(--app-px)] py-3 bg-zinc-950/70 dark:bg-black/75 backdrop-blur-3xl" : "mt-3 pt-3 bg-transparent"}`}
+                            style={
+                                !isDesktop
+                                    ? {
+                                        bottom: `${mobileKeyboardInset}px`,
+                                        paddingBottom: "max(12px, env(safe-area-inset-bottom))",
+                                    }
+                                    : undefined
+                            }
+                        >
                         <div className="mb-2 flex flex-wrap items-center gap-2">
                             <button
                                 type="button"
@@ -1262,22 +1273,23 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                             </div>
                         ) : null}
 
-                        <div className="flex items-end gap-2">
+                        <div className="flex items-end gap-3 pt-2">
                             <textarea
                                 value={draft}
                                 onChange={(event) => setDraft(event.target.value)}
-                                rows={2}
+                                rows={1}
                                 maxLength={1000}
                                 placeholder={t("chat.write_message")}
                                 disabled={!!pendingLocationShare}
-                                className="input-field min-h-[56px] resize-none disabled:opacity-60"
+                                className="w-full min-h-[50px] max-h-[120px] bg-white/5 border border-white/10 shadow-inner rounded-3xl px-5 py-3.5 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]/50 focus:bg-white/10 transition-all ease-out duration-300 resize-none disabled:opacity-60 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                             />
                             <button
                                 type="submit"
                                 disabled={isSending || (!pendingLocationShare && draft.trim().length === 0)}
-                                className="btn-accent self-stretch shrink-0 px-4 text-sm"
+                                className="self-stretch shrink-0 px-6 rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.25)] transition-all duration-300 ease-out hover:scale-105 hover:shadow-[0_6px_20px_rgba(0,0,0,0.4)] active:scale-95 text-sm font-bold flex items-center justify-center disabled:opacity-50 disabled:hover:scale-100 disabled:hover:shadow-none"
+                                style={{ backgroundColor: "var(--accent)", color: "var(--accent-contrast, black)" }}
                             >
-                                {isSending ? t("chat.sending") : t("chat.send")}
+                                {isSending ? <Loader2 className="h-5 w-5 animate-spin" /> : t("chat.send")}
                             </button>
                         </div>
                     </form>

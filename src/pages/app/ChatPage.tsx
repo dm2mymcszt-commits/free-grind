@@ -63,6 +63,7 @@ import {
     isLocalClientMessageId,
     parseChatFiltersFromLocationState,
 } from "./chat/chatUtils";
+import { createPortal } from "react-dom";
 import { useDesktopBreakpoint } from "../../hooks/useDesktopBreakpoint";
 import { appLog } from "../../utils/logger";
 import {
@@ -80,20 +81,72 @@ import { isChatGhosted } from "../../utils/privacy";
 import { ReplyWarningModal } from "../../components/ReplyWarningModal";
 import { processAutoDownload } from "../../services/autoDownloader";
 
-export function ChatPage() {
+    export function ChatPage() {
     const { t } = useTranslation();
+    const glassWrapperClasses = "h-full rounded-3xl border border-white/10 dark:border-white/5 bg-zinc-950/15 dark:bg-black/25 backdrop-blur-3xl shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_16px_50px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col transition-all duration-300 hover:border-white/15";
+    const mobileGlassWrapperClasses = "h-full w-full bg-zinc-950/15 dark:bg-black/25 backdrop-blur-3xl overflow-hidden flex flex-col";
+    const mobileThreadGlassWrapperClasses = "fixed inset-0 w-full h-[100dvh] bg-zinc-950/15 dark:bg-black/25 backdrop-blur-3xl overflow-hidden flex flex-col z-30";
     const location = useLocation();
     const navigate = useNavigate();
     const { conversationId: routeConversationId } = useParams();
     const [searchParams, setSearchParams] = useSearchParams();
     const service = useApiFunctions();
     const { mutateAsync: blockProfileMutation } = useBlockProfile();
-    const { userId } = useAuth();
-    const [isDesktop, setIsDesktop] = useState(() => typeof window !== "undefined" && window.innerWidth >= 1024);
+
+    const targetProfileId = useMemo(() => {
+        const raw = searchParams.get("targetProfileId");
+        if (!raw) return null;
+        const parsed = Number(raw);
+        return Number.isFinite(parsed) ? parsed : null;
+    }, [searchParams]);
+
+    const [draftProfileDetail, setDraftProfileDetail] = useState<any>(null);
+
     useEffect(() => {
-        const handleResize = () => setIsDesktop(window.innerWidth >= 1024);
-        window.addEventListener("resize", handleResize);
-        return () => window.removeEventListener("resize", handleResize);
+        if (!targetProfileId) {
+            setDraftProfileDetail(null);
+            return;
+        }
+        let cancelled = false;
+        service.getProfileDetail(String(targetProfileId)).then((p) => {
+            if (!cancelled) setDraftProfileDetail(p);
+        }).catch(() => {});
+        return () => { cancelled = true; };
+    }, [targetProfileId, service]);
+
+    const chatReturnTo = useMemo(() => {
+        const raw = searchParams.get("returnTo");
+        if (!raw || !raw.startsWith("/")) return null;
+        return raw;
+    }, [searchParams]);
+    const { userId } = useAuth();
+    const [isDesktop, setIsDesktop] = useState(() => {
+        if (typeof window === "undefined") return true;
+        return window.matchMedia("(min-width: 1024px)").matches;
+    });
+
+    useEffect(() => {
+        const mediaQuery = window.matchMedia("(min-width: 1024px)");
+        const handleMediaQueryChange = (event: MediaQueryListEvent) => {
+            setIsDesktop(event.matches);
+        };
+        
+        // High compatibility: Support both modern desktop browsers and older system WebViews (e.g. Galaxy Note 8 Android)
+        if (mediaQuery.addEventListener) {
+            mediaQuery.addEventListener("change", handleMediaQueryChange);
+        } else {
+            mediaQuery.addListener(handleMediaQueryChange);
+        }
+        
+        setIsDesktop(mediaQuery.matches);
+        
+        return () => {
+            if (mediaQuery.removeEventListener) {
+                mediaQuery.removeEventListener("change", handleMediaQueryChange);
+            } else {
+                mediaQuery.removeListener(handleMediaQueryChange);
+            }
+        };
     }, []);
     const threadBottomRef = useRef<HTMLDivElement | null>(null);
     const threadScrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -230,19 +283,22 @@ export function ChatPage() {
     >(null);
 
     // Extract profile IDs from conversations for batch presence check
-    const conversationProfileIds = useMemo(
-        () =>
-            conversations
-                .map((conv) => {
-                    const otherParticipant = getOtherParticipant(conv, userId);
-                    return otherParticipant?.profileId != null
-                        ? String(otherParticipant.profileId)
-                        : null;
-                })
-                .filter((id): id is string => id != null)
-                .slice(0, 50), // Limit to 50
-        [conversations, userId],
-    );
+    const conversationProfileIds = useMemo(() => {
+        const ids = conversations
+            .map((conv) => {
+                const otherParticipant = getOtherParticipant(conv, userId);
+                return otherParticipant?.profileId != null
+                    ? String(otherParticipant.profileId)
+                    : null;
+            })
+            .filter((id): id is string => id != null);
+
+        // Include the target draft profile so the green dot tracks them instantly
+        if (targetProfileId && !ids.includes(String(targetProfileId))) {
+            ids.unshift(String(targetProfileId));
+        }
+        return ids.slice(0, 50); // Limit to 50
+    }, [conversations, userId, targetProfileId]);
     const presenceResults = usePresenceCheckBatch(
         conversationProfileIds.length > 0 ? conversationProfileIds : null,
     );
@@ -414,24 +470,11 @@ export function ChatPage() {
         markInboxSeen(Math.max(Date.now(), maxActivityTimestamp));
     }, [location.pathname, maxActivityTimestamp]);
 
-    const targetProfileId = useMemo(() => {
-        const raw = searchParams.get("targetProfileId");
-        if (!raw) {
-            return null;
-        }
-        const parsed = Number(raw);
-        return Number.isFinite(parsed) ? parsed : null;
-    }, [searchParams]);
-    const chatReturnTo = useMemo(() => {
-        const raw = searchParams.get("returnTo");
-        if (!raw || !raw.startsWith("/")) {
-            return null;
-        }
-        return raw;
-    }, [searchParams]);
     const isSearchRoute = routeConversationId === "search";
 
-    const selectedConversationId = targetProfileId || isSearchRoute
+    const selectedConversationId = targetProfileId 
+    ? `direct:${targetProfileId}` 
+    : isSearchRoute
         ? null
         : isDesktop
             ? selectedDesktopConversationId
@@ -483,14 +526,55 @@ export function ChatPage() {
         isSearchRoute,
     ]);
 
-    const selectedConversation = useMemo(
-        () =>
-            conversations.find(
-                (conversation) =>
-                    conversation.data.conversationId === selectedConversationId,
-            ) ?? null,
-        [conversations, selectedConversationId],
-    );
+    const selectedConversation = useMemo(() => {
+        if (!selectedConversationId) return null;
+        const found = conversations.find(
+            (c) => c.data.conversationId === selectedConversationId
+        );
+        if (found) return found;
+
+        // Generate a synthetic "Draft" conversation for new chats
+        if (selectedConversationId.startsWith("direct:")) {
+            const profileId = selectedConversationId.split(":")[1];
+            
+            // Hydrate draft with background-fetched profile data
+            let primaryMediaHash = undefined;
+            if (draftProfileDetail?.profileImageMediaHash) {
+                primaryMediaHash = draftProfileDetail.profileImageMediaHash;
+            } else if (draftProfileDetail?.medias?.length > 0) {
+                primaryMediaHash = draftProfileDetail.medias[0].mediaHash;
+            }
+
+            const rawName = draftProfileDetail?.displayName || draftProfileDetail?.name || draftProfileDetail?.profile?.name || draftProfileDetail?.profile?.displayName || `Profile ${profileId}`;
+            const displayName = localNicknamesByProfileId[profileId] || rawName;
+            
+            // Use real-time presence to fake the online/offline timestamps for the UI
+            const isOnline = presenceResults[profileId] === true;
+            const fakedLastOnline = draftProfileDetail?.lastOnline ?? (isOnline ? Date.now() : undefined);
+            const fakedOnlineUntil = draftProfileDetail?.onlineUntil ?? (isOnline ? Date.now() + 60000 : undefined);
+
+            return {
+                data: {
+                    conversationId: selectedConversationId,
+                    participants: [{ 
+                        profileId: Number(profileId),
+                        primaryMediaHash,
+                        lastOnline: fakedLastOnline,
+                        onlineUntil: fakedOnlineUntil
+                    }],
+                    unreadCount: 0,
+                    pinned: false,
+                    muted: false,
+                    favorite: false,
+                    lastActivityTimestamp: Date.now(),
+                    name: displayName ? `Start a new chat with ${displayName}` : "Start a new chat",
+                    preview: { text: "Draft", type: "Text" }
+                }
+            } as unknown as ConversationEntry;
+        }
+
+        return null;
+    }, [conversations, selectedConversationId, localNicknamesByProfileId, t, draftProfileDetail, presenceResults]);
 
     const selectedConversationOtherProfileId = useMemo(() => {
         if (!selectedConversation || userId == null) {
@@ -502,26 +586,21 @@ export function ChatPage() {
             : null;
     }, [selectedConversation, userId]);
 
-    useEffect(() => {
-        const profileIds = conversations
-            .map((conversation) => {
-                if (userId == null) {
-                    return null;
-                }
-                const otherParticipant = getOtherParticipant(conversation, userId);
-                return otherParticipant?.profileId != null
-                    ? String(otherParticipant.profileId)
-                    : null;
-            })
-            .filter((id): id is string => id !== null);
+    const profileIdsJson = JSON.stringify(
+        conversations
+            .map((c) => getOtherParticipant(c, userId)?.profileId?.toString())
+            .filter(Boolean)
+    );
 
-        if (profileIds.length === 0) {
+    useEffect(() => {
+        const parsedIds = JSON.parse(profileIdsJson) as string[];
+        if (parsedIds.length === 0) {
             setLocalNicknamesByProfileId({});
             return;
         }
 
         let cancelled = false;
-        void getLocalNicknamesForProfiles(profileIds)
+        void getLocalNicknamesForProfiles(parsedIds)
             .then((nicknames) => {
                 if (cancelled) {
                     return;
@@ -535,7 +614,7 @@ export function ChatPage() {
         return () => {
             cancelled = true;
         };
-    }, [conversations, userId]);
+    }, [profileIdsJson, userId]);
 
     const handleInboxTouchStart = useCallback(
         (event: TouchEvent<HTMLDivElement>) => {
@@ -794,17 +873,27 @@ export function ChatPage() {
                 setThreadError(null);
                 setThreadConversationId(conversationId);
 
-                // Load initial state from local log if available.
-                void chatLog.readLog(conversationId).then((localData) => {
-                    if (selectedConversationIdRef.current === conversationId) {
-                        setThreadLastReadTimestamp(localData.lastReadTimestamp ?? null);
+                    // Load initial state from local log if available.
+                        void chatLog.readLog(conversationId).then((localData) => {
+                            if (selectedConversationIdRef.current === conversationId) {
+                                setThreadLastReadTimestamp(localData.lastReadTimestamp ?? null);
+                            }
+                        });
                     }
-                });
-            }
 
-            try {
-                const response = await service.listMessages({
-                    conversationId,
+                    // --- SYNTHETIC DRAFT BYPASS ---
+                    if (conversationId.startsWith("direct:")) {
+                        setThreadMessages([]);
+                        setIsLoadingThread(false);
+                        setIsLoadingOlderMessages(false);
+                        isLoadingOlderMessagesRef.current = false;
+                        return;
+                    }
+                    // ------------------------------
+
+                    try {
+                        const response = await service.listMessages({
+                            conversationId,
                     pageKey: older ? (messagePageKeyRef.current ?? undefined) : undefined,
                     includeProfile: true,
                 });
@@ -1736,14 +1825,14 @@ export function ChatPage() {
         };
     }, []);
 
-    // --- SILENT REACTION & STATUS POLLER ---
-    useEffect(() => {
-        if (!selectedConversationId) return;
+                // --- SILENT REACTION & STATUS POLLER ---
+                useEffect(() => {
+                    if (!selectedConversationId || selectedConversationId.startsWith("direct:")) return;
 
-        const intervalId = window.setInterval(async () => {
-            if (document.hidden) return; // Don't poll if the app is minimized
+                    const intervalId = window.setInterval(async () => {
+                        if (document.hidden) return; // Don't poll if the app is minimized
 
-            try {
+                        try {
                 // Quietly ask Grindr for the latest messages in this chat
                 const response = await service.listMessages({
                     conversationId: selectedConversationId,
@@ -2357,7 +2446,9 @@ export function ChatPage() {
                     return [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
                 });
 
-                if (selectedConversation) {
+                const isDraft = selectedConversation?.data.conversationId.startsWith("direct:");
+                
+                if (selectedConversation && !isDraft) {
                     syncConversation((conversation) => ({
                         ...conversation,
                         data: {
@@ -2376,6 +2467,7 @@ export function ChatPage() {
                         },
                     }));
                 } else {
+                    // It was a draft or missing, so swap the URL to the real conversation ID
                     openConversationById(sentMessage.conversationId);
                     void loadInbox({ page: 1, replace: true, silent: true });
                 }
@@ -2436,7 +2528,8 @@ export function ChatPage() {
                     body: { lat, lon },
                 });
 
-                if (selectedConversation) {
+                const isDraft = selectedConversation?.data.conversationId.startsWith("direct:");
+                if (selectedConversation && !isDraft) {
                     setThreadMessages((previous) => [...previous, sentMessage]);
                 } else {
                     openConversationById(sentMessage.conversationId);
@@ -2554,7 +2647,9 @@ export function ChatPage() {
                     return [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
                 });
 
-                if (selectedConversation) {
+                const isDraft = selectedConversation?.data.conversationId.startsWith("direct:");
+
+                if (selectedConversation && !isDraft) {
                     syncConversation((conversation) => ({
                         ...conversation,
                         data: {
@@ -3030,7 +3125,8 @@ export function ChatPage() {
                 }
 
                 // Update conversation preview with the last sent message
-                if (selectedConversation && finalSentMessage) {
+                const isDraft = selectedConversation?.data.conversationId.startsWith("direct:");
+                if (selectedConversation && finalSentMessage && !isDraft) {
                     const finalMessage = finalSentMessage;
                     syncConversation((conversation) => ({
                         ...conversation,
@@ -3051,6 +3147,9 @@ export function ChatPage() {
                             },
                         },
                     }));
+                } else if (finalSentMessage) {
+                    openConversationById(finalSentMessage.conversationId);
+                    void loadInbox({ page: 1, replace: true, silent: true });
                 }
 
                 toast.success(t("chat.toasts.media_sent"));
@@ -3342,161 +3441,187 @@ export function ChatPage() {
         />
     );
 
-    return (
-        <section
-            className={`app-screen ${isDesktop ? "overflow-hidden" : "!p-0 !max-w-none !w-full"}`}
-        >
-            <div className={isDesktop ? "mx-auto w-full max-w-6xl" : "w-full"}>
-
-                        {isSearchRoute ? (
-                            renderSearch
-                        ) : isDesktop ? (
-                            <div
-                                className="grid h-full grid-cols-[360px_minmax(0,1fr)] gap-3"
-                                style={{
-                                    height:
-                                        "calc(100dvh - (env(safe-area-inset-top, 0px) + 16px) - (env(safe-area-inset-bottom, 0px) + 92px))",
-                        }}
-                    >
-                        {renderInbox}
-                        {renderThread}
-                    </div>
-                ) : selectedConversation ?? targetProfileId ? (
-                    renderThread
-                ) : (
-                    renderInbox
-                )}
-            </div>
-
-            {isAlbumViewerLoading ? (
-                <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50">
-                    <div className="surface-card flex items-center gap-2 p-4 text-sm text-[var(--text-muted)]">
-                        <Loader2 className="h-4 w-4 animate-spin" /> {t("chat.loading_album")}
-                    </div>
-                </div>
-            ) : null}
-
-            {albumViewer ? (
-                <div
-                    className="fixed inset-0 z-50 flex flex-col bg-black/80 backdrop-blur-sm sm:p-6 md:p-12"
-                    onClick={() => {
-                        setAlbumViewerMediaIndex(null);
-                        setAlbumViewer(null);
-                    }}
-                >
-                    <div
-                        className="mx-auto flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden bg-[var(--surface)] shadow-2xl sm:h-full sm:rounded-2xl sm:border sm:border-[var(--border)]"
-                        onClick={(event) => event.stopPropagation()}
-                    >
-                        {/* --- MODERN HEADER --- */}
-                        <div className="z-10 flex flex-col gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-4 py-4 sm:px-6">
-                            <div className="flex items-start justify-between gap-4">
-                                <div className="min-w-0 flex-1">
-                                    <div className="mb-1 flex items-center gap-2">
-                                        <span className="rounded-md bg-[var(--surface-2)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
-                                            {t("shared_albums.album_label", { defaultValue: "Album" })}
-                                        </span>
-                                        <span className="text-xs font-semibold text-[var(--text-muted)]">
-                                            {albumViewer.content.length} {t("shared_albums.items_count", { count: albumViewer.content.length, defaultValue: "Items" })}
-                                        </span>
-                                    </div>
-                                    <h2 className="truncate text-xl font-bold tracking-tight">
-                                        {albumViewer.albumName?.trim() || "Album"}
-                                    </h2>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setAlbumViewerMediaIndex(null);
-                                        setAlbumViewer(null);
-                                    }}
-                                    className="rounded-full bg-[var(--surface-2)] p-2 text-[var(--text-muted)] transition hover:bg-[var(--border)] hover:text-[var(--text)]"
-                                    aria-label={t("shared_albums.close_viewer")}
-                                >
-                                    <X className="h-5 w-5" />
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* --- PERFECTLY CROPPED APPLE-PHOTOS STYLE GRID --- */}
-                        <div className="flex-1 overflow-y-auto bg-black sm:bg-[var(--surface-2)] sm:p-4">
-                            <div className="content-start grid grid-cols-3 gap-0.5 sm:grid-cols-4 sm:gap-2 lg:grid-cols-5">
-                                {albumViewer.content.map((item, index) => {
-                                    const mediaUrl = item.url || item.thumbUrl || item.coverUrl;
-                                    if (!mediaUrl) {
-                                        return (
-                                            <div
-                                                key={item.contentId}
-                                                className="flex aspect-square w-full items-center justify-center bg-zinc-900 text-[10px] text-zinc-500 sm:rounded-xl"
-                                            >
-                                                Unavailable
-                                            </div>
-                                        );
-                                    }
-
-                                    return (
-                                        <button
-                                            type="button"
-                                            key={item.contentId}
-                                            onClick={() => openAlbumMediaViewer(index)}
-                                            className="group relative aspect-square w-full overflow-hidden bg-zinc-900 sm:rounded-xl"
-                                        >
-                                            {item.contentType?.startsWith("video/") ? (
-                                                <video 
-                                                    src={mediaUrl} 
-                                                    className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" 
-                                                    muted 
-                                                />
-                                            ) : (
-                                                <img
-                                                    src={mediaUrl}
-                                                    alt="Album content"
-                                                    className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                                />
-                                            )}
-											
-                                            <div className="absolute inset-0 bg-black/0 transition-colors duration-300 group-hover:bg-black/20" />
-											
-                                            {item.contentType?.startsWith("video/") ? (
-                                                <span className="absolute bottom-1.5 right-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white backdrop-blur-md">
-                                                    Video
-                                                </span>
-                                            ) : null}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            ) : null}
-
-            <PhotoViewer
-                isOpen={albumViewer !== null && albumViewerMediaIndex !== null}
-                onClose={closeAlbumMediaViewer}
-                photos={albumViewerPhotos}
-                initialIndex={albumViewerMediaIndex ?? 0}
-            />
-
-            <PhotoViewer
-                isOpen={!!fullScreenImageUrl}
-                onClose={closeFullScreenImage}
-                photos={fullScreenImageUrl ? [fullScreenImageUrl] : []}
-            />
-
-            {/* --- REPLY WARNING MODAL --- */}
-            <ReplyWarningModal 
-                isOpen={pendingReplyMessage !== null}
-                onCancel={() => setPendingReplyMessage(null)}
-                onProceed={() => {
-                    if (pendingReplyMessage) {
-                        setReplyTargetMessageId(pendingReplyMessage.messageId);
-                        setOpenMessageActionId(null);
-                    }
-                    setPendingReplyMessage(null);
+return (
+        <div className="relative w-full min-h-dvh overflow-hidden">
+            {/* High-Performance Full-Bleed Accent Glow (Outside the 1200px section so it is never clipped) */}
+            <div 
+                className="absolute inset-0 pointer-events-none z-0"
+                style={{
+                    backgroundImage: "linear-gradient(135deg, color-mix(in srgb, var(--accent) 15%, transparent) 0%, rgba(15, 19, 26, 0) 55%)"
                 }}
             />
-            {/* --------------------------- */}
+
+            <section
+                className={`app-screen relative z-10 ${isDesktop ? "overflow-hidden" : "!p-0 !max-w-none !w-full"}`}
+            >
+                <div className={isDesktop ? "mx-auto w-full max-w-6xl h-full flex flex-col justify-center" : "w-full h-full"}>
+
+                            {isSearchRoute ? (
+                                renderSearch
+                            ) : isDesktop ? (
+                                <div
+                                    className="grid h-full grid-cols-[360px_minmax(0,1fr)] gap-3"
+                                    style={{
+                                        height:
+                                            "calc(100dvh - (env(safe-area-inset-top, 0px) + 16px) - (env(safe-area-inset-bottom, 0px) + 92px))",
+                                }}
+                            >
+                            <div className={glassWrapperClasses}>
+                                {renderInbox}
+                            </div>
+                            <div className={glassWrapperClasses}>
+                                {renderThread}
+                            </div>
+                        </div>
+                    ) : selectedConversation ?? targetProfileId ? (
+                        createPortal(
+                            <div className={mobileThreadGlassWrapperClasses}>
+                                {renderThread}
+                            </div>,
+                            document.body
+                        )
+                    ) : (
+                        <div className={mobileGlassWrapperClasses}>
+                            {renderInbox}
+                        </div>
+                    )}
+                </div>
+
+        {createPortal(
+            <>
+                {isAlbumViewerLoading ? (
+                    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50">
+                        <div className="surface-card flex items-center gap-2 p-4 text-sm text-[var(--text-muted)]">
+                            <Loader2 className="h-4 w-4 animate-spin" /> {t("chat.loading_album")}
+                        </div>
+                    </div>
+                ) : null}
+
+                {albumViewer ? (
+                    <div
+                        className="fixed inset-0 z-50 flex flex-col bg-black/80 backdrop-blur-sm sm:p-6 md:p-12"
+                        onClick={() => {
+                            setAlbumViewerMediaIndex(null);
+                            setAlbumViewer(null);
+                        }}
+                    >
+                        <div
+                            className="mx-auto flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden bg-[var(--surface)] shadow-2xl sm:h-full sm:rounded-2xl sm:border sm:border-[var(--border)]"
+                            onClick={(event) => event.stopPropagation()}
+                        >
+                            {/* --- MODERN HEADER --- */}
+                            <div className="z-10 flex flex-col gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-4 py-4 sm:px-6">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div className="min-w-0 flex-1">
+                                        <div className="mb-1 flex items-center gap-2">
+                                            <span className="rounded-md bg-[var(--surface-2)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
+                                                {t("shared_albums.album_label", { defaultValue: "Album" })}
+                                            </span>
+                                            <span className="text-xs font-semibold text-[var(--text-muted)]">
+                                                {albumViewer.content.length} {t("shared_albums.items_count", { count: albumViewer.content.length, defaultValue: "Items" })}
+                                            </span>
+                                        </div>
+                                        <h2 className="truncate text-xl font-bold tracking-tight">
+                                            {albumViewer.albumName?.trim() || "Album"}
+                                        </h2>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setAlbumViewerMediaIndex(null);
+                                            setAlbumViewer(null);
+                                        }}
+                                        className="rounded-full bg-[var(--surface-2)] p-2 text-[var(--text-muted)] transition hover:bg-[var(--border)] hover:text-[var(--text)]"
+                                        aria-label={t("shared_albums.close_viewer")}
+                                    >
+                                        <X className="h-5 w-5" />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* --- PERFECTLY CROPPED APPLE-PHOTOS STYLE GRID --- */}
+                            <div className="flex-1 overflow-y-auto bg-black sm:bg-[var(--surface-2)] sm:p-4">
+                                <div className="content-start grid grid-cols-3 gap-0.5 sm:grid-cols-4 sm:gap-2 lg:grid-cols-5">
+                                    {albumViewer.content.map((item, index) => {
+                                        const mediaUrl = item.url || item.thumbUrl || item.coverUrl;
+                                        if (!mediaUrl) {
+                                            return (
+                                                <div
+                                                    key={item.contentId}
+                                                    className="flex aspect-square w-full items-center justify-center bg-zinc-900 text-[10px] text-zinc-500 sm:rounded-xl"
+                                                >
+                                                    Unavailable
+                                                </div>
+                                            );
+                                        }
+
+                                        return (
+                                            <button
+                                                type="button"
+                                                key={item.contentId}
+                                                onClick={() => openAlbumMediaViewer(index)}
+                                                className="group relative aspect-square w-full overflow-hidden bg-zinc-900 sm:rounded-xl"
+                                            >
+                                                {item.contentType?.startsWith("video/") ? (
+                                                    <video 
+                                                        src={mediaUrl} 
+                                                        className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" 
+                                                        muted 
+                                                    />
+                                                ) : (
+                                                    <img
+                                                        src={mediaUrl}
+                                                        alt="Album content"
+                                                        className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                                    />
+                                                )}
+														
+                                                <div className="absolute inset-0 bg-black/0 transition-colors duration-300 group-hover:bg-black/20" />
+														
+                                                {item.contentType?.startsWith("video/") ? (
+                                                    <span className="absolute bottom-1.5 right-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white backdrop-blur-md">
+                                                        Video
+                                                    </span>
+                                                ) : null}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                ) : null}
+
+                <PhotoViewer
+                    isOpen={albumViewer !== null && albumViewerMediaIndex !== null}
+                    onClose={closeAlbumMediaViewer}
+                    photos={albumViewerPhotos}
+                    initialIndex={albumViewerMediaIndex ?? 0}
+                />
+
+                <PhotoViewer
+                    isOpen={!!fullScreenImageUrl}
+                    onClose={closeFullScreenImage}
+                    photos={fullScreenImageUrl ? [fullScreenImageUrl] : []}
+                />
+
+                {/* --- REPLY WARNING MODAL --- */}
+                <ReplyWarningModal 
+                    isOpen={pendingReplyMessage !== null}
+                    onCancel={() => setPendingReplyMessage(null)}
+                    onProceed={() => {
+                        if (pendingReplyMessage) {
+                            setReplyTargetMessageId(pendingReplyMessage.messageId);
+                            setOpenMessageActionId(null);
+                        }
+                        setPendingReplyMessage(null);
+                    }}
+                />
+            </>,
+            document.body
+        )}
+        {/* --------------------------- */}
         </section>
+    </div>
     );
 }

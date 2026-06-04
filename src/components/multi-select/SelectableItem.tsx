@@ -79,7 +79,7 @@ export function SelectableItem({ id, name, profileId, viewType, children, onNorm
                             ? "border-[var(--accent)] scale-100 opacity-100" 
                             : isModeActiveForThisView 
                                 ? "bg-black/40 border-white/50 scale-100 opacity-100" 
-                                : "scale-50 opacity-0 group-hover:scale-100 group-hover:opacity-100 bg-black/40 border-white/40"
+                                : "scale-50 opacity-0 bg-black/40 border-white/40"
                     }`}
                     style={{
                         backgroundColor: selected ? "var(--accent)" : undefined

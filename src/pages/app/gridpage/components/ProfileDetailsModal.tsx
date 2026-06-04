@@ -424,27 +424,7 @@ export function ProfileDetailsModal({
 								)}
 							</div>
 						</div>
-
-						<div className="pointer-events-auto flex flex-1 items-center justify-end gap-1">
-							<button
-								type="button"
-								onClick={onPrevProfile}
-								disabled={!onPrevProfile}
-								className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md disabled:opacity-30"
-								aria-label={t("profile_details.previous_profile")}
-							>
-								<ChevronLeft className="h-4 w-4" />
-							</button>
-							<button
-								type="button"
-								onClick={onNextProfile}
-								disabled={!onNextProfile}
-								className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md disabled:opacity-30"
-								aria-label={t("profile_details.next_profile")}
-							>
-								<ChevronRight className="h-4 w-4" />
-							</button>
-						</div>
+                        <div className="flex flex-1 items-center justify-end" />
 					</div>
 				</header>
 
