@@ -4,15 +4,18 @@ import {
     Bell,
     Bookmark,
     Bug,
+    ChevronLeft,
     ChevronRight,
     ClipboardList,
     Download,
+    GitBranch,
     Images,
     Info,
     LogOut,
     MessageSquareWarning,
     Palette,
     Radar,
+    RefreshCcw,
     Workflow,
     UserX,
 } from "lucide-react";
@@ -26,24 +29,36 @@ import { usePreferences } from "../../contexts/PreferencesContext";
 import { exportAllLogs } from "../../services/chatLog";
 import { Button } from "../../components/ui/button";
 
+// OTA Hotswap Engine Imports
+import {
+    checkForHotswapUpdate,
+    installHotswapUpdate,
+    setHotswapChannel,
+    clearContributorChannel,
+    isContributorChannel,
+    getContributorHandle,
+    isHotswapAvailable,
+    type HotswapChannel,
+} from "../../services/hotswap";
+
 const PUSH_TOKEN_STORAGE_KEY = "fg-fcm-token";
 const PUSH_TOKEN_SYNCED_STORAGE_KEY = "fg-fcm-token-synced";
+
+// Fallback in case visibleChannels isn't exported from hotswap.ts
+const visibleChannels: HotswapChannel[] = ["main", "testingwjay"] as any;
 
 function getErrorMessage(error: unknown, fallback: string): string {
     if (error instanceof Error && error.message) {
         return error.message;
     }
-
     if (typeof error === "string") {
         return error;
     }
-
     try {
         return JSON.stringify(error);
     } catch {
         // ignore
     }
-
     return fallback;
 }
 
@@ -53,6 +68,8 @@ export function SettingsPage() {
     const navigate = useNavigate();
     const { callMethod, asAppError } = useApi();
     const { developerMode, showDebugInfo, setPreferences } = usePreferences();
+    
+    // --- States ---
     const [isExporting, setIsExporting] = useState(false);
     const [isSyncingFcm, setIsSyncingFcm] = useState(false);
     const [fcmToken, setFcmToken] = useState<string | null>(() => {
@@ -64,10 +81,16 @@ export function SettingsPage() {
     const [fcmSyncedToken, setFcmSyncedToken] = useState<string | null>(() => window.localStorage.getItem(PUSH_TOKEN_SYNCED_STORAGE_KEY));
     const [fcmEventLog, setFcmEventLog] = useState<{ time: string; token: string }[]>([]);
     const [manualToken, setManualToken] = useState("");
-    const [forbiddenWords, setForbiddenWords] = useState(() => window.localStorage.getItem("fg-forbidden-words") || "");
-    const [blockOnGrid, setBlockOnGrid] = useState(() => window.localStorage.getItem("fg-block-grid") === "true");
-    const [blockOnChat, setBlockOnChat] = useState(() => window.localStorage.getItem("fg-block-chat") !== "false"); // Default to true
     const fcmLogRef = useRef<HTMLDivElement>(null);
+
+    // OTA Hotswap States
+    const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
+    const [isSwitchingChannel, setIsSwitchingChannel] = useState(false);
+    const [isActivatingContributor, setIsActivatingContributor] = useState(false);
+    const [contributorCodeInput, setContributorCodeInput] = useState("");
+    const [updateChannel, setUpdateChannel] = useState<HotswapChannel>(() => {
+        return (window.localStorage.getItem("fg_hotswap_channel") as HotswapChannel) || "main";
+    });
 
     useEffect(() => {
         const onFcmToken = (event: Event) => {
@@ -138,16 +161,169 @@ export function SettingsPage() {
         }
     };
 
+    // --- OTA Hotswap Handlers ---
+    const handleCheckUpdates = async () => {
+        if (!isHotswapAvailable()) {
+            toast.error(t("settings.ota_available_only_tauri"));
+            return;
+        }
+
+        setIsCheckingUpdates(true);
+        try {
+            const result = await checkForHotswapUpdate();
+            if (result.requiresBinaryUpdate) {
+                toast.error(
+                    result.notes ??
+                        "This build is no longer compatible. Please download and install the latest APK.",
+                );
+                return;
+            }
+
+            if (!result.available) {
+                toast.success(t("settings.latest_version"));
+                return;
+            }
+
+            await installHotswapUpdate();
+            toast.success(t("settings.update_installed"));
+            window.location.reload();
+        } catch (error) {
+            const msg = getErrorMessage(error, t("settings.failed_update_check"));
+            if (import.meta.env.DEV) {
+                appLog.error("Update check failed:", error, "| message:", msg);
+            }
+            toast.error(msg, { duration: 10000 });
+        } finally {
+            setIsCheckingUpdates(false);
+        }
+    };
+
+    const handleSwitchUpdateChannel = async (channel: HotswapChannel) => {
+        if (!developerMode && channel === "testingwjay") {
+            toast.error("Enable Developer Mode to use this update branch.");
+            return;
+        }
+
+        if (!isHotswapAvailable()) {
+            toast.error(t("settings.ota_available_only_tauri"));
+            return;
+        }
+
+        if (channel === updateChannel) {
+            return;
+        }
+
+        setIsSwitchingChannel(true);
+        try {
+            await setHotswapChannel(channel);
+            setUpdateChannel(channel);
+
+            const result = await checkForHotswapUpdate();
+            if (!result.requiresBinaryUpdate && result.available) {
+                await installHotswapUpdate();
+                toast.success(t("settings.switched_and_updated", { channel }));
+                window.location.reload();
+                return;
+            }
+
+            toast.success(t("settings.switched_channel", { channel }));
+            window.location.reload();
+        } catch (error) {
+            if (import.meta.env.DEV) {
+                appLog.error("Switch update environment failed:", error);
+            }
+            toast.error(t("settings.failed_switch_env"));
+        } finally {
+            setIsSwitchingChannel(false);
+        }
+    };
+
+    const handleActivateContributorChannel = async () => {
+        const handle = contributorCodeInput.trim().toLowerCase();
+        if (!handle || !/^[a-z0-9_-]{1,32}$/.test(handle)) {
+            toast.error("Enter a valid contributor code (letters, numbers, _ or -).");
+            return;
+        }
+
+        if (!isHotswapAvailable()) {
+            toast.error(t("settings.ota_available_only_tauri"));
+            return;
+        }
+
+        const channel: HotswapChannel = `contrib-${handle}` as any;
+        setIsActivatingContributor(true);
+        try {
+            await setHotswapChannel(channel);
+            setUpdateChannel(channel);
+            setContributorCodeInput("");
+
+            const result = await checkForHotswapUpdate();
+            if (!result.available) {
+                toast.success(`Switched to ${handle}'s channel. No update available yet.`);
+                window.location.reload();
+                return;
+            }
+            if (result.requiresBinaryUpdate) {
+                toast.error(result.notes ?? "Binary update required.");
+                return;
+            }
+            await installHotswapUpdate();
+            toast.success(`Switched to ${handle}'s channel and updated!`);
+            window.location.reload();
+        } catch (error) {
+            if (import.meta.env.DEV) {
+                appLog.error("Contributor channel switch failed:", error);
+            }
+            toast.error("Failed to switch to contributor channel.");
+        } finally {
+            setIsActivatingContributor(false);
+        }
+    };
+
+    const handleLeaveContributorChannel = async () => {
+        if (!isHotswapAvailable()) {
+            toast.error(t("settings.ota_available_only_tauri"));
+            return;
+        }
+
+        setIsSwitchingChannel(true);
+        try {
+            await clearContributorChannel();
+            setUpdateChannel("main");
+            toast.success("Left contributor channel, switched back to main.");
+            window.location.reload();
+        } catch (error) {
+            if (import.meta.env.DEV) {
+                appLog.error("Leave contributor channel failed:", error);
+            }
+            toast.error("Failed to leave contributor channel.");
+        } finally {
+            setIsSwitchingChannel(false);
+        }
+    };
+
     return (
         <section className="app-screen">
-            <header className="mb-6">
-                <h1 className="app-title mb-2">{t("settings.title")}</h1>
-                <p className="app-subtitle">{t("settings.subtitle")}</p>
-                {developerMode ? (
-                    <p className="mt-2 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent-readable)]">
-                        Developer Mode
-                    </p>
-                ) : null}
+            <header className="mb-6 flex items-center gap-3">
+                <button
+                    type="button"
+                    onClick={() => navigate("/")}
+                    className="shrink-0 inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-2)] transition hover:border-[var(--accent)]"
+                    aria-label={t("settings.back_to_browse")}
+                >
+                    <ChevronLeft className="h-4 w-4" />
+                </button>
+                <div>
+                    <div className="mb-1 flex items-center gap-2">
+                        <h1 className="app-title">{t("settings.title")}</h1>
+                        {developerMode ? (
+                            <span className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--accent-contrast)]">
+                                Developer Mode
+                            </span>
+                        ) : null}
+                    </div>
+                    <p className="app-subtitle">{t("settings.subtitle")}</p>
+                </div>
             </header>
 
             <div className="grid gap-4">
@@ -171,7 +347,7 @@ export function SettingsPage() {
                     </div>
                     <ChevronRight className="h-5 w-5 text-[var(--text-muted)]" />
                 </button>
-                
+
                 <button
                     type="button"
                     onClick={() => navigate("/settings/customizability")}
@@ -416,99 +592,221 @@ export function SettingsPage() {
                     )}
                 </button>
 
-                {developerMode ? (
-                    <div className="surface-card p-4 sm:p-5">
-                    <div className="flex items-start gap-3">
-                        <div className="rounded-xl bg-[var(--surface-2)] p-2.5 shrink-0">
-                            <Bell className="h-5 w-5" />
+                {/* --- OTA HOTSWAP MODULE --- */}
+                <div className="surface-card flex w-full items-center justify-between p-4 text-left sm:p-5">
+                    <div className="flex items-center gap-3">
+                        <div className="rounded-xl bg-[var(--surface-2)] p-2.5">
+                            <RefreshCcw className="h-5 w-5" />
                         </div>
-                        <div className="grid gap-3 min-w-0 flex-1">
-                            <p className="text-base font-semibold">Push Token (FCM)</p>
-
-                            {/* Current token */}
-                            {fcmToken ? (
-                                <div className="grid gap-2">
-                                    <div className="rounded-lg bg-[var(--surface-2)] px-3 py-2">
-                                        <p className="text-xs text-[var(--text-muted)] mb-1">Token (tap to select)</p>
-                                        <p className="break-all font-mono text-xs select-all">{fcmToken}</p>
-                                    </div>
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-                                            fcmSyncedToken === fcmToken
-                                                ? "bg-green-500/20 text-green-400"
-                                                : "bg-yellow-500/20 text-yellow-400"
-                                        }`}>
-                                            {fcmSyncedToken === fcmToken ? "✓ Synced to Grindr" : "⚠ Not yet synced"}
-                                        </span>
-                                        <Button type="button" size="sm" disabled={isSyncingFcm} onClick={() => void handleForceSyncFcm()}>
-                                            {isSyncingFcm ? "Syncing..." : "Force re-sync"}
-                                        </Button>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="rounded-lg bg-yellow-500/10 border border-yellow-500/30 px-3 py-2 text-sm text-yellow-400">
-                                    <p className="font-medium mb-0.5">No token received yet</p>
-                                    <p className="text-xs opacity-80">Android delivers the FCM token via the <code>fg:fcm-token</code> event after Firebase initialises on launch. If you see nothing below, Firebase may have failed — check that Google Play Services is working on this device.</p>
-                                </div>
-                            )}
-
-                            {/* Live event log */}
-                            <div>
-                                <p className="text-xs font-medium text-[var(--text-muted)] mb-1">
-                                    Live event log {fcmEventLog.length > 0 ? `(${fcmEventLog.length} received this session)` : "(waiting…)"}
-                                </p>
-                                <div
-                                    ref={fcmLogRef}
-                                    className="rounded-lg bg-[var(--surface-2)] px-3 py-2 max-h-32 overflow-y-auto"
-                                >
-                                    {fcmEventLog.length === 0 ? (
-                                        <p className="font-mono text-xs text-[var(--text-muted)] italic">No fg:fcm-token events fired since this page opened</p>
-                                    ) : (
-                                        fcmEventLog.map((entry, i) => (
-                                            <p key={i} className="font-mono text-xs break-all">
-                                                <span className="text-[var(--text-muted)]">[{entry.time}] </span>
-                                                {entry.token.slice(0, 20)}…{entry.token.slice(-8)}
-                                            </p>
-                                        ))
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Manual token input */}
-                            <div className="grid gap-1.5">
-                                <p className="text-xs font-medium text-[var(--text-muted)]">Manual token (paste to force-sync)</p>
-                                <div className="flex gap-2">
-                                    <input
-                                        type="text"
-                                        value={manualToken}
-                                        onChange={(e) => setManualToken(e.target.value)}
-                                        placeholder="Paste FCM token here…"
-                                        className="input-field min-w-0 flex-1 font-mono text-xs"
-                                    />
-                                    <Button
+                        <div>
+                            <p className="text-base font-semibold">
+                                {t("settings.check_updates", { defaultValue: "Check for Updates" })}
+                            </p>
+                            <p className="text-sm text-[var(--text-muted)]">
+                                {t("settings.environment", { defaultValue: "Channel" })}: <strong>{updateChannel}</strong>
+                            </p>
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                                {visibleChannels.map((channel) => (
+                                    <button
+                                        key={channel}
                                         type="button"
-                                        size="sm"
-                                        disabled={isSyncingFcm || !manualToken.trim()}
-                                        onClick={() => void handleForceSyncFcm(manualToken.trim())}
+                                        disabled={isSwitchingChannel || isCheckingUpdates}
+                                        onClick={() => void handleSwitchUpdateChannel(channel)}
+                                        className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                                            channel === updateChannel
+                                                ? "border-[var(--accent)] bg-[var(--accent)] text-black"
+                                                : "border-[var(--surface-2)] bg-[var(--surface-1)] text-[var(--text-muted)] hover:border-[var(--accent)]"
+                                        }`}
                                     >
-                                        Sync
-                                    </Button>
-                                </div>
+                                        {channel}
+                                    </button>
+                                ))}
                             </div>
                         </div>
                     </div>
+                    {isSwitchingChannel ? (
+                        <span className="text-xs text-[var(--text-muted)]">
+                            {t("settings.switching", { defaultValue: "Switching..." })}
+                        </span>
+                    ) : isCheckingUpdates ? (
+                        <span className="text-xs text-[var(--text-muted)]">
+                            {t("settings.checking", { defaultValue: "Checking..." })}
+                        </span>
+                    ) : (
+                        <Button
+                            type="button"
+                            onClick={() => void handleCheckUpdates()}
+                            disabled={isCheckingUpdates || isSwitchingChannel}
+                        >
+                            {t("settings.check_now", { defaultValue: "Check Now" })}
+                        </Button>
+                    )}
+                </div>
+
+                {/* Contributor Channel (Developer Mode Only) */}
+                {(developerMode || isContributorChannel(updateChannel)) ? (
+                    <div className="surface-card p-4 sm:p-5">
+                        <div className="flex items-start gap-3">
+                            <div className="rounded-xl bg-[var(--surface-2)] p-2.5 shrink-0">
+                                <GitBranch className="h-5 w-5" />
+                            </div>
+                            <div className="grid gap-3 min-w-0 flex-1">
+                                <div>
+                                    <p className="text-base font-semibold">Contributor Channel</p>
+                                    <p className="text-sm text-[var(--text-muted)]">
+                                        Enter a contributor code to receive their experimental builds.
+                                    </p>
+                                </div>
+
+                                {isContributorChannel(updateChannel) ? (
+                                    <div className="grid gap-2">
+                                        <div className="rounded-lg bg-[var(--accent)]/10 border border-[var(--accent)]/30 px-3 py-2">
+                                            <p className="text-xs text-[var(--text-muted)] mb-0.5">Active contributor</p>
+                                            <p className="font-semibold text-[var(--accent)]">
+                                                {getContributorHandle(updateChannel)}
+                                            </p>
+                                        </div>
+                                        <p className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-300">
+                                            Contributor channels are community-provided experimental builds. Use at your own risk.
+                                        </p>
+                                        <button
+                                            type="button"
+                                            disabled={isSwitchingChannel}
+                                            onClick={() => void handleLeaveContributorChannel()}
+                                            className="rounded-lg border border-[var(--surface-2)] bg-[var(--surface-1)] px-3 py-1.5 text-sm text-[var(--text-muted)] transition hover:border-red-400 hover:text-red-400 disabled:opacity-50"
+                                        >
+                                            {isSwitchingChannel ? "Leaving…" : "Leave contributor channel"}
+                                        </button>
+                                    </div>
+                                ) : developerMode ? (
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="text"
+                                            value={contributorCodeInput}
+                                            onChange={(e) => setContributorCodeInput(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))}
+                                            onKeyDown={(e) => { if (e.key === "Enter") void handleActivateContributorChannel(); }}
+                                            placeholder="contributor-handle"
+                                            maxLength={32}
+                                            className="min-w-0 flex-1 rounded-lg border border-[var(--surface-2)] bg-[var(--surface-1)] px-3 py-1.5 text-sm outline-none focus:border-[var(--accent)]"
+                                        />
+                                        <button
+                                            type="button"
+                                            disabled={isActivatingContributor || !contributorCodeInput}
+                                            onClick={() => void handleActivateContributorChannel()}
+                                            className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-black transition hover:brightness-110 disabled:opacity-50"
+                                        >
+                                            {isActivatingContributor ? "Activating…" : "Activate"}
+                                        </button>
+                                    </div>
+                                ) : null}
+                            </div>
+                        </div>
                     </div>
                 ) : null}
 
-                <div className="mt-2 flex flex-wrap items-center gap-3">
-                    <Button type="button" onClick={() => navigate("/")}>
-                        {t("settings.back_to_browse")}
-                    </Button>
-                    <Button type="button" variant="primary" onClick={handleLogout}>
-                        <LogOut className="h-4 w-4" />
+                {/* --- FCM Debug Panel (Developer Mode Only) --- */}
+                {developerMode ? (
+                    <div className="surface-card p-4 sm:p-5">
+                        <div className="flex items-start gap-3">
+                            <div className="rounded-xl bg-[var(--surface-2)] p-2.5 shrink-0">
+                                <Bell className="h-5 w-5" />
+                            </div>
+                            <div className="grid gap-3 min-w-0 flex-1">
+                                <p className="text-base font-semibold">Push Token (FCM)</p>
+
+                                {fcmToken ? (
+                                    <div className="grid gap-2">
+                                        <div className="rounded-lg bg-[var(--surface-2)] px-3 py-2">
+                                            <p className="text-xs text-[var(--text-muted)] mb-1">Token (tap to select)</p>
+                                            <p className="break-all font-mono text-xs select-all">{fcmToken}</p>
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                                                fcmSyncedToken === fcmToken
+                                                    ? "bg-green-500/20 text-green-400"
+                                                    : "bg-yellow-500/20 text-yellow-400"
+                                            }`}>
+                                                {fcmSyncedToken === fcmToken ? "✓ Synced to Grindr" : "⚠ Not yet synced"}
+                                            </span>
+                                            <Button type="button" size="sm" disabled={isSyncingFcm} onClick={() => void handleForceSyncFcm()}>
+                                                {isSyncingFcm ? "Syncing..." : "Force re-sync"}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="rounded-lg bg-yellow-500/10 border border-yellow-500/30 px-3 py-2 text-sm text-yellow-400">
+                                        <p className="font-medium mb-0.5">No token received yet</p>
+                                        <p className="text-xs opacity-80">Android delivers the FCM token via the <code>fg:fcm-token</code> event after Firebase initialises on launch. If you see nothing below, Firebase may have failed — check that Google Play Services is working on this device.</p>
+                                    </div>
+                                )}
+
+                                <div>
+                                    <p className="text-xs font-medium text-[var(--text-muted)] mb-1">
+                                        Live event log {fcmEventLog.length > 0 ? `(${fcmEventLog.length} received this session)` : "(waiting…)"}
+                                    </p>
+                                    <div
+                                        ref={fcmLogRef}
+                                        className="rounded-lg bg-[var(--surface-2)] px-3 py-2 max-h-32 overflow-y-auto"
+                                    >
+                                        {fcmEventLog.length === 0 ? (
+                                            <p className="font-mono text-xs text-[var(--text-muted)] italic">No fg:fcm-token events fired since this page opened</p>
+                                        ) : (
+                                            fcmEventLog.map((entry, i) => (
+                                                <p key={i} className="font-mono text-xs break-all">
+                                                    <span className="text-[var(--text-muted)]">[{entry.time}] </span>
+                                                    {entry.token.slice(0, 20)}…{entry.token.slice(-8)}
+                                                </p>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="grid gap-1.5">
+                                    <p className="text-xs font-medium text-[var(--text-muted)]">Manual token (paste to force-sync)</p>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            value={manualToken}
+                                            onChange={(e) => setManualToken(e.target.value)}
+                                            placeholder="Paste FCM token here…"
+                                            className="input-field min-w-0 flex-1 font-mono text-xs"
+                                        />
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            disabled={isSyncingFcm || !manualToken.trim()}
+                                            onClick={() => void handleForceSyncFcm(manualToken.trim())}
+                                        >
+                                            Sync
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                ) : null}
+
+                <div className="surface-card flex w-full items-center justify-between p-4 text-left sm:p-5 mt-2">
+                    <div className="flex items-center gap-3">
+                        <div className="rounded-xl bg-[var(--surface-2)] p-2.5">
+                            <LogOut className="h-5 w-5 text-red-400" />
+                        </div>
+                        <div>
+                            <p className="text-base font-semibold">{t("settings.logout")}</p>
+                            <p className="text-sm text-[var(--text-muted)]">
+                                {t("profile_editor.logout_description", { defaultValue: "You will be signed out of your account on this device." })}
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={handleLogout}
+                        className="inline-flex min-h-9 shrink-0 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-400 transition hover:bg-red-500/20"
+                    >
                         {t("settings.logout")}
-                    </Button>
+                    </button>
                 </div>
+
             </div>
         </section>
     );

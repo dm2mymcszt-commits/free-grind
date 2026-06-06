@@ -56,13 +56,16 @@ import * as chatLog from "../../services/chatLog";
 import {
     buildBinaryUpload,
     extractImageHashFromSignedUrl,
+    getMessageAlbumId,
     getMessageImageUrl,
     getMessageMediaId,
     getMessagePreviewLabel,
     getOtherParticipant,
     isLocalClientMessageId,
     parseChatFiltersFromLocationState,
+    formatDateTime24,
 } from "./chat/chatUtils";
+import freegrindLogo from "../../images/freegrind-logo.webp";
 import { createPortal } from "react-dom";
 import { useDesktopBreakpoint } from "../../hooks/useDesktopBreakpoint";
 import { appLog } from "../../utils/logger";
@@ -351,6 +354,9 @@ import { processAutoDownload } from "../../services/autoDownloader";
             if (messageLongPressTimeoutRef.current != null) {
                 window.clearTimeout(messageLongPressTimeoutRef.current);
             }
+            for (const id of Object.values(doubleTapTimeoutRef.current)) {
+                window.clearTimeout(id);
+            }
         };
     }, []);
 
@@ -421,10 +427,33 @@ import { processAutoDownload } from "../../services/autoDownloader";
     const [albumViewerMediaIndex, setAlbumViewerMediaIndex] = useState<
         number | null
     >(null);
+
+    const isAlbumOpen = albumViewer !== null;
+    useEffect(() => {
+        if (!isAlbumOpen) return;
+        const prevState = window.history.state;
+        window.history.pushState({ albumOpen: true }, "");
+        const onPopState = () => {
+            setAlbumViewer(null);
+            setAlbumViewerMediaIndex(null);
+        };
+        window.addEventListener("popstate", onPopState);
+        return () => {
+            window.removeEventListener("popstate", onPopState);
+            if (window.history.state?.albumOpen) window.history.replaceState(prevState, "");
+        };
+    }, [isAlbumOpen]);
+
     const [isAlbumViewerLoading, setIsAlbumViewerLoading] = useState(false);
     const [fullScreenImageUrl, setFullScreenImageUrl] = useState<string | null>(
         null,
     );
+    const [fullScreenImageMeta, setFullScreenImageMeta] = useState<{
+        takenOnGrindr: boolean;
+        createdAtLabel: string | null;
+        timestamp: number;
+    } | null>(null);
+    const doubleTapTimeoutRef = useRef<Record<string, number>>({});
 
     const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
@@ -2501,8 +2530,8 @@ import { processAutoDownload } from "../../services/autoDownloader";
         ],
     );
 
-    const sendLocationMessage = useCallback(
-        async (lat: number, lon: number) => {
+        const sendLocationMessage = useCallback(
+                async (lat: number, lon: number) => {
             if (!userId) {
                 return;
             }
@@ -2601,19 +2630,30 @@ import { processAutoDownload } from "../../services/autoDownloader";
                 },
             ]);
 
-            const progressId = window.setInterval(() => {
-                setUploadProgress((previous) => Math.min(92, previous + 8));
-            }, 260);
+                const progressId = window.setInterval(() => {
+                    setUploadProgress((previous) => Math.min(92, previous + 8));
+                }, 260);
 
-            try {
-                const binaryUpload = await buildBinaryUpload(file);
-                const uploaded = await service.uploadChatMedia({
-                    multipart: binaryUpload,
-                    options: {
-                        looping: options.looping,
-                        takenOnGrindr: options.takenOnGrindr,
-                    },
-                });
+                try {
+                    // Bypass canvas resizing for GIFs to preserve animation frames!
+                    let binaryUpload: { body: Uint8Array; contentType: string } | any;
+                    if (file.type === "image/gif") {
+                        const arrayBuffer = await file.arrayBuffer();
+                        binaryUpload = {
+                            body: new Uint8Array(arrayBuffer),
+                            contentType: "image/gif",
+                        };
+                    } else {
+                        binaryUpload = await buildBinaryUpload(file);
+                    }
+
+                    const uploaded = await service.uploadChatMedia({
+                        multipart: binaryUpload,
+                        options: {
+                            looping: options.looping,
+                            takenOnGrindr: options.takenOnGrindr,
+                        },
+                    });
                 setUploadProgress(96);
 
                 const imageUrl = uploaded.url;
@@ -2717,26 +2757,39 @@ import { processAutoDownload } from "../../services/autoDownloader";
         setAttachmentTakenOnGrindr(false);
     }, []);
 
-    const confirmPendingAttachment = useCallback(() => {
-        if (!pendingAttachmentFile) {
-            return;
-        }
+        const confirmPendingAttachment = useCallback(() => {
+            if (!pendingAttachmentFile) {
+                return;
+            }
 
-        void sendMediaAttachment(pendingAttachmentFile, {
-            looping: attachmentLooping,
-            takenOnGrindr: attachmentTakenOnGrindr,
-        });
-        setPendingAttachmentFile(null);
-        setAttachmentLooping(false);
-        setAttachmentTakenOnGrindr(false);
-    }, [
-        attachmentLooping,
-        attachmentTakenOnGrindr,
-        pendingAttachmentFile,
-        sendMediaAttachment,
-    ]);
+            void sendMediaAttachment(pendingAttachmentFile, {
+                looping: attachmentLooping,
+                takenOnGrindr: attachmentTakenOnGrindr,
+            });
+            setPendingAttachmentFile(null);
+            setAttachmentLooping(false);
+            setAttachmentTakenOnGrindr(false);
+        }, [
+            attachmentLooping,
+            attachmentTakenOnGrindr,
+            pendingAttachmentFile,
+            sendMediaAttachment,
+        ]);
 
-    const handleSend = (event: FormEvent<HTMLFormElement>) => {
+        const confirmAttachmentFile = useCallback(
+            (file: File, overrideOptions?: { looping: boolean; takenOnGrindr: boolean }) => {
+                void sendMediaAttachment(file, overrideOptions || {
+                    looping: attachmentLooping,
+                    takenOnGrindr: attachmentTakenOnGrindr,
+                });
+                setPendingAttachmentFile(null);
+                setAttachmentLooping(false);
+                setAttachmentTakenOnGrindr(false);
+            },
+            [attachmentLooping, attachmentTakenOnGrindr, sendMediaAttachment],
+        );
+
+        const handleSend = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         void sendTextMessage(draft);
     };
@@ -2748,6 +2801,11 @@ import { processAutoDownload } from "../../services/autoDownloader";
 
         if (message.type === "Image" || message.type === "ExpiringImage") {
             toast.error(t("chat.errors.reupload_image"));
+            return;
+        }
+        
+        if (message.type === "Giphy") {
+            toast.error("Cannot retry GIF. Please send it again.");
             return;
         }
 
@@ -2835,7 +2893,63 @@ import { processAutoDownload } from "../../services/autoDownloader";
         }
     };
 
-    const handleUnsend = async (message: UiMessage) => {
+        const handleMessageTap = useCallback(
+            (message: UiMessage) => {
+                const messageId = message.messageId;
+                if (doubleTapTimeoutRef.current[messageId]) {
+                    window.clearTimeout(doubleTapTimeoutRef.current[messageId]);
+                    delete doubleTapTimeoutRef.current[messageId];
+                    void handleReact(message);
+                } else {
+                    doubleTapTimeoutRef.current[messageId] = window.setTimeout(() => {
+                        delete doubleTapTimeoutRef.current[messageId];
+                    }, 300);
+                }
+            },
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+            [],
+        );
+
+        const handleStopAlbumShare = useCallback(async (albumId: number) => {
+            if (!selectedConversation || isMutatingMessageId) return;
+            const recipient = getOtherParticipant(selectedConversation, userId);
+            if (!recipient) return;
+            setIsMutatingMessageId(String(albumId));
+            try {
+                await service.stopAlbumShare(albumId, recipient.profileId);
+                toast.success(t("chat.toasts.album_share_stopped", { defaultValue: "Album share stopped." }));
+                setThreadMessages((prev) =>
+                    prev.map((msg) => {
+                        if (getMessageAlbumId(msg) !== albumId) return msg;
+                        const body = msg.body as Record<string, unknown>;
+                        return { ...msg, body: { ...body, isViewable: false, ownerProfileId: null } };
+                    }),
+                );
+            } catch (error) {
+                toast.error(error instanceof Error ? error.message : t("chat.errors.album_share_failed"));
+            } finally {
+                setIsMutatingMessageId(null);
+                setOpenMessageActionId(null);
+            }
+        }, [selectedConversation, userId, isMutatingMessageId, service, t]);
+
+        const handleShareAlbumFromDrawer = useCallback(async (albumId: number, expirationType: string) => {
+            if (!selectedConversation) return;
+            const recipient = getOtherParticipant(selectedConversation, userId);
+            if (!recipient) return;
+            setIsSharingAlbum(true);
+            try {
+                await service.shareAlbum({ albumId, profiles: [{ profileId: recipient.profileId, expirationType: expirationType as any }] });
+                toast.success(t("chat.toasts.album_shared"));
+                void loadThread({ conversationId: selectedConversation.data.conversationId, older: false });
+            } catch (error) {
+                toast.error(error instanceof Error ? error.message : t("chat.errors.album_share_failed"));
+            } finally {
+                setIsSharingAlbum(false);
+            }
+        }, [selectedConversation, userId, t, loadThread, service]);
+
+        const handleUnsend = async (message: UiMessage) => {
         if (isMutatingMessageId) {
             return;
         }
@@ -3246,8 +3360,9 @@ import { processAutoDownload } from "../../services/autoDownloader";
         setAttachmentTakenOnGrindr(false);
     };
 
-    const openFullScreenImage = useCallback((imageUrl: string) => {
+    const openFullScreenImage = useCallback((imageUrl: string, meta?: { takenOnGrindr: boolean; createdAtLabel: string | null; timestamp: number }) => {
         setFullScreenImageUrl(imageUrl);
+        setFullScreenImageMeta(meta ?? null);
     }, []);
 
     const closeFullScreenImage = useCallback(() => {
@@ -3379,6 +3494,7 @@ import { processAutoDownload } from "../../services/autoDownloader";
             threadMessages={threadMessages}
             threadLastReadTimestamp={threadLastReadTimestamp}
             messageElementRefs={messageElementRefs}
+            handleMessageTap={handleMessageTap}
             startMessageLongPress={startMessageLongPress}
             endMessageLongPress={endMessageLongPress}
             messageLongPressTriggeredRef={messageLongPressTriggeredRef}
@@ -3395,6 +3511,7 @@ import { processAutoDownload } from "../../services/autoDownloader";
             handleDelete={handleDelete}
             handleRetry={handleRetry}
             handleReply={handleReplyToMessage}
+            handleStopAlbumShare={handleStopAlbumShare}
             threadBottomRef={threadBottomRef}
             handleSend={handleSend}
             toggleAlbumPicker={toggleAlbumPicker}
@@ -3408,6 +3525,7 @@ import { processAutoDownload } from "../../services/autoDownloader";
             setAttachmentLooping={setAttachmentLooping}
             setAttachmentTakenOnGrindr={setAttachmentTakenOnGrindr}
             confirmPendingAttachment={confirmPendingAttachment}
+            confirmAttachmentFile={confirmAttachmentFile}
             cancelPendingAttachment={cancelPendingAttachment}
             isAlbumPickerOpen={isAlbumPickerOpen}
             isLoadingAlbums={isLoadingAlbums}
@@ -3428,6 +3546,8 @@ import { processAutoDownload } from "../../services/autoDownloader";
             onSendDrawerMedia={sendDrawerMedia}
             onAddDrawerMedia={addDrawerMedia}
             onDeleteDrawerMedia={deleteDrawerMedia}
+            onShareAlbumFromDrawer={handleShareAlbumFromDrawer}
+            onStopAlbumShareFromDrawer={handleStopAlbumShare}
             onSendLocation={sendLocationMessage}
             uploadProgress={uploadProgress}
             draft={draft}
@@ -3438,34 +3558,35 @@ import { processAutoDownload } from "../../services/autoDownloader";
             selectedActionMessage={selectedActionMessage}
             selectedActionMessageMine={selectedActionMessageMine}
             albumViewer={albumViewer}
+            onCloseAlbumViewer={() => { setAlbumViewer(null); setAlbumViewerMediaIndex(null); }}
         />
     );
 
-return (
-        <div className="relative w-full min-h-dvh overflow-hidden">
-            {/* High-Performance Full-Bleed Accent Glow (Outside the 1200px section so it is never clipped) */}
-            <div 
-                className="absolute inset-0 pointer-events-none z-0"
-                style={{
-                    backgroundImage: "linear-gradient(135deg, color-mix(in srgb, var(--accent) 15%, transparent) 0%, rgba(15, 19, 26, 0) 55%)"
-                }}
-            />
-
-            <section
-                className={`app-screen relative z-10 ${isDesktop ? "overflow-hidden" : "!p-0 !max-w-none !w-full"}`}
-            >
-                <div className={isDesktop ? "mx-auto w-full max-w-6xl h-full flex flex-col justify-center" : "w-full h-full"}>
-
-                            {isSearchRoute ? (
-                                renderSearch
-                            ) : isDesktop ? (
-                                <div
-                                    className="grid h-full grid-cols-[360px_minmax(0,1fr)] gap-3"
+                            return (
+                            <div className="fixed inset-0 w-full h-[100dvh] overflow-hidden">
+                                {/* High-Performance Full-Bleed Accent Glow (Outside the 1200px section so it is never clipped) */}
+                                <div 
+                                    className="absolute inset-0 pointer-events-none z-0"
                                     style={{
-                                        height:
-                                            "calc(100dvh - (env(safe-area-inset-top, 0px) + 16px) - (env(safe-area-inset-bottom, 0px) + 92px))",
-                                }}
-                            >
+                                        backgroundImage: "linear-gradient(135deg, color-mix(in srgb, var(--accent) 15%, transparent) 0%, rgba(15, 19, 26, 0) 55%)"
+                                    }}
+                                />
+
+                                <section
+                                    className={`app-screen relative z-10 ${isDesktop ? "overflow-hidden" : "!p-0 !max-w-none !w-full"}`}
+                                >
+                                    <div className={isDesktop ? "mx-auto w-full max-w-6xl h-full flex flex-col justify-center" : "w-full h-full"}>
+
+                                                {isSearchRoute ? (
+                                                    renderSearch
+                                                ) : isDesktop ? (
+                                                    <div
+                                                        className="grid w-full grid-cols-[360px_minmax(0,1fr)] gap-3"
+                                                        style={{
+                                                            height:
+                                                                "calc(100dvh - (env(safe-area-inset-top, 0px) + 16px) - (env(safe-area-inset-bottom, 0px) + 120px))",
+                                                    }}
+                                                >
                             <div className={glassWrapperClasses}>
                                 {renderInbox}
                             </div>
@@ -3603,6 +3724,24 @@ return (
                     isOpen={!!fullScreenImageUrl}
                     onClose={closeFullScreenImage}
                     photos={fullScreenImageUrl ? [fullScreenImageUrl] : []}
+                    renderExtraInfo={fullScreenImageMeta ? () => (
+                        <p className="inline-flex items-center gap-1 rounded-full bg-black/65 px-3 py-1 text-xs font-semibold text-white ring-1 ring-white/25 z-50">
+                            <style>{`
+                                @keyframes logo-shine { 0%, 100% { filter: drop-shadow(0 0 2px rgba(255,140,0,0.3)) brightness(1); } 50% { filter: drop-shadow(0 0 7px rgba(255,140,0,0.95)) brightness(1.25); } }
+                                .logo-shine { animation: logo-shine 2.8s ease-in-out infinite; }
+                            `}</style>
+                            {fullScreenImageMeta.takenOnGrindr ? (
+                                <img
+                                    src={freegrindLogo}
+                                    alt={t("chat.thread.taken_on_grindr")}
+                                    className="h-3.5 w-3.5 rounded-full logo-shine"
+                                />
+                            ) : null}
+                            {fullScreenImageMeta.timestamp ? (
+                                <span>{formatDateTime24(fullScreenImageMeta.timestamp)}</span>
+                            ) : null}
+                        </p>
+                    ) : undefined}
                 />
 
                 {/* --- REPLY WARNING MODAL --- */}

@@ -9,6 +9,7 @@ import type { ChatContactIndexRecord } from "../../../types/chat-contact-index";
 import freegrindLogo from "../../../images/freegrind-logo.webp";
 import { InboxAlbumsTabs } from "../components/InboxAlbumsTabs";
 import { PullToRefreshContainer } from "../components/PullToRefreshContainer";
+import { ConfirmDialog } from "../../../components/ui/confirm-dialog";
 import {
     buildChatFiltersDraft,
     formatConversationTime,
@@ -124,24 +125,32 @@ export function ChatInboxPanel({
     const activeQueueRef = useRef<string[]>([]);
     const isProcessingQueueRef = useRef(false);
 
-    const handleDeleteConversation = async (conversationId: string) => {
+    // --- NATIVE CONFIRM DIALOG STATE ---
+    const [deleteCandidate, setDeleteCandidate] = useState<{ id: string; complete: () => void; revert: () => void } | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [dontAskDeleteAgain, setDontAskDeleteAgain] = useState(false);
+
+    const handleDeleteConversation = (conversationId: string, completeSwipe: () => void, revertSwipe: () => void) => {
         const skipConfirm = localStorage.getItem("chat_skip_delete_confirm") === "true";
-        if (!skipConfirm) {
-            const confirmed = window.confirm(t("chat.delete_conversation_confirm", { defaultValue: "Are you sure you want to delete this conversation?" }));
-            if (!confirmed) return;
+        
+        if (skipConfirm) {
+            completeSwipe(); // Instantly animate out
+            api.deleteConversation(conversationId).then(() => {
+                toast.success(t("chat.toasts.conversation_deleted", { defaultValue: "Conversation deleted" }));
+                setTimeout(onRefreshInbox, 300); // Give the swoosh animation time to finish before unmounting
+            }).catch((error) => {
+                toast.error(
+                    error instanceof Error
+                        ? error.message
+                        : t("chat.errors.delete_conversation", { defaultValue: "Failed to delete conversation" }),
+                );
+                revertSwipe(); // Snap the row back if the API request fails
+            });
+            return;
         }
 
-        try {
-            await api.deleteConversation(conversationId);
-            toast.success(t("chat.toasts.conversation_deleted", { defaultValue: "Conversation deleted" }));
-            onRefreshInbox();
-        } catch (error) {
-            toast.error(
-                error instanceof Error
-                    ? error.message
-                    : t("chat.errors.delete_conversation", { defaultValue: "Failed to delete conversation" }),
-            );
-        }
+        setDontAskDeleteAgain(false);
+        setDeleteCandidate({ id: conversationId, complete: completeSwipe, revert: revertSwipe });
     };
 
     // Background Profile Scanner Effect
@@ -301,7 +310,7 @@ export function ChatInboxPanel({
             refreshingLabel={t("chat.refreshing_inbox")}
         >
             <div
-                className={`flex shrink-0 flex-col gap-3 ${isDesktop ? "p-4 border-b border-[var(--border)]" : "px-[var(--app-px)] pb-3"}`}
+                className={`flex shrink-0 flex-col gap-3 ${isDesktop ? "p-4" : "px-[var(--app-px)] pb-3"}`}
             >
                 <div className="flex items-end justify-between gap-2">
                     <InboxAlbumsTabs
@@ -421,7 +430,7 @@ export function ChatInboxPanel({
                         return (
                             <SwipeableRow
                                 key={conversation.data.conversationId}
-                                onDelete={() => handleDeleteConversation(conversation.data.conversationId)}
+                                onDelete={(complete, revert) => handleDeleteConversation(conversation.data.conversationId, complete, revert)}
                                 isDisabled={isActive} // Disable individual swipes when bulk multi-selection is active
                             >
                                 <SelectableItem
@@ -554,7 +563,7 @@ export function ChatInboxPanel({
                                                 <span
                                                     className={`rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
                                                         isSelected
-                                                            ? "bg-[var(--accent-contrast)]/10 text-[var(--accent-contrast)]"
+                                                            ? "bg-black/20 text-white backdrop-blur-sm shadow-sm"
                                                             : "bg-[var(--surface-2)] text-[var(--text-muted)]"
                                                     }`}
                                                 >
@@ -592,6 +601,44 @@ export function ChatInboxPanel({
                     ) : null}
                 </div>
             )}
+
+            {/* Native Confirm Dialog to safely intercept the delete swipe */}
+            <ConfirmDialog
+                isOpen={deleteCandidate !== null}
+                title={t("chat.delete_conversation", { defaultValue: "Delete conversation" })}
+                message={t("chat.delete_conversation_confirm", { defaultValue: "Delete this conversation? This cannot be undone." })}
+                confirmLabel={t("chat.delete_conversation", { defaultValue: "Delete conversation" })}
+                cancelLabel={t("chat.actions.cancel", { defaultValue: "Cancel" })}
+                onConfirm={async () => {
+                    if (!deleteCandidate) return;
+                    setIsDeleting(true);
+                    if (dontAskDeleteAgain) {
+                        localStorage.setItem("chat_skip_delete_confirm", "true");
+                    }
+                    try {
+                        deleteCandidate.complete(); // Animate out
+                        await api.deleteConversation(deleteCandidate.id);
+                        toast.success(t("chat.toasts.conversation_deleted", { defaultValue: "Conversation deleted" }));
+                        setTimeout(onRefreshInbox, 300);
+                    } catch (error) {
+                        toast.error(error instanceof Error ? error.message : t("chat.errors.delete_conversation", { defaultValue: "Failed to delete conversation" }));
+                        deleteCandidate.revert(); // Snap back on error
+                    } finally {
+                        setIsDeleting(false);
+                        setDeleteCandidate(null);
+                    }
+                }}
+                onCancel={() => {
+                    deleteCandidate?.revert(); // Snap back
+                    setDeleteCandidate(null);
+                }}
+                isProcessing={isDeleting}
+                confirmTone="danger"
+                dontAskAgainLabel={t("profile_details.dont_ask_again", { defaultValue: "Don't ask again" })}
+                dontAskAgainChecked={dontAskDeleteAgain}
+                onDontAskAgainChange={setDontAskDeleteAgain}
+            />
+
         </PullToRefreshContainer>
     );
 }
@@ -602,7 +649,7 @@ function SwipeableRow({
     isDisabled,
 }: {
     children: React.ReactNode;
-    onDelete: () => void | Promise<void>;
+    onDelete: (complete: () => void, revert: () => void) => void;
     isDisabled?: boolean;
 }) {
     const [startX, setStartX] = useState<number | null>(null);
@@ -650,11 +697,16 @@ function SwipeableRow({
     };
 
     const triggerDelete = () => {
-        setIsAnimatingOut(true);
-        setCurrentX(-500);
-        setTimeout(() => {
-            void onDelete();
-        }, 300);
+        onDelete(
+            () => {
+                setIsAnimatingOut(true);
+                setCurrentX(-500);
+            },
+            () => {
+                setIsAnimatingOut(false);
+                setCurrentX(0);
+            }
+        );
     };
 
     return (

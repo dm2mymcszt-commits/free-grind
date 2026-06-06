@@ -258,6 +258,13 @@ export function PhotoViewer({
                                 }}
                             />
                         )}
+                        
+                        {/* THE OTHER DEV'S MERGED FEATURE: Floating Metadata */}
+                        {renderExtraInfo && (
+                            <div className="absolute bottom-3 left-3 flex items-center gap-2 z-[85]">
+                                {renderExtraInfo(safeIndex)}
+                            </div>
+                        )}
                     </div>
 
                     {/* --- SCANNER HUB OVERLAY --- */}
@@ -329,12 +336,6 @@ export function PhotoViewer({
                     <p className="rounded-full bg-black/50 px-3 py-1 text-xs text-white">
                         {safeIndex + 1} / {photos.length}
                     </p>
-                )}
-
-                {renderExtraInfo && (
-                    <div className="flex items-center gap-2">
-                        {renderExtraInfo(safeIndex)}
-                    </div>
                 )}
             </div>
         </div>

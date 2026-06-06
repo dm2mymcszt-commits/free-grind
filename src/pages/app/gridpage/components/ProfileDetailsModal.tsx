@@ -357,11 +357,15 @@ export function ProfileDetailsModal({
 
 			return (
 				<p className="inline-flex items-center gap-1 rounded-full bg-black/65 px-3 py-1 text-xs font-semibold text-white ring-1 ring-white/25">
+                    <style>{`
+                        @keyframes logo-shine { 0%, 100% { filter: drop-shadow(0 0 2px rgba(255,140,0,0.3)) brightness(1); } 50% { filter: drop-shadow(0 0 7px rgba(255,140,0,0.95)) brightness(1.25); } }
+                        .logo-shine { animation: logo-shine 2.8s ease-in-out infinite; }
+                    `}</style>
 					{meta.takenOnGrindr ? (
 						<img
 							src={freegrindLogo}
 							alt={t("chat.thread.taken_on_grindr")}
-							className="h-3.5 w-3.5 rounded-full"
+							className="h-3.5 w-3.5 rounded-full logo-shine"
 						/>
 					) : null}
 					{meta.createdAt ? (
@@ -428,9 +432,9 @@ export function ProfileDetailsModal({
 					</div>
 				</header>
 
-				<FeedScrollContainer>
-					<div className="mx-auto w-full max-w-4xl px-[var(--app-px)] pt-0 pb-[calc(env(safe-area-inset-bottom,0px)+7rem)] sm:pt-0 sm:pb-5">
-						{isLoadingActiveProfile ? (
+                <FeedScrollContainer>
+                    <div className="mx-auto w-full max-w-4xl px-[var(--app-px)] pt-0 pb-[calc(env(safe-area-inset-bottom,0px)+7rem)] sm:pt-0 sm:pb-[7rem]">
+                        {isLoadingActiveProfile ? (
 							<p className="text-sm text-[var(--text-muted)]">
 								{t("profile_details.loading")}
 							</p>
