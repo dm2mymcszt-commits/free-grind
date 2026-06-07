@@ -7,330 +7,355 @@ import { appLog } from "../../utils/logger";
 import { usePreferences } from "../../contexts/PreferencesContext";
 import { encodeGeohash, decodeGeohash } from "../../utils/geohash";
 import {
-	geocodeResultSchema,
-	type GeocodeResult,
-	type SelectedLocation,
+    geocodeResultSchema,
+    type GeocodeResult,
+    type SelectedLocation,
 } from "./GridPage.types";
 import { LocationSettingsPanel } from "./gridpage/components/LocationSettingsPanel";
 
-import { useApi } from "../../hooks/useApi";
+export type SavedLocation = {
+    id: string;
+    lat: number;
+    lon: number;
+    label: string;
+};
 
-// Helper to check if coordinates fall within the UK bounding box
-// You can easily add more bounding boxes here later if you find other age-gated countries
-// Helper to check if coordinates fall within restricted bounding boxes
 const isAgeRestrictedRegion = (lat: number, lon: number) => {
-	// UK Bounding Box (Approximate: covers England, Scotland, Wales, Northern Ireland)
-	const inUK = lat >= 49.8 && lat <= 60.9 && lon >= -8.6 && lon <= 1.8;
-
-	// Trigger the warning if they teleport to EITHER region
-	return inUK
+    const inUK = lat >= 49.8 && lat <= 60.9 && lon >= -8.6 && lon <= 1.8;
+    return inUK;
 };
 
 export function BrowseLocationPage() {
-	const navigate = useNavigate();
-	const { t } = useTranslation();
-	const { setPreferences, geohash, locationName } = usePreferences();
-	const [isDetectingLocation, setIsDetectingLocation] = useState(false);
-	const [locationQuery, setLocationQuery] = useState("");
-	const [isSearchingLocation, setIsSearchingLocation] = useState(false);
-	const [locationResults, setLocationResults] = useState<GeocodeResult[]>([]);
-	const [isMapPickerOpen, setIsMapPickerOpen] = useState(false);
-	const [mapPickerError, setMapPickerError] = useState<string | null>(null);
-	const [lastSearchedQuery, setLastSearchedQuery] = useState("");
-	const [selectedLocation, setSelectedLocation] =
-		useState<SelectedLocation | null>(null);
-	const [locationError, setLocationError] = useState<string | null>(null);
+    const navigate = useNavigate();
+    const { t } = useTranslation();
+    const { setPreferences, geohash, locationName } = usePreferences();
+	
+    const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+    const [locationQuery, setLocationQuery] = useState("");
+    const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+    const [locationResults, setLocationResults] = useState<GeocodeResult[]>([]);
+    const [isMapPickerOpen, setIsMapPickerOpen] = useState(false);
+    const [mapPickerError, setMapPickerError] = useState<string | null>(null);
+    const [lastSearchedQuery, setLastSearchedQuery] = useState("");
+    const [selectedLocation, setSelectedLocation] = useState<SelectedLocation | null>(null);
+    const [locationError, setLocationError] = useState<string | null>(null);
 
-	// State for the Age Verification Warning Modal
-	const [pendingRestrictedLocation, setPendingRestrictedLocation] = useState<{
-		lat: number;
-		lon: number;
-		label?: string;
-		isAuto?: boolean;
-	} | null>(null);
+    // --- GLOBAL MODE STATE ---
+    const [mode, setMode] = useState<"static" | "dynamic">(() => {
+        return (window.localStorage.getItem("fg-location-mode") as "static" | "dynamic") || "static";
+    });
 
-	const initialCenter = (() => {
-		if (geohash) {
-			try {
-				const decoded = decodeGeohash(geohash);
-				return [
-					(decoded.lat[0] + decoded.lat[1]) / 2,
-					(decoded.lon[0] + decoded.lon[1]) / 2,
-				] as [number, number];
-			} catch {
-				return undefined;
-			}
-		}
-		return undefined;
-	})();
+    // --- LOCATION ENGINE STATE ---
+    const [bookmarks, setBookmarks] = useState<SavedLocation[]>(() => {
+        const val = window.localStorage.getItem("fg-location-bookmarks");
+        return val ? JSON.parse(val) as SavedLocation[] : [];
+    });
+    const [queue, setQueue] = useState<SavedLocation[]>(() => {
+        const val = window.localStorage.getItem("fg-location-queue");
+        return val ? JSON.parse(val) as SavedLocation[] : [];
+    });
+    const [queueInterval, setQueueInterval] = useState(() => {
+        return Number(window.localStorage.getItem("fg-location-queue-interval") || "10");
+    });
+    const [queueIndex, setQueueIndex] = useState(() => {
+        return Number(window.localStorage.getItem("fg-location-queue-index") || "0");
+    });
+    const [queueTimestamp, setQueueTimestamp] = useState(() => {
+        const stored = window.localStorage.getItem("fg-location-queue-timestamp");
+        if (stored) return Number(stored);
+        const now = Date.now();
+        window.localStorage.setItem("fg-location-queue-timestamp", String(now));
+        return now;
+    });
 
-	useEffect(() => {
-		if (geohash && !selectedLocation) {
-			try {
-				const decoded = decodeGeohash(geohash);
-				const lat = (decoded.lat[0] + decoded.lat[1]) / 2;
-				const lon = (decoded.lon[0] + decoded.lon[1]) / 2;
-				setSelectedLocation({
-					lat,
-					lon,
-					label: locationName ?? t("browse_location.current_location_label"),
-				});
-			} catch (e) {
-				appLog.error("Failed to decode geohash from preferences", e);
-			}
-		}
-	}, [geohash, locationName, t]);
+    const [pendingRestrictedLocation, setPendingRestrictedLocation] = useState<{
+        lat: number;
+        lon: number;
+        label?: string;
+        isAuto?: boolean;
+    } | null>(null);
 
-	// This is the ACTUAL function that saves the location
-	const confirmLocationUpdate = async (
-		lat: number,
-		lon: number,
-		label?: string,
-		isAuto?: boolean,
-	) => {
-		const nextGeohash = encodeGeohash(lat, lon);
-		const finalLabel =
-			label ??
-			t("browse_location.lat_lon_label", {
-				lat: lat.toFixed(4),
-				lon: lon.toFixed(4),
-			});
-		await setPreferences({
-			geohash: nextGeohash,
-			locationName: finalLabel,
-			useAutoLocation: isAuto ?? false,
-		});
-		setSelectedLocation({
-			lat,
-			lon,
-			label: finalLabel,
-		});
-		setMapPickerError(null);
-		setLocationError(null);
-		setPendingRestrictedLocation(null);
-		navigate("/");
-	};
+    const initialCenter = (() => {
+        if (geohash) {
+            try {
+                const decoded = decodeGeohash(geohash);
+                return [
+                    (decoded.lat[0] + decoded.lat[1]) / 2,
+                    (decoded.lon[0] + decoded.lon[1]) / 2,
+                ] as [number, number];
+            } catch { return undefined; }
+        }
+        return undefined;
+    })();
 
-	// We intercept the location update request here!
-	const requestLocationUpdate = (
-		lat: number,
-		lon: number,
-		label?: string,
-		isAuto?: boolean,
-	) => {
-		if (isAgeRestrictedRegion(lat, lon)) {
-			// Halt and show warning modal
-			setPendingRestrictedLocation({ lat, lon, label, isAuto });
-		} else {
-			// Proceed normally
-			void confirmLocationUpdate(lat, lon, label, isAuto);
-		}
-	};
+    // --- ENGINE MUTATORS ---
+    const updateMode = (newMode: "static" | "dynamic") => {
+        setMode(newMode);
+        window.localStorage.setItem("fg-location-mode", newMode);
 
-	const handleUseCurrentLocation = async () => {
-		if (!("geolocation" in navigator)) {
-			setLocationError(t("browse_location.error_geolocation"));
-			return;
-		}
+        if (newMode === "dynamic") {
+            const now = Date.now();
+            setQueueTimestamp(now);
+            window.localStorage.setItem("fg-location-queue-timestamp", String(now));
+            window.dispatchEvent(new Event("fg-engine-tick"));
+        }
+    };
 
-		setIsDetectingLocation(true);
+    const updateBookmarks = (newBookmarks: SavedLocation[]) => {
+        setBookmarks(newBookmarks);
+        window.localStorage.setItem("fg-location-bookmarks", JSON.stringify(newBookmarks));
+    };
 
-		try {
-			const position = await new Promise<GeolocationPosition>(
-				(resolve, reject) => {
-					navigator.geolocation.getCurrentPosition(resolve, reject, {
-						enableHighAccuracy: true,
-						timeout: 12000,
-						maximumAge: 20000,
-					});
-				},
-			);
+    const updateQueue = (newQueue: SavedLocation[]) => {
+        setQueue(newQueue);
+        window.localStorage.setItem("fg-location-queue", JSON.stringify(newQueue));
+        if (newQueue.length > 1 && queue.length <= 1) {
+            const now = Date.now();
+            setQueueIndex(0);
+            setQueueTimestamp(now);
+            window.localStorage.setItem("fg-location-queue-index", "0");
+            window.localStorage.setItem("fg-location-queue-timestamp", String(now));
+        }
+    };
 
-			requestLocationUpdate(
-				position.coords.latitude,
-				position.coords.longitude,
-				t("browse_location.current_location_label"),
-				true,
-			);
-		} catch (e) {
-			appLog.error("Geolocation failed", e);
-			setLocationError(t("browse_location.error_access"));
-		} finally {
-			setIsDetectingLocation(false);
-		}
-	};
+    const updateInterval = (interval: number) => {
+        setQueueInterval(interval);
+        window.localStorage.setItem("fg-location-queue-interval", String(interval));
+    };
 
-	const performSearch = async (query: string, signal?: AbortSignal) => {
-		if (!query || query === lastSearchedQuery) {
-			setIsSearchingLocation(false);
-			return;
-		}
+    useEffect(() => {
+        if (geohash && !selectedLocation) {
+            try {
+                const decoded = decodeGeohash(geohash);
+                const lat = (decoded.lat[0] + decoded.lat[1]) / 2;
+                const lon = (decoded.lon[0] + decoded.lon[1]) / 2;
+                setSelectedLocation({
+                    lat,
+                    lon,
+                    label: locationName ?? t("browse_location.current_location_label"),
+                });
+            } catch (e) { appLog.error("Failed to decode geohash from preferences", e); }
+        }
+    }, [geohash, locationName, t]);
 
-		setLastSearchedQuery(query);
-		setIsSearchingLocation(true);
+    const confirmLocationUpdate = async (
+        lat: number,
+        lon: number,
+        label?: string,
+        isAuto?: boolean,
+    ) => {
+        const nextGeohash = encodeGeohash(lat, lon);
+        const finalLabel = label ?? t("browse_location.lat_lon_label", { lat: lat.toFixed(4), lon: lon.toFixed(4) });
+		
+        await setPreferences({
+            geohash: nextGeohash,
+            locationName: finalLabel,
+            useAutoLocation: isAuto ?? false,
+        });
+		
+        setSelectedLocation({ lat, lon, label: finalLabel });
+        setMapPickerError(null);
+        setLocationError(null);
+        setPendingRestrictedLocation(null);
+        navigate("/");
+    };
 
-		try {
-			const response = await fetch(
-				`https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(
-					query,
-				)}`,
-				{
-					signal,
-					headers: {
-						"User-Agent":
-							"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
-					},
-				},
-			);
+    const requestLocationUpdate = (
+        lat: number,
+        lon: number,
+        label?: string,
+        isAuto?: boolean,
+    ) => {
+        // CRITICAL FIX: If the user manually teleports, ALWAYS FORCE STATIC MODE 
+        // to instantly kill the background dynamic queue.
+        updateMode("static");
 
-			if (!response.ok) {
-				throw new Error("Failed to search location");
-			}
+        if (isAgeRestrictedRegion(lat, lon)) {
+            setPendingRestrictedLocation({ lat, lon, label, isAuto });
+        } else {
+            void confirmLocationUpdate(lat, lon, label, isAuto);
+        }
+    };
 
-			const parsed = z.array(geocodeResultSchema).parse(await response.json());
-			setLocationResults(parsed);
-			setLocationError(null);
-		} catch (e) {
-			if (e instanceof Error && e.name === "AbortError") return;
-			appLog.error("Location search failed", e);
-			setLocationError(t("browse_location.error_search_failed"));
-		} finally {
-			setIsSearchingLocation(false);
-		}
-	};
+    const handleUseCurrentLocation = async () => {
+        if (!("geolocation" in navigator)) {
+            setLocationError(t("browse_location.error_geolocation"));
+            return;
+        }
+        setIsDetectingLocation(true);
+        try {
+            const position = await new Promise<GeolocationPosition>(
+                (resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(resolve, reject, {
+                        enableHighAccuracy: true, timeout: 12000, maximumAge: 20000,
+                    });
+                },
+            );
+            setSelectedLocation({
+                lat: position.coords.latitude,
+                lon: position.coords.longitude,
+                label: t("browse_location.current_location_label", { defaultValue: "My GPS Location" })
+            });
+        } catch (e) {
+            appLog.error("Geolocation failed", e);
+            setLocationError(t("browse_location.error_access"));
+        } finally {
+            setIsDetectingLocation(false);
+        }
+    };
 
-	useEffect(() => {
-		const query = locationQuery.trim();
+    const performSearch = async (query: string, signal?: AbortSignal) => {
+        if (!query || query === lastSearchedQuery) {
+            setIsSearchingLocation(false);
+            return;
+        }
+        setLastSearchedQuery(query);
+        setIsSearchingLocation(true);
+        try {
+            const response = await fetch(
+                `https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(query)}`,
+                { signal, headers: { "User-Agent": "Mozilla/5.0 FreeGrindLocationEngine/1.0" } },
+            );
+            if (!response.ok) throw new Error("Failed to search location");
+            const parsed = z.array(geocodeResultSchema).parse(await response.json());
+            setLocationResults(parsed);
+            setLocationError(null);
+        } catch (e) {
+            if (e instanceof Error && e.name === "AbortError") return;
+            appLog.error("Location search failed", e);
+            setLocationError(t("browse_location.error_search_failed"));
+        } finally {
+            setIsSearchingLocation(false);
+        }
+    };
 
-		if (query.length < 3) {
-			setLocationResults([]);
-			setIsSearchingLocation(false);
-			setLastSearchedQuery("");
-			return;
-		}
+    useEffect(() => {
+        const query = locationQuery.trim();
+        if (query.length < 3) {
+            setLocationResults([]);
+            setIsSearchingLocation(false);
+            setLastSearchedQuery("");
+            return;
+        }
+        const controller = new AbortController();
+        const timer = setTimeout(() => { void performSearch(query, controller.signal); }, 800);
+        return () => { clearTimeout(timer); controller.abort(); };
+    }, [locationQuery]);
 
-		const controller = new AbortController();
-		const timer = setTimeout(() => {
-			void performSearch(query, controller.signal);
-		}, 800);
+    useEffect(() => {
+        const handleEngineUpdate = () => {
+            const storedIndex = window.localStorage.getItem("fg-location-queue-index");
+            const storedTimestamp = window.localStorage.getItem("fg-location-queue-timestamp");
+            if (storedIndex) setQueueIndex(Number(storedIndex));
+            if (storedTimestamp) setQueueTimestamp(Number(storedTimestamp));
+        };
+        window.addEventListener("fg-engine-tick", handleEngineUpdate);
+        return () => window.removeEventListener("fg-engine-tick", handleEngineUpdate);
+    }, []);
 
-		return () => {
-			clearTimeout(timer);
-			controller.abort();
-		};
-	}, [locationQuery]);
+    return (
+        <section className="app-screen bg-transparent">
+            <div className="mx-auto w-full max-w-4xl pt-[calc(env(safe-area-inset-top,0px)+16px)] px-3 pb-24">
+                <header className="mb-6 flex items-center gap-4">
+                    <button
+                        type="button"
+                        onClick={() => navigate("/")}
+                        className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/10 dark:border-white/5 bg-[color-mix(in_srgb,var(--surface)_85%,transparent)] shadow-[0_8px_30px_rgba(0,0,0,0.4)] backdrop-blur-[30px] transition-all hover:scale-105 hover:border-[var(--accent)] hover:text-[var(--accent)] hover:shadow-[0_0_20px_color-mix(in_srgb,var(--accent)_30%,transparent)] active:scale-95"
+                        aria-label={t("browse_location.back_aria")}
+                    >
+                        <ChevronLeft className="h-6 w-6" strokeWidth={2.5} />
+                    </button>
+                    <div>
+                        <h1 className="text-2xl font-black text-[var(--text)] drop-shadow-md">Location Engine</h1>
+                        <p className="text-sm font-semibold text-[var(--text-muted)]">Static Teleport & Dynamic Spoofing Queue</p>
+                    </div>
+                </header>
 
-	return (
-		<section className="app-screen">
-			<div className="mx-auto w-full max-w-4xl">
-				<header className="mb-4 flex items-center gap-3">
-					<button
-						type="button"
-						onClick={() => navigate("/")}
-						className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-2)]"
-						aria-label={t("browse_location.back_aria")}
-					>
-						<ChevronLeft className="h-4 w-4" />
-					</button>
-					<div>
-						<h1 className="app-title">{t("browse_location.title")}</h1>
-						<p className="app-subtitle">{t("browse_location.subtitle")}</p>
-					</div>
-				</header>
+                {locationError ? (
+                    <p className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-400 backdrop-blur-md">
+                        {locationError}
+                    </p>
+                ) : null}
 
-				{locationError ? (
-					<p className="mb-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm text-[var(--text-muted)]">
-						{locationError}
-					</p>
-				) : null}
+                <LocationSettingsPanel
+                    mode={mode}
+                    onModeChange={updateMode}
+					
+                    isDetectingLocation={isDetectingLocation}
+                    onUseCurrentLocation={() => void handleUseCurrentLocation()}
+                    locationQuery={locationQuery}
+                    onLocationQueryChange={setLocationQuery}
+                    isSearchingLocation={isSearchingLocation}
+                    locationResults={locationResults}
+					
+                    onStageLocation={(lat, lon, label) => setSelectedLocation({ lat, lon, label })}
+                    selectedLocation={selectedLocation}
+					
+                    isMapPickerOpen={isMapPickerOpen}
+                    mapPickerError={mapPickerError}
+                    onToggleMapPicker={() => {
+                        setMapPickerError(null);
+                        setIsMapPickerOpen((current) => !current);
+                    }}
+                    onMapPick={(lat, lon) => {
+                        setSelectedLocation({ lat, lon, label: `${lat.toFixed(4)}, ${lon.toFixed(4)}` });
+                    }}
+                    onMapPickerError={setMapPickerError}
+					
+                    onTeleport={(lat, lon, label) => requestLocationUpdate(lat, lon, label)}
+					
+                    initialCenter={initialCenter}
+                    bookmarks={bookmarks}
+                    queue={queue}
+                    queueInterval={queueInterval}
+                    queueIndex={queueIndex}
+                    queueTimestamp={queueTimestamp}
+					
+                    onAddBookmark={(loc) => updateBookmarks([...bookmarks, loc])}
+                    onDeleteBookmark={(id) => updateBookmarks(bookmarks.filter(b => b.id !== id))}
+                    onAddQueue={(loc) => updateQueue([...queue, loc])}
+                    onDeleteQueue={(id) => updateQueue(queue.filter(q => q.id !== id))}
+                    onClearQueue={() => updateQueue([])}
+                    onChangeInterval={updateInterval}
+                />
+            </div>
 
-				<LocationSettingsPanel
-					isVisible={true}
-					isDetectingLocation={isDetectingLocation}
-					onUseCurrentLocation={() => {
-						void handleUseCurrentLocation();
-					}}
-					locationQuery={locationQuery}
-					onLocationQueryChange={setLocationQuery}
-					isSearchingLocation={isSearchingLocation}
-					locationResults={locationResults}
-					onChooseLocation={(lat, lon, label) => {
-						requestLocationUpdate(lat, lon, label);
-					}}
-					selectedLocation={selectedLocation}
-					isMapPickerOpen={isMapPickerOpen}
-					mapPickerError={mapPickerError}
-					onToggleMapPicker={() => {
-						setMapPickerError(null);
-						setIsMapPickerOpen((current) => !current);
-					}}
-					onMapPick={(lat, lon) => {
-						setSelectedLocation({
-							lat,
-							lon,
-							label: t("browse_location.lat_lon_label", {
-								lat: lat.toFixed(4),
-								lon: lon.toFixed(4),
-							}),
-						});
-					}}
-					onMapPickerError={setMapPickerError}
-					onUseSelectedLocation={() => {
-						if (!selectedLocation) {
-							return;
-						}
-						requestLocationUpdate(
-							selectedLocation.lat,
-							selectedLocation.lon,
-							selectedLocation.label,
-						);
-					}}
-					initialCenter={initialCenter}
-				/>
-			</div>
-
-			{/* AGE VERIFICATION WARNING MODAL */}
-			{pendingRestrictedLocation && (
-				<div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-					<div className="w-full max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-2xl">
-						<div className="mb-4 flex items-center gap-3 text-amber-500">
-							<AlertTriangle className="h-8 w-8" />
-							<h2 className="text-lg font-bold">
-								{t("browse_location.age_verification_title", "Age Verification Area")}
-							</h2>
-						</div>
-						<p className="mb-6 text-sm leading-relaxed text-[var(--text-muted)]">
-							{t(
-								"browse_location.age_verification_desc",
-								"You are about to teleport to a region (UK/EU) that strictly requires Grindr Age Verification. If your account is not verified, you may get soft-locked and forced to verify on the official app before you can use Free Grind again."
-							)}
-						</p>
-						<div className="flex justify-end gap-3">
-							<button
-								type="button"
-								onClick={() => setPendingRestrictedLocation(null)}
-								className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-2 text-sm font-semibold hover:bg-[var(--surface-3)]"
-							>
-								{t("browse_location.cancel", "Cancel")}
-							</button>
-							<button
-								type="button"
-								onClick={() =>
-									confirmLocationUpdate(
-										pendingRestrictedLocation.lat,
-										pendingRestrictedLocation.lon,
-										pendingRestrictedLocation.label,
-										pendingRestrictedLocation.isAuto,
-									)
-								}
-								className="btn-accent rounded-xl px-4 py-2 text-sm font-semibold"
-							>
-								{t("browse_location.teleport_anyway", "Teleport Anyway")}
-							</button>
-						</div>
-					</div>
-				</div>
-			)}
-		</section>
-	);
+            {pendingRestrictedLocation && (
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4 backdrop-blur-[20px] animate-in fade-in duration-300">
+                    <div className="w-full max-w-sm rounded-[2rem] border border-amber-500/30 bg-[color-mix(in_srgb,var(--surface)_90%,transparent)] p-6 shadow-[0_20px_60px_rgba(245,158,11,0.2),_inset_0_1px_0_rgba(255,255,255,0.1)] backdrop-blur-[30px]">
+                        <div className="mb-4 flex items-center gap-3 text-amber-500">
+                            <AlertTriangle className="h-8 w-8 drop-shadow-[0_0_12px_rgba(245,158,11,0.6)]" />
+                            <h2 className="text-lg font-bold">Age Verification Area</h2>
+                        </div>
+                        <p className="mb-6 text-sm leading-relaxed text-[var(--text-muted)]">
+                            You are about to teleport to a region (UK/EU) that strictly requires Grindr Age Verification. If your account is not verified, you may get soft-locked and forced to verify on the official app before you can use Free Grind again.
+                        </p>
+                        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setPendingRestrictedLocation(null)}
+                                className="inline-flex h-11 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 text-sm font-semibold text-[var(--text-muted)] transition hover:text-[var(--text)] active:scale-95"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    confirmLocationUpdate(
+                                        pendingRestrictedLocation.lat,
+                                        pendingRestrictedLocation.lon,
+                                        pendingRestrictedLocation.label,
+                                        pendingRestrictedLocation.isAuto,
+                                    )
+                                }
+                                className="inline-flex h-11 items-center justify-center rounded-xl border border-amber-500 bg-amber-500 px-4 text-sm font-bold text-white shadow-[0_0_15px_rgba(245,158,11,0.4)] transition hover:brightness-110 active:scale-95"
+                            >
+                                Teleport Anyway
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </section>
+    );
 }

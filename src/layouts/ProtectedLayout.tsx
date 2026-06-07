@@ -2,9 +2,14 @@ import { Outlet, useLocation } from "react-router-dom";
 import { NavBar } from "../components/NavBar";
 import { useEffect, useState } from "react";
 import { BackgroundViewScanner } from "../components/BackgroundViewScanner";
+import { useLocationEngine } from "../hooks/useLocationEngine";
 
 export function ProtectedLayout() {
     const location = useLocation();
+    
+    // THIS ACTIVATES THE LOCATION ENGINE GLOBALLY!
+    useLocationEngine(); 
+
     const isChatConversationRoute =
         /^\/chat\/[^/]+$/.test(location.pathname) ||
         (location.pathname === "/chat" && new URLSearchParams(location.search).has("targetProfileId"));

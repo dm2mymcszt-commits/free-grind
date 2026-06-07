@@ -1,4 +1,4 @@
-import { Grid as GridIcon, Droplet, Flame, MessageCircle } from "lucide-react";
+import { Grid as GridIcon, Droplet, Flame, MessageCircle, MapPin, Settings } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { useState, useEffect, useRef } from "react";
@@ -6,6 +6,7 @@ import { cn } from "../utils/cn";
 import { useApiFunctions } from "../hooks/useApiFunctions";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../contexts/useAuth";
+import { useLongPress } from "../hooks/useLongPress";
 import {
     getInterestLastSeen,
     INTEREST_SEEN_EVENT,
@@ -77,6 +78,16 @@ export function NavBar() {
     const [unreadCount, setUnreadCount] = useState(0);
     const [interestUnseen, setInterestUnseen] = useState(false);
     const [inboxUnseen, setInboxUnseen] = useState(false);
+
+    // Long-press Popover State
+    const [showBrowseMenu, setShowBrowseMenu] = useState(false);
+    const isLongPressingRef = useRef(false);
+
+    const browseLongPress = useLongPress(() => {
+        isLongPressingRef.current = true;
+        if (navigator.vibrate) navigator.vibrate(50);
+        setShowBrowseMenu(true);
+    }, 400);
 
     // Read preferences directly from localStorage (defaulting to true if not set)
     const [showRightNow] = useState(() => window.localStorage.getItem("fg-show-right-now") !== "false");
@@ -292,7 +303,7 @@ export function NavBar() {
     const handleTabChange = (value: string) => {
         setActiveTab(value);
         const item = navItems.find((i) => i.value === value);
-        if (item) {
+        if (item && value !== "browse") {
             navigate(item.path);
         }
     };
@@ -305,7 +316,6 @@ export function NavBar() {
 
     return (
         <>
-            {/* Micro-Elastic Spring Pop keyframes */}
             <style>
                 {`
                     @keyframes nav-bounce {
@@ -321,68 +331,135 @@ export function NavBar() {
                 `}
             </style>
 
-                                        <nav className="fixed inset-x-0 bottom-0 z-50 px-3 pb-[calc(env(safe-area-inset-bottom,0px)+10px)] md:px-4 md:pb-[calc(env(safe-area-inset-bottom,0px)+14px)]">
-                                        {/* Translucent Frosted Liquid Glass Container */}
-                                        <div
-                                            className="mx-auto w-full max-w-4xl rounded-full border border-white/10 dark:border-white/5 p-1.5 backdrop-blur-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)]"
-                                            style={{
-                                                backgroundColor: "rgba(15, 17, 21, 0.25)",
-                                                background: "color-mix(in srgb, var(--surface) 25%, transparent)",
+            <nav className="fixed inset-x-0 bottom-0 z-50 px-3 pb-[calc(env(safe-area-inset-bottom,0px)+10px)] md:px-4 md:pb-[calc(env(safe-area-inset-bottom,0px)+14px)]">
+                
+                {/* Structural Fix: A pure relative wrapper. Both Liquid Glass elements are now siblings so their blurs don't break each other. */}
+                <div className="relative mx-auto w-full max-w-4xl">
+                    
+                    {/* Backdrop to close picker on tap outside */}
+                    {showBrowseMenu && (
+                        <div
+                            className="fixed inset-0 z-[55] bg-transparent"
+                            onPointerDown={(e) => {
+                                e.stopPropagation();
+                                setShowBrowseMenu(false);
+                            }}
+                        />
+                    )}
+
+                    {/* 1. Liquid Glass Browse Options Popover (Sibling) */}
+                    <div
+                        className={cn(
+                            "select-none touch-none absolute bottom-[calc(100%+0.8rem)] z-[60] flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 dark:border-white/5 p-1.5 backdrop-blur-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)] transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]",
+                            navItems.length === 2 ? "left-[25%]" : navItems.length === 3 ? "left-[16.66%]" : "left-[12.5%]",
+                            showBrowseMenu ? "scale-100 opacity-100" : "pointer-events-none scale-50 opacity-0 translate-y-4"
+                        )}
+                        style={{
+                            backgroundColor: "rgba(15, 17, 21, 0.45)", // Stronger tint to pop over scrolling feed content
+                            background: "color-mix(in srgb, var(--surface) 45%, transparent)",
+                            transformOrigin: "bottom center"
+                        }}
+                    >
+                        <div
+                            className="flex h-[3.2rem] w-[5rem] cursor-pointer items-center justify-center rounded-full text-[var(--text-muted)] transition-all duration-300 hover:scale-105 hover:bg-[var(--accent)] hover:text-white hover:shadow-[0_0_15px_var(--accent)] active:scale-95 md:h-[3.8rem] md:w-[6rem]"
+                            title={t("nav.browse_location", "Browse Location")}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setShowBrowseMenu(false);
+                                navigate('/browse/location');
+                            }}
+                        >
+                            <MapPin className="h-6 w-6 md:h-7 md:w-7" strokeWidth={1.8} />
+                        </div>
+                        
+                        <div
+                            className="flex h-[3.2rem] w-[5rem] cursor-pointer items-center justify-center rounded-full text-[var(--text-muted)] transition-all duration-300 hover:scale-105 hover:bg-[var(--accent)] hover:text-white hover:shadow-[0_0_15px_var(--accent)] active:scale-95 md:h-[3.8rem] md:w-[6rem]"
+                            title={t("nav.settings", "Settings")}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setShowBrowseMenu(false);
+                                navigate('/settings');
+                            }}
+                        >
+                            <Settings className="h-6 w-6 md:h-7 md:w-7" strokeWidth={1.8} />
+                        </div>
+                    </div>
+
+                    {/* 2. Main Liquid Glass Navbar Container (Sibling) */}
+                    <div
+                        className="w-full rounded-full border border-white/10 dark:border-white/5 p-1.5 backdrop-blur-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)]"
+                        style={{
+                            backgroundColor: "rgba(15, 17, 21, 0.25)",
+                            background: "color-mix(in srgb, var(--surface) 25%, transparent)",
+                        }}
+                    >
+                        <Tabs value={activeTab} onValueChange={handleTabChange}>
+                            <TabsList className={`grid h-16 w-full ${gridColsClass} bg-transparent p-0 md:h-[4.1rem]`}>
+                                {navItems.map((item) => {
+                                    const Icon = item.icon;
+                                    const isCurrent = activeTab === item.value;
+                                    return (
+                                        <TabsTrigger
+                                            key={item.value}
+                                            value={item.value}
+                                            {...(item.value === "browse" ? browseLongPress : {})}
+                                            onClick={(e) => {
+                                                if (item.value === "browse") {
+                                                    // If we were long-pressing, cancel the navigation click
+                                                    if (isLongPressingRef.current) {
+                                                        isLongPressingRef.current = false;
+                                                        e.preventDefault();
+                                                        return;
+                                                    }
+                                                    // Otherwise, execute normal navigation routing
+                                                    navigate(item.path);
+                                                }
                                             }}
+                                            className={cn(
+                                                "flex h-full flex-col items-center justify-center gap-1 rounded-full text-[var(--text-muted)] transition-all duration-300 ease-out active:scale-95 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)] md:gap-1.5",
+                                                item.value === "right-now"
+                                                    ? "focus-visible:ring-[var(--right-now)] data-[state=active]:bg-[var(--right-now)] data-[state=active]:text-white"
+                                                    : "focus-visible:ring-[var(--accent)] data-[state=active]:bg-[var(--accent)] data-[state=active]:text-[var(--accent-contrast)]"
+                                            )}
                                         >
-                                            <Tabs value={activeTab} onValueChange={handleTabChange}>
-                                                <TabsList className={`grid h-16 w-full ${gridColsClass} bg-transparent p-0 md:h-[4.1rem]`}>
-                                                    {navItems.map((item) => {
-                                                        const Icon = item.icon;
-                                                        const isCurrent = activeTab === item.value;
-                                                        return (
-                                                            <TabsTrigger
-                                                                key={item.value}
-                                                                value={item.value}
-                                                                className={cn(
-                                                                    "flex h-full flex-col items-center justify-center gap-1 rounded-full text-[var(--text-muted)] transition-all duration-300 ease-out active:scale-95 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)] md:gap-1.5",
-                                                                    item.value === "right-now"
-                                                                        ? "focus-visible:ring-[var(--right-now)] data-[state=active]:bg-[var(--right-now)] data-[state=active]:text-white"
-                                                                        : "focus-visible:ring-[var(--accent)] data-[state=active]:bg-[var(--accent)] data-[state=active]:text-[var(--accent-contrast)]"
-                                                                )}
-                                                            >
-                                        <div className="relative">
-                                            {/* Bouncing Icon Animation */}
-                                            <Icon className={cn(
-                                                "h-5 w-5 md:h-[1.2rem] md:w-[1.2rem] transition-all duration-300",
-                                                isCurrent ? "animate-nav-bounce" : ""
-                                            )} />
-											
-                                            {(item.value === "inbox" && inboxUnseen) ||
-                                            (item.value === "interest" && interestUnseen) ? (
-                                                <span className="absolute -right-1 -top-1 flex h-2 w-2">
-                                                    <span
-                                                        className={cn(
-                                                            "absolute inline-flex h-full w-full animate-ping rounded-full opacity-75",
-                                                            activeTab === "right-now"
-                                                                ? "bg-[var(--right-now)]"
-                                                                : "bg-[var(--accent)]",
-                                                        )}
-                                                    ></span>
-                                                    <span
-                                                        className={cn(
-                                                            "relative inline-block h-2 w-2 rounded-full ring-1 ring-[var(--surface)]",
-                                                            activeTab === "right-now"
-                                                                ? "bg-[var(--right-now)]"
-                                                                : "bg-[var(--accent)]",
-                                                        )}
-                                                    ></span>
-                                                </span>
-                                            ) : null}
-                                        </div>
-                                        <span className="text-xs md:text-[0.8rem]">
-                                            {item.label}
-                                        </span>
-                                    </TabsTrigger>
-                                );
-                            })}
-                        </TabsList>
-                    </Tabs>
+                                            <div className="relative">
+                                                {/* Bouncing Icon Animation */}
+                                                <Icon className={cn(
+                                                    "h-5 w-5 md:h-[1.2rem] md:w-[1.2rem] transition-all duration-300",
+                                                    isCurrent ? "animate-nav-bounce" : ""
+                                                )} />
+                                                
+                                                {(item.value === "inbox" && inboxUnseen) ||
+                                                (item.value === "interest" && interestUnseen) ? (
+                                                    <span className="absolute -right-1 -top-1 flex h-2 w-2">
+                                                        <span
+                                                            className={cn(
+                                                                "absolute inline-flex h-full w-full animate-ping rounded-full opacity-75",
+                                                                activeTab === "right-now"
+                                                                    ? "bg-[var(--right-now)]"
+                                                                    : "bg-[var(--accent)]",
+                                                            )}
+                                                        ></span>
+                                                        <span
+                                                            className={cn(
+                                                                "relative inline-block h-2 w-2 rounded-full ring-1 ring-[var(--surface)]",
+                                                                activeTab === "right-now"
+                                                                    ? "bg-[var(--right-now)]"
+                                                                    : "bg-[var(--accent)]",
+                                                            )}
+                                                        ></span>
+                                                    </span>
+                                                ) : null}
+                                            </div>
+                                            <span className="text-xs md:text-[0.8rem]">
+                                                {item.label}
+                                            </span>
+                                        </TabsTrigger>
+                                    );
+                                })}
+                            </TabsList>
+                        </Tabs>
+                    </div>
                 </div>
             </nav>
         </>
