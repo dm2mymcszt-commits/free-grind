@@ -737,14 +737,14 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                         : undefined
                 }
             >
-                {/* Global Liquid Glass Blur override for all Drawer/Sheet overlays */}
-                <style>{`
-                    .bg-black\\/50, .bg-black\\/45 {
-                        backdrop-filter: blur(20px) !important;
-                        -webkit-backdrop-filter: blur(20px) !important;
-                        background-color: rgba(10, 12, 16, 0.55) !important;
-                    }
-                `}</style>
+            {/* Global Liquid Glass Blur override for all Drawer/Sheet overlays */}
+            <style>{`
+                .bg-black\\/50, .bg-black\\/45 {
+                    backdrop-filter: blur(20px) !important;
+                    -webkit-backdrop-filter: blur(20px) !important;
+                    background-color: rgba(10, 12, 16, 0.55) !important;
+                }
+            `}</style>
             {(() => {
                 const otherParticipant = getOtherParticipant(
                     selectedConversation,

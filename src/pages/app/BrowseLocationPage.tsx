@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import z from "zod";
 import { ChevronLeft, AlertTriangle } from "lucide-react";
@@ -6,23 +6,13 @@ import { useTranslation } from "react-i18next";
 import { appLog } from "../../utils/logger";
 import { usePreferences } from "../../contexts/PreferencesContext";
 import { encodeGeohash, decodeGeohash } from "../../utils/geohash";
-import {
-    geocodeResultSchema,
-    type GeocodeResult,
-    type SelectedLocation,
-} from "./GridPage.types";
+import { geocodeResultSchema, type GeocodeResult, type SelectedLocation } from "./GridPage.types";
 import { LocationSettingsPanel } from "./gridpage/components/LocationSettingsPanel";
 
-export type SavedLocation = {
-    id: string;
-    lat: number;
-    lon: number;
-    label: string;
-};
+export type SavedLocation = { id: string; lat: number; lon: number; label: string; };
 
 const isAgeRestrictedRegion = (lat: number, lon: number) => {
-    const inUK = lat >= 49.8 && lat <= 60.9 && lon >= -8.6 && lon <= 1.8;
-    return inUK;
+    return lat >= 49.8 && lat <= 60.9 && lon >= -8.6 && lon <= 1.8;
 };
 
 export function BrowseLocationPage() {
@@ -34,18 +24,16 @@ export function BrowseLocationPage() {
     const [locationQuery, setLocationQuery] = useState("");
     const [isSearchingLocation, setIsSearchingLocation] = useState(false);
     const [locationResults, setLocationResults] = useState<GeocodeResult[]>([]);
-    const [isMapPickerOpen, setIsMapPickerOpen] = useState(false);
+    const [isMapPickerOpen, setIsMapPickerOpen] = useState(true);
     const [mapPickerError, setMapPickerError] = useState<string | null>(null);
     const [lastSearchedQuery, setLastSearchedQuery] = useState("");
     const [selectedLocation, setSelectedLocation] = useState<SelectedLocation | null>(null);
     const [locationError, setLocationError] = useState<string | null>(null);
 
-    // --- GLOBAL MODE STATE ---
-    const [mode, setMode] = useState<"static" | "dynamic">(() => {
-        return (window.localStorage.getItem("fg-location-mode") as "static" | "dynamic") || "static";
+    const [mode, setMode] = useState<"static" | "dynamic" | "route">(() => {
+        return (window.localStorage.getItem("fg-location-mode") as "static" | "dynamic" | "route") || "static";
     });
 
-    // --- LOCATION ENGINE STATE ---
     const [bookmarks, setBookmarks] = useState<SavedLocation[]>(() => {
         const val = window.localStorage.getItem("fg-location-bookmarks");
         return val ? JSON.parse(val) as SavedLocation[] : [];
@@ -54,12 +42,8 @@ export function BrowseLocationPage() {
         const val = window.localStorage.getItem("fg-location-queue");
         return val ? JSON.parse(val) as SavedLocation[] : [];
     });
-    const [queueInterval, setQueueInterval] = useState(() => {
-        return Number(window.localStorage.getItem("fg-location-queue-interval") || "10");
-    });
-    const [queueIndex, setQueueIndex] = useState(() => {
-        return Number(window.localStorage.getItem("fg-location-queue-index") || "0");
-    });
+    const [queueInterval, setQueueInterval] = useState(() => Number(window.localStorage.getItem("fg-location-queue-interval") || "10"));
+    const [queueIndex, setQueueIndex] = useState(() => Number(window.localStorage.getItem("fg-location-queue-index") || "0"));
     const [queueTimestamp, setQueueTimestamp] = useState(() => {
         const stored = window.localStorage.getItem("fg-location-queue-timestamp");
         if (stored) return Number(stored);
@@ -68,31 +52,35 @@ export function BrowseLocationPage() {
         return now;
     });
 
-    const [pendingRestrictedLocation, setPendingRestrictedLocation] = useState<{
-        lat: number;
-        lon: number;
-        label?: string;
-        isAuto?: boolean;
-    } | null>(null);
+    const [routeWaypoints, setRouteWaypoints] = useState<SavedLocation[]>(() => {
+        const val = window.localStorage.getItem("fg-route-waypoints");
+        return val ? JSON.parse(val) as SavedLocation[] : [];
+    });
+    const [routeSpeed, setRouteSpeed] = useState(() => Number(window.localStorage.getItem("fg-route-speed") || "60"));
+    const [routeTransport, setRouteTransport] = useState(() => window.localStorage.getItem("fg-route-transport") || "driving");
+    const [routeActive, setRouteActive] = useState(() => window.localStorage.getItem("fg-route-active") === "true");
+    const [routeProgress, setRouteProgress] = useState(() => Number(window.localStorage.getItem("fg-route-progress") || "0"));
+    
+    const [routePolyline, setRoutePolyline] = useState<{lat: number, lon: number}[]>(() => {
+        const val = window.localStorage.getItem("fg-route-polyline");
+        return val ? (JSON.parse(val) as {lat: number, lon: number}[]) : [];
+    });
 
-    const initialCenter = (() => {
+    const [pendingRestrictedLocation, setPendingRestrictedLocation] = useState<{ lat: number; lon: number; label?: string; isAuto?: boolean; } | null>(null);
+
+    const initialCenter = useMemo(() => {
         if (geohash) {
             try {
                 const decoded = decodeGeohash(geohash);
-                return [
-                    (decoded.lat[0] + decoded.lat[1]) / 2,
-                    (decoded.lon[0] + decoded.lon[1]) / 2,
-                ] as [number, number];
+                return [(decoded.lat[0] + decoded.lat[1]) / 2, (decoded.lon[0] + decoded.lon[1]) / 2] as [number, number];
             } catch { return undefined; }
         }
         return undefined;
-    })();
+    }, [geohash]);
 
-    // --- ENGINE MUTATORS ---
-    const updateMode = (newMode: "static" | "dynamic") => {
+    const updateMode = (newMode: "static" | "dynamic" | "route") => {
         setMode(newMode);
         window.localStorage.setItem("fg-location-mode", newMode);
-
         if (newMode === "dynamic") {
             const now = Date.now();
             setQueueTimestamp(now);
@@ -123,36 +111,80 @@ export function BrowseLocationPage() {
         window.localStorage.setItem("fg-location-queue-interval", String(interval));
     };
 
-    useEffect(() => {
-        if (geohash && !selectedLocation) {
-            try {
-                const decoded = decodeGeohash(geohash);
-                const lat = (decoded.lat[0] + decoded.lat[1]) / 2;
-                const lon = (decoded.lon[0] + decoded.lon[1]) / 2;
-                setSelectedLocation({
-                    lat,
-                    lon,
-                    label: locationName ?? t("browse_location.current_location_label"),
-                });
-            } catch (e) { appLog.error("Failed to decode geohash from preferences", e); }
-        }
-    }, [geohash, locationName, t]);
+    const updateRouteWaypoints = (newWaypoints: SavedLocation[]) => {
+        setRouteWaypoints(newWaypoints);
+        window.localStorage.setItem("fg-route-waypoints", JSON.stringify(newWaypoints));
+        setRouteActive(false);
+        setRouteProgress(0);
+        setRoutePolyline([]);
+        window.localStorage.setItem("fg-route-active", "false");
+        window.localStorage.setItem("fg-route-progress", "0");
+        window.localStorage.removeItem("fg-route-polyline");
+    };
 
-    const confirmLocationUpdate = async (
-        lat: number,
-        lon: number,
-        label?: string,
-        isAuto?: boolean,
-    ) => {
+    const generateAndStartRoute = async () => {
+        if (routeWaypoints.length < 2) {
+            setLocationError("You need at least a start and end destination.");
+            return;
+        }
+        
+        setIsSearchingLocation(true);
+        try {
+            let polyline: {lat: number, lon: number}[] = [];
+
+            if (routeTransport === "plane") {
+                polyline = routeWaypoints.map(w => ({ lat: w.lat, lon: w.lon }));
+            } else {
+                const profile = routeTransport === "walking" || routeTransport === "running" ? "foot" : routeTransport === "biking" ? "bicycle" : "driving";
+                const coords = routeWaypoints.map(w => `${w.lon},${w.lat}`).join(";");
+                
+                const res = await fetch(`https://router.project-osrm.org/route/v1/${profile}/${coords}?overview=full&geometries=geojson`);
+                if (!res.ok) throw new Error("OSRM Routing failed");
+                const data = (await res.json()) as any;
+                
+                if (!data?.routes || data.routes.length === 0) throw new Error("No road route found between these points.");
+                polyline = data.routes[0].geometry.coordinates.map((c: any) => ({ lat: c[1], lon: c[0] }));
+            }
+
+            setRoutePolyline(polyline);
+            window.localStorage.setItem("fg-route-polyline", JSON.stringify(polyline));
+            window.localStorage.setItem("fg-route-speed", String(routeSpeed));
+            window.localStorage.setItem("fg-route-progress", "0");
+            window.localStorage.setItem("fg-route-last-tick", String(Date.now()));
+            window.localStorage.setItem("fg-route-active", "true");
+            
+            const startNode = routeWaypoints[0];
+            const startGeohash = encodeGeohash(startNode.lat, startNode.lon);
+            await setPreferences({ geohash: startGeohash, locationName: startNode.label });
+            setSelectedLocation({ lat: startNode.lat, lon: startNode.lon, label: startNode.label });
+
+            setRouteProgress(0);
+            setRouteActive(true);
+            setLocationError(null);
+            updateMode("route");
+
+        } catch (e) {
+            appLog.error("Route generation failed", e);
+            setLocationError("Could not generate a road route. Try switching to Plane mode for a direct line.");
+        } finally {
+            setIsSearchingLocation(false);
+        }
+    };
+
+    const stopRoute = (clearPolyline = false) => {
+        setRouteActive(false);
+        window.localStorage.setItem("fg-route-active", "false");
+        if (clearPolyline) {
+            setRoutePolyline([]);
+            window.localStorage.removeItem("fg-route-polyline");
+        }
+    };
+
+    const confirmLocationUpdate = async (lat: number, lon: number, label?: string, isAuto?: boolean) => {
         const nextGeohash = encodeGeohash(lat, lon);
         const finalLabel = label ?? t("browse_location.lat_lon_label", { lat: lat.toFixed(4), lon: lon.toFixed(4) });
 		
-        await setPreferences({
-            geohash: nextGeohash,
-            locationName: finalLabel,
-            useAutoLocation: isAuto ?? false,
-        });
-		
+        await setPreferences({ geohash: nextGeohash, locationName: finalLabel, useAutoLocation: isAuto ?? false });
         setSelectedLocation({ lat, lon, label: finalLabel });
         setMapPickerError(null);
         setLocationError(null);
@@ -160,16 +192,8 @@ export function BrowseLocationPage() {
         navigate("/");
     };
 
-    const requestLocationUpdate = (
-        lat: number,
-        lon: number,
-        label?: string,
-        isAuto?: boolean,
-    ) => {
-        // CRITICAL FIX: If the user manually teleports, ALWAYS FORCE STATIC MODE 
-        // to instantly kill the background dynamic queue.
+    const requestLocationUpdate = (lat: number, lon: number, label?: string, isAuto?: boolean) => {
         updateMode("static");
-
         if (isAgeRestrictedRegion(lat, lon)) {
             setPendingRestrictedLocation({ lat, lon, label, isAuto });
         } else {
@@ -178,24 +202,13 @@ export function BrowseLocationPage() {
     };
 
     const handleUseCurrentLocation = async () => {
-        if (!("geolocation" in navigator)) {
-            setLocationError(t("browse_location.error_geolocation"));
-            return;
-        }
+        if (!("geolocation" in navigator)) { setLocationError(t("browse_location.error_geolocation")); return; }
         setIsDetectingLocation(true);
         try {
-            const position = await new Promise<GeolocationPosition>(
-                (resolve, reject) => {
-                    navigator.geolocation.getCurrentPosition(resolve, reject, {
-                        enableHighAccuracy: true, timeout: 12000, maximumAge: 20000,
-                    });
-                },
-            );
-            setSelectedLocation({
-                lat: position.coords.latitude,
-                lon: position.coords.longitude,
-                label: t("browse_location.current_location_label", { defaultValue: "My GPS Location" })
+            const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 12000, maximumAge: 20000 });
             });
+            setSelectedLocation({ lat: position.coords.latitude, lon: position.coords.longitude, label: t("browse_location.current_location_label", { defaultValue: "My GPS Location" }) });
         } catch (e) {
             appLog.error("Geolocation failed", e);
             setLocationError(t("browse_location.error_access"));
@@ -205,17 +218,11 @@ export function BrowseLocationPage() {
     };
 
     const performSearch = async (query: string, signal?: AbortSignal) => {
-        if (!query || query === lastSearchedQuery) {
-            setIsSearchingLocation(false);
-            return;
-        }
+        if (!query || query === lastSearchedQuery) { setIsSearchingLocation(false); return; }
         setLastSearchedQuery(query);
         setIsSearchingLocation(true);
         try {
-            const response = await fetch(
-                `https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(query)}`,
-                { signal, headers: { "User-Agent": "Mozilla/5.0 FreeGrindLocationEngine/1.0" } },
-            );
+            const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(query)}`, { signal, headers: { "User-Agent": "Mozilla/5.0 FreeGrindLocationEngine/1.0" } });
             if (!response.ok) throw new Error("Failed to search location");
             const parsed = z.array(geocodeResultSchema).parse(await response.json());
             setLocationResults(parsed);
@@ -231,27 +238,64 @@ export function BrowseLocationPage() {
 
     useEffect(() => {
         const query = locationQuery.trim();
-        if (query.length < 3) {
-            setLocationResults([]);
-            setIsSearchingLocation(false);
-            setLastSearchedQuery("");
-            return;
-        }
+        if (query.length < 3) { setLocationResults([]); setIsSearchingLocation(false); setLastSearchedQuery(""); return; }
         const controller = new AbortController();
         const timer = setTimeout(() => { void performSearch(query, controller.signal); }, 800);
         return () => { clearTimeout(timer); controller.abort(); };
     }, [locationQuery]);
 
+    // Handle incoming background ticks to dynamically move the dot!
     useEffect(() => {
-        const handleEngineUpdate = () => {
+        const handleEngineUpdate = (e: Event) => {
             const storedIndex = window.localStorage.getItem("fg-location-queue-index");
             const storedTimestamp = window.localStorage.getItem("fg-location-queue-timestamp");
             if (storedIndex) setQueueIndex(Number(storedIndex));
             if (storedTimestamp) setQueueTimestamp(Number(storedTimestamp));
+            
+            const rProg = window.localStorage.getItem("fg-route-progress");
+            const rAct = window.localStorage.getItem("fg-route-active");
+            if (rProg) setRouteProgress(Number(rProg));
+            if (rAct) setRouteActive(rAct === "true");
+
+            const customEvent = e as CustomEvent;
+            if (customEvent.detail) {
+                // If the engine finishes a route, it instructs the UI to shift modes cleanly
+                if (customEvent.detail.modeSwitch) {
+                    setMode(customEvent.detail.modeSwitch);
+                    if (customEvent.detail.modeSwitch === "static") {
+                        setRoutePolyline([]);
+                        setRouteActive(false);
+                    }
+                }
+                
+                // CRITICAL FIX: Explicitly set the label to whatever the engine sends (Never fallback to old cache!)
+                if (customEvent.detail.lat && customEvent.detail.lon) {
+                    setSelectedLocation({
+                        lat: customEvent.detail.lat,
+                        lon: customEvent.detail.lon,
+                        label: customEvent.detail.label || "Simulating Route..."
+                    });
+                }
+            }
         };
         window.addEventListener("fg-engine-tick", handleEngineUpdate);
         return () => window.removeEventListener("fg-engine-tick", handleEngineUpdate);
     }, []);
+
+    useEffect(() => {
+        if (geohash && !selectedLocation) {
+            try {
+                const decoded = decodeGeohash(geohash);
+                const lat = (decoded.lat[0] + decoded.lat[1]) / 2;
+                const lon = (decoded.lon[0] + decoded.lon[1]) / 2;
+                setSelectedLocation({
+                    lat,
+                    lon,
+                    label: locationName ?? t("browse_location.current_location_label"),
+                });
+            } catch (e) { appLog.error("Failed to decode geohash from preferences", e); }
+        }
+    }, [geohash, locationName, t]);
 
     return (
         <section className="app-screen bg-transparent">
@@ -280,43 +324,43 @@ export function BrowseLocationPage() {
                 <LocationSettingsPanel
                     mode={mode}
                     onModeChange={updateMode}
-					
                     isDetectingLocation={isDetectingLocation}
                     onUseCurrentLocation={() => void handleUseCurrentLocation()}
                     locationQuery={locationQuery}
                     onLocationQueryChange={setLocationQuery}
                     isSearchingLocation={isSearchingLocation}
                     locationResults={locationResults}
-					
                     onStageLocation={(lat, lon, label) => setSelectedLocation({ lat, lon, label })}
                     selectedLocation={selectedLocation}
-					
                     isMapPickerOpen={isMapPickerOpen}
                     mapPickerError={mapPickerError}
-                    onToggleMapPicker={() => {
-                        setMapPickerError(null);
-                        setIsMapPickerOpen((current) => !current);
-                    }}
-                    onMapPick={(lat, lon) => {
-                        setSelectedLocation({ lat, lon, label: `${lat.toFixed(4)}, ${lon.toFixed(4)}` });
-                    }}
+                    onToggleMapPicker={() => { setMapPickerError(null); setIsMapPickerOpen((current) => !current); }}
+                    onMapPick={(lat, lon) => { setSelectedLocation({ lat, lon, label: `${lat.toFixed(4)}, ${lon.toFixed(4)}` }); }}
                     onMapPickerError={setMapPickerError}
-					
                     onTeleport={(lat, lon, label) => requestLocationUpdate(lat, lon, label)}
-					
                     initialCenter={initialCenter}
                     bookmarks={bookmarks}
                     queue={queue}
                     queueInterval={queueInterval}
                     queueIndex={queueIndex}
                     queueTimestamp={queueTimestamp}
-					
                     onAddBookmark={(loc) => updateBookmarks([...bookmarks, loc])}
                     onDeleteBookmark={(id) => updateBookmarks(bookmarks.filter(b => b.id !== id))}
                     onAddQueue={(loc) => updateQueue([...queue, loc])}
                     onDeleteQueue={(id) => updateQueue(queue.filter(q => q.id !== id))}
                     onClearQueue={() => updateQueue([])}
                     onChangeInterval={updateInterval}
+                    routeWaypoints={routeWaypoints}
+                    routePolyline={routePolyline}
+                    routeSpeed={routeSpeed}
+                    routeTransport={routeTransport}
+                    routeActive={routeActive}
+                    routeProgress={routeProgress}
+                    onUpdateRouteWaypoints={updateRouteWaypoints}
+                    onUpdateRouteSpeed={(s: number) => { setRouteSpeed(s); window.localStorage.setItem("fg-route-speed", String(s)); }}
+                    onUpdateRouteTransport={(t: string) => { setRouteTransport(t); window.localStorage.setItem("fg-route-transport", t); }}
+                    onStartRoute={() => void generateAndStartRoute()}
+                    onStopRoute={stopRoute}
                 />
             </div>
 
@@ -331,27 +375,8 @@ export function BrowseLocationPage() {
                             You are about to teleport to a region (UK/EU) that strictly requires Grindr Age Verification. If your account is not verified, you may get soft-locked and forced to verify on the official app before you can use Free Grind again.
                         </p>
                         <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                            <button
-                                type="button"
-                                onClick={() => setPendingRestrictedLocation(null)}
-                                className="inline-flex h-11 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 text-sm font-semibold text-[var(--text-muted)] transition hover:text-[var(--text)] active:scale-95"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() =>
-                                    confirmLocationUpdate(
-                                        pendingRestrictedLocation.lat,
-                                        pendingRestrictedLocation.lon,
-                                        pendingRestrictedLocation.label,
-                                        pendingRestrictedLocation.isAuto,
-                                    )
-                                }
-                                className="inline-flex h-11 items-center justify-center rounded-xl border border-amber-500 bg-amber-500 px-4 text-sm font-bold text-white shadow-[0_0_15px_rgba(245,158,11,0.4)] transition hover:brightness-110 active:scale-95"
-                            >
-                                Teleport Anyway
-                            </button>
+                            <button type="button" onClick={() => setPendingRestrictedLocation(null)} className="inline-flex h-11 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 text-sm font-semibold text-[var(--text-muted)] transition hover:text-[var(--text)] active:scale-95">Cancel</button>
+                            <button type="button" onClick={() => confirmLocationUpdate(pendingRestrictedLocation.lat, pendingRestrictedLocation.lon, pendingRestrictedLocation.label, pendingRestrictedLocation.isAuto)} className="inline-flex h-11 items-center justify-center rounded-xl border border-amber-500 bg-amber-500 px-4 text-sm font-bold text-white shadow-[0_0_15px_rgba(245,158,11,0.4)] transition hover:brightness-110 active:scale-95">Teleport Anyway</button>
                         </div>
                     </div>
                 </div>
