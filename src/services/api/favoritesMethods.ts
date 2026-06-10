@@ -22,7 +22,7 @@ export function createFavoritesMethods(fetchRest: RestFetcher, t: (key: string) 
 				method: "GET",
 			});
 			await assertSuccess(response, t("favorites.get_notes_failed"));
-			return response.json();
+            return response.json() as Promise<any>;
 		},
 	};
 }

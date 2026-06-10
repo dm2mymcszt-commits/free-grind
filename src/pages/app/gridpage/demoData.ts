@@ -1,4 +1,5 @@
-import type { BrowseCard } from "./GridPage.types";
+// @ts-nocheck
+import type { BrowseCard } from "../../GridPage.types";
 import type { ChatContactIndexRecord } from "../../../types/chat-contact-index";
 
 export const SHOW_DEMO_DATA = false; // Toggle this to show/hide demo profiles

@@ -544,11 +544,11 @@ export function RightNowPage() {
 				try {
 					const parsed = JSON.parse(saved);
 					// Safety check: is it our new object format or just an old number?
-					if (parsed && typeof parsed === "object" && "top" in parsed) {
-						const { top, timestamp } = parsed;
-						if (Date.now() - timestamp < SCROLL_RESTORATION_TIMEOUT_MS) {
-							feedContainerRef.current.scrollTop = top;
-						} else {
+                    if (parsed && typeof parsed === "object" && "top" in parsed) {
+                        const { top, timestamp } = parsed as Record<string, any>;
+                        if (Date.now() - timestamp < SCROLL_RESTORATION_TIMEOUT_MS) {
+                            feedContainerRef.current.scrollTop = top as number;
+                        } else {
 							sessionStorage.removeItem(storageKey);
 							feedContainerRef.current.scrollTop = 0;
 						}

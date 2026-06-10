@@ -29,13 +29,16 @@ import { CustomizabilityPage } from "./pages/app/CustomizabilityPage.tsx";
 import { ReportIssuePage } from "./pages/app/ReportIssuePage.tsx";
 import { IssueSearchPage } from "./pages/app/IssueSearchPage.tsx";
 import { SettingsAutomationPage } from "./pages/app/SettingsAutomationPage.tsx";
+import { SettingsPrivacyPage } from "./pages/app/SettingsPrivacyPage.tsx";
 import { SettingsSavedPhrasesPage } from "./pages/app/SettingsSavedPhrasesPage.tsx";
 import { AnalyticsConsentPrompt } from "./components/AnalyticsConsentPrompt";
+import { OutdatedVersionPrompt } from "./components/OutdatedVersionPrompt";
 import { PushNotificationBridge } from "./components/PushNotificationBridge";
 import { ChatRealtimeBridge } from "./components/ChatRealtimeBridge";
 import { ActiveRouteBridge } from "./components/ActiveRouteBridge";
 import { EntitlementsBridge } from "./components/EntitlementsBridge";
 import { usePreferences } from "./contexts/PreferencesContext";
+import { SmoothScroll } from "./components/SmoothScroll";
 
 // --- NEW MULTI-SELECT IMPORTS ---
 import { MultiSelectProvider } from "./contexts/MultiSelectContext";
@@ -76,11 +79,13 @@ export default function App() {
     return (
         <AuthProvider>
             <PreferencesProvider>
+                <SmoothScroll>
                     <MultiSelectProvider>
                         <PushNotificationBridge />
                         <ChatRealtimeBridge />
                         <ActiveRouteBridge />
                         <EntitlementsBridge />
+                        <OutdatedVersionPrompt />
                         <AnalyticsConsentPrompt />
                         <Routes>
                             <Route element={<RootLayout />}>
@@ -113,6 +118,7 @@ export default function App() {
                                     <Route path="/profile/:profileId" element={<GridProfilePage />} />
                                     <Route path="/settings" element={<SettingsPage />} />
                                     <Route path="/settings/automation" element={<SettingsAutomationPage />} />
+                                    <Route path="/settings/privacy" element={<SettingsPrivacyPage />} />
                                     <Route path="/settings/about" element={<AboutPage />} />
                                     <Route path="/settings/albums" element={<SettingsAlbumsPage />} />
                                     <Route path="/settings/blocked" element={<SettingsBlockedPage />} />
@@ -158,6 +164,7 @@ export default function App() {
                         {/* MULTI-SELECT OVERLAY (Liquid Glass UI) */}
                         <MultiSelectOverlay />
                     </MultiSelectProvider>
+                </SmoothScroll>
             </PreferencesProvider>
         </AuthProvider>
     );

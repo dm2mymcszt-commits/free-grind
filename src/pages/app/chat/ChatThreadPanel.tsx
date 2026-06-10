@@ -34,6 +34,9 @@ import {
     ImagePlay,
     Clock,
     Search as SearchIcon,
+    Images,
+    Mic,
+    Square,
 } from "lucide-react";
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
@@ -48,7 +51,7 @@ import {
     createBackdropCloseHandler,
     useModalClose,
 } from "../../../hooks/useModalClose";
-import type { AlbumListItem, AlbumViewerState, UiMessage } from "../../../types/chat-page";
+import type { AlbumListItem, UiMessage, AlbumViewerState } from "../../../types/chat-page";
 import type { ConversationEntry, Message } from "../../../types/messages";
 import type { DrawerMedia } from "./ChatDrawerPanel";
 import { ChatDrawerPanel } from "./ChatDrawerPanel";
@@ -68,15 +71,18 @@ import {
     getMessageAlbumId,
     getMessageAlbumCoverUrl,
 } from "./chatUtils";
+import { getThumbImageUrl } from "../../../utils/media";
 import { formatDistance } from "../gridpage/utils";
 import { ProfileImage } from "../../../components/ui/profile-image";
 import { ChatThreadMessages } from "./ChatThreadMessages";
+import { AudioMessagePlayer } from "./AudioMessagePlayer";
 import { ConfirmDialog } from "../../../components/ui/confirm-dialog";
 import { useApiFunctions } from "../../../hooks/useApiFunctions";
 import { isChatGhosted, toggleChatGhost } from "../../../utils/privacy";
 import { ToggleRow } from "../../../components/ui/toggle-row";
 import { BottomDrawer } from "../../../components/ui/bottom-drawer";
 import { BottomSheet, SheetClose } from "../../../components/ui/bottom-sheet";
+
 import {
     loadSavedPhrases,
     saveSavedPhrases,
@@ -175,7 +181,7 @@ type ChatThreadPanelProps = {
     isAddingDrawerMedia: boolean;
     deletingDrawerMediaId: number | null;
     onLoadDrawerMedia: () => void | Promise<void>;
-    onSendDrawerMedia: (mediaIds: number[], isExpiring?: boolean) => Promise<void>;
+    onSendDrawerMedia: (mediaIds: number[], maxViews?: number) => Promise<void>;
     onAddDrawerMedia: (file: File, takenOnGrindr: boolean) => Promise<void>;
     onDeleteDrawerMedia: (mediaId: number) => Promise<void>;
     onShareAlbumFromDrawer: (albumId: number, expirationType: string) => Promise<void>;
@@ -191,9 +197,45 @@ type ChatThreadPanelProps = {
     selectedActionMessageMine: boolean;
     albumViewer: AlbumViewerState | null;
     onCloseAlbumViewer: () => void;
+    attachmentMaxViews: number;
+    setAttachmentMaxViews: (value: number) => void;
+    albumCoverMap?: Map<number, string>;
+    ownProfilePhotoUrl?: string | null;
+    onAudioRecorded: (blob: Blob, durationMs: number, autoSend?: boolean) => void;
+    pendingAudioBlob: Blob | null;
+    pendingAudioDuration: number;
+    isSendingAudio: boolean;
+    confirmAudio: () => void | Promise<void>;
+    cancelAudio: () => void;
+    isAlbumSheetOpen: boolean;
+    onOpenMediaSheet?: () => void;
 };
 
 const SKIP_BLOCK_CONFIRM_KEY = "profile_skip_block_confirm";
+
+async function fixWebmDuration(blob: Blob, durationMs: number): Promise<Blob> {
+    if (!blob.type.includes("webm")) return blob;
+    const buf = await blob.arrayBuffer();
+    const data = new Uint8Array(buf);
+    for (let i = 0; i < data.length - 10; i++) {
+        if (data[i] === 0x44 && data[i + 1] === 0x89 && data[i + 2] === 0x88) {
+            new DataView(buf).setFloat64(i + 3, durationMs, false);
+            return new Blob([buf], { type: blob.type });
+        }
+    }
+    return blob;
+}
+
+function AudioPreviewPlayer({ blob, durationMs, recordedBars, recordedFraction }: { blob: Blob; durationMs: number; recordedBars: number[]; recordedFraction: number }) {
+    const [url, setUrl] = useState<string | null>(null);
+    useEffect(() => {
+        const u = URL.createObjectURL(blob);
+        setUrl(u);
+        return () => { setTimeout(() => URL.revokeObjectURL(u), 3000); };
+    }, [blob]);
+    if (!url) return null;
+    return <AudioMessagePlayer src={url} messageId="preview" mine={false} className="w-full" durationHint={durationMs / 1000} hideSpeed compact initialBars={recordedBars} recordedFraction={recordedFraction} />;
+}
 
 export function ChatThreadPanel(props: ChatThreadPanelProps) {
     const { t } = useTranslation();
@@ -354,7 +396,19 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
         onStopAlbumShareFromDrawer,
         onSendLocation,
         onCloseAlbumViewer,
-    } = props;  
+        attachmentMaxViews,
+        setAttachmentMaxViews,
+        albumCoverMap: externalAlbumCoverMap,
+        ownProfilePhotoUrl,
+        onAudioRecorded,
+        pendingAudioBlob,
+        pendingAudioDuration,
+        isSendingAudio,
+        confirmAudio,
+        cancelAudio,
+        isAlbumSheetOpen,
+        onOpenMediaSheet,
+    } = props;
 
     // --- IMAGE CROP & SAVED PHRASES UI STATE ---
     const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState<string | null>(null);
@@ -362,6 +416,138 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
     const [attachmentCompletedCrop, setAttachmentCompletedCrop] = useState<PixelCrop | undefined>(undefined);
     const [isDraggingAttachmentCrop, setIsDraggingAttachmentCrop] = useState(false);
     const attachmentImgRef = useRef<HTMLImageElement | null>(null);
+
+    // --- AUDIO RECORDING ENGINE ---
+    const [isRecording, setIsRecording] = useState(false);
+    const [recordingMs, setRecordingMs] = useState(0);
+    const [waveformBars, setWaveformBars] = useState<number[]>([]);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const waveformBarsRef = useRef<number[]>([]);
+    const [recordedWaveform, setRecordedWaveform] = useState<number[]>([]);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const chunksRef = useRef<Blob[]>([]);
+    const recordingStartRef = useRef(0);
+    const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const recordingMaxTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const analyserRef = useRef<AnalyserNode | null>(null);
+    const audioCtxRef = useRef<AudioContext | null>(null);
+    const waveformRafRef = useRef<number | null>(null);
+    const swipeStartXRef = useRef(0);
+    const isCapturingRef = useRef(false);
+    const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const hasVibratedRef = useRef(false);
+    const [recordDragX, setRecordDragX] = useState(0);
+    const [showRecordCircle, setShowRecordCircle] = useState(false);
+    const [trashBounce, setTrashBounce] = useState(false);
+    const CANCEL_THRESHOLD = window.innerWidth * 0.35;
+    const dragProgress = Math.min(1, Math.abs(Math.min(0, recordDragX)) / CANCEL_THRESHOLD);
+    const stopRecordingRef = useRef<(autoSend?: boolean) => void>(() => {});
+
+    const cleanupAnalyser = useCallback(() => {
+        if (waveformRafRef.current) { cancelAnimationFrame(waveformRafRef.current); waveformRafRef.current = null; }
+        analyserRef.current = null;
+        if (audioCtxRef.current) { void audioCtxRef.current.close(); audioCtxRef.current = null; }
+        setWaveformBars([]);
+    }, []);
+
+    useEffect(() => { waveformBarsRef.current = waveformBars; }, [waveformBars]);
+
+    useEffect(() => {
+        return () => {
+            if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+            if (waveformRafRef.current) cancelAnimationFrame(waveformRafRef.current);
+            mediaRecorderRef.current?.stream?.getTracks().forEach((t) => t.stop());
+            void audioCtxRef.current?.close();
+        };
+    }, []);
+
+    const startRecording = useCallback(async () => {
+        if (isRecording) return;
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4", "audio/aac"].find(
+                (t) => MediaRecorder.isTypeSupported(t),
+            ) ?? "";
+            const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+            chunksRef.current = [];
+            recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+            recorder.start(100);
+            mediaRecorderRef.current = recorder;
+            recordingStartRef.current = Date.now();
+            setIsRecording(true);
+            (window as unknown as { FreeGrindBridge?: { vibrate?: (ms: number) => void } }).FreeGrindBridge?.vibrate?.(30) ?? navigator.vibrate?.(30);
+            setRecordingMs(0);
+            recordingTimerRef.current = setInterval(() => {
+                const elapsed = Date.now() - recordingStartRef.current;
+                setRecordingMs(elapsed);
+                if (elapsed >= 60_000) stopRecordingRef.current();
+            }, 100);
+            recordingMaxTimerRef.current = setTimeout(() => stopRecordingRef.current(), 60_000);
+            try {
+                const audioCtx = new AudioContext();
+                const analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 64;
+                analyser.smoothingTimeConstant = 0.7;
+                audioCtx.createMediaStreamSource(stream).connect(analyser);
+                audioCtxRef.current = audioCtx;
+                analyserRef.current = analyser;
+                const data = new Uint8Array(analyser.frequencyBinCount);
+                let lastSample = 0;
+                const tick = (t: number) => {
+                    if (t - lastSample >= 80) {
+                        lastSample = t;
+                        analyser.getByteFrequencyData(data);
+                        const amp = data.slice(0, 10).reduce((a, b) => a + b, 0) / 10 / 255;
+                        setWaveformBars(prev => [...prev, amp]);
+                    }
+                    waveformRafRef.current = requestAnimationFrame(tick);
+                };
+                waveformRafRef.current = requestAnimationFrame(tick);
+            } catch { /* analyser failure is non-fatal */ }
+        } catch (err) {
+            toast.error(t("chat.errors.microphone_access", { defaultValue: "Could not access microphone." }));
+        }
+    }, [isRecording, t]);
+
+    const stopRecording = useCallback((autoSend?: boolean) => {
+        const recorder = mediaRecorderRef.current;
+        if (!recorder || recorder.state === "inactive") return;
+        if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
+        if (recordingMaxTimerRef.current) { clearTimeout(recordingMaxTimerRef.current); recordingMaxTimerRef.current = null; }
+        const durationMs = Date.now() - recordingStartRef.current;
+        const capturedBars = [...waveformBarsRef.current];
+        cleanupAnalyser();
+        recorder.onstop = () => {
+            recorder.stream.getTracks().forEach((t) => t.stop());
+            const rawBlob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
+            if (rawBlob.size === 0) { mediaRecorderRef.current = null; return; }
+            void fixWebmDuration(rawBlob, durationMs).then((blob) => {
+                if (durationMs >= 500) {
+                    setRecordedWaveform(capturedBars);
+                    onAudioRecorded(blob, durationMs, autoSend);
+                } else {
+                    toast.error(t("chat.errors.recording_too_short", { defaultValue: "Recording too short." }));
+                }
+                mediaRecorderRef.current = null;
+            });
+        };
+        recorder.stop();
+        setIsRecording(false);
+        setRecordingMs(0);
+    }, [cleanupAnalyser, onAudioRecorded, t]);
+    useEffect(() => { stopRecordingRef.current = stopRecording; }, [stopRecording]);
+
+    const cancelRecording = useCallback(() => {
+        const recorder = mediaRecorderRef.current;
+        if (!recorder || recorder.state === "inactive") return;
+        if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
+        if (recordingMaxTimerRef.current) { clearTimeout(recordingMaxTimerRef.current); recordingMaxTimerRef.current = null; }
+        cleanupAnalyser();
+        recorder.onstop = () => { recorder.stream.getTracks().forEach((t) => t.stop()); mediaRecorderRef.current = null; };
+        recorder.stop();
+        setIsRecording(false);
+        setRecordingMs(0);
+    }, [cleanupAnalyser]);
 
     const [isSavedPhrasesOpen, setIsSavedPhrasesOpen] = useState(false);
     const [phrasesExpanded, setPhrasesExpanded] = useState(false);
@@ -841,7 +1027,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                 {!isDesktop && (
                                     <button
                                         type="button"
-                                        onClick={() => { if (albumViewer) { onCloseAlbumViewer(); return; } navigate("/chat"); }}
+                                        onClick={() => navigate("/chat")}
                                         className="shrink-0 inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-2)]"
                                         aria-label={t("browse_location.back_aria")}
                                     >
@@ -1424,16 +1610,41 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                             </div>
                         ) : null}
 
-                        {pendingAttachmentFile ? (
-                            <BottomDrawer
-                                title={t("chat.attachments.ready_to_send", { file: pendingAttachmentFile.name })}
-                                onClose={cancelPendingAttachment}
-                                onConfirm={() => void handleConfirmAttachment()}
-                                confirmLabel={t("chat.attachments.send_attachment")}
-                                cancelLabel={t("chat.actions.cancel")}
-                                isProcessing={isUploadingAttachment}
-                                isDesktop={isDesktop}
-                            >
+                                {pendingAttachmentFile ? (
+                                <BottomDrawer
+                                    title={t("chat.attachments.ready_to_send", { file: pendingAttachmentFile.name })}
+                                    onClose={cancelPendingAttachment}
+                                    onConfirm={() => void handleConfirmAttachment()}
+                                    confirmLabel={attachmentMaxViews !== 2147483647 ? t("chat.attachments.send_expiring", { defaultValue: "Send Expiring" }) : t("chat.attachments.send_attachment")}
+                                    cancelLabel={t("chat.actions.cancel")}
+                                    isProcessing={isUploadingAttachment}
+                                    isDesktop={isDesktop}
+                                    footerLeft={(() => {
+                                        const isVideo = pendingAttachmentFile.type.startsWith("video/");
+                                        const cycle = isVideo ? [2147483647, 1, 2] as const : [2147483647, 1] as const;
+                                        const idx = cycle.indexOf(attachmentMaxViews as typeof cycle[number]);
+                                        const next = cycle[(idx === -1 ? 0 : idx + 1) % cycle.length];
+                                        const isLimited = attachmentMaxViews !== 2147483647;
+                                        return (
+                                            <button
+                                                type="button"
+                                                onClick={() => setAttachmentMaxViews(next)}
+                                                className={`inline-flex min-w-[64px] items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 transition ${
+                                                    isLimited
+                                                        ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)]"
+                                                        : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--text)]"
+                                                }`}
+                                            >
+                                                <Hourglass className="h-4 w-4" />
+                                                {attachmentMaxViews === 2147483647
+                                                    ? <span className="text-base font-semibold leading-none">∞</span>
+                                                    : <span className="text-sm font-semibold">{attachmentMaxViews}×</span>
+                                                }
+                                            </button>
+                                        );
+                                    })()}
+                                >
+                                    
                                 {attachmentPreviewUrl && (
                                     pendingAttachmentFile.type.startsWith("video/") ? (
                                         <div className="px-3 pb-3">
@@ -1710,44 +1921,85 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                             )}
 
                             {/* Input Container */}
-                            <div className="relative flex-1 flex items-end">
-                                <textarea
-                                    value={draft}
-                                    onChange={(event) => setDraft(event.target.value)}
-                                    rows={1}
-                                    maxLength={1000}
-                                    placeholder={t("chat.write_message")}
-                                    disabled={!!pendingLocationShare}
-                                    className="w-full min-h-[50px] max-h-[120px] bg-white/5 border border-white/10 shadow-inner rounded-3xl pl-5 pr-[80px] py-3.5 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]/50 focus:bg-white/10 transition-all ease-out duration-300 resize-none disabled:opacity-60 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                                />
-                                
-                                {/* Floating Emoji/GIF Buttons inside the TextArea */}
-                                <div className="absolute right-4 bottom-[13px] flex items-center gap-3 z-10 opacity-0 group-hover/input:opacity-100 focus-within:opacity-100 transition-opacity duration-300">
-                                    <button 
-                                        type="button" 
-                                        onClick={(e) => { e.stopPropagation(); setIsEmojiPickerOpen(!isEmojiPickerOpen); setIsGifPickerOpen(false); }}
-                                        className={`shrink-0 inline-flex items-center justify-center transition-all hover:scale-110 active:scale-95 ${isEmojiPickerOpen ? "text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-white"}`}
-                                    >
-                                        <Smile className="h-[22px] w-[22px]" strokeWidth={2.5} />
-                                    </button>
-                                    <button 
-                                        type="button" 
-                                        onClick={(e) => { e.stopPropagation(); setIsGifPickerOpen(!isGifPickerOpen); setIsEmojiPickerOpen(false); }}
-                                        className={`shrink-0 inline-flex items-center justify-center transition-all hover:scale-110 active:scale-95 ${isGifPickerOpen ? "text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-white"}`}
-                                    >
-                                        <span className="font-black text-[13px] tracking-tight">GIF</span>
-                                    </button>
+                    {/* --- PENDING AUDIO PREVIEW --- */}
+                            {pendingAudioBlob && (
+                                <div className="absolute bottom-[calc(100%+10px)] left-0 w-full animate-in slide-in-from-bottom-2 fade-in">
+                                    <div className="rounded-2xl border border-white/10 bg-black/60 backdrop-blur-xl pl-3 pr-2 py-2 flex items-center gap-2 shadow-2xl">
+                                        <div className="flex-1 min-w-0">
+                                            <AudioPreviewPlayer blob={pendingAudioBlob} durationMs={pendingAudioDuration} recordedBars={recordedWaveform} recordedFraction={Math.min(1, pendingAudioDuration / 60_000)} />
+                                        </div>
+                                        <button type="button" onClick={() => { setRecordedWaveform([]); cancelAudio(); }} className="h-9 w-9 flex items-center justify-center rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition"><Trash2 className="h-4 w-4" /></button>
+                                    </div>
                                 </div>
-                            </div>
+                            )}
 
-                            <button
-                                type="submit"
-                                disabled={isSending || (!pendingLocationShare && draft.trim().length === 0)}
-                                className="self-stretch shrink-0 px-6 rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.25)] transition-all duration-300 ease-out hover:scale-105 hover:shadow-[0_6px_20px_rgba(0,0,0,0.4)] active:scale-95 text-sm font-bold flex items-center justify-center disabled:opacity-50 disabled:hover:scale-100 disabled:hover:shadow-none"
-                                style={{ backgroundColor: "var(--accent)", color: "var(--accent-contrast, black)" }}
-                            >
-                                {isSending ? <Loader2 className="h-5 w-5 animate-spin" /> : t("chat.send")}
-                            </button>
+                            {/* --- INPUT OR AUDIO RECORDER --- */}
+                            {!pendingAudioBlob && isRecording ? (
+                                <div className={`relative flex-1 flex items-center gap-3 rounded-full border transition-colors ${recordingMs >= 50_000 ? "border-red-500/50 bg-red-500/10" : "border-[var(--accent)]/50 bg-black/30 backdrop-blur-lg"} pl-2 pr-4 py-2 h-[50px] shadow-inner`}>
+                                    <button type="button" onClick={cancelRecording} className="shrink-0 h-8 w-8 flex items-center justify-center rounded-full bg-red-500 text-white shadow-md hover:scale-105 active:scale-95 transition">
+                                        <Trash2 className="h-4 w-4" />
+                                    </button>
+                                    <span className={`text-sm font-bold tabular-nums shrink-0 ${recordingMs >= 50_000 ? "text-red-500 animate-pulse" : "text-[var(--accent)]"}`}>
+                                        {`${Math.floor(Math.floor(recordingMs / 1000) / 60)}:${(Math.floor(recordingMs / 1000) % 60).toString().padStart(2, "0")}`}
+                                    </span>
+                                    <div className="flex-1" />
+                                    {isDesktop ? (
+                                        <button type="button" onClick={() => stopRecording()} className="shrink-0 text-red-500 hover:text-red-400 transition"><Square className="h-5 w-5 fill-current" /></button>
+                                    ) : (
+                                        showRecordCircle && <span className="text-[11px] font-medium text-[var(--text-muted)] shrink-0 select-none animate-pulse">Slide left to cancel</span>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className={`relative flex-1 flex items-end ${pendingAudioBlob ? "opacity-0 pointer-events-none" : ""}`}>
+                                    <textarea
+                                        ref={textareaRef}
+                                        value={draft}
+                                        onChange={(event) => setDraft(event.target.value)}
+                                        rows={1}
+                                        maxLength={1000}
+                                        placeholder={t("chat.write_message")}
+                                        disabled={!!pendingLocationShare}
+                                        className="w-full min-h-[50px] max-h-[120px] bg-white/5 border border-white/10 shadow-inner rounded-3xl pl-5 pr-[80px] py-3.5 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]/50 focus:bg-white/10 transition-all ease-out duration-300 resize-none disabled:opacity-60 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                                    />
+                                    <div className="absolute right-4 bottom-[13px] flex items-center gap-3 z-10 opacity-0 group-hover/input:opacity-100 focus-within:opacity-100 transition-opacity duration-300">
+                                        <button type="button" onClick={(e) => { e.stopPropagation(); setIsEmojiPickerOpen(!isEmojiPickerOpen); setIsGifPickerOpen(false); }} className={`shrink-0 inline-flex items-center justify-center transition-all hover:scale-110 active:scale-95 ${isEmojiPickerOpen ? "text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-white"}`}><Smile className="h-[22px] w-[22px]" strokeWidth={2.5} /></button>
+                                        <button type="button" onClick={(e) => { e.stopPropagation(); setIsGifPickerOpen(!isGifPickerOpen); setIsEmojiPickerOpen(false); }} className={`shrink-0 inline-flex items-center justify-center transition-all hover:scale-110 active:scale-95 ${isGifPickerOpen ? "text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-white"}`}><span className="font-black text-[13px] tracking-tight">GIF</span></button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* --- ACTION BUTTON (SEND OR MIC) --- */}
+                            {pendingAudioBlob ? (
+                                <button type="button" onClick={() => { setRecordedWaveform([]); void confirmAudio(); }} disabled={isSendingAudio} className="self-stretch shrink-0 px-6 rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.25)] transition-all duration-300 hover:scale-105 active:scale-95 flex items-center justify-center disabled:opacity-50 text-white bg-green-500 border border-green-400">
+                                    {isSendingAudio ? <Loader2 className="h-5 w-5 animate-spin" /> : <SendHorizontal className="h-5 w-5" />}
+                                </button>
+                            ) : draft.trim().length > 0 || isSending || pendingLocationShare ? (
+                                <button type="submit" disabled={isSending || (!pendingLocationShare && draft.trim().length === 0)} className="self-stretch shrink-0 px-6 rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.25)] transition-all duration-300 ease-out hover:scale-105 hover:shadow-[0_6px_20px_rgba(0,0,0,0.4)] active:scale-95 text-sm font-bold flex items-center justify-center disabled:opacity-50 disabled:hover:scale-100 disabled:hover:shadow-none" style={{ backgroundColor: "var(--accent)", color: "var(--accent-contrast, black)" }}>
+                                    {isSending ? <Loader2 className="h-5 w-5 animate-spin" /> : t("chat.send")}
+                                </button>
+                            ) : !isRecording && (
+                                <button
+                                    type="button"
+                                    onClick={isDesktop ? () => void startRecording() : undefined}
+                                    onPointerDown={!isDesktop ? (e) => {
+                                        e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); swipeStartXRef.current = e.clientX; isCapturingRef.current = true; hasVibratedRef.current = false; setRecordDragX(0); holdTimerRef.current = setTimeout(() => setShowRecordCircle(true), 150); void startRecording();
+                                    } : undefined}
+                                    onPointerMove={!isDesktop ? (e) => {
+                                        if (!isCapturingRef.current) return;
+                                        const dx = e.clientX - swipeStartXRef.current; setRecordDragX(Math.min(0, dx));
+                                        if (!hasVibratedRef.current && dx < -CANCEL_THRESHOLD) {
+                                            hasVibratedRef.current = true; isCapturingRef.current = false; e.currentTarget.releasePointerCapture(e.pointerId); if (holdTimerRef.current) clearTimeout(holdTimerRef.current); navigator.vibrate?.(80); setTrashBounce(true); setTimeout(() => { setTrashBounce(false); setRecordDragX(0); setShowRecordCircle(false); cancelRecording(); }, 280);
+                                        }
+                                    } : undefined}
+                                    onPointerUp={!isDesktop ? () => { isCapturingRef.current = false; setRecordDragX(0); if (holdTimerRef.current) clearTimeout(holdTimerRef.current); setShowRecordCircle(false); stopRecording(true); } : undefined}
+                                    onPointerCancel={!isDesktop ? () => { isCapturingRef.current = false; setRecordDragX(0); if (holdTimerRef.current) clearTimeout(holdTimerRef.current); setShowRecordCircle(false); cancelRecording(); } : undefined}
+                                    className="relative self-stretch shrink-0 w-[55px] rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.25)] transition-all duration-300 hover:scale-105 active:scale-95 flex items-center justify-center text-[var(--accent-contrast)] bg-[var(--accent)]"
+                                    style={showRecordCircle ? { transform: `translateX(${recordDragX}px)`, transition: recordDragX === 0 ? "transform 0.3s cubic-bezier(0.34,1.56,0.64,1)" : "none" } : undefined}
+                                >
+                                    {showRecordCircle && <span className="pointer-events-none absolute rounded-full" style={{ inset: "-15px", background: `color-mix(in srgb, var(--accent) ${Math.round((1 - dragProgress) * 100)}%, #ef4444)`, opacity: 0.2 }} />}
+                                    <Mic className="h-5 w-5" />
+                                </button>
+                            )}
                         </div>
                     </form>
 

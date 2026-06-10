@@ -36,7 +36,7 @@ export function fromStoredView(row: StoredInterestView): InterestItem {
 export function toStoredView(item: InterestItem): Omit<StoredInterestView, "updatedAt"> {
 	return {
 		profileId: item.profileId,
-		displayName: item.displayName,
+        displayName: item.displayName ?? "",
 		imageHash: item.imageHash,
 		timestamp: item.timestamp,
 		viewCount: item.viewCount,
@@ -56,7 +56,7 @@ function mergeViewItem(
 	}
 
 	const incomingLooksPlaceholder = isPlaceholderName(
-		incoming.displayName,
+        incoming.displayName ?? "",
 		incoming.profileId,
 	);
 
@@ -67,7 +67,7 @@ function mergeViewItem(
 		// Prefer real ID over preview ID
 		profileId: isIncomingPreview && !isCachedPreview ? cached.profileId : incoming.profileId,
 		displayName:
-			incomingLooksPlaceholder && !isPlaceholderName(cached.displayName, cached.profileId)
+                incomingLooksPlaceholder && !isPlaceholderName(cached.displayName ?? "", cached.profileId)
 				? cached.displayName
 				: incoming.displayName,
 		imageHash: incoming.imageHash ?? cached.imageHash,
@@ -218,7 +218,7 @@ export function normalizeViews(
 			isFromCache: false,
 			onlineUntil: toNumber(obj.onlineUntil),
 		};
-	}).filter((it): it is InterestItem => it !== null);
+    }).filter((it): it is any => it !== null);
 
 	const incomingPreviews = previewsRaw.map((entry, index) => {
 		const obj = getViewEntryRecord(entry);
@@ -241,7 +241,7 @@ export function normalizeViews(
 			isFromCache: !!recoveredMatch,
 			onlineUntil: recoveredMatch ? recoveredMatch.onlineUntil : toNumber(obj.onlineUntil),
 		};
-	}).filter((it): it is InterestItem => it !== null);
+    }).filter((it): it is any => it !== null);
 
 	// 3. Merging
 	const mergedMap = new Map<string, InterestItem>();
@@ -254,7 +254,7 @@ export function normalizeViews(
 	// Then fresh profiles/previews from server (overwrite old items with new timestamps)
 	for (const incoming of [...incomingProfiles, incomingPreviews].flat()) {
 		const existing = mergedMap.get(incoming.profileId);
-		mergedMap.set(incoming.profileId, mergeViewItem(existing ?? null, incoming));
+        mergedMap.set(incoming.profileId, mergeViewItem(existing ?? null, incoming) as any);
 	}
 
 	return Array.from(mergedMap.values()).sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));

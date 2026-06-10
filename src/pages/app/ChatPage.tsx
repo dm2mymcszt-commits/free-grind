@@ -2,6 +2,7 @@ import {
     ChevronLeft,
     Loader2,
     X,
+    ChevronRight,
 } from "lucide-react";
 import {
     type FormEvent,
@@ -52,12 +53,17 @@ import {
 import { ChatSearchPage } from "./ChatSearchPage";
 import { ChatInboxPanel } from "./chat/ChatInboxPanel";
 import { ChatThreadPanel } from "./chat/ChatThreadPanel";
+import { ChatAlbumSheet } from "./chat/ChatAlbumSheet";
+import { ChatMediaSheet } from "./chat/ChatMediaSheet";
 import * as chatLog from "../../services/chatLog";
 import {
     buildBinaryUpload,
     extractImageHashFromSignedUrl,
     getMessageAlbumId,
     getMessageImageUrl,
+    getMessageImageCreatedAt,
+    getMessageTakenOnGrindr,
+    getMessageVideoUrl,
     getMessageMediaId,
     getMessagePreviewLabel,
     getOtherParticipant,
@@ -66,6 +72,8 @@ import {
     formatDateTime24,
 } from "./chat/chatUtils";
 import freegrindLogo from "../../images/freegrind-logo.webp";
+import { getCachedOwnProfilePhotoHash, setCachedOwnProfilePhotoHash } from "./gridpage/cache";
+import { getThumbImageUrl, validateMediaHash } from "../../utils/media";
 import { createPortal } from "react-dom";
 import { useDesktopBreakpoint } from "../../hooks/useDesktopBreakpoint";
 import { appLog } from "../../utils/logger";
@@ -122,8 +130,34 @@ import { processAutoDownload } from "../../services/autoDownloader";
         if (!raw || !raw.startsWith("/")) return null;
         return raw;
     }, [searchParams]);
-    const { userId } = useAuth();
-    const [isDesktop, setIsDesktop] = useState(() => {
+        const { userId } = useAuth();
+
+        const [ownProfilePhotoUrl, setOwnProfilePhotoUrl] = useState<string | null>(null);
+        useEffect(() => {
+            if (!userId) return;
+            const cached = getCachedOwnProfilePhotoHash();
+            if (cached !== undefined) {
+                setOwnProfilePhotoUrl(cached ? getThumbImageUrl(cached, "75x75") : null);
+                return;
+            }
+            void (async () => {
+                try {
+                    const parsed = await service.getBrowseProfileMedia(userId);
+                    const hash =
+                        parsed.medias?.map((m) => m.mediaHash ?? "").find((h) => validateMediaHash(h)) ??
+                        (parsed.profileImageMediaHash && validateMediaHash(parsed.profileImageMediaHash)
+                            ? parsed.profileImageMediaHash
+                            : null) ??
+                        null;
+                    setCachedOwnProfilePhotoHash(hash);
+                    setOwnProfilePhotoUrl(hash ? getThumbImageUrl(hash, "75x75") : null);
+                } catch {
+                    setOwnProfilePhotoUrl(null);
+                }
+            })();
+        }, [userId, service]);
+
+        const [isDesktop, setIsDesktop] = useState(() => {
         if (typeof window === "undefined") return true;
         return window.matchMedia("(min-width: 1024px)").matches;
     });
@@ -419,6 +453,7 @@ import { processAutoDownload } from "../../services/autoDownloader";
     const [isLoadingAlbums, setIsLoadingAlbums] = useState(false);
     const [isSharingAlbum, setIsSharingAlbum] = useState(false);
     const [shareableAlbums, setShareableAlbums] = useState<AlbumListItem[]>([]);
+    const [albumCoverMap, setAlbumCoverMap] = useState<Map<number, string>>(new Map());
     const [pendingAlbumShare, setPendingAlbumShare] = useState<{
         albumId: number;
         albumName: string;
@@ -445,14 +480,14 @@ import { processAutoDownload } from "../../services/autoDownloader";
     }, [isAlbumOpen]);
 
     const [isAlbumViewerLoading, setIsAlbumViewerLoading] = useState(false);
-    const [fullScreenImageUrl, setFullScreenImageUrl] = useState<string | null>(
-        null,
-    );
-    const [fullScreenImageMeta, setFullScreenImageMeta] = useState<{
-        takenOnGrindr: boolean;
-        createdAtLabel: string | null;
-        timestamp: number;
-    } | null>(null);
+    const [isAlbumSheetOpen, setIsAlbumSheetOpen] = useState(false);
+    const [isChatMediaSheetOpen, setIsChatMediaSheetOpen] = useState(false);
+    
+    type ThreadMediaItem = PhotoViewerMedia & { meta?: { takenOnGrindr: boolean; createdAtLabel: string | null; timestamp: number } };
+    const [fullScreenMediaList, setFullScreenMediaList] = useState<ThreadMediaItem[]>([]);
+    const [fullScreenMediaIndex, setFullScreenMediaIndex] = useState(0);
+    const fullScreenImageUrl = fullScreenMediaList.length > 0 ? fullScreenMediaList[fullScreenMediaIndex]?.url ?? null : null;
+    
     const doubleTapTimeoutRef = useRef<Record<string, number>>({});
 
     const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
@@ -461,6 +496,10 @@ import { processAutoDownload } from "../../services/autoDownloader";
         useState<File | null>(null);
     const [attachmentLooping, setAttachmentLooping] = useState(false);
     const [attachmentTakenOnGrindr, setAttachmentTakenOnGrindr] = useState(false);
+    const [attachmentMaxViews, setAttachmentMaxViews] = useState(2147483647);
+    const [pendingAudioBlob, setPendingAudioBlob] = useState<Blob | null>(null);
+    const [pendingAudioDuration, setPendingAudioDuration] = useState(0);
+    const [isSendingAudio, setIsSendingAudio] = useState(false);
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
     const [isLoadingDrawer, setIsLoadingDrawer] = useState(false);
     const [drawerError, setDrawerError] = useState<string | null>(null);
@@ -743,6 +782,21 @@ import { processAutoDownload } from "../../services/autoDownloader";
                 })
                 .filter((item) => Number.isFinite(item.albumId));
             setShareableAlbums(mapped);
+
+            const coverEntries = await Promise.all(
+                mapped.map(async ({ albumId }) => {
+                    try {
+                        const detail = await service.getAlbum(albumId);
+                        const first = detail.content?.[0];
+                        const url = first?.thumbUrl || first?.url || first?.coverUrl;
+                        return url ? ([albumId, url] as [number, string]) : null;
+                    } catch {
+                        return null;
+                    }
+                }),
+            );
+            setAlbumCoverMap(new Map(coverEntries.filter((e): e is [number, string] => e !== null)));
+
             return mapped;
         } catch (error) {
             toast.error(
@@ -1090,7 +1144,7 @@ import { processAutoDownload } from "../../services/autoDownloader";
                                             map.set(message.messageId, message);
                                         }
                                     }
-                                    for (const message of hydratedMessages)
+                for (const message of hydratedMessages)
                                         map.set(message.messageId, message);
                                     return [...map.values()].sort(
                                         (a, b) => a.timestamp - b.timestamp,
@@ -1099,6 +1153,46 @@ import { processAutoDownload } from "../../services/autoDownloader";
                             })
                             .catch(() => {
                                 // Best effort only.
+                            });
+                        });
+                    }
+
+                    // Hydrate received video messages that have no URL yet
+                    const mediaIdVideoMessages = responseMessages.filter((message) => {
+                        const isVideoLike = message.type === "Video" || message.type === "PrivateVideo" || message.type === "NonExpiringVideo" || (message as UiMessage).chat1Type?.toLowerCase() === "video" || (message as UiMessage).chat1Type?.toLowerCase() === "private_video" || (message as UiMessage).chat1Type?.toLowerCase() === "expiring_video";
+                        if (!isVideoLike) return false;
+                        return !getMessageVideoUrl(message as UiMessage);
+                    });
+
+                    if (mediaIdVideoMessages.length > 0) {
+                        void Promise.allSettled(
+                            mediaIdVideoMessages.map((message) =>
+                                service.getMessage({ conversationId, messageId: message.messageId }),
+                            ),
+                        ).then((results) => {
+                            const updates: UiMessage[] = [];
+                            for (let i = 0; i < results.length; i++) {
+                                const result = results[i];
+                                const original = mediaIdVideoMessages[i] as UiMessage;
+                                if (result.status === "fulfilled" && getMessageVideoUrl(result.value as UiMessage)) {
+                                    updates.push(result.value as UiMessage);
+                                } else {
+                                    updates.push({ ...original, body: { ...(original.body as Record<string, unknown> ?? {}), _videoExpired: true } });
+                                }
+                            }
+                            if (updates.length === 0) return;
+                            void chatLog.appendMessages(
+                                conversationId,
+                                updates.filter((u) => !(u.body as any)?._videoExpired),
+                            );
+                            if (selectedConversationIdRef.current !== conversationId) return;
+                            setThreadMessages((previous) => {
+                                const map = new Map<string, UiMessage>();
+                                for (const message of previous) {
+                                    if (message.conversationId === conversationId) map.set(message.messageId, message);
+                                }
+                                for (const message of updates) map.set(message.messageId, message);
+                                return [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
                             });
                         });
                     }
@@ -3195,7 +3289,7 @@ import { processAutoDownload } from "../../services/autoDownloader";
     }, [isDrawerOpen, drawerMedia.length, loadDrawerMedia]);
 
     const sendDrawerMedia = useCallback(
-        async (mediaIds: number[], isExpiring?: boolean) => {
+        async (mediaIds: number[], maxViews?: number) => {
             if (!selectedConversation || !userId || mediaIds.length === 0) {
                 return;
             }
@@ -3209,15 +3303,17 @@ import { processAutoDownload } from "../../services/autoDownloader";
 
             setIsSendingDrawerMedia(true);
             let finalSentMessage: UiMessage | undefined;
+            let pendingReplyId = replyTargetMessageId;
             try {
-                // Send each media item as a separate image/video message
                 for (const mediaId of mediaIds) {
                     const media = drawerMedia.find((m) => m.id === mediaId);
                     if (!media) continue;
 
                     const isVideo = media.contentType.startsWith("video");
-                    const useExpiring = isExpiring && !isVideo;
-                    const messageType = useExpiring ? "ExpiringImage" : isVideo ? "Video" : "Image";
+                    const views = maxViews ?? 2147483647;
+                    const isOnceImage = !isVideo && views === 1;
+                    const isUnlimitedVideo = isVideo && views > 2;
+                    const messageType = isVideo ? (isUnlimitedVideo ? "NonExpiringVideo" : "Video") : isOnceImage ? "ExpiringImage" : "Image";
 
                     const sentMessage = await service.sendMessage({
                         type: messageType,
@@ -3230,15 +3326,16 @@ import { processAutoDownload } from "../../services/autoDownloader";
                             width: null,
                             height: null,
                             url: media.url,
-                            ...(useExpiring ? { viewsRemaining: 1 } : {}),
+                            ...(isOnceImage ? { viewsRemaining: 1, maxViews: 1, duration: 10 } : {}),
+                            ...(isVideo ? { viewsRemaining: views, maxViews: views } : {}),
                         },
+                        replyToMessageId: pendingReplyId,
                     });
+                    pendingReplyId = null;
 
-                    // Track the last sent message for preview update
                     finalSentMessage = sentMessage;
                 }
 
-                // Update conversation preview with the last sent message
                 const isDraft = selectedConversation?.data.conversationId.startsWith("direct:");
                 if (selectedConversation && finalSentMessage && !isDraft) {
                     const finalMessage = finalSentMessage;
@@ -3266,10 +3363,10 @@ import { processAutoDownload } from "../../services/autoDownloader";
                     void loadInbox({ page: 1, replace: true, silent: true });
                 }
 
+                setReplyTargetMessageId(null);
                 toast.success(t("chat.toasts.media_sent"));
                 setIsDrawerOpen(false);
 
-                // Reload drawer media to update "used" status
                 await loadDrawerMedia();
             } catch (error) {
                 toast.error(
@@ -3287,29 +3384,43 @@ import { processAutoDownload } from "../../services/autoDownloader";
             t,
             syncConversation,
             loadDrawerMedia,
+            replyTargetMessageId,
+            setReplyTargetMessageId,
         ],
     );
 
     const addDrawerMedia = useCallback(
-        async (file: File, takenOnGrindr: boolean) => {
-            if (!file.type.startsWith("image/")) {
-                toast.error("Only photos are supported in the drawer.");
-                return;
-            }
+        async (file: File, takenOnGrindr: boolean, looping?: boolean) => {
+            const isVideo = file.type.startsWith("video/");
 
-            if (file.size > 12 * 1024 * 1024) {
+            if (file.size > 100 * 1024 * 1024) {
                 toast.error(t("chat.attachments.too_large"));
                 return;
             }
 
             setIsAddingDrawerMedia(true);
             try {
+                let durationSeconds: number | undefined;
+                if (isVideo) {
+                    durationSeconds = await new Promise<number>((resolve) => {
+                        const vid = document.createElement("video");
+                        vid.preload = "metadata";
+                        vid.onloadedmetadata = () => {
+                            resolve(isFinite(vid.duration) ? Math.round(vid.duration) : 0);
+                            URL.revokeObjectURL(vid.src);
+                        };
+                        vid.onerror = () => { resolve(0); URL.revokeObjectURL(vid.src); };
+                        vid.src = URL.createObjectURL(file);
+                    });
+                }
+
                 const binaryUpload = await buildBinaryUpload(file);
                 const uploaded = await service.uploadChatMedia({
                     multipart: binaryUpload,
                     options: {
-                        looping: false,
-                        takenOnGrindr,
+                        looping: isVideo ? (looping ?? false) : false,
+                        takenOnGrindr: isVideo ? false : takenOnGrindr,
+                        ...(durationSeconds != null ? { durationSeconds } : {}),
                     },
                 });
                 await service.addMediaToDrawer(uploaded.mediaId);
@@ -3358,25 +3469,110 @@ import { processAutoDownload } from "../../services/autoDownloader";
         setPendingAttachmentFile(file);
         setAttachmentLooping(false);
         setAttachmentTakenOnGrindr(false);
+        setAttachmentMaxViews(file.type.startsWith("video/") ? 1 : 2147483647);
     };
 
-    const openFullScreenImage = useCallback((imageUrl: string, meta?: { takenOnGrindr: boolean; createdAtLabel: string | null; timestamp: number }) => {
-        setFullScreenImageUrl(imageUrl);
-        setFullScreenImageMeta(meta ?? null);
+    const sendAudioBlob = useCallback(async (blob: Blob, durationMs: number) => {
+        if (!userId) return;
+        const targetIdValue = selectedConversation
+            ? (getOtherParticipant(selectedConversation, userId)?.profileId ?? null)
+            : targetProfileId;
+        if (!targetIdValue) return;
+        setIsSendingAudio(true);
+        try {
+            const audioBytes = new Uint8Array(await blob.arrayBuffer());
+            const uploaded = await service.uploadChatMedia({
+                multipart: { body: audioBytes, contentType: blob.type || "audio/webm" },
+                options: { looping: false, takenOnGrindr: false, durationSeconds: durationMs },
+            });
+            await service.sendMessage({
+                type: "Audio",
+                target: { type: "Direct", targetId: Number(targetIdValue) },
+                body: {
+                    mediaId: uploaded.mediaId,
+                    mediaHash: uploaded.mediaHash,
+                    url: uploaded.url,
+                    contentType: blob.type || "audio/webm",
+                    length: durationMs,
+                    expiresAt: uploaded.expiresAt,
+                },
+                replyToMessageId: replyTargetMessageId,
+            });
+            setPendingAudioBlob(null);
+            setPendingAudioDuration(0);
+            setReplyTargetMessageId(null);
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : t("chat.errors.send_failed"));
+        } finally {
+            setIsSendingAudio(false);
+        }
+    }, [userId, selectedConversation, targetProfileId, service, t, replyTargetMessageId, setReplyTargetMessageId]);
+
+    const sendAudioBlobRef = useRef(sendAudioBlob);
+    useEffect(() => { sendAudioBlobRef.current = sendAudioBlob; }, [sendAudioBlob]);
+
+    const onAudioRecorded = useCallback((blob: Blob, durationMs: number, autoSend?: boolean) => {
+        if (autoSend) {
+            void sendAudioBlobRef.current(blob, durationMs);
+        } else {
+            setPendingAudioBlob(blob);
+            setPendingAudioDuration(durationMs);
+        }
     }, []);
 
+    const cancelAudio = useCallback(() => {
+        setPendingAudioBlob(null);
+        setPendingAudioDuration(0);
+    }, []);
+
+    const confirmAudio = useCallback(async () => {
+        if (!pendingAudioBlob) return;
+        await sendAudioBlob(pendingAudioBlob, pendingAudioDuration);
+    }, [pendingAudioBlob, pendingAudioDuration, sendAudioBlob]);
+
+    const openFullScreenImage = useCallback((imageUrl: string, meta?: { takenOnGrindr: boolean; createdAtLabel: string | null; timestamp: number }, mediaType: "image" | "video" = "image") => {
+        const list: ThreadMediaItem[] = [];
+        for (const msg of threadMessages) {
+            const imgUrl = getMessageImageUrl(msg);
+            if (imgUrl) {
+                const createdAt = getMessageImageCreatedAt(msg);
+                list.push({
+                    url: imgUrl,
+                    type: "image",
+                    meta: {
+                        takenOnGrindr: getMessageTakenOnGrindr(msg),
+                        createdAtLabel: createdAt != null ? formatDateTime24(createdAt) : null,
+                        timestamp: msg.timestamp,
+                    },
+                });
+                continue;
+            }
+            const vidUrl = getMessageVideoUrl(msg);
+            if (vidUrl) list.push({ url: vidUrl, type: "video" });
+        }
+        const idx = list.findIndex((item) => item.url === imageUrl);
+        if (idx === -1 || list.length === 0) {
+            setFullScreenMediaList([{ url: imageUrl, type: mediaType, meta: meta ?? undefined }]);
+            setFullScreenMediaIndex(0);
+        } else {
+            setFullScreenMediaList(list);
+            setFullScreenMediaIndex(idx);
+        }
+    }, [threadMessages]);
+
     const closeFullScreenImage = useCallback(() => {
-        if (!fullScreenImageUrl) {
+        if (fullScreenMediaList.length === 0) {
             return;
         }
 
-        setFullScreenImageUrl(null);
+        setFullScreenMediaList([]);
+        setFullScreenMediaIndex(0);
 
         if (imageViewerHistoryPushedRef.current) {
             imageViewerHistoryPushedRef.current = false;
             window.history.back();
         }
-    }, [fullScreenImageUrl]);
+    }, [fullScreenMediaList.length]);
 
     useEffect(() => {
         if (!fullScreenImageUrl || imageViewerHistoryPushedRef.current) {
@@ -3389,12 +3585,13 @@ import { processAutoDownload } from "../../services/autoDownloader";
 
     useEffect(() => {
         const handlePopState = () => {
-            if (!imageViewerHistoryPushedRef.current || !fullScreenImageUrl) {
+            if (!imageViewerHistoryPushedRef.current || fullScreenMediaList.length === 0) {
                 return;
             }
 
             imageViewerHistoryPushedRef.current = false;
-            setFullScreenImageUrl(null);
+            setFullScreenMediaList([]);
+            setFullScreenMediaIndex(0);
         };
 
         window.addEventListener("popstate", handlePopState);
@@ -3522,16 +3719,20 @@ import { processAutoDownload } from "../../services/autoDownloader";
             pendingAttachmentFile={pendingAttachmentFile}
             attachmentLooping={attachmentLooping}
             attachmentTakenOnGrindr={attachmentTakenOnGrindr}
+            attachmentMaxViews={attachmentMaxViews}
             setAttachmentLooping={setAttachmentLooping}
             setAttachmentTakenOnGrindr={setAttachmentTakenOnGrindr}
+            setAttachmentMaxViews={setAttachmentMaxViews}
             confirmPendingAttachment={confirmPendingAttachment}
             confirmAttachmentFile={confirmAttachmentFile}
             cancelPendingAttachment={cancelPendingAttachment}
             isAlbumPickerOpen={isAlbumPickerOpen}
             isLoadingAlbums={isLoadingAlbums}
             shareableAlbums={shareableAlbums}
+            albumCoverMap={albumCoverMap}
+            ownProfilePhotoUrl={ownProfilePhotoUrl}
             isSharingAlbum={isSharingAlbum}
-                pendingAlbumShare={pendingAlbumShare}
+            pendingAlbumShare={pendingAlbumShare}
             shareAlbumToCurrentConversation={shareAlbumToCurrentConversation}
             confirmPendingAlbumShare={confirmPendingAlbumShare}
             closePendingAlbumShare={closePendingAlbumShare}
@@ -3549,6 +3750,12 @@ import { processAutoDownload } from "../../services/autoDownloader";
             onShareAlbumFromDrawer={handleShareAlbumFromDrawer}
             onStopAlbumShareFromDrawer={handleStopAlbumShare}
             onSendLocation={sendLocationMessage}
+            onAudioRecorded={onAudioRecorded}
+            pendingAudioBlob={pendingAudioBlob}
+            pendingAudioDuration={pendingAudioDuration}
+            isSendingAudio={isSendingAudio}
+            confirmAudio={confirmAudio}
+            cancelAudio={cancelAudio}
             uploadProgress={uploadProgress}
             draft={draft}
             setDraft={setDraft}
@@ -3559,6 +3766,8 @@ import { processAutoDownload } from "../../services/autoDownloader";
             selectedActionMessageMine={selectedActionMessageMine}
             albumViewer={albumViewer}
             onCloseAlbumViewer={() => { setAlbumViewer(null); setAlbumViewerMediaIndex(null); }}
+            isAlbumSheetOpen={isAlbumSheetOpen}
+            onOpenMediaSheet={() => setIsChatMediaSheetOpen(true)}
         />
     );
 
@@ -3721,28 +3930,53 @@ import { processAutoDownload } from "../../services/autoDownloader";
                 />
 
                 <PhotoViewer
-                    isOpen={!!fullScreenImageUrl}
+                    isOpen={fullScreenMediaList.length > 0}
                     onClose={closeFullScreenImage}
-                    photos={fullScreenImageUrl ? [fullScreenImageUrl] : []}
-                    renderExtraInfo={fullScreenImageMeta ? () => (
-                        <p className="inline-flex items-center gap-1 rounded-full bg-black/65 px-3 py-1 text-xs font-semibold text-white ring-1 ring-white/25 z-50">
-                            <style>{`
-                                @keyframes logo-shine { 0%, 100% { filter: drop-shadow(0 0 2px rgba(255,140,0,0.3)) brightness(1); } 50% { filter: drop-shadow(0 0 7px rgba(255,140,0,0.95)) brightness(1.25); } }
-                                .logo-shine { animation: logo-shine 2.8s ease-in-out infinite; }
-                            `}</style>
-                            {fullScreenImageMeta.takenOnGrindr ? (
-                                <img
-                                    src={freegrindLogo}
-                                    alt={t("chat.thread.taken_on_grindr")}
-                                    className="h-3.5 w-3.5 rounded-full logo-shine"
-                                />
-                            ) : null}
-                            {fullScreenImageMeta.timestamp ? (
-                                <span>{formatDateTime24(fullScreenImageMeta.timestamp)}</span>
-                            ) : null}
-                        </p>
-                    ) : undefined}
+                    photos={fullScreenMediaList}
+                    initialIndex={fullScreenMediaIndex}
+                    onIndexChange={setFullScreenMediaIndex}
+                    renderExtraInfo={(idx) => {
+                        const meta = fullScreenMediaList[idx]?.meta;
+                        if (!meta) return null;
+                        return (
+                            <p className="inline-flex items-center gap-1 rounded-full bg-black/65 px-3 py-1 text-xs font-semibold text-white ring-1 ring-white/25 z-50">
+                                <style>{`
+                                    @keyframes logo-shine { 0%, 100% { filter: drop-shadow(0 0 2px rgba(255,140,0,0.3)) brightness(1); } 50% { filter: drop-shadow(0 0 7px rgba(255,140,0,0.95)) brightness(1.25); } }
+                                    .logo-shine { animation: logo-shine 2.8s ease-in-out infinite; }
+                                `}</style>
+                                {meta.takenOnGrindr ? (
+                                    <img
+                                        src={freegrindLogo}
+                                        alt={t("chat.thread.taken_on_grindr")}
+                                        className="h-3.5 w-3.5 rounded-full logo-shine"
+                                    />
+                                ) : null}
+                                {meta.timestamp ? (
+                                    <span>{formatDateTime24(meta.timestamp)}</span>
+                                ) : null}
+                            </p>
+                        );
+                    }}
                 />
+
+                {isChatMediaSheetOpen && selectedConversation ? (() => {
+                    const otherP = getOtherParticipant(selectedConversation, userId);
+                    const otherPhotoUrl = otherP?.primaryMediaHash && validateMediaHash(otherP.primaryMediaHash)
+                        ? getThumbImageUrl(otherP.primaryMediaHash, "75x75")
+                        : null;
+                    return (
+                        <ChatMediaSheet
+                            conversationId={selectedConversation.data.conversationId}
+                            senderProfileId={otherP?.profileId != null ? String(otherP.profileId) : null}
+                            userId={userId}
+                            isDesktop={isDesktop}
+                            onClose={() => setIsChatMediaSheetOpen(false)}
+                            openAlbumViewerById={openAlbumViewerById}
+                            openFullScreenImage={(url) => openFullScreenImage(url)}
+                            senderPhotoUrl={otherPhotoUrl}
+                        />
+                    );
+                })() : null}
 
                 {/* --- REPLY WARNING MODAL --- */}
                 <ReplyWarningModal 

@@ -297,10 +297,10 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
 				const deviceDefaultStrength = isDesktopDevice ? "pronounced" : "subtle";
 
 				if (stored) {
-					const decoded = JSON.parse(stored);
+                    const decoded = JSON.parse(stored) as Record<string, any>;
 
 					// If the strength wasn't explicitly saved yet, use the device-based default
-					if (decoded.revealEffectStrength === undefined) {
+                    if (decoded.revealEffectStrength === undefined) {
 						decoded.revealEffectStrength = deviceDefaultStrength;
 					}
 
