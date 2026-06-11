@@ -1067,9 +1067,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 			<dialog
 				ref={dialogRef}
 				className={`fixed inset-0 m-auto flex max-h-[calc(100dvh-1.5rem)] w-full max-w-4xl sm:max-h-[calc(100dvh-8rem)] flex-col rounded-2xl bg-transparent p-0 overflow-visible ${isClosing ? "dialog-closing" : ""}`}
-				onClick={(event) => {
-					if (event.target === dialogRef.current) handleBackdropClose();
-				}}
+				onClick={handleBackdropClose}
 			>
 			{isLoadingActiveProfile ? (
 				<div className="flex h-full flex-col items-center justify-center gap-4 text-center">
