@@ -418,7 +418,14 @@ export function ProfileDetailsModal({
         return () => query.removeEventListener("change", update);
     }, []);
 
-    const handleMobileCarouselScroll = () => {};
+    const handleMobileCarouselScroll = () => {
+        if (!mobileCarouselRef.current) return;
+        const el = mobileCarouselRef.current;
+        if (el.clientWidth > 0) {
+            const index = Math.round(el.scrollLeft / el.clientWidth);
+            setMobileCarouselPhotoIndex(index);
+        }
+    };
 
     const photoCreatedAtByHash = useMemo(() => {
         if (!activeProfile) return {} as Record<string, { createdAt: number | null; takenOnGrindr: boolean | null }>;
