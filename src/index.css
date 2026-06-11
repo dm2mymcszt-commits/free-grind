@@ -372,6 +372,23 @@
 	html.has-titlebar,
 	body.has-titlebar {
 		--titlebar-height: 32px;
+		background: transparent !important;
+	}
+
+	body.has-titlebar #app {
+		height: 100vh;
+		border-radius: 12px;
+		overflow: hidden;
+		background: var(--bg);
+		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+		/* Creates containing block so position:fixed children (titlebar, navbar, glow)
+		   are clipped by overflow:hidden + border-radius */
+		transform: translateZ(0);
+	}
+
+	body.has-titlebar .app-shell {
+		height: 100vh;
+		overflow-y: auto;
 	}
 
 	body {

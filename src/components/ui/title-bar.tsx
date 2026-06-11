@@ -14,9 +14,6 @@ export function TitleBar() {
 			document.body.classList.add("has-titlebar");
 			document.documentElement.classList.add("has-titlebar");
 
-			// Enable shadow for native rounded corners on Windows 11
-			getCurrentWindow().setShadow(true).catch(() => {});
-
 			return () => {
 				document.body.classList.remove("has-titlebar");
 				document.documentElement.classList.remove("has-titlebar");
