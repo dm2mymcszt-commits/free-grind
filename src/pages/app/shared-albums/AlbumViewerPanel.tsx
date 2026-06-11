@@ -33,49 +33,53 @@ export function AlbumViewerPanel({
 
     return (
         <div
-            className="fixed inset-0 z-50 flex flex-col bg-black/80 backdrop-blur-sm sm:p-6 md:p-12"
+            className="fixed inset-0 z-50 flex flex-col bg-black/40 backdrop-blur-[20px] sm:p-6 md:p-12 transition-all duration-300"
             onClick={closeViewer}
         >
             <div
-                className="mx-auto flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden bg-[var(--surface)] shadow-2xl sm:h-full sm:rounded-2xl sm:border sm:border-[var(--border)]"
+                className="relative mx-auto flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden bg-[var(--surface)]/80 backdrop-blur-[40px] shadow-[0_0_60px_-15px_rgba(0,0,0,0.7)] sm:h-full sm:rounded-[2.5rem] border border-white/10 dark:border-white/5"
                 onClick={(event) => event.stopPropagation()}
             >
+                <div className="absolute inset-0 bg-gradient-to-b from-[var(--surface-2)]/30 to-transparent pointer-events-none" />
+
                 {/* --- MODERN HEADER --- */}
                 <div 
-                    className="z-10 flex flex-col gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-4 pb-4 sm:px-6"
+                    className="relative z-10 flex flex-col gap-3 border-b border-white/10 dark:border-white/5 bg-transparent px-4 pb-4 sm:px-6 shadow-[0_4px_30px_rgba(0,0,0,0.1)]"
                     style={{ paddingTop: "max(16px, env(safe-area-inset-top, 0px))" }}
                 >
                     <div className="flex items-start justify-between gap-4">
-                        <div className="min-w-0 flex-1">
-                            <div className="mb-2.5 inline-flex items-center gap-1.5 rounded-full bg-[var(--surface-2)] px-2.5 py-1">
-                                <Images className="h-3 w-3 text-[var(--accent)]" />
-                                <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
-                                    {t("shared_albums.album_label", { defaultValue: "Album" })}
-                                </span>
+                        <div className="min-w-0 flex-1 flex items-center gap-4">
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--accent)] to-purple-600 shadow-[0_0_20px_var(--accent)]/30 overflow-hidden p-[1px]">
+                                <div className="flex h-full w-full items-center justify-center rounded-[15px] bg-[var(--surface)]/80 backdrop-blur-md">
+                                    <span className="text-lg font-black text-white drop-shadow-md">
+                                        {viewer.content.length}
+                                    </span>
+                                </div>
                             </div>
-                            <h2 className="truncate text-xl font-bold tracking-tight text-[var(--text)]">
-                                {viewer.albumName?.trim() || `Album #${viewer.albumId}`}
-                            </h2>
-
-                            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-                                <span className="flex items-center gap-1 text-sm text-[var(--text-muted)]">
-                                    <UserRound className="h-3.5 w-3.5 shrink-0" />
-                                    <span className="truncate">{viewer.profileName}</span>
-                                </span>
-                                <span className="h-1 w-1 shrink-0 rounded-full bg-[var(--border)]" />
-                                <span className="text-sm text-[var(--text-muted)]">
-                                    {t("shared_albums.items_count", { count: viewer.content.length })}
-                                    {selectedViewerItem ? ` · ${viewerIndex + 1}/${viewer.content.length}` : ""}
-                                </span>
+                            <div className="min-w-0">
+                                <h2 className="truncate text-xl font-bold tracking-tight text-[var(--text)] drop-shadow-sm">
+                                    {viewer.albumName?.trim() || `Album #${viewer.albumId}`}
+                                </h2>
+                                <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                                    <span className="flex items-center gap-1 text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+                                        <UserRound className="h-3 w-3 shrink-0" />
+                                        <span className="truncate">{viewer.profileName}</span>
+                                    </span>
+                                    <span className="h-1 w-1 shrink-0 rounded-full bg-white/20" />
+                                    <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+                                        {t("shared_albums.items_count", { count: viewer.content.length })}
+                                        {selectedViewerItem ? ` · ${viewerIndex + 1}/${viewer.content.length}` : ""}
+                                    </span>
+                                </div>
                             </div>
                         </div>
                         <button
                             type="button"
                             onClick={closeViewer}
-                            className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-2)] text-[var(--text-muted)] transition hover:bg-[var(--border)] hover:text-[var(--text)]"
+                            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--text-muted)] shadow-lg backdrop-blur-md transition-all hover:bg-white/10 hover:text-[var(--text)] active:scale-95"
                             aria-label={t("shared_albums.close_viewer")}
                         >
-                            <X className="h-4 w-4" />
+                            <X className="h-5 w-5" />
                         </button>
                     </div>
 
@@ -114,10 +118,10 @@ export function AlbumViewerPanel({
                     </div>
                 ) : (
                     /* --- PERFECTLY CROPPED APPLE-PHOTOS STYLE GRID --- */
-                    <div className="flex-1 overflow-y-auto bg-black sm:bg-[var(--surface-2)] sm:p-4">
+                    <div className="relative flex-1 overflow-y-auto bg-transparent [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:p-6">
                         <div 
-                            className="content-start grid grid-cols-3 gap-0.5 sm:grid-cols-4 sm:gap-2 lg:grid-cols-5"
-                            style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom, 0px))" }}
+                            className="content-start grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-3 lg:grid-cols-5"
+                            style={{ paddingBottom: "max(24px, env(safe-area-inset-bottom, 0px))" }}
                         >
                             {viewer.content.map((item, index) => {
                                 const isVideo = item.contentType?.startsWith("video/");
@@ -131,10 +135,10 @@ export function AlbumViewerPanel({
                                         key={item.contentId}
                                         type="button"
                                         onClick={() => openFullScreen(index)}
-                                        className={`group relative aspect-square w-full overflow-hidden bg-zinc-900 transition-all duration-150 sm:rounded-xl ${
+                                        className={`group relative aspect-square w-full overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] sm:rounded-2xl ${
                                             isActive
-                                                ? "ring-2 ring-[var(--accent)] ring-offset-1 ring-offset-[var(--surface)] scale-[0.97]"
-                                                : "hover:scale-[1.02] hover:shadow-lg active:scale-[0.97]"
+                                                ? "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[var(--surface)] scale-[0.95]"
+                                                : "hover:scale-[1.03] hover:shadow-[0_10px_30px_-10px_rgba(0,0,0,0.5)] active:scale-[0.95]"
                                         }`}
                                     >
                                         {mediaUrl ? (
@@ -143,21 +147,20 @@ export function AlbumViewerPanel({
                                                     src={mediaUrl}
                                                     alt={t("shared_albums.content_alt", { index: index + 1 })}
                                                     loading="lazy"
-                                                    className="absolute inset-0 h-full w-full object-cover"
+                                                    className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
                                                 />
+                                                <div className="absolute inset-0 border border-white/10 dark:border-white/5 mix-blend-overlay pointer-events-none sm:rounded-2xl" />
+                                                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/60 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                                                 {isVideo && (
-                                                    <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                                                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm">
-                                                            <Play className="h-4 w-4 fill-white text-white" />
+                                                    <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-[2px] transition-all duration-300 group-hover:bg-black/40 group-hover:backdrop-blur-[4px]">
+                                                        <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-md transition-transform duration-300 group-hover:scale-110 group-hover:bg-[var(--accent)] group-hover:border-[var(--accent)] group-hover:shadow-[0_0_20px_var(--accent)]">
+                                                            <Play className="h-4 w-4 fill-white" />
                                                         </div>
                                                     </div>
                                                 )}
-                                                {!isVideo && (
-                                                    <div className={`absolute inset-0 bg-black/0 transition-colors duration-150 group-hover:bg-black/10 ${isActive ? "bg-black/20" : ""}`} />
-                                                )}
                                             </>
                                         ) : (
-                                            <div className="flex h-full w-full items-center justify-center bg-zinc-900 text-[10px] text-zinc-500">
+                                            <div className="flex h-full w-full items-center justify-center bg-[var(--surface-2)]/50 backdrop-blur-sm border border-white/5 text-[10px] font-medium uppercase tracking-widest text-[var(--text-muted)] sm:rounded-2xl">
                                                 {t("shared_albums.unavailable")}
                                             </div>
                                         )}
