@@ -1077,12 +1077,28 @@ export function ChatThreadMessages({
                                                             if (albumId && !isLocked) void openAlbumViewerById(albumId);
                                                         });
                                                     }}
-                                                    className={`group/media block w-full overflow-hidden rounded-2xl ${tailCorner}`}
+                                                    className={`group/media block w-full outline-none`}
                                                     onMouseEnter={() => handleMediaMouseEnter(message.messageId)}
                                                     onMouseLeave={() => handleMediaMouseLeave(message.messageId)}
                                                 >
-                                                    <div className="relative h-56 w-64 max-w-full overflow-hidden bg-[var(--surface-2)] sm:w-72">
-                                                        <div className="absolute inset-0 flex items-center justify-center text-[var(--text-muted)]">
+                                                    <div className="relative h-56 w-64 max-w-full sm:w-72">
+                                                        {/* Bottom Stack Card */}
+                                                        {albumCover && !isLocked && (
+                                                            <div className={`absolute inset-0 z-0 overflow-hidden rounded-2xl border border-white/10 bg-[var(--surface-2)] opacity-0 shadow-lg transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] will-change-transform ${mine ? "origin-bottom-right group-hover/media:-translate-x-6 group-hover/media:-translate-y-3 group-hover/media:-rotate-[8deg] group-hover/media:scale-90 group-hover/media:opacity-40" : "origin-bottom-left group-hover/media:translate-x-6 group-hover/media:-translate-y-3 group-hover/media:rotate-[8deg] group-hover/media:scale-90 group-hover/media:opacity-40"}`}>
+                                                                <img src={albumCover} alt="" className="h-full w-full object-cover blur-[3px] brightness-50" />
+                                                            </div>
+                                                        )}
+
+                                                        {/* Middle Stack Card */}
+                                                        {albumCover && !isLocked && (
+                                                            <div className={`absolute inset-0 z-10 overflow-hidden rounded-2xl border border-white/20 bg-[var(--surface-2)] opacity-0 shadow-xl transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] will-change-transform ${mine ? "origin-bottom-right group-hover/media:-translate-x-3 group-hover/media:-translate-y-1.5 group-hover/media:-rotate-[4deg] group-hover/media:scale-95 group-hover/media:opacity-70" : "origin-bottom-left group-hover/media:translate-x-3 group-hover/media:-translate-y-1.5 group-hover/media:rotate-[4deg] group-hover/media:scale-95 group-hover/media:opacity-70"}`}>
+                                                                <img src={albumCover} alt="" className="h-full w-full object-cover blur-[1px] brightness-75" />
+                                                            </div>
+                                                        )}
+
+                                                        {/* Top Main Card */}
+                                                        <div className={`absolute inset-0 z-20 overflow-hidden rounded-2xl bg-[var(--surface-2)] border border-white/10 dark:border-white/5 transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] will-change-transform ${tailCorner} group-hover/media:scale-[1.03] group-hover/media:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.5)]`}>
+                                                            <div className="absolute inset-0 flex items-center justify-center text-[var(--text-muted)]">
                                                             <Album className="h-8 w-8" />
                                                         </div>
                                                         {localOnly && (
@@ -1155,6 +1171,7 @@ export function ChatThreadMessages({
                                                                     ) : null}
                                                                 </div>
                                                             </div>
+                                                        </div>
                                                         </div>
                                                     </div>
                                                 </button>

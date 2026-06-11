@@ -24,46 +24,51 @@ export function ChatAlbumSheet({
 	const { t } = useTranslation();
 
 	return (
-		<BottomSheet onClose={onClose} isDesktop={isDesktop} panelClassName="max-h-[82dvh]">
+		<BottomSheet onClose={onClose} isDesktop={isDesktop} panelClassName="max-h-[85dvh] overflow-hidden rounded-t-[2.5rem] sm:rounded-[2.5rem] border border-white/10 dark:border-white/5 bg-[var(--surface)]/80 backdrop-blur-[40px] shadow-[0_-20px_60px_-15px_rgba(0,0,0,0.5)]">
+            <div className="absolute inset-0 bg-gradient-to-b from-[var(--surface-2)]/30 to-transparent pointer-events-none" />
 			{/* Header */}
-			<div className="flex items-center justify-between px-4 pb-3">
-				<div className="flex min-w-0 items-center gap-2">
+			<div className="relative flex items-center justify-between px-6 pt-6 pb-4 border-b border-white/10 dark:border-white/5 shadow-[0_4px_30px_rgba(0,0,0,0.1)]">
+				<div className="flex min-w-0 items-center gap-3">
+					<div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--accent)] to-purple-600 shadow-[0_0_20px_var(--accent)]/30 overflow-hidden p-[1px]">
+                        <div className="flex h-full w-full items-center justify-center rounded-[15px] bg-[var(--surface)]/80 backdrop-blur-md">
+                            <span className="text-lg font-black text-white drop-shadow-md">
+                                {viewer ? viewer.content.length : 0}
+                            </span>
+                        </div>
+                    </div>
 					<div className="min-w-0">
 						<div className="flex items-center gap-2">
-							<p className="text-sm font-semibold text-[var(--text)]">
-								{t("shared_albums.album_label")}
+							<p className="truncate text-lg font-bold tracking-tight text-[var(--text)] drop-shadow-sm">
+								{viewer?.albumName?.trim() || t("shared_albums.album_label")}
 							</p>
-							{viewer && (
-								<span className="shrink-0 rounded-full bg-[var(--surface-2)] px-2 py-0.5 text-[11px] font-semibold tabular-nums text-[var(--text-muted)]">
-									{viewer.content.length}
-								</span>
-							)}
 						</div>
-						<p className="truncate text-xs text-[var(--text-muted)]">
-							{viewer?.albumName?.trim() || `#${viewer?.albumId}`}
+						<p className="truncate text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+							{viewer?.albumName?.trim() ? t("shared_albums.album_label") : `#${viewer?.albumId}`}
 						</p>
 					</div>
 				</div>
-				<SheetClose className="inline-flex h-8 w-8 shrink-0 self-start items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--surface-2)] hover:text-[var(--text)]">
-					<X className="h-4 w-4" />
+				<SheetClose className="inline-flex h-10 w-10 shrink-0 self-start items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--text-muted)] shadow-lg backdrop-blur-md transition-all hover:bg-white/10 hover:text-[var(--text)] active:scale-95">
+					<X className="h-5 w-5" />
 				</SheetClose>
 			</div>
 
 			{/* Body */}
 			{isLoading ? (
-				<div className="flex items-center justify-center py-10">
-					<Loader2 className="h-5 w-5 animate-spin text-[var(--text-muted)]" />
+				<div className="relative flex min-h-[300px] items-center justify-center py-10">
+					<Loader2 className="h-8 w-8 animate-spin text-[var(--accent)] drop-shadow-[0_0_15px_var(--accent)]" />
 				</div>
 			) : !viewer || viewer.content.length === 0 ? (
-				<div className="p-4">
-					<EmptyState
-						title={t("shared_albums.empty_album_title")}
-						description={t("shared_albums.empty_album_desc")}
-					/>
+				<div className="relative p-6 min-h-[300px] flex items-center justify-center">
+					<div className="rounded-3xl border border-white/5 bg-white/5 p-6 backdrop-blur-xl shadow-2xl">
+                        <EmptyState
+                            title={t("shared_albums.empty_album_title")}
+                            description={t("shared_albums.empty_album_desc")}
+                        />
+                    </div>
 				</div>
 			) : (
-				<div className="min-h-0 flex-1 overflow-y-auto">
-					<div className="grid grid-cols-3 gap-1 p-3 sm:grid-cols-4 sm:gap-1.5 sm:p-4">
+				<div className="relative min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+					<div className="grid grid-cols-3 gap-2 p-4 sm:grid-cols-4 sm:gap-3 sm:p-6">
 						{viewer.content.map((item, index) => {
 							const isVideo = item.contentType?.startsWith("video/");
 							const mediaUrl = isVideo
@@ -76,33 +81,32 @@ export function ChatAlbumSheet({
 									key={item.contentId}
 									type="button"
 									onClick={() => onOpenFullScreen(index)}
-									className={`group relative aspect-square overflow-hidden rounded-xl transition-all duration-150 ${
+									className={`group relative aspect-square overflow-hidden rounded-2xl transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] ${
 										isActive
-											? "ring-2 ring-[var(--accent)] ring-offset-1 ring-offset-[var(--surface)] scale-[0.97]"
-											: "hover:scale-[1.02] hover:shadow-md active:scale-[0.97]"
+											? "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[var(--surface)] scale-[0.95]"
+											: "hover:scale-[1.03] hover:shadow-[0_10px_30px_-10px_rgba(0,0,0,0.5)] active:scale-[0.95]"
 									}`}
 								>
 									{mediaUrl ? (
 										<>
 											<img
-											src={mediaUrl ?? undefined}
-											alt={t("shared_albums.content_alt", { index: index + 1 })}
-											loading="lazy"
-											className="h-full w-full object-cover"
-										/>
+                                                src={mediaUrl ?? undefined}
+                                                alt={t("shared_albums.content_alt", { index: index + 1 })}
+                                                loading="lazy"
+                                                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                                            />
+                                            <div className="absolute inset-0 border border-white/10 dark:border-white/5 rounded-2xl mix-blend-overlay pointer-events-none" />
+                                            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/60 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
 											{isVideo && (
-												<div className="absolute inset-0 flex items-center justify-center bg-black/30">
-													<div className="flex h-8 w-8 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm">
-														<Play className="h-4 w-4 fill-white text-white" />
+												<div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-[2px] transition-all duration-300 group-hover:bg-black/40 group-hover:backdrop-blur-[4px]">
+													<div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-md transition-transform duration-300 group-hover:scale-110 group-hover:bg-[var(--accent)] group-hover:border-[var(--accent)] group-hover:shadow-[0_0_20px_var(--accent)]">
+														<Play className="h-4 w-4 fill-white" />
 													</div>
 												</div>
 											)}
-											{!isVideo && (
-												<div className={`absolute inset-0 bg-black/0 transition-colors duration-150 group-hover:bg-black/10 ${isActive ? "bg-black/20" : ""}`} />
-											)}
 										</>
 									) : (
-										<div className="flex h-full w-full items-center justify-center bg-[var(--surface-2)] text-[10px] text-[var(--text-muted)]">
+										<div className="flex h-full w-full items-center justify-center bg-[var(--surface-2)]/50 backdrop-blur-sm border border-white/5 text-[10px] font-medium uppercase tracking-widest text-[var(--text-muted)]">
 											{t("shared_albums.unavailable")}
 										</div>
 									)}
