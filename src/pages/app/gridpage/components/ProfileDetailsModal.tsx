@@ -1027,7 +1027,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 
 	return (
 		<div
-			className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-6"
+			className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-[12px] p-6 transition-all duration-300"
 			onClick={handleBackdropClose}
 		>
 			<div
