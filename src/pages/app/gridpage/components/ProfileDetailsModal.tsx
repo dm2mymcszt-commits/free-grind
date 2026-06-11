@@ -1140,82 +1140,88 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 					)}
 				</div>
 
-				<div
-					data-lenis-prevent
-					className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-5"
-				>
-					{activeProfileError ? (
-						<p className="text-sm text-[var(--text-muted)]">
-							{activeProfileError}
-						</p>
-					) : activeProfile ? (
-						<ProfileDetailsContent
-							activeProfile={activeProfile}
-							activeProfilePhotoHashes={activeProfilePhotoHashes}
-							isDesktopLike={isDesktopLike}
-							showMobileCarousel={false}
-							mobileCarouselRef={mobileCarouselRef}
-							mobileCarouselPhotoIndex={mobileCarouselPhotoIndex}
-							openPhotoViewer={openPhotoViewer}
-							photoCreatedAtByHash={photoCreatedAtByHash}
-							activeProfileName={activeProfileName}
-							estimatedCreatedAt={estimatedCreatedAt}
-							profileStatusLabel={profileStatusLabel}
-							profileStatusLevel={profileStatusLevel}
-							ownTags={ownTags}
-							profileDistance={profileDistance}
-							chatContactStatus={chatContactStatus ?? null}
-							messageProfileId={messageProfileId}
-							usesFreegrind={usesFreegrind ?? false}
-							onMessageProfile={undefined}
-							onTapProfile={undefined}
-							isTapDisabled={isTapDisabled}
-							isTapBlocked={isTapBlocked}
-							isTapActive={isTapActive}
-							tapId={tapVisualState.tapId}
-							tapButtonClassName={tapButtonClassName}
-							onTriangleProfile={onTriangleProfile}
-							isTriangleDisabled={isTriangleDisabled}
-							triangleButtonClassName={triangleButtonClassName}
-							isLocatingProfile={isLocatingProfile}
-							onToggleFavoriteProfile={onToggleFavoriteProfile}
-							isFavorite={isFavorite}
-							isTogglingFavorite={isTogglingFavorite}
-							onBlockProfile={onBlockProfile}
-							onUnblockProfile={onUnblockProfile}
-							isBlocked={isBlocked}
-							isBlockingProfile={isBlockingProfile}
-							hasTagsContent={hasTagsContent}
-							hasAboutContent={hasAboutContent}
-							hasExpectationsFields={hasExpectationsFields}
-							hasHealthFields={hasHealthFields}
-							hasStatsFields={hasStatsFields}
-							hasSocialFields={hasSocialFields}
-							formattedActiveGenders={formattedActiveGenders}
-							formattedActivePronouns={formattedActivePronouns}
-							lookingForLabels={lookingForLabels}
-							meetAtLabels={meetAtLabels}
-							tribeLabels={tribeLabels}
-							hivStatusLabels={hivStatusLabels}
-							sexualHealthLabels={sexualHealthLabels}
-							vaccineLabels={vaccineLabels}
-							sexualPositionLabels={sexualPositionLabels}
-							bodyTypeLabels={bodyTypeLabels}
-							ethnicityLabels={ethnicityLabels}
-							relationshipStatusLabels={relationshipStatusLabels}
-						/>
-					) : null}
-				</div>
-
-				{/* Bottom actions bar — desktop modal */}
-				{messageProfileId && (
+				<div className="relative flex-1 min-h-0 overflow-hidden rounded-b-2xl">
 					<div
-						ref={controlsBarRef}
-						className="flex relative z-10 items-center gap-1 bg-transparent px-3 py-2"
-						onPointerDown={(e) => e.stopPropagation()}
+						data-lenis-prevent
+						className="h-full overflow-y-auto overscroll-contain p-4 sm:p-5 pb-24"
 					>
-						{/* Chat input */}
-						<div className="relative min-w-0 flex-1" style={{ pointerEvents: barInputVisible ? "auto" : "none" }}>
+						{activeProfileError ? (
+							<p className="text-sm text-[var(--text-muted)]">
+								{activeProfileError}
+							</p>
+						) : activeProfile ? (
+							<ProfileDetailsContent
+								activeProfile={activeProfile}
+								activeProfilePhotoHashes={activeProfilePhotoHashes}
+								isDesktopLike={isDesktopLike}
+								showMobileCarousel={false}
+								mobileCarouselRef={mobileCarouselRef}
+								mobileCarouselPhotoIndex={mobileCarouselPhotoIndex}
+								openPhotoViewer={openPhotoViewer}
+								photoCreatedAtByHash={photoCreatedAtByHash}
+								activeProfileName={activeProfileName}
+								estimatedCreatedAt={estimatedCreatedAt}
+								profileStatusLabel={profileStatusLabel}
+								profileStatusLevel={profileStatusLevel}
+								ownTags={ownTags}
+								profileDistance={profileDistance}
+								chatContactStatus={chatContactStatus ?? null}
+								messageProfileId={messageProfileId}
+								usesFreegrind={usesFreegrind ?? false}
+								onMessageProfile={undefined}
+								onTapProfile={undefined}
+								isTapDisabled={isTapDisabled}
+								isTapBlocked={isTapBlocked}
+								isTapActive={isTapActive}
+								tapId={tapVisualState.tapId}
+								tapButtonClassName={tapButtonClassName}
+								onTriangleProfile={onTriangleProfile}
+								isTriangleDisabled={isTriangleDisabled}
+								triangleButtonClassName={triangleButtonClassName}
+								isLocatingProfile={isLocatingProfile}
+								onToggleFavoriteProfile={onToggleFavoriteProfile}
+								isFavorite={isFavorite}
+								isTogglingFavorite={isTogglingFavorite}
+								onBlockProfile={onBlockProfile}
+								onUnblockProfile={onUnblockProfile}
+								isBlocked={isBlocked}
+								isBlockingProfile={isBlockingProfile}
+								hasTagsContent={hasTagsContent}
+								hasAboutContent={hasAboutContent}
+								hasExpectationsFields={hasExpectationsFields}
+								hasHealthFields={hasHealthFields}
+								hasStatsFields={hasStatsFields}
+								hasSocialFields={hasSocialFields}
+								formattedActiveGenders={formattedActiveGenders}
+								formattedActivePronouns={formattedActivePronouns}
+								lookingForLabels={lookingForLabels}
+								meetAtLabels={meetAtLabels}
+								tribeLabels={tribeLabels}
+								hivStatusLabels={hivStatusLabels}
+								sexualHealthLabels={sexualHealthLabels}
+								vaccineLabels={vaccineLabels}
+								sexualPositionLabels={sexualPositionLabels}
+								bodyTypeLabels={bodyTypeLabels}
+								ethnicityLabels={ethnicityLabels}
+								relationshipStatusLabels={relationshipStatusLabels}
+							/>
+						) : null}
+					</div>
+
+					{/* Bottom actions bar — desktop modal */}
+					{messageProfileId && (
+						<div className="pointer-events-none absolute inset-x-0 bottom-0 z-30">
+							<div
+								ref={controlsBarRef}
+								className="pointer-events-auto flex items-center gap-1 px-4 py-3 border-t border-white/10 backdrop-blur-[20px]"
+								style={{
+									background: "color-mix(in srgb, var(--surface) 25%, transparent)",
+									boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2), 0 -12px 40px rgba(0,0,0,0.45)'
+								}}
+								onPointerDown={(e) => e.stopPropagation()}
+							>
+								{/* Chat input */}
+								<div className="relative min-w-0 flex-1" style={{ pointerEvents: barInputVisible ? "auto" : "none" }}>
 							<div
 								className="pointer-events-none absolute inset-0 rounded-xl backdrop-blur-md"
 								style={{
@@ -1301,8 +1307,10 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 								<MessageCircle className="h-5 w-5" strokeWidth={1.8} />
 							</button>
 						)}
+						</div>
 					</div>
 				)}
+			</div>
 			</div>
 			)}
 			{barTapFlyEmoji && (
