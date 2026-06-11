@@ -36,10 +36,27 @@ pub fn run() {
                 {
                     use tauri::Manager;
                     use tauri::webview::Color;
+                    use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_BORDER_COLOR};
+                    use windows::Win32::Foundation::HWND;
+                    
                     // Set webview background to fully transparent so the rounded
                     // CSS corners don't show a white rectangle behind them.
                     if let Some(webview) = app.get_webview_window("main") {
                         let _ = webview.set_background_color(Some(Color(0, 0, 0, 0)));
+                        
+                        // Remove the 1px border that Windows 11 draws around transparent layered windows
+                        if let Ok(hwnd) = webview.hwnd() {
+                            let hwnd_val = HWND(hwnd.0 as _);
+                            let color = 0xFFFFFFFE_u32; // DWMWA_COLOR_NONE
+                            unsafe {
+                                let _ = DwmSetWindowAttribute(
+                                    hwnd_val,
+                                    DWMWA_BORDER_COLOR,
+                                    &color as *const u32 as *const _,
+                                    std::mem::size_of::<u32>() as u32,
+                                );
+                            }
+                        }
                     }
                 }
 

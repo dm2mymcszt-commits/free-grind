@@ -58,6 +58,7 @@ reqwest = { version = "0.12", features = ["json", "native-tls-alpn", "cookies", 
 windows-native-keyring-store = "0.5.1"
 # Use rustls for WebSocket on Windows to avoid SChannel JA3 fingerprint detection by Cloudflare
 tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
+windows = { version = "0.58", features = ["Win32_Graphics_Dwm", "Win32_Foundation"] }
 
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 reqwest = { version = "0.12", features = ["json", "rustls-tls-webpki-roots", "cookies", "blocking"], default-features = false }

@@ -381,7 +381,7 @@
 		width: calc(100% - 2px);
 		margin: 1px;
 		
-		border-radius: 12px;
+		border-radius: 20px;
 		overflow: hidden;
 		background: var(--bg);
 		
