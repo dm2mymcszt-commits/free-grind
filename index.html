@@ -11,17 +11,11 @@
 	</head>
 
 	<body>
-		<script>
-			// Detect Tauri BEFORE React mounts to prevent white corner flash.
-			// Without this, the WebView2 paints white behind the rounded CSS corners
-			// for a brief moment before JS adds the has-titlebar class.
-			if (window.__TAURI_INTERNALS__) {
-				document.documentElement.classList.add('has-titlebar');
-				document.body.classList.add('has-titlebar');
-				document.documentElement.style.background = 'transparent';
-				document.body.style.background = 'transparent';
+		<style>
+			html, body {
+				background: transparent !important;
 			}
-		</script>
+		</style>
 		<div id="app"></div>
 		<script type="module" src="/src/main.tsx"></script>
 	</body>

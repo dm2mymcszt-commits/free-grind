@@ -16,7 +16,7 @@
 				"width": 1000,
 				"height": 800,
 				"decorations": false,
-				"shadow": true,
+				"transparent": true,
 				"userAgent": "FreeGrind/0.5.2 (+https://freegrind.imaoreo.dev/; contact: support@imaoreo.dev)"
 			}
 		],
