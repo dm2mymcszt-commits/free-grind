@@ -1210,27 +1210,17 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 
 					{/* Bottom actions bar — desktop modal */}
 					{messageProfileId && (
-						<div className="pointer-events-none absolute inset-x-0 bottom-0 z-30">
+						<div className="pointer-events-none absolute inset-x-0 bottom-4 z-30 flex justify-center px-4">
 							<div
 								ref={controlsBarRef}
-								className="pointer-events-auto flex items-center gap-1 px-4 py-3 backdrop-blur-[40px]"
+								className="pointer-events-auto flex w-full max-w-[440px] items-center gap-1 rounded-full border border-white/10 dark:border-white/5 p-1.5 backdrop-blur-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)]"
 								style={{
-									background: "color-mix(in srgb, var(--surface) 25%, transparent)",
-									boxShadow: '0 -12px 40px rgba(0,0,0,0.45)'
+									background: "color-mix(in srgb, var(--surface) 25%, transparent)"
 								}}
 								onPointerDown={(e) => e.stopPropagation()}
 							>
 								{/* Chat input */}
 								<div className="relative min-w-0 flex-1" style={{ pointerEvents: barInputVisible ? "auto" : "none" }}>
-							<div
-								className="pointer-events-none absolute inset-0 rounded-xl"
-								style={{
-									background: "color-mix(in srgb, var(--surface-2) 40%, transparent)",
-									border: "1px solid color-mix(in srgb, var(--border) 40%, transparent)",
-									opacity: barInputVisible ? 1 : 0,
-									transition: barInputVisible ? "opacity 0.25s" : "opacity 0.12s",
-								}}
-							/>
 							<input
 								type="text"
 								value={quickMessageDraft}
@@ -1242,7 +1232,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 									}
 								}}
 								placeholder={t("profile_details.quick_message_placeholder", "Message...")}
-								className="relative h-11 w-full rounded-xl bg-transparent px-4 text-sm text-[var(--text)] placeholder:text-[var(--text-muted)] outline-none"
+								className="relative h-11 w-full rounded-full bg-transparent px-4 text-sm text-[var(--text)] placeholder:text-[var(--text-muted)] outline-none"
 								style={{ opacity: barInputVisible ? 1 : 0, transition: barInputVisible ? "opacity 0.25s" : "opacity 0.12s" }}
 							/>
 						</div>
@@ -1277,7 +1267,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 							onPointerUp={handleBarTapPointerUp}
 							onPointerCancel={() => { setBarTapPickerOpen(false); setBarTapHoverId(null); barTapStickyRef.current = false; if (barTapLongPressRef.current) clearTimeout(barTapLongPressRef.current); barInputTimerRef.current = setTimeout(() => setBarInputVisible(true), 210); }}
 							disabled={isTapDisabled}
-							className={`tap-btn-base relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border-none bg-transparent text-2xl leading-none transition-all touch-none select-none disabled:opacity-40 ${barTapPickerOpen ? "text-[var(--text-muted)]" : isTapActive || barTapHoverId !== null ? "text-white" : "text-[var(--text-muted)]"}`}
+							className={`tap-btn-base relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-none bg-transparent text-2xl leading-none transition-all touch-none select-none disabled:opacity-40 ${barTapPickerOpen ? "text-[var(--text-muted)]" : isTapActive || barTapHoverId !== null ? "text-white" : "text-[var(--text-muted)]"}`}
 							style={!barTapPickerOpen && barTapHoverId !== null ? { filter: barTapGlow(barTapHoverId) } : undefined}
 						>
 							{barTapPickerOpen
@@ -1302,7 +1292,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 										onMessageProfile?.(String(messageProfileId));
 									}
 								}}
-								className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border-none bg-transparent text-[var(--accent)] transition hover:brightness-110"
+								className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-none bg-transparent text-[var(--accent)] transition hover:brightness-110"
 							>
 								<MessageCircle className="h-5 w-5" strokeWidth={1.8} />
 							</button>
