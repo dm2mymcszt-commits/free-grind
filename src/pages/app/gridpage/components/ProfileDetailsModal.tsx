@@ -134,16 +134,24 @@ export function ProfileDetailsModal({
 	const apiFunctions = useApiFunctions();
 	const [shouldRender, setShouldRender] = useState(false);
 	const [isClosing, setIsClosing] = useState(false);
+	const dialogRef = useRef<HTMLDialogElement | null>(null);
 
 	useEffect(() => {
+		const dialog = dialogRef.current;
 		if (isOpen) {
 			setShouldRender(true);
 			setIsClosing(false);
+			setTimeout(() => { 
+				if (dialog && !dialog.open) {
+					try { dialog.showModal(); } catch { dialog.show(); }
+				}
+			}, 0);
 		} else if (shouldRender) {
 			setIsClosing(true);
 			const timer = setTimeout(() => {
 				setShouldRender(false);
 				setIsClosing(false);
+				if (dialog?.open) dialog.close();
 			}, 250);
 			return () => clearTimeout(timer);
 		}
@@ -1044,18 +1052,32 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 
 	return (
 		<>
-			<div
-				className={`fixed inset-0 z-[60] bg-black/40 backdrop-blur-[12px] transition-all duration-300 ${isClosing ? "animate-backdrop-out" : "animate-backdrop-in"}`}
-				onClick={handleBackdropClose}
-			/>
-			<div className="fixed inset-0 z-[60] flex items-center justify-center p-6 pointer-events-none">
+			<style>{`
+                dialog[open]:not(.dialog-closing)::backdrop {
+                    animation: backdrop-fade-in 0.35s ease-out forwards;
+                    backdrop-filter: blur(12px);
+                    background-color: rgba(0, 0, 0, 0.4);
+                }
+                dialog[open].dialog-closing::backdrop {
+                    animation: backdrop-fade-out 0.25s ease-in forwards;
+                    backdrop-filter: blur(12px);
+                    background-color: rgba(0, 0, 0, 0);
+                }
+            `}</style>
+			<dialog
+				ref={dialogRef}
+				className={`fixed inset-0 m-auto flex max-h-[calc(100dvh-1.5rem)] w-full max-w-4xl sm:max-h-[calc(100dvh-8rem)] flex-col rounded-2xl bg-transparent p-0 overflow-visible ${isClosing ? "dialog-closing" : ""}`}
+				onClick={(event) => {
+					if (event.target === dialogRef.current) handleBackdropClose();
+				}}
+			>
 			{isLoadingActiveProfile ? (
-				<div className="flex flex-col items-center justify-center gap-4 text-center pointer-events-auto">
+				<div className="flex h-full flex-col items-center justify-center gap-4 text-center">
 					<Loader2 className="h-10 w-10 animate-spin text-[var(--accent)] drop-shadow-md mx-auto" />
 					<span className="text-sm font-semibold text-white tracking-wide drop-shadow-md">{t("profile_details.loading")}</span>
 				</div>
 			) : (
-				<div className={`pointer-events-auto relative flex max-h-[calc(100dvh-1.5rem)] w-full max-w-4xl sm:max-h-[calc(100dvh-8rem)] flex-col`} onClick={(event) => event.stopPropagation()}>
+				<>
 					<div
 						className={`flex flex-1 min-h-0 w-full flex-col overflow-hidden rounded-2xl border border-white/10 dark:border-white/5 backdrop-blur-[40px] ${isClosing ? "animate-modal-out" : "animate-modal-in"}`}
 						style={{ 
@@ -1303,9 +1325,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 						)}
 						</div>
 					</div>
-				)}
-			</div>
-			</div>
+				</>
 			)}
 			{barTapFlyEmoji && (
 				<>
@@ -1357,6 +1377,9 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 				confirmTone="danger"
 				isProcessing={isBlockingProfile}
 			/>
+			</dialog>
+		</>
+	);/>
 		</div>
 		</>
 	);
