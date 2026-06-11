@@ -33,7 +33,7 @@ export function SettingsBlockedPage() {
 	const [profileCache, setProfileCache] = useState(new Map<string, BlockedProfileListItem>());
 
 	// ── Lazy-loading state ───────────────────────────────────────────────
-	const [visibleCount, setVisibleCount] = useState(BATCH_SIZE);
+	const [loadedUpTo, setLoadedUpTo] = useState(0); // how many IDs we've fetched details for
 	const [initialBatchLoaded, setInitialBatchLoaded] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
@@ -47,7 +47,6 @@ export function SettingsBlockedPage() {
 
 	// ── Sentinel ref for IntersectionObserver ─────────────────────────────
 	const sentinelRef = useRef<HTMLDivElement | null>(null);
-	const fetchingBatchRef = useRef(false);
 
 	// ── All blocked IDs (master list) ────────────────────────────────────
 	const allBlockedIds: string[] = useMemo(() => blockedIdsData ?? [], [blockedIdsData]);
@@ -64,18 +63,17 @@ export function SettingsBlockedPage() {
 					cached.profileId.includes(q)
 				);
 			}
-			// If not cached yet, match on ID only
 			return id.includes(q);
 		});
 	}, [allBlockedIds, searchQuery, profileCache]);
 
-	// ── Visible slice (what's actually rendered) ─────────────────────────
+	// ── Visible slice: show everything we've loaded so far ───────────────
 	const visibleIds = useMemo(
-		() => filteredBlockedIds.slice(0, visibleCount),
-		[filteredBlockedIds, visibleCount],
+		() => filteredBlockedIds.slice(0, loadedUpTo),
+		[filteredBlockedIds, loadedUpTo],
 	);
 
-	const hasMore = visibleCount < filteredBlockedIds.length;
+	const hasMore = loadedUpTo < allBlockedIds.length;
 
 	// ── Extract profile metadata from raw API response ───────────────────
 	const extractBlockedProfileMeta = useCallback(
@@ -182,9 +180,30 @@ export function SettingsBlockedPage() {
 		[apiFunctions, extractBlockedProfileMeta, t],
 	);
 
+	// ── Sequential batch loader ───────────────────────────────────────────
+	const loadNextBatch = useCallback(async () => {
+		if (!blockedIdsData || blockedIdsData.length === 0) return;
+
+		const start = profileCacheRef.current.size;
+		const end = Math.min(start + BATCH_SIZE, blockedIdsData.length);
+		const batchIds = blockedIdsData.slice(start, end);
+
+		if (batchIds.length === 0) return;
+
+		try {
+			await fetchBatch(batchIds);
+		} catch {
+			// Best effort — fetchBatch already creates fallback entries
+		}
+
+		setLoadedUpTo(end);
+	}, [blockedIdsData, fetchBatch]);
+
 	// ── Load initial batch when blocked IDs arrive ────────────────────────
 	useEffect(() => {
-		if (!blockedIdsData || blockedIdsData.length === 0) {
+		if (!blockedIdsData) return;
+
+		if (blockedIdsData.length === 0) {
 			setInitialBatchLoaded(true);
 			return;
 		}
@@ -192,70 +211,45 @@ export function SettingsBlockedPage() {
 		let cancelled = false;
 		setError(null);
 
-		const loadInitial = async () => {
+		void (async () => {
 			try {
 				await fetchBatch(blockedIdsData.slice(0, BATCH_SIZE));
-				if (!cancelled) setInitialBatchLoaded(true);
+				if (!cancelled) {
+					setLoadedUpTo(Math.min(BATCH_SIZE, blockedIdsData.length));
+					setInitialBatchLoaded(true);
+				}
 			} catch (loadError) {
 				if (!cancelled) {
 					setError(loadError instanceof Error ? loadError.message : t("settings_blocked.error_load"));
 				}
 			}
-		};
+		})();
 
-		void loadInitial();
 		return () => { cancelled = true; };
 	}, [blockedIdsData, fetchBatch, t]);
 
-	// ── Load more when visibleCount increases ────────────────────────────
-	useEffect(() => {
-		if (!initialBatchLoaded || filteredBlockedIds.length === 0) return;
-
-		const idsToFetch = visibleIds.filter((id) => !profileCacheRef.current.has(id));
-		if (idsToFetch.length === 0) return;
-
-		let cancelled = false;
-
-		const doFetch = async () => {
-			if (fetchingBatchRef.current) return;
-			fetchingBatchRef.current = true;
-			try {
-				await fetchBatch(idsToFetch);
-			} catch {
-				// Best effort — failures get fallback entries
-			} finally {
-				// ALWAYS reset the lock — even if the effect was cleaned up.
-				// Otherwise the ref stays true forever and blocks all future batches.
-				fetchingBatchRef.current = false;
-			}
-		};
-
-		void doFetch();
-		return () => { cancelled = true; };
-	}, [visibleIds, initialBatchLoaded, filteredBlockedIds.length, fetchBatch]);
-
-	// ── IntersectionObserver for infinite scroll ─────────────────────────
+	// ── IntersectionObserver → triggers loadNextBatch when sentinel visible
 	useEffect(() => {
 		const sentinel = sentinelRef.current;
-		if (!sentinel || !hasMore) return;
+		if (!sentinel || !hasMore || !initialBatchLoaded) return;
+
+		let loading = false;
 
 		const observer = new IntersectionObserver(
 			(entries) => {
-				if (entries[0]?.isIntersecting && !fetchingBatchRef.current) {
-					setVisibleCount((prev) => Math.min(prev + BATCH_SIZE, filteredBlockedIds.length));
+				if (entries[0]?.isIntersecting && !loading) {
+					loading = true;
+					void loadNextBatch().finally(() => { loading = false; });
 				}
 			},
-			{ rootMargin: "400px" },
+			{ rootMargin: "600px" },
 		);
 
 		observer.observe(sentinel);
 		return () => observer.disconnect();
-	}, [hasMore, filteredBlockedIds.length]);
-
-	// ── Reset visible count when search changes ──────────────────────────
-	useEffect(() => {
-		setVisibleCount(BATCH_SIZE);
-	}, [searchQuery]);
+		// Re-create the observer after each batch so it fires again
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [hasMore, initialBatchLoaded, loadedUpTo, loadNextBatch]);
 
 	// ── Handlers ─────────────────────────────────────────────────────────
 	const isLoading = isLoadingIds || (!initialBatchLoaded && (blockedIdsData?.length ?? 0) > 0);
