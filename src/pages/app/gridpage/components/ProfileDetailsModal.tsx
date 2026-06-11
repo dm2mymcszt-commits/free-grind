@@ -1039,7 +1039,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
                 }}
 				onClick={(event) => event.stopPropagation()}
 			>
-				<div className="flex items-center gap-3 border-b border-white/[0.07] px-4 py-3 sm:px-5" style={{ background: 'color-mix(in srgb, var(--surface-2) 70%, transparent)', backdropFilter: 'blur(20px)' }}>
+				<div className="flex relative z-10 items-center gap-3 border-b border-white/10 bg-transparent px-4 py-3 sm:px-5">
 					<button
 						type="button"
 						onClick={onClose}
@@ -1192,8 +1192,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 				{messageProfileId && (
 					<div
 						ref={controlsBarRef}
-						className="flex items-center gap-1 border-t border-white/[0.07] px-3 py-2"
-						style={{ background: 'color-mix(in srgb, var(--surface-2) 60%, transparent)', backdropFilter: 'blur(20px)' }}
+						className="flex relative z-10 items-center gap-1 border-t border-white/10 bg-transparent px-3 py-2"
 						onPointerDown={(e) => e.stopPropagation()}
 					>
 						{/* Chat input */}
