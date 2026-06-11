@@ -1032,13 +1032,14 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 		>
 			<div
 				className="surface-card flex max-h-[calc(100dvh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl sm:max-h-[calc(100dvh-8rem)]"
+				style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 24px 48px rgba(0,0,0,0.25), 0 8px 16px rgba(0,0,0,0.15)' }}
 				onClick={(event) => event.stopPropagation()}
 			>
-				<div className="flex items-center gap-3 border-b border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 sm:px-5">
+				<div className="flex items-center gap-3 border-b border-white/[0.07] px-4 py-3 sm:px-5" style={{ background: 'color-mix(in srgb, var(--surface-2) 70%, transparent)', backdropFilter: 'blur(20px)' }}>
 					<button
 						type="button"
 						onClick={onClose}
-						className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] transition hover:text-[var(--text)]"
+						className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/15 text-[var(--text-muted)] transition-all duration-200 hover:text-[var(--text)] hover:border-white/25" style={{ background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' }}
 						aria-label={t("profile_details.close_profile_details")}
 					>
 						<ChevronLeft className="h-4 w-4" />
@@ -1061,7 +1062,8 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 									type="button"
 									onClick={() => onToggleFavoriteProfile(String(messageProfileId), isFavorite)}
 									disabled={isTogglingFavorite}
-									className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-colors disabled:opacity-60 ${isFavorite ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)]" : "border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]"}`}
+									className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-200 disabled:opacity-60 ${isFavorite ? "border-[var(--accent)]/60 bg-[var(--accent)] text-[var(--accent-contrast)] shadow-[0_0_12px_rgba(255,204,1,0.2)]" : "border-white/15 text-[var(--text-muted)] hover:text-[var(--text)] hover:border-white/25"}`}
+								style={!isFavorite ? { background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' } : undefined}
 									aria-label={isFavorite ? t("chat.unfavorite") : t("chat.favorite")}
 								>
 									<Star className={`h-4 w-4 ${isFavorite ? "fill-current" : ""}`} />
@@ -1072,7 +1074,8 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 									type="button"
 									onClick={() => isBlocked ? onUnblockProfile?.(String(messageProfileId)) : setShowBlockConfirm(true)}
 									disabled={isBlockingProfile}
-									className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-colors disabled:opacity-60 ${isBlocked ? "border-red-500/50 bg-red-500/10 text-red-400" : "border-red-500/40 bg-red-500/8 text-red-400 hover:border-red-500/70 hover:bg-red-500/15"}`}
+									className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-200 disabled:opacity-60 ${isBlocked ? "border-red-500/40 bg-red-500/15 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.15)]" : "border-red-500/30 text-red-400 hover:border-red-500/50 hover:bg-red-500/10"}`}
+								style={!isBlocked ? { background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' } : undefined}
 									aria-label={isBlocked ? t("profile_details.unblock") : t("profile_details.block")}
 								>
 									<Ban className="h-4 w-4" />
@@ -1082,14 +1085,15 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 								<button
 									type="button"
 									onClick={() => setIsActionsMenuOpen((v) => !v)}
-									className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text)]"
+									className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/15 text-[var(--text-muted)] transition-all duration-200 hover:border-[var(--accent)]/40 hover:text-[var(--text)]"
+								style={{ background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' }}
 									aria-label="More actions"
 									aria-expanded={isActionsMenuOpen}
 								>
 									<Ellipsis className="h-4 w-4" />
 								</button>
 								{isActionsMenuOpen && (
-									<div className="absolute right-0 top-full z-50 mt-2 flex min-w-[190px] flex-col gap-1 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-2 shadow-lg">
+									<div className="absolute right-0 top-full z-50 mt-2 flex min-w-[190px] flex-col gap-1 rounded-xl border border-white/10 p-2 shadow-xl" style={{ background: 'color-mix(in srgb, var(--surface) 85%, transparent)', backdropFilter: 'blur(20px)', boxShadow: '0 12px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05)' }}>
 										<button
 											type="button"
 											disabled={isTriangleDisabled}
@@ -1184,7 +1188,8 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 				{messageProfileId && (
 					<div
 						ref={controlsBarRef}
-						className="flex items-center gap-1 border-t border-[var(--border)] bg-[var(--surface-2)] px-3 py-2"
+						className="flex items-center gap-1 border-t border-white/[0.07] px-3 py-2"
+						style={{ background: 'color-mix(in srgb, var(--surface-2) 60%, transparent)', backdropFilter: 'blur(20px)' }}
 						onPointerDown={(e) => e.stopPropagation()}
 					>
 						{/* Chat input */}

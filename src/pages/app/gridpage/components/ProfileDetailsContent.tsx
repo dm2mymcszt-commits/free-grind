@@ -412,14 +412,14 @@ export function ProfileDetailsContent({
                                         type="button"
                                         key={hash}
                                         onClick={() => openPhotoViewer(index)}
-                                        className="overflow-hidden rounded-xl border border-[var(--border)]"
+                                        className="group overflow-hidden rounded-xl border border-white/10 ring-1 ring-white/5 transition-all duration-300 hover:scale-[1.03] hover:ring-[var(--accent)]/30 hover:shadow-[0_8px_24px_rgba(0,0,0,0.3)]"
                                         aria-label={t("profile_details.open_photo", { index: index + 1 })}
                                     >
                                         <div className="relative">
                                             <img
                                                 src={getThumbImageUrl(hash, "320x320")}
                                                 alt={t("profile_details.photo_alt", { name: activeProfileName })}
-                                                className="aspect-square w-full object-cover"
+                                                className="aspect-square w-full object-cover transition-transform duration-500 group-hover:scale-[1.06]"
                                             />
                                             {renderPhotoCreatedBadge(hash)}
                                         </div>
@@ -434,14 +434,14 @@ export function ProfileDetailsContent({
                                     type="button"
                                     key={hash}
                                     onClick={() => openPhotoViewer(index)}
-                                    className="overflow-hidden rounded-xl border border-[var(--border)]"
+                                    className="group overflow-hidden rounded-xl border border-white/10 ring-1 ring-white/5 transition-all duration-300 hover:scale-[1.03] hover:ring-[var(--accent)]/30 hover:shadow-[0_8px_24px_rgba(0,0,0,0.3)]"
                                     aria-label={t("profile_details.open_photo", { index: index + 1 })}
                                 >
                                     <div className="relative">
                                         <img
                                             src={getThumbImageUrl(hash, "320x320")}
                                             alt={t("profile_details.photo_alt", { name: activeProfileName })}
-                                            className="aspect-square w-full object-cover"
+                                            className="aspect-square w-full object-cover transition-transform duration-500 group-hover:scale-[1.06]"
                                         />
                                         {renderPhotoCreatedBadge(hash)}
                                     </div>
@@ -450,14 +450,18 @@ export function ProfileDetailsContent({
                         </div>
                     )
                 ) : (
-                    <div className="w-full max-w-sm mx-auto overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] aspect-square flex items-center justify-center">
-                        <ProfileImage alt={t("profile_details.default_profile")} />
+                    <div className="w-full max-w-sm mx-auto overflow-hidden rounded-2xl border border-white/10 aspect-square flex items-center justify-center relative" style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--surface-2) 80%, transparent), color-mix(in srgb, var(--surface) 60%, transparent))', backdropFilter: 'blur(20px)' }}>
+                        <div className="absolute inset-0 rounded-2xl" style={{ background: 'radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--accent) 6%, transparent), transparent 70%)' }} />
+                        <div className="relative animate-pulse" style={{ animationDuration: '3s' }}>
+                            <ProfileImage alt={t("profile_details.default_profile")} />
+                        </div>
                     </div>
                 )}
             </div>
 
             {/* PROFILE HEADER & STANDARD ACTIONS */}
             <div className="px-3">
+                <div className="rounded-2xl border border-white/[0.07] p-4" style={{ background: 'color-mix(in srgb, var(--surface-2) 50%, transparent)', backdropFilter: 'blur(12px)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), 0 4px 24px rgba(0,0,0,0.12)' }}>
                 <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                         <h2 className="text-2xl font-bold leading-tight tracking-tight sm:text-3xl">
@@ -471,7 +475,7 @@ export function ProfileDetailsContent({
                         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[var(--text-muted)]">
                             {profileStatusLabel && (
                                 <span className="flex items-center gap-1.5">
-                                    <span className={`h-2 w-2 rounded-full ${profileStatusLevel === "online" ? "bg-emerald-400" : "bg-[var(--text-muted)]/40"}`} />
+                                    <span className={`h-2 w-2 rounded-full ${profileStatusLevel === "online" ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]" : profileStatusLevel === "recent" ? "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.4)]" : "bg-[var(--text-muted)]/40"}`} />
                                     {profileStatusLabel}
                                 </span>
                             )}
@@ -488,11 +492,11 @@ export function ProfileDetailsContent({
                             src={freegrindLogo}
                             alt="Free Grind user"
                             title={t("profile_details.uses_free_grind")}
-                            className="mt-1 h-6 w-6 shrink-0 rounded-full border border-[var(--border)]"
+                            className="mt-1 h-6 w-6 shrink-0 rounded-full border border-white/15 shadow-[0_0_10px_rgba(255,140,0,0.25)]"
                         />
                     )}
                 </div>
-                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[var(--text-muted)]">
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[var(--text-muted)]">
                     <span className="flex items-center gap-1">
                         <Hash className="h-3 w-3" />
                         {activeProfile.profileId}
@@ -509,14 +513,15 @@ export function ProfileDetailsContent({
                         </span>
                     )}
                 </div>
+                </div>
 
                 {/* Regular Desktop / Non-Glass Actions */}
                 {isDesktopLike && messageProfileId && onMessageProfile ? (
-                    <div className="mt-3 flex items-center justify-center gap-4 py-1">
+                    <div className="mt-4 flex items-center justify-center gap-4 py-1">
                         <button
                             type="button"
                             onClick={() => onMessageProfile(messageProfileId)}
-                            className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] shadow transition hover:bg-[var(--surface)]"
+                            className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/15 text-[var(--text)] transition-all duration-300 hover:border-[var(--accent)]/50 hover:shadow-[0_0_16px_rgba(255,204,1,0.15)]" style={{ background: 'color-mix(in srgb, var(--surface-2) 50%, transparent)', backdropFilter: 'blur(12px)' }}
                             aria-label={t("profile_details.message")}
                         >
                             <MessageCircle className="h-5 w-5" />
@@ -535,7 +540,8 @@ export function ProfileDetailsContent({
                                 type="button"
                                 onClick={() => onTriangleProfile(messageProfileId)}
                                 disabled={isTriangleDisabled || isLocatingProfile}
-                                className={`inline-flex h-12 w-12 items-center justify-center rounded-full border shadow transition ${isTriangleDisabled ? "border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-muted)] opacity-50" : "border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] hover:bg-[var(--surface)]"}`}
+                                className={`inline-flex h-12 w-12 items-center justify-center rounded-full border transition-all duration-300 ${isTriangleDisabled ? "border-white/10 text-[var(--text-muted)] opacity-50" : "border-white/15 text-[var(--text)] hover:border-[var(--accent)]/50 hover:shadow-[0_0_16px_rgba(255,204,1,0.15)]"}`}
+                                style={{ background: 'color-mix(in srgb, var(--surface-2) 50%, transparent)', backdropFilter: 'blur(12px)' }}
                                 aria-label="Run location finder"
                                 title={isLocatingProfile ? "Locating..." : "Locate"}
                             >
@@ -547,18 +553,18 @@ export function ProfileDetailsContent({
             </div>
 
             {/* PROFILE INFO GRID (Expectations, Health, Stats, Social) */}
-            <div className="grid gap-8 px-3 lg:grid-cols-[1.25fr_1fr]">
-                <div className="grid gap-8">
+            <div className="grid gap-5 px-3 lg:grid-cols-[1.25fr_1fr]">
+                <div className="grid gap-5">
                     {hasTagsContent && (
-                        <div>
-                            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
+                        <div className="rounded-2xl border border-white/[0.07] p-4" style={{ background: 'color-mix(in srgb, var(--surface-2) 40%, transparent)', backdropFilter: 'blur(8px)' }}>
+                            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
                                 {t("profile_details.tags")}
                             </p>
                             <div className="flex flex-wrap gap-2">
                                 {activeProfile.profileTags.map((tag) => {
                                     const isMatch = ownTags.some((own) => own.toLowerCase() === tag.toLowerCase());
                                     return (
-                                        <span key={tag} className={`rounded-full border px-3 py-1.5 text-sm ${isMatch ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold" : "border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)]"}`}>
+                                        <span key={tag} className={`rounded-full border px-3 py-1.5 text-sm transition-all duration-200 ${isMatch ? "border-[var(--accent)]/60 bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold shadow-[0_0_12px_rgba(255,204,1,0.25)]" : "border-white/10 bg-white/5 text-[var(--text)] hover:border-white/20 hover:bg-white/10"}`}>
                                             {tag}
                                         </span>
                                     );
@@ -568,11 +574,11 @@ export function ProfileDetailsContent({
                     )}
 
                     {hasAboutContent && (
-                        <div>
-                            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
+                        <div className="rounded-2xl border border-white/[0.07] p-4" style={{ background: 'color-mix(in srgb, var(--surface-2) 40%, transparent)', backdropFilter: 'blur(8px)' }}>
+                            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
                                 {t("profile_details.about")}
                             </p>
-                            <div className="rounded-xl bg-[var(--surface-2)] px-4 py-3">
+                            <div className="rounded-xl px-1">
                                 <p className="text-base leading-relaxed text-[var(--text)]">
                                     {activeProfile.aboutMe?.trim()}
                                 </p>
@@ -581,8 +587,8 @@ export function ProfileDetailsContent({
                     )}
 
                     {hasExpectationsFields && (
-                        <div>
-                            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
+                        <div className="rounded-2xl border border-white/[0.07] p-4" style={{ background: 'color-mix(in srgb, var(--surface-2) 40%, transparent)', backdropFilter: 'blur(8px)' }}>
+                            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
                                 {t("profile_details.expectations")}
                             </p>
                             <div className="space-y-2.5">
@@ -627,8 +633,8 @@ export function ProfileDetailsContent({
                     )}
 
                     {hasHealthFields && (
-                        <div>
-                            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
+                        <div className="rounded-2xl border border-white/[0.07] p-4" style={{ background: 'color-mix(in srgb, var(--surface-2) 40%, transparent)', backdropFilter: 'blur(8px)' }}>
+                            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
                                 {t("profile_details.health")}
                             </p>
                             <div className="space-y-2.5">
@@ -661,10 +667,10 @@ export function ProfileDetailsContent({
                     )}
                 </div>
 
-                <div className="grid gap-8">
+                <div className="grid gap-5">
                     {hasStatsFields && (
-                        <div>
-                            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
+                        <div className="rounded-2xl border border-white/[0.07] p-4" style={{ background: 'color-mix(in srgb, var(--surface-2) 40%, transparent)', backdropFilter: 'blur(8px)' }}>
+                            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
                                 {t("profile_details.stats")}
                             </p>
                             <div className="space-y-2.5">
@@ -709,13 +715,13 @@ export function ProfileDetailsContent({
                     )}
 
                     {hasSocialFields && (
-                        <div>
-                            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
+                        <div className="rounded-2xl border border-white/[0.07] p-4" style={{ background: 'color-mix(in srgb, var(--surface-2) 40%, transparent)', backdropFilter: 'blur(8px)' }}>
+                            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
                                 {t("profile_details.social")}
                             </p>
                             <div className="grid gap-2">
                                 {activeProfile.socialNetworks?.instagram?.userId && (
-                                    <a href={`https://instagram.com/${activeProfile.socialNetworks.instagram.userId}`} target="_blank" rel="noopener noreferrer" className="flex min-h-11 items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 transition hover:border-[var(--accent)]">
+                                    <a href={`https://instagram.com/${activeProfile.socialNetworks.instagram.userId}`} target="_blank" rel="noopener noreferrer" className="flex min-h-11 items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 transition-all duration-200 hover:border-[var(--accent)]/40 hover:bg-white/10">
                                         <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 fill-[var(--text-muted)]">
                                             <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
                                         </svg>
@@ -724,7 +730,7 @@ export function ProfileDetailsContent({
                                     </a>
                                 )}
                                 {activeProfile.socialNetworks?.twitter?.userId && (
-                                    <a href={`https://x.com/${activeProfile.socialNetworks.twitter.userId}`} target="_blank" rel="noopener noreferrer" className="flex min-h-11 items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 transition hover:border-[var(--accent)]">
+                                    <a href={`https://x.com/${activeProfile.socialNetworks.twitter.userId}`} target="_blank" rel="noopener noreferrer" className="flex min-h-11 items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 transition-all duration-200 hover:border-[var(--accent)]/40 hover:bg-white/10">
                                         <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 fill-[var(--text-muted)]">
                                             <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.746l7.73-8.835L1.254 2.25H8.08l4.26 5.632L18.245 2.25zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z"/>
                                         </svg>
@@ -733,7 +739,7 @@ export function ProfileDetailsContent({
                                     </a>
                                 )}
                                 {activeProfile.socialNetworks?.facebook?.userId && (
-                                    <a href={`https://facebook.com/${activeProfile.socialNetworks.facebook.userId}`} target="_blank" rel="noopener noreferrer" className="flex min-h-11 items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 transition hover:border-[var(--accent)]">
+                                    <a href={`https://facebook.com/${activeProfile.socialNetworks.facebook.userId}`} target="_blank" rel="noopener noreferrer" className="flex min-h-11 items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 transition-all duration-200 hover:border-[var(--accent)]/40 hover:bg-white/10">
                                         <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 fill-[var(--text-muted)]">
                                             <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
                                         </svg>
