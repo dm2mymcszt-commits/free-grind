@@ -24,7 +24,7 @@ export function ChatAlbumSheet({
 	const { t } = useTranslation();
 
 	return (
-		<BottomSheet onClose={onClose} isDesktop={isDesktop} panelClassName="max-h-[85dvh] overflow-hidden rounded-t-[2.5rem] sm:rounded-[2.5rem] border border-white/10 dark:border-white/5 bg-[var(--surface)]/80 backdrop-blur-[40px] shadow-[0_-20px_60px_-15px_rgba(0,0,0,0.5)]">
+		<BottomSheet onClose={onClose} isDesktop={isDesktop} panelClassName="max-h-[85dvh] overflow-hidden rounded-t-[2.5rem] sm:rounded-[2.5rem] border border-white/10 dark:border-white/5 bg-[color-mix(in_srgb,var(--surface)_85%,transparent)] backdrop-blur-[30px] shadow-[0_20px_60px_rgba(0,0,0,0.6),_inset_0_1px_0_rgba(255,255,255,0.1)]">
             <div className="absolute inset-0 bg-gradient-to-b from-[var(--surface-2)]/30 to-transparent pointer-events-none" />
 			{/* Header */}
 			<div className="relative flex items-center justify-between px-6 pt-6 pb-4 border-b border-white/10 dark:border-white/5 shadow-[0_4px_30px_rgba(0,0,0,0.1)]">

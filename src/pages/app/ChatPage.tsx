@@ -3891,26 +3891,22 @@ import { processAutoDownload } from "../../services/autoDownloader";
                         }}
                     >
                         <div
-                            className="mx-auto flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden bg-black/40 shadow-[0_0_80px_rgba(0,0,0,0.8)] backdrop-blur-3xl sm:h-full sm:rounded-[2.5rem] border border-white/10 relative"
+                            className="mx-auto flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.6),_inset_0_1px_0_rgba(255,255,255,0.1)] backdrop-blur-[30px] border border-white/10 dark:border-white/5 bg-[color-mix(in_srgb,var(--surface)_85%,transparent)] sm:h-full sm:rounded-[2.5rem] relative"
                             onClick={(event) => event.stopPropagation()}
                         >
-                            {/* --- AMBIENT GLOWS --- */}
-                            <div className="pointer-events-none absolute -left-[20%] -top-[20%] h-[60%] w-[60%] rounded-full bg-[var(--accent)]/10 blur-[120px]" />
-                            <div className="pointer-events-none absolute -bottom-[20%] -right-[20%] h-[60%] w-[60%] rounded-full bg-[var(--accent)]/10 blur-[120px]" />
-
                             {/* --- MODERN HEADER --- */}
-                            <div className="relative z-10 flex flex-col gap-3 border-b border-white/10 bg-transparent px-4 py-6 sm:px-8">
+                            <div className="relative z-10 flex flex-col gap-3 border-b border-white/10 dark:border-white/5 bg-transparent px-4 py-6 sm:px-8">
                                 <div className="flex items-start justify-between gap-4">
                                     <div className="min-w-0 flex-1">
-                                        <div className="mb-2.5 inline-flex items-center gap-1.5 rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10 backdrop-blur-md">
-                                            <span className="text-[10px] font-bold uppercase tracking-widest text-white/70">
+                                        <div className="mb-2.5 inline-flex items-center gap-1.5 rounded-full bg-[var(--surface-2)] px-3 py-1 ring-1 ring-white/10 backdrop-blur-md">
+                                            <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
                                                 {t("shared_albums.album_label", { defaultValue: "Album" })}
                                             </span>
                                         </div>
-                                        <h2 className="truncate text-3xl font-black tracking-tight text-white drop-shadow-md">
+                                        <h2 className="truncate text-3xl font-black tracking-tight text-[var(--text)] drop-shadow-sm">
                                             {albumViewer.albumName?.trim() || "Album"}
                                         </h2>
-                                        <p className="mt-1.5 text-sm font-medium text-white/60">
+                                        <p className="mt-1.5 text-sm font-medium text-[var(--text-muted)]">
                                             {albumViewer.content.length} {t("shared_albums.items_count", { count: albumViewer.content.length, defaultValue: "Items" })}
                                         </p>
                                     </div>
@@ -3920,7 +3916,7 @@ import { processAutoDownload } from "../../services/autoDownloader";
                                             setAlbumViewerMediaIndex(null);
                                             setAlbumViewer(null);
                                         }}
-                                        className="group relative overflow-hidden rounded-full bg-white/5 p-3 text-white/70 ring-1 ring-white/10 transition-all hover:bg-white/10 hover:text-white"
+                                        className="group relative overflow-hidden rounded-full bg-[var(--surface-2)] p-3 text-[var(--text-muted)] ring-1 ring-white/10 transition-all hover:bg-[var(--accent)] hover:text-[var(--accent-contrast)] hover:shadow-[0_0_20px_color-mix(in_srgb,var(--accent)_35%,transparent)] hover:scale-[1.02] active:scale-95"
                                         aria-label={t("shared_albums.close_viewer")}
                                     >
                                         <div className="absolute inset-0 bg-gradient-to-tr from-white/0 to-white/0 transition-colors group-hover:from-white/5 group-hover:to-transparent" />
@@ -3950,7 +3946,7 @@ import { processAutoDownload } from "../../services/autoDownloader";
                                                 type="button"
                                                 key={item.contentId}
                                                 onClick={() => openAlbumMediaViewer(index)}
-                                                className="group relative aspect-square w-full overflow-hidden bg-white/5 ring-1 ring-white/10 transition-all duration-500 hover:z-10 hover:scale-105 hover:ring-white/30 hover:shadow-[0_0_30px_rgba(255,255,255,0.1)] sm:rounded-2xl"
+                                                className="group relative aspect-square w-full overflow-hidden bg-[color-mix(in_srgb,var(--surface)_60%,transparent)] ring-1 ring-white/10 transition-all duration-500 hover:z-10 hover:scale-[1.03] hover:ring-[var(--accent)] hover:shadow-[0_0_20px_color-mix(in_srgb,var(--accent)_35%,transparent)] sm:rounded-2xl"
                                             >
                                                 {item.contentType?.startsWith("video/") ? (
                                                     <video 

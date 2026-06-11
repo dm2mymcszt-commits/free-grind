@@ -37,10 +37,9 @@ export function AlbumViewerPanel({
             onClick={closeViewer}
         >
             <div
-                className="relative mx-auto flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden bg-[var(--surface)]/80 backdrop-blur-[40px] shadow-[0_0_60px_-15px_rgba(0,0,0,0.7)] sm:h-full sm:rounded-[2.5rem] border border-white/10 dark:border-white/5"
+                className="relative mx-auto flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden bg-[color-mix(in_srgb,var(--surface)_85%,transparent)] backdrop-blur-[30px] shadow-[0_20px_60px_rgba(0,0,0,0.6),_inset_0_1px_0_rgba(255,255,255,0.1)] sm:h-full sm:rounded-[2.5rem] border border-white/10 dark:border-white/5"
                 onClick={(event) => event.stopPropagation()}
             >
-                <div className="absolute inset-0 bg-gradient-to-b from-[var(--surface-2)]/30 to-transparent pointer-events-none" />
 
                 {/* --- MODERN HEADER --- */}
                 <div 
@@ -132,10 +131,10 @@ export function AlbumViewerPanel({
 
                                 return (
                                     <button
-                                        key={item.contentId}
                                         type="button"
+                                        key={item.contentId}
                                         onClick={() => openFullScreen(index)}
-                                        className={`group relative aspect-square w-full overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] sm:rounded-2xl ${
+                                        className={`group relative aspect-square w-full overflow-hidden bg-[color-mix(in_srgb,var(--surface)_60%,transparent)] ring-1 ring-white/10 transition-all duration-500 hover:z-10 hover:scale-[1.03] hover:ring-[var(--accent)] hover:shadow-[0_0_20px_color-mix(in_srgb,var(--accent)_35%,transparent)] sm:rounded-2xl ${
                                             isActive
                                                 ? "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[var(--surface)] scale-[0.95]"
                                                 : "hover:scale-[1.03] hover:shadow-[0_10px_30px_-10px_rgba(0,0,0,0.5)] active:scale-[0.95]"
