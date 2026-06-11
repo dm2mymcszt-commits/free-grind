@@ -51,7 +51,10 @@ export function BrowseCardTile({
     const isFavorite = card.favorite === true;
 
     return (
-        <div className={cn(!isDesktop && "bg-black flex", "w-full h-full")}>
+        <div 
+            className={cn(!isDesktop && "bg-black flex", "w-full h-full")}
+            style={{ contentVisibility: "auto", containIntrinsicSize: "250px" }}
+        >
             {/* MAGIC WRAPPER INJECTED HERE */}
                 <SelectableItem
                     id={card.profileId}
