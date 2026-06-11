@@ -191,9 +191,7 @@ export function PhotoViewer({
                 return;
             }
 
-            // ── 1-finger pan: skip swipe logic for single photo ──────────────
-            if (N < 2) return;
-
+            // ── 1-finger pan ─────────────────────────────────────────────────
             if (e.touches.length !== 1) return;
 
             const touch = e.touches[0];
@@ -228,7 +226,8 @@ export function PhotoViewer({
                 return;
             }
 
-            // Not zoomed: lock axis, swipe left/right to navigate
+            // Not zoomed: lock axis, swipe left/right to navigate (only when multiple photos)
+            if (N < 2) return;
             if (!decidedAxisRef.current && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
                 decidedAxisRef.current = Math.abs(dx) >= Math.abs(dy) ? "h" : "v";
             }
@@ -283,6 +282,7 @@ export function PhotoViewer({
     const handleButtonTouchEnd = useCallback(
         (e: React.TouchEvent, action: () => void) => {
             e.stopPropagation();
+            e.preventDefault(); // prevent ghost click after touch
             if (!gestureMovedRef.current) {
                 action();
             }
@@ -341,6 +341,7 @@ export function PhotoViewer({
             <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onClose(); }}
+                onTouchStart={(e) => { e.stopPropagation(); gestureMovedRef.current = false; }}
                 onTouchEnd={(e) => handleButtonTouchEnd(e, onClose)}
                 className="absolute right-3 top-[calc(env(safe-area-inset-top,0px)+2rem)] z-[83] inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/30 bg-black/50 text-white sm:right-5 sm:top-5 transition hover:bg-black/70"
                 aria-label={t("profile_details.close_photo_viewer")}
@@ -355,6 +356,7 @@ export function PhotoViewer({
                         e.stopPropagation();
                         setIsScannerHubOpen(true);
                     }}
+                    onTouchStart={(e) => { e.stopPropagation(); gestureMovedRef.current = false; }}
                     onTouchEnd={(e) => handleButtonTouchEnd(e, () => setIsScannerHubOpen(true))}
                     className="absolute left-3 top-[calc(env(safe-area-inset-top,0px)+2rem)] z-[83] inline-flex h-11 px-4 items-center justify-center gap-2 rounded-full border border-blue-500/50 bg-blue-500/20 text-white backdrop-blur-md sm:left-5 sm:top-5 transition hover:bg-blue-500/40"
                 >
@@ -368,6 +370,7 @@ export function PhotoViewer({
                     <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); showPrev(); }}
+                        onTouchStart={(e) => { e.stopPropagation(); gestureMovedRef.current = false; }}
                         onTouchEnd={(e) => handleButtonTouchEnd(e, showPrev)}
                         className="absolute left-2 top-1/2 z-[83] inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/30 bg-black/50 text-white sm:left-4 sm:h-11 sm:w-11 transition hover:bg-black/70"
                         aria-label={t("profile_details.previous_photo")}
@@ -377,6 +380,7 @@ export function PhotoViewer({
                     <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); showNext(); }}
+                        onTouchStart={(e) => { e.stopPropagation(); gestureMovedRef.current = false; }}
                         onTouchEnd={(e) => handleButtonTouchEnd(e, showNext)}
                         className="absolute right-2 top-1/2 z-[83] inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/30 bg-black/50 text-white sm:right-4 sm:h-11 sm:w-11 transition hover:bg-black/70"
                         aria-label={t("profile_details.next_photo")}

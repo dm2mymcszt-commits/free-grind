@@ -9,7 +9,7 @@ TEMP_SPEC="src-tauri/gen/apple/project.unsigned.yml"
 DERIVED_DATA_PATH="src-tauri/gen/apple/.deriveddata_unsigned"
 APP_PATH="$DERIVED_DATA_PATH/Build/Products/release-iphoneos/Free Grind.app"
 
-# Strip fields/phases that enforce signing or trigger tauri xcode-script.
+# this shi strips phases that enforce the signing or trigger tauri xcode script
 awk '
 	/^[[:space:]]*DEVELOPMENT_TEAM:[[:space:]]*/ { next }
 	/^[[:space:]]*-[[:space:]]*path:[[:space:]]*Externals[[:space:]]*$/ { next }
@@ -57,4 +57,4 @@ cd dist/ios
 zip -qry free-grind-unsigned.ipa Payload
 cd - >/dev/null
 
-echo "Unsigned IPA created at dist/ios/free-grind-unsigned.ipa"
+echo "unsigned IPA created at dist/ios/free-grind-unsigned.ipa enjoy i guess"

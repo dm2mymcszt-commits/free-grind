@@ -15,7 +15,7 @@ import {
     INBOX_SEEN_EVENT,
     markInboxSeen,
 } from "../services/seenStore";
-import { CHAT_REALTIME_EVENT, TAP_RECEIVED_EVENT } from "./ChatRealtimeBridge";
+import { CHAT_REALTIME_EVENT } from "./ChatRealtimeBridge";
 import { messageSchema, type Message } from "../types/messages";
 import type { RealtimeEnvelope } from "../types/chat-realtime";
 import { useInterestData } from "../hooks/queries/useInterestQueries";
@@ -75,7 +75,6 @@ export function NavBar() {
     }, [location.pathname]);
 
     const [activeTab, setActiveTab] = useState("browse");
-    const [unreadCount, setUnreadCount] = useState(0);
     const [interestUnseen, setInterestUnseen] = useState(false);
     const [inboxUnseen, setInboxUnseen] = useState(false);
 
@@ -153,12 +152,6 @@ export function NavBar() {
 
                 if (cancelled) return;
 
-                const totalUnread = response.entries.reduce(
-                    (sum, entry) => sum + (entry.data.unreadCount || 0),
-                    0,
-                );
-                setUnreadCount(totalUnread);
-
                 const lastSeen = getInboxLastSeen();
                 const newest = response.entries.reduce(
                     (max, entry) => Math.max(max, entry.data.lastActivityTimestamp ?? 0),
@@ -182,7 +175,6 @@ export function NavBar() {
                 }
             } catch {
                 if (!cancelled) {
-                    setUnreadCount(0);
                     setInboxUnseen(false);
                 }
             }
@@ -217,8 +209,6 @@ export function NavBar() {
                     if (newest > lastSeen) {
                         setInboxUnseen(true);
                     }
-                    // Optimistically increment the total unread count shown in the UI
-                    setUnreadCount((prev) => prev + fromOthers.length);
                 }
             }
         };
@@ -411,8 +401,12 @@ export function NavBar() {
                                                         e.preventDefault();
                                                         return;
                                                     }
-                                                    // Otherwise, execute normal navigation routing
-                                                    navigate(item.path);
+                                                    // Otherwise, execute normal navigation routing or scroll to top
+                                                    if (activeTab === "browse") {
+                                                        window.scrollTo({ top: 0, behavior: "smooth" });
+                                                    } else {
+                                                        navigate(item.path);
+                                                    }
                                                 }
                                             }}
                                             className={cn(

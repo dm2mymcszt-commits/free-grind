@@ -1,5 +1,4 @@
 import {
-    Album,
     Ban,
     ChevronDown,
     ChevronLeft,
@@ -31,18 +30,10 @@ import {
     SendHorizontal,
     SquareCenterlineDashedHorizontal,
     Smile,
-    ImagePlay,
     Clock,
     Search as SearchIcon,
-    Images,
     Mic,
     Square,
-    Camera,
-    Download,
-    Image as ImageIcon,
-    Link,
-    MoreHorizontal,
-    ShieldOff,
     FileAudio,
 } from "lucide-react";
 import data from '@emoji-mart/data';
@@ -78,12 +69,9 @@ import {
     getMessageAlbumId,
     getMessageAlbumCoverUrl,
 } from "./chatUtils";
-import { getMessageAlbumId as getMessageAlbumIdHelper, getMessagePhotoContentId } from "../../utils/messages";
 import { extractAudioToWav, getAudioDuration } from "../../../utils/audioUtils";
 import { cn } from "../../../utils/cn";
-import { getThumbImageUrl } from "../../../utils/media";
 import { formatDistance } from "../gridpage/utils";
-import { ProfileImage } from "../../../components/ui/profile-image";
 import { ChatThreadMessages } from "./ChatThreadMessages";
 import { AudioMessagePlayer } from "./AudioMessagePlayer";
 import { ConfirmDialog } from "../../../components/ui/confirm-dialog";
@@ -217,8 +205,6 @@ type ChatThreadPanelProps = {
     isSendingAudio: boolean;
     confirmAudio: () => void | Promise<void>;
     cancelAudio: () => void;
-    isAlbumSheetOpen: boolean;
-    onOpenMediaSheet?: () => void;
 };
 
 const SKIP_BLOCK_CONFIRM_KEY = "profile_skip_block_confirm";
@@ -309,7 +295,6 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
         navigate,
         isDesktop,
         selectedConversation,
-        targetProfileId,
         userId,
         nowTimestamp,
         handleMessageTap,
@@ -370,7 +355,6 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
         attachmentTakenOnGrindr,
         setAttachmentLooping,
         setAttachmentTakenOnGrindr,
-        confirmPendingAttachment,
         confirmAttachmentFile,
         cancelPendingAttachment,
         isAlbumPickerOpen,
@@ -405,19 +389,14 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
         onShareAlbumFromDrawer,
         onStopAlbumShareFromDrawer,
         onSendLocation,
-        onCloseAlbumViewer,
         attachmentMaxViews,
         setAttachmentMaxViews,
-        albumCoverMap: externalAlbumCoverMap,
-        ownProfilePhotoUrl,
         onAudioRecorded,
         pendingAudioBlob,
         pendingAudioDuration,
         isSendingAudio,
         confirmAudio,
         cancelAudio,
-        isAlbumSheetOpen,
-        onOpenMediaSheet,
     } = props;
 
     // --- IMAGE CROP & SAVED PHRASES UI STATE ---
@@ -447,7 +426,6 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
     const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const hasVibratedRef = useRef(false);
     const [recordDragX, setRecordDragX] = useState(0);
-    const [hasRestoredScroll, setHasRestoredScroll] = useState(false);
     
     // --- LONG PRESS STATE ---
     const wasLongPressRef = useRef(false);
@@ -459,7 +437,6 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
     const audioFileInputRef = useRef<HTMLInputElement>(null);
     const [isProcessingAudioFile, setIsProcessingAudioFile] = useState(false);
     const [showRecordCircle, setShowRecordCircle] = useState(false);
-    const [trashBounce, setTrashBounce] = useState(false);
     const CANCEL_THRESHOLD = window.innerWidth * 0.35;
     const dragProgress = Math.min(1, Math.abs(Math.min(0, recordDragX)) / CANCEL_THRESHOLD);
     const stopRecordingRef = useRef<(autoSend?: boolean) => void>(() => {});
@@ -821,11 +798,11 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
             return ids;
         }, [threadMessages]);
 
-        const handleLocationSelect = useCallback(async (lat: number, lon: number) => {
-            const setIsLocationPickerOpen = (v: boolean) => {}; // shim
-            setIsLocationPickerOpen(false);
-            setPendingLocationShare({ lat, lon });
-        }, []);
+        // const handleLocationSelect = useCallback(async (lat: number, lon: number) => {
+        //     const setIsLocationPickerOpen = (v: boolean) => {}; // shim
+        //     setIsLocationPickerOpen(false);
+        //     setPendingLocationShare({ lat, lon });
+        // }, []);
 
         const handleAudioFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
             const file = e.target.files?.[0];
@@ -2112,11 +2089,11 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                             if (!isDesktop && isCapturingRef.current) {
                                                 const dx = e.clientX - swipeStartXRef.current; setRecordDragX(Math.min(0, dx));
                                                 if (!hasVibratedRef.current && dx < -CANCEL_THRESHOLD) {
-                                                    hasVibratedRef.current = true; isCapturingRef.current = false; e.currentTarget.releasePointerCapture(e.pointerId); if (holdTimerRef.current) clearTimeout(holdTimerRef.current); navigator.vibrate?.(80); setTrashBounce(true); setTimeout(() => { setTrashBounce(false); setRecordDragX(0); setShowRecordCircle(false); cancelRecording(); }, 280);
+                                                    hasVibratedRef.current = true; isCapturingRef.current = false; e.currentTarget.releasePointerCapture(e.pointerId); if (holdTimerRef.current) clearTimeout(holdTimerRef.current); navigator.vibrate?.(80); setTimeout(() => { setRecordDragX(0); setShowRecordCircle(false); cancelRecording(); }, 280);
                                                 }
                                             }
                                         }}
-                                        onPointerUp={(e) => {
+                                        onPointerUp={() => {
                                             const isLong = wasLongPressRef.current;
                                             if (longPressTimerRef.current) {
                                                 clearTimeout(longPressTimerRef.current);
@@ -2133,7 +2110,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                                 }
                                             }
                                         }}
-                                        onPointerCancel={(e) => {
+                                        onPointerCancel={() => {
                                             if (longPressTimerRef.current) {
                                                 clearTimeout(longPressTimerRef.current);
                                                 longPressTimerRef.current = null;

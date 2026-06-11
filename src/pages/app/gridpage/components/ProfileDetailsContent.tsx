@@ -13,7 +13,6 @@ import {
     Hash,
     Heart,
     Loader2,
-    Star,
     MapPin,
     MessageCircle,
     MessageSquare,
@@ -26,11 +25,9 @@ import {
     Syringe,
     Triangle,
     User,
-    Zap,
-    ChevronLeft,
-    ChevronRight
+    Zap
 } from "lucide-react";
-import { type RefObject, type UIEvent, useState, useRef } from "react";
+import { type RefObject, type UIEvent, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ProfileDetail } from "../../GridPage.types";
 import {
@@ -38,7 +35,6 @@ import {
     formatEnumArray,
     formatEnumValue,
     formatHeightCm,
-    formatOptionalNumber,
     formatTimeAgo,
     formatWeightKg,
     shouldHideField,
@@ -51,7 +47,6 @@ import type { ChatContactIndexRecord } from "../../../../types/chat-contact-inde
 import { formatDateTime24 } from "../../chat/chatUtils";
 import { formatRelativeTime } from "../../../../utils/relativeTime";
 import { usePreferences } from "../../../../contexts/PreferencesContext";
-import { cn } from "../../../../utils/cn";
 
 type LabelMap = Record<number, string>;
 
@@ -63,7 +58,7 @@ type ProfileDetailsContentProps = {
     mobileCarouselRef: RefObject<HTMLDivElement | null>;
     mobileCarouselPhotoIndex: number;
     onPhotoIndexChange?: (index: number) => void;
-    handleMobileCarouselScroll: (event: UIEvent<HTMLDivElement>) => void;
+    handleMobileCarouselScroll?: (event: UIEvent<HTMLDivElement>) => void;
     openPhotoViewer: (index: number) => void;
     photoCreatedAtByHash: Record<string, { createdAt: number | null; takenOnGrindr: boolean | null }>;
     activeProfileName: string;
@@ -123,7 +118,7 @@ export function ProfileDetailsContent({
     showMobileCarousel,
     mobileCarouselRef,
     mobileCarouselPhotoIndex,
-    handleMobileCarouselScroll,
+    onPhotoIndexChange,
     openPhotoViewer,
     photoCreatedAtByHash,
     activeProfileName,
@@ -137,13 +132,9 @@ export function ProfileDetailsContent({
     usesFreegrind,
     onMessageProfile,
     onTapProfile,
-    onBlockProfile,
-    onUnblockProfile,
     onToggleFavoriteProfile,
     isFavorite,
     isTogglingFavorite,
-    isBlocked,
-    isBlockingProfile,
     isTapDisabled,
     isTapBlocked,
     isTapActive,
@@ -151,7 +142,6 @@ export function ProfileDetailsContent({
     tapButtonClassName,
     onTriangleProfile,
     isTriangleDisabled,
-    triangleButtonClassName,
     isLocatingProfile,
     hasTagsContent,
     hasAboutContent,
@@ -177,18 +167,6 @@ export function ProfileDetailsContent({
     const hasChatHistory = Boolean(chatContactStatus?.hasChatted) || (chatContactStatus?.unreadCount ?? 0) > 0;
     const lastMessageLabel = formatRelativeTime(chatContactStatus?.lastMessageTimestamp ?? null);
 
-    // Desktop Hover State for Chevrons
-    const [isHovered, setIsHovered] = useState(false);
-
-    // Tap Burst Emoji Animation
-    const [tapBurst, setTapBurst] = useState<{ key: number; emoji: string } | null>(null);
-    const handleTapWithBurst = (profileId: string, tapIdArg?: number) => {
-        const id = tapIdArg ?? 1;
-        const emojis: Record<number, string> = { 0: "👋", 1: "🔥", 2: "😈" };
-        setTapBurst({ key: Date.now(), emoji: emojis[id] ?? "🔥" });
-        onTapProfile?.(profileId, id);
-    };
-
     const positionIconMap: Record<number, LucideIcon> = {
         1: ArrowUp,        // Top
         2: ArrowDown,      // Bottom
@@ -200,6 +178,107 @@ export function ProfileDetailsContent({
     const PositionIcon = activeProfile?.sexualPosition != null
         ? (positionIconMap[activeProfile.sexualPosition] ?? Compass)
         : null;
+
+    // Tap Burst Emoji Animation
+    const [tapBurst, setTapBurst] = useState<{ key: number; emoji: string } | null>(null);
+    const handleTapWithBurst = (profileId: string, tapIdArg?: number) => {
+        const id = tapIdArg ?? 1;
+        const emojis: Record<number, string> = { 0: "👋", 1: "🔥", 2: "😈" };
+        setTapBurst({ key: Date.now(), emoji: emojis[id] ?? "🔥" });
+        onTapProfile?.(profileId, id);
+    };
+
+    // const handleBlockAction = () => {
+    //     if (!messageProfileId || isBlockingProfile) return;
+    //     if (isBlocked) onUnblockProfile?.(messageProfileId);
+    //     else onBlockProfile?.(messageProfileId);
+    // };
+
+    const handleFavoriteAction = () => {
+        if (!messageProfileId || !onToggleFavoriteProfile || isTogglingFavorite) return;
+        void onToggleFavoriteProfile(messageProfileId, isFavorite);
+    };
+
+    const [dragDelta, setDragDelta] = useState(0);
+    const isDraggingRef = useRef(false);
+    const lastDeltaRef = useRef(0);
+    const currentIndexRef = useRef(mobileCarouselPhotoIndex);
+    currentIndexRef.current = mobileCarouselPhotoIndex;
+    const onPhotoIndexChangeRef = useRef(onPhotoIndexChange);
+    onPhotoIndexChangeRef.current = onPhotoIndexChange;
+
+    useEffect(() => {
+        setDragDelta(0);
+    }, [activeProfile?.profileId]);
+
+    useEffect(() => {
+        const el = mobileCarouselRef.current;
+        if (!el || !showMobileCarousel || isDesktopLike) return;
+
+        let startY = 0, startX = 0;
+        let decided = false, navigating = false;
+
+        const onStart = (e: TouchEvent) => {
+            if ((e.target as HTMLElement).closest(".glass-actions-container")) return;
+            startY = e.touches[0].clientY;
+            startX = e.touches[0].clientX;
+            decided = false;
+            navigating = false;
+            isDraggingRef.current = false;
+            lastDeltaRef.current = 0;
+        };
+
+        const onMove = (e: TouchEvent) => {
+            const dy = e.touches[0].clientY - startY;
+            const dx = e.touches[0].clientX - startX;
+
+            if (!decided) {
+                if (Math.abs(dy) < 8 && Math.abs(dx) < 8) return;
+                decided = true;
+                if (Math.abs(dx) >= Math.abs(dy)) return; // horizontal swipe -> ignore
+                const idx = currentIndexRef.current;
+                const total = activeProfilePhotoHashes.length;
+                if ((dy < 0 && idx < total - 1) || (dy > 0 && idx > 0)) {
+                    navigating = true;
+                    isDraggingRef.current = true;
+                    e.preventDefault();
+                }
+            }
+
+            if (!navigating) return;
+            e.preventDefault();
+            lastDeltaRef.current = dy;
+            setDragDelta(dy);
+        };
+
+        const onEnd = () => {
+            isDraggingRef.current = false;
+            if (!navigating) return;
+            navigating = false;
+            const dy = lastDeltaRef.current;
+            const idx = currentIndexRef.current;
+            const total = activeProfilePhotoHashes.length;
+            if (dy < -60 && idx < total - 1) {
+                onPhotoIndexChangeRef.current?.(idx + 1);
+            } else if (dy > 60 && idx > 0) {
+                onPhotoIndexChangeRef.current?.(idx - 1);
+            }
+            lastDeltaRef.current = 0;
+            setDragDelta(0);
+        };
+
+        el.addEventListener("touchstart", onStart, { passive: true });
+        el.addEventListener("touchmove", onMove, { passive: false });
+        el.addEventListener("touchend", onEnd, { passive: true });
+        return () => {
+            el.removeEventListener("touchstart", onStart);
+            el.removeEventListener("touchmove", onMove);
+            el.removeEventListener("touchend", onEnd);
+        };
+    }, [activeProfilePhotoHashes.length, showMobileCarousel, isDesktopLike, mobileCarouselRef]);
+
+    const showGlassQuickActions = showMobileCarousel && !isDesktopLike && activeProfilePhotoHashes.length > 0 && Boolean(messageProfileId && onMessageProfile);
+    const glassActionButtonClassName = "inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/45 bg-white/18 text-white shadow-[0_10px_30px_-16px_rgba(0,0,0,0.9)] backdrop-blur-md transition hover:bg-white/24 disabled:opacity-60";
 
     const renderPhotoCreatedBadge = (hash: string) => {
         const meta = photoCreatedAtByHash[hash] ?? null;
@@ -222,20 +301,6 @@ export function ProfileDetailsContent({
         );
     };
 
-    const handleBlockAction = () => {
-        if (!messageProfileId || isBlockingProfile) return;
-        if (isBlocked) onUnblockProfile?.(messageProfileId);
-        else onBlockProfile?.(messageProfileId);
-    };
-
-    const handleFavoriteAction = () => {
-        if (!messageProfileId || !onToggleFavoriteProfile || isTogglingFavorite) return;
-        void onToggleFavoriteProfile(messageProfileId, isFavorite);
-    };
-
-    const showGlassQuickActions = showMobileCarousel && !isDesktopLike && activeProfilePhotoHashes.length > 0 && Boolean(messageProfileId && onMessageProfile);
-    const glassActionButtonClassName = "inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/45 bg-white/18 text-white shadow-[0_10px_30px_-16px_rgba(0,0,0,0.9)] backdrop-blur-md transition hover:bg-white/24 disabled:opacity-60";
-
     return (
         <div className="grid gap-6">
             {/* TAP BURST OVERLAY */}
@@ -249,28 +314,21 @@ export function ProfileDetailsContent({
 
             <div className="w-full">
                 {activeProfilePhotoHashes.length > 0 ? (
-                    showMobileCarousel ? (
-                        <div className="w-full relative">
-                            {/* Highly Responsive Carousel (Edge-to-edge mobile, Rigid compact desktop) */}
-                            <div 
-                                onMouseEnter={() => setIsHovered(true)}
-                                onMouseLeave={() => setIsHovered(false)}
-                                className={cn(
-                                    "select-none touch-pan-y relative w-full",
-                                    isDesktopLike 
-                                        ? "mx-auto !w-[340px] rounded-2xl border border-white/10 dark:border-white/5 shadow-lg overflow-hidden" 
-                                        : "-mx-[var(--app-px)] rounded-none border-0 shadow-none overflow-hidden"
-                                )}
-                            >
+                    showMobileCarousel && !isDesktopLike ? (
+                        <>
+                            <div className="relative sm:hidden -mx-[var(--app-px)]">
                                 <div
                                     ref={mobileCarouselRef}
-                                    onScroll={handleMobileCarouselScroll}
-                                    className="flex snap-x snap-mandatory overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                                    className="relative h-[min(78dvh,calc(100vw*1.55))] overflow-hidden"
                                 >
                                     {activeProfilePhotoHashes.map((hash, index) => (
                                         <div
                                             key={hash}
-                                            className="relative aspect-[3/4] w-full shrink-0 snap-center snap-always overflow-hidden bg-[var(--surface-2)]"
+                                            style={{
+                                                transform: `translateY(calc(${(index - mobileCarouselPhotoIndex) * 100}% + ${dragDelta}px))`,
+                                                transition: isDraggingRef.current ? "none" : "transform 300ms ease-out",
+                                            }}
+                                            className="absolute inset-0 bg-[var(--surface-2)]"
                                         >
                                             <button
                                                 type="button"
@@ -286,99 +344,89 @@ export function ProfileDetailsContent({
                                             {renderPhotoCreatedBadge(hash)}
                                         </div>
                                     ))}
-                                </div>
+                                    <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-36 bg-gradient-to-b from-black/65 to-transparent" />
 
-                                {/* Desktop Floating Chevrons */}
-                                {activeProfilePhotoHashes.length > 1 && isDesktopLike && (
-                                    <>
-                                        <button
-                                            type="button"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                if (mobileCarouselRef.current) mobileCarouselRef.current.scrollBy({ left: -mobileCarouselRef.current.clientWidth, behavior: "smooth" });
-                                            }}
-                                            className={cn(
-                                                "absolute left-2.5 top-1/2 -translate-y-1/2 z-20 inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/20 bg-black/45 text-white backdrop-blur-md transition-all duration-300 active:scale-95",
-                                                isHovered ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-                                            )}
-                                        >
-                                            <ChevronLeft className="h-4 w-4" />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                if (mobileCarouselRef.current) mobileCarouselRef.current.scrollBy({ left: mobileCarouselRef.current.clientWidth, behavior: "smooth" });
-                                            }}
-                                            className={cn(
-                                                "absolute right-2.5 top-1/2 -translate-y-1/2 z-20 inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/20 bg-black/45 text-white backdrop-blur-md transition-all duration-300 active:scale-95",
-                                                isHovered ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-                                            )}
-                                        >
-                                            <ChevronRight className="h-4 w-4" />
-                                        </button>
-                                    </>
-                                )}
-
-                                {/* Mobile Glass Quick Actions */}
-                                {showGlassQuickActions && messageProfileId ? (
-                                    <div className="pointer-events-none absolute inset-x-0 bottom-6 z-20">
-                                        <div className="pointer-events-auto flex items-center justify-center gap-3 px-3">
-                                            <button
-                                                type="button"
-                                                onClick={() => onMessageProfile?.(messageProfileId)}
-                                                className={glassActionButtonClassName}
-                                                aria-label={t("profile_details.message")}
-                                            >
-                                                <MessageCircle className="h-4 w-4" />
-                                            </button>
-                                            <TapSelector
-                                                profileId={messageProfileId}
-                                                onTapProfile={handleTapWithBurst}
-                                                isTapDisabled={isTapDisabled}
-                                                isTapBlocked={isTapBlocked}
-                                                isTapActive={isTapActive}
-                                                tapId={tapId}
-                                                tapButtonClassName={tapButtonClassName}
-                                            />
-                                            {onToggleFavoriteProfile ? (
+                                    {/* Mobile Glass Quick Actions */}
+                                    {showGlassQuickActions && messageProfileId ? (
+                                        <div className="glass-actions-container pointer-events-none absolute inset-x-0 bottom-6 z-20">
+                                            <div className="pointer-events-auto flex items-center justify-center gap-3 px-3">
                                                 <button
                                                     type="button"
-                                                    onClick={handleFavoriteAction}
-                                                    disabled={isTogglingFavorite}
+                                                    onClick={() => onMessageProfile?.(messageProfileId)}
                                                     className={glassActionButtonClassName}
-                                                    aria-label={isFavorite ? t("profile_details.unfavorite") : t("browse_filters.options.favorites")}
+                                                    aria-label={t("profile_details.message")}
                                                 >
-                                                    {isTogglingFavorite ? <Loader2 className="h-4 w-4 animate-spin" /> : <Heart className={`h-4 w-4 ${isFavorite ? "fill-current" : ""}`} />}
+                                                    <MessageCircle className="h-4 w-4" />
                                                 </button>
-                                            ) : null}
-                                            <button
-                                                type="button"
-                                                onClick={() => { if (messageProfileId && onTriangleProfile) onTriangleProfile(messageProfileId); }}
-                                                disabled={isTriangleDisabled || isLocatingProfile}
-                                                className={glassActionButtonClassName}
-                                                title={isLocatingProfile ? "Locating..." : "Locate"}
-                                            >
-                                                {isLocatingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : <Triangle className="h-4 w-4" />}
-                                            </button>
+                                                <TapSelector
+                                                    profileId={messageProfileId}
+                                                    onTapProfile={handleTapWithBurst}
+                                                    isTapDisabled={isTapDisabled}
+                                                    isTapBlocked={isTapBlocked}
+                                                    isTapActive={isTapActive}
+                                                    tapId={tapId}
+                                                    tapButtonClassName={tapButtonClassName}
+                                                />
+                                                {onToggleFavoriteProfile ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleFavoriteAction}
+                                                        disabled={isTogglingFavorite}
+                                                        className={glassActionButtonClassName}
+                                                        aria-label={isFavorite ? t("profile_details.unfavorite") : t("browse_filters.options.favorites")}
+                                                    >
+                                                        {isTogglingFavorite ? <Loader2 className="h-4 w-4 animate-spin" /> : <Heart className={`h-4 w-4 ${isFavorite ? "fill-current" : ""}`} />}
+                                                    </button>
+                                                ) : null}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { if (messageProfileId && onTriangleProfile) onTriangleProfile(messageProfileId); }}
+                                                    disabled={isTriangleDisabled || isLocatingProfile}
+                                                    className={glassActionButtonClassName}
+                                                    title={isLocatingProfile ? "Locating..." : "Locate"}
+                                                >
+                                                    {isLocatingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : <Triangle className="h-4 w-4" />}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : null}
+                                </div>
+                                {activeProfilePhotoHashes.length > 1 && (
+                                    <div className="pointer-events-none absolute right-3 inset-y-0 z-20 flex flex-col items-center justify-center">
+                                        <div className="flex flex-col items-center gap-1.5 rounded-full bg-black/30 px-[5px] py-[10px] backdrop-blur-sm">
+                                            {activeProfilePhotoHashes.map((hash, index) => (
+                                                <span
+                                                    key={`${hash}-dot`}
+                                                    className={`w-1.5 rounded-full transition-[height,background-color] duration-300 ease-out ${index === mobileCarouselPhotoIndex ? "h-3 bg-white" : "h-1.5 bg-white/40"}`}
+                                                    aria-hidden="true"
+                                                />
+                                            ))}
                                         </div>
                                     </div>
-                                ) : null}
+                                )}
                             </div>
 
-                            {/* Dots Indicator */}
-                            {activeProfilePhotoHashes.length > 1 ? (
-                                <div className="mt-3 flex items-center justify-center gap-1.5">
-                                    {activeProfilePhotoHashes.map((hash, index) => (
-                                        <span
-                                            key={`${hash}-dot`}
-                                            className={`h-1.5 rounded-full transition-all ${index === mobileCarouselPhotoIndex ? "w-3 bg-[var(--text)]" : "w-1.5 bg-[var(--border)]"}`}
-                                            aria-hidden="true"
-                                        />
-                                    ))}
-                                </div>
-                            ) : null}
-                        </div>
+                            <div className="hidden grid-cols-3 gap-2 sm:grid sm:grid-cols-4 lg:grid-cols-6">
+                                {activeProfilePhotoHashes.map((hash, index) => (
+                                    <button
+                                        type="button"
+                                        key={hash}
+                                        onClick={() => openPhotoViewer(index)}
+                                        className="overflow-hidden rounded-xl border border-[var(--border)]"
+                                        aria-label={t("profile_details.open_photo", { index: index + 1 })}
+                                    >
+                                        <div className="relative">
+                                            <img
+                                                src={getThumbImageUrl(hash, "320x320")}
+                                                alt={t("profile_details.photo_alt", { name: activeProfileName })}
+                                                className="aspect-square w-full object-cover"
+                                            />
+                                            {renderPhotoCreatedBadge(hash)}
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        </>
                     ) : (
                         <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
                             {activeProfilePhotoHashes.map((hash, index) => (
@@ -387,9 +435,14 @@ export function ProfileDetailsContent({
                                     key={hash}
                                     onClick={() => openPhotoViewer(index)}
                                     className="overflow-hidden rounded-xl border border-[var(--border)]"
+                                    aria-label={t("profile_details.open_photo", { index: index + 1 })}
                                 >
                                     <div className="relative">
-                                        <img src={getThumbImageUrl(hash, "320x320")} className="aspect-square w-full object-cover" />
+                                        <img
+                                            src={getThumbImageUrl(hash, "320x320")}
+                                            alt={t("profile_details.photo_alt", { name: activeProfileName })}
+                                            className="aspect-square w-full object-cover"
+                                        />
                                         {renderPhotoCreatedBadge(hash)}
                                     </div>
                                 </button>
@@ -458,60 +511,36 @@ export function ProfileDetailsContent({
                 </div>
 
                 {/* Regular Desktop / Non-Glass Actions */}
-                {messageProfileId && onMessageProfile ? (
-                    <div className="mt-3 grid gap-2">
-                        {!showGlassQuickActions && (
-                            <>
-                                <div className="flex items-center justify-center gap-4 py-1">
-                                    <button
-                                        type="button"
-                                        onClick={() => onMessageProfile(messageProfileId)}
-                                        className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] shadow transition hover:bg-[var(--surface)]"
-                                    >
-                                        <MessageCircle className="h-5 w-5" />
-                                    </button>
-                                    <TapSelector
-                                        profileId={messageProfileId}
-                                        onTapProfile={handleTapWithBurst}
-                                        isTapDisabled={isTapDisabled}
-                                        isTapBlocked={isTapBlocked}
-                                        isTapActive={isTapActive}
-                                        tapId={tapId}
-                                        tapButtonClassName={tapButtonClassName}
-                                    />
-                                    {onToggleFavoriteProfile ? (
-                                        <button
-                                            type="button"
-                                            onClick={handleFavoriteAction}
-                                            disabled={isTogglingFavorite}
-                                            className={`inline-flex h-12 w-12 items-center justify-center rounded-full border shadow transition disabled:opacity-70 ${
-                                                isFavorite ? "border-[var(--accent)] bg-[var(--surface-2)] text-[var(--accent)]" : "border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] hover:bg-[var(--surface)]"
-                                            }`}
-                                        >
-                                            {isTogglingFavorite ? <Loader2 className="h-5 w-5 animate-spin" /> : <Star className={`h-5 w-5 ${isFavorite ? "fill-[var(--accent)]" : ""}`} />}
-                                        </button>
-                                    ) : null}
-                                    <button
-                                        type="button"
-                                        onClick={() => { if (messageProfileId && onTriangleProfile) onTriangleProfile(messageProfileId); }}
-                                        disabled={isTriangleDisabled}
-                                        className={`inline-flex h-12 w-12 items-center justify-center rounded-full border shadow transition ${isTriangleDisabled ? "border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-muted)] opacity-50" : "border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] hover:bg-[var(--surface)]"}`}
-                                    >
-                                        <Triangle className="h-5 w-5" />
-                                    </button>
-                                </div>
-                                {(onBlockProfile || onUnblockProfile) ? (
-                                    <button
-                                        type="button"
-                                        onClick={handleBlockAction}
-                                        className={`relative z-20 inline-flex h-8 w-full items-center justify-center rounded-lg border px-3 text-xs font-medium transition disabled:opacity-70 ${
-                                            isBlocked ? "border-[var(--border)] bg-transparent text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--text)]" : "border-red-500/25 bg-transparent text-red-400/70 hover:border-red-400/50 hover:text-red-400"
-                                        }`}
-                                    >
-                                        {isBlockingProfile ? (isBlocked ? t("profile_details.unblock_in_progress") : t("profile_details.block_in_progress")) : (isBlocked ? t("profile_details.unblock") : t("profile_details.block"))}
-                                    </button>
-                                ) : null}
-                            </>
+                {isDesktopLike && messageProfileId && onMessageProfile ? (
+                    <div className="mt-3 flex items-center justify-center gap-4 py-1">
+                        <button
+                            type="button"
+                            onClick={() => onMessageProfile(messageProfileId)}
+                            className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] shadow transition hover:bg-[var(--surface)]"
+                            aria-label={t("profile_details.message")}
+                        >
+                            <MessageCircle className="h-5 w-5" />
+                        </button>
+                        <TapSelector
+                            profileId={messageProfileId}
+                            onTapProfile={handleTapWithBurst}
+                            isTapDisabled={isTapDisabled}
+                            isTapBlocked={isTapBlocked}
+                            isTapActive={isTapActive}
+                            tapId={tapId}
+                            tapButtonClassName={tapButtonClassName}
+                        />
+                        {onTriangleProfile && (
+                            <button
+                                type="button"
+                                onClick={() => onTriangleProfile(messageProfileId)}
+                                disabled={isTriangleDisabled || isLocatingProfile}
+                                className={`inline-flex h-12 w-12 items-center justify-center rounded-full border shadow transition ${isTriangleDisabled ? "border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-muted)] opacity-50" : "border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] hover:bg-[var(--surface)]"}`}
+                                aria-label="Run location finder"
+                                title={isLocatingProfile ? "Locating..." : "Locate"}
+                            >
+                                {isLocatingProfile ? <Loader2 className="h-5 w-5 animate-spin" /> : <Triangle className="h-5 w-5" />}
+                            </button>
                         )}
                     </div>
                 ) : null}

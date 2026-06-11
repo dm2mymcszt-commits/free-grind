@@ -107,6 +107,16 @@ export function GridProfilePage() {
         return localStorage.getItem(SKIP_UNBLOCK_CONFIRM_KEY) === "true";
     });
 
+	const [isDesktopLike, setIsDesktopLike] = useState(() =>
+		window.matchMedia("(hover: hover) and (pointer: fine)").matches
+	);
+	useEffect(() => {
+		const query = window.matchMedia("(hover: hover) and (pointer: fine)");
+		const update = () => setIsDesktopLike(query.matches);
+		query.addEventListener("change", update);
+		return () => query.removeEventListener("change", update);
+	}, []);
+
     // --- CUSTOM DIALOGS STATE ---
     const [isLocateConfirmOpen, setIsLocateConfirmOpen] = useState(false);
     const [selectedRounds, setSelectedRounds] = useState(15);
@@ -265,6 +275,14 @@ export function GridProfilePage() {
 
         return hashes;
     }, [activeProfile]);
+
+	const handleSendQuickMessage = async (targetProfileId: string, text: string) => {
+		try {
+			await apiFunctions.sendText({ targetProfileId: Number(targetProfileId), text });
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : t("chat.errors.send_failed"));
+		}
+	};
 
     const handleMessageProfile = (targetProfileId: string) => {
         const nextParams = new URLSearchParams();
@@ -676,7 +694,6 @@ export function GridProfilePage() {
         if (!finalCoordinates) return;
         
         const url = `https://www.google.com/maps/search/?api=1&query=${finalCoordinates.lat},${finalCoordinates.lon}`;
-        const geoIntent = `geo:${finalCoordinates.lat},${finalCoordinates.lon}?q=${finalCoordinates.lat},${finalCoordinates.lon}`;
         
         // 1. Try Native Tauri Opener First
         try {
@@ -711,7 +728,7 @@ export function GridProfilePage() {
     return (
         <>
             <ProfileDetailsModal
-                variant="page"
+                variant={isDesktopLike ? "modal" : "page"}
                 isOpen
                 onClose={() => {
                     navigate(safeReturnTo, { replace: true });
@@ -719,6 +736,7 @@ export function GridProfilePage() {
                 onPrevProfile={handlePrevProfile}
                 onNextProfile={handleNextProfile}
                 onMessageProfile={handleMessageProfile}
+                onSendQuickMessage={handleSendQuickMessage}
                 onTriangleProfile={handleTriangleProfile}
                 onBlockProfile={handleBlockProfile}
                 onUnblockProfile={handleUnblockProfile}
@@ -727,7 +745,7 @@ export function GridProfilePage() {
                 isTogglingFavorite={Boolean(
                     profileId && mutatingFavoriteProfileId === profileId,
                 )}
-                isBlocked={blockedProfileIds.has(profileId || "")}
+                isBlocked={profileId ? blockedProfileIds.has(profileId) : false}
                 isBlockingProfile={isBlockingProfile || isUnblockingProfile}
                 isLocatingProfile={isLocatingProfile}
                 onTapProfile={handleTapProfile}

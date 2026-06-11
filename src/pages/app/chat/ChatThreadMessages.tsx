@@ -1,9 +1,8 @@
-import { Album, Ellipsis, Hourglass, Lock, Mic, Play, Reply, VideoOff, ImageOff, Loader2, Languages, Ban, MapPin } from "lucide-react";
+import { Album, Ellipsis, Hourglass, Lock, Mic, Play, Reply, VideoOff, ImageOff, Loader2, Languages, Ban } from "lucide-react";
 import { LeafletLocationPreview } from "../gridpage/components/LeafletLocationPreview";
 import { AudioMessagePlayer } from "./AudioMessagePlayer";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Fragment, useEffect, useState, useMemo, useCallback, useRef } from "react";
-import { Avatar } from "../../../components/ui/avatar";
 import { ProfileImage } from "../../../components/ui/profile-image";
 import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
@@ -27,8 +26,7 @@ import {
     getMessageTakenOnGrindr,
     getMessageText,
     getMessageVideoUrl,
-    isLocalClientMessageId,
-    getMessagePreviewLabel
+    isLocalClientMessageId
 } from "./chatUtils";
 
 type ChatThreadMessagesProps = {

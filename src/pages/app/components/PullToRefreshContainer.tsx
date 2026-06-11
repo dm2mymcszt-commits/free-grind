@@ -19,6 +19,8 @@ type PullToRefreshContainerProps = {
 	spinnerColor?: string;
 	spinnerIconColor?: string;
 	contentClassName?: string;
+	onTouchStartExtra?: (e: any) => void;
+	onTouchEndExtra?: (e: any) => void;
 };
 
 export function PullToRefreshContainer({
@@ -37,6 +39,8 @@ export function PullToRefreshContainer({
 	spinnerColor,
 	spinnerIconColor,
 	contentClassName,
+	onTouchStartExtra,
+	onTouchEndExtra,
 }: PullToRefreshContainerProps) {
 	const { t } = useTranslation();
 	const [pullDistance, setPullDistance] = useState(0);
@@ -70,6 +74,7 @@ export function PullToRefreshContainer({
 		if (!element) return;
 
 		const onTouchStart = (e: TouchEvent) => {
+			onTouchStartExtra?.(e);
 			if (!canStartPull()) {
 				touchStartYRef.current = null;
 				isPullingRef.current = false;
@@ -114,7 +119,8 @@ export function PullToRefreshContainer({
 			}
 		};
 
-		const onTouchEnd = () => {
+		const onTouchEnd = (e: TouchEvent) => {
+			onTouchEndExtra?.(e);
 			if (isPullingRef.current && pullDistance >= thresholdPx) {
 				void handleRefresh();
 			} else {
@@ -136,7 +142,7 @@ export function PullToRefreshContainer({
 			element.removeEventListener("touchend", onTouchEnd);
 			element.removeEventListener("touchcancel", onTouchEnd);
 		};
-	}, [canStartPull, handleRefresh, maxPullPx, pullDistance, thresholdPx]);
+	}, [canStartPull, handleRefresh, maxPullPx, pullDistance, thresholdPx, onTouchStartExtra, onTouchEndExtra]);
 
 	const rotation = !isRefreshing
 		? 720 * (1 - Math.pow(1 - pullDistance / maxPullPx, 1.6))

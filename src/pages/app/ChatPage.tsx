@@ -1,8 +1,6 @@
 import {
-    ChevronLeft,
     Loader2,
     X,
-    ChevronRight,
 } from "lucide-react";
 import {
     type FormEvent,
@@ -53,7 +51,6 @@ import {
 import { ChatSearchPage } from "./ChatSearchPage";
 import { ChatInboxPanel } from "./chat/ChatInboxPanel";
 import { ChatThreadPanel } from "./chat/ChatThreadPanel";
-import { ChatAlbumSheet } from "./chat/ChatAlbumSheet";
 import { ChatMediaSheet } from "./chat/ChatMediaSheet";
 import * as chatLog from "../../services/chatLog";
 import {
@@ -90,7 +87,6 @@ function isSignedUrlExpired(url: string): boolean {
 	}
 }
 import { createPortal } from "react-dom";
-import { useDesktopBreakpoint } from "../../hooks/useDesktopBreakpoint";
 import { appLog } from "../../utils/logger";
 import {
     clearUnreadCountForProfile,
@@ -498,7 +494,6 @@ import { processAutoDownload } from "../../services/autoDownloader";
     }, [isAlbumOpen]);
 
     const [isAlbumViewerLoading, setIsAlbumViewerLoading] = useState(false);
-    const [isAlbumSheetOpen, setIsAlbumSheetOpen] = useState(false);
     const [isChatMediaSheetOpen, setIsChatMediaSheetOpen] = useState(false);
     
     type ThreadMediaItem = PhotoViewerMedia & { meta?: { takenOnGrindr: boolean; createdAtLabel: string | null; timestamp: number } };
@@ -2001,15 +1996,10 @@ import { processAutoDownload } from "../../services/autoDownloader";
             return;
         }
 
-        const container = threadScrollContainerRef.current;
         const isNewConversation =
             lastLoadedConversationIdRef.current !== selectedConversationId;
 
-        const isNearBottom = container
-            ? container.scrollHeight - container.scrollTop - container.clientHeight < 250
-            : true;
-
-        const iSentLastMessage = userId != null && Number(lastMessage.senderId) === Number(userId);
+        // const iSentLastMessage = userId != null && Number(lastMessage.senderId) === Number(userId);
 
         // Always scroll on new conversation OR if a new message arrived at the end
         if (isNewConversation || isNewMessageArrival) {
@@ -3881,8 +3871,6 @@ import { processAutoDownload } from "../../services/autoDownloader";
             selectedActionMessageMine={selectedActionMessageMine}
             albumViewer={albumViewer}
             onCloseAlbumViewer={() => { setAlbumViewer(null); setAlbumViewerMediaIndex(null); }}
-            isAlbumSheetOpen={isAlbumSheetOpen}
-            onOpenMediaSheet={() => setIsChatMediaSheetOpen(true)}
         />
     );
 
