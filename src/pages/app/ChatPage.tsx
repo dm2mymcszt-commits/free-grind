@@ -3891,7 +3891,7 @@ import { processAutoDownload } from "../../services/autoDownloader";
                         }}
                     >
                         <div
-                            className="mx-auto flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.6),_inset_0_1px_0_rgba(255,255,255,0.1)] backdrop-blur-[30px] border border-white/10 dark:border-white/5 bg-[color-mix(in_srgb,var(--surface)_85%,transparent)] sm:h-full sm:rounded-[2.5rem] relative"
+                            className="mx-auto flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden shadow-[0_20px_80px_rgba(0,0,0,0.8),_inset_0_1px_0_rgba(255,255,255,0.2)] backdrop-blur-[40px] border border-white/20 dark:border-white/10 bg-[color-mix(in_srgb,var(--surface)_70%,transparent)] sm:h-[95dvh] sm:mt-[2.5dvh] sm:rounded-[3rem] relative"
                             onClick={(event) => event.stopPropagation()}
                         >
                             {/* --- MODERN HEADER --- */}
@@ -3907,7 +3907,7 @@ import { processAutoDownload } from "../../services/autoDownloader";
                                             {albumViewer.albumName?.trim() || "Album"}
                                         </h2>
                                         <p className="mt-1.5 text-sm font-medium text-[var(--text-muted)]">
-                                            {albumViewer.content.length} {t("shared_albums.items_count", { count: albumViewer.content.length, defaultValue: "Items" })}
+                                            {t("shared_albums.items_count", { count: albumViewer.content.length, defaultValue: `${albumViewer.content.length} items` })}
                                         </p>
                                     </div>
                                     <button
@@ -3926,15 +3926,15 @@ import { processAutoDownload } from "../../services/autoDownloader";
                             </div>
 
                             {/* --- PERFECTLY CROPPED APPLE-PHOTOS STYLE GRID --- */}
-                            <div className="relative z-10 flex-1 overflow-y-auto bg-transparent p-2 sm:p-6">
-                                <div className="content-start grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-4 lg:grid-cols-5">
+                            <div className="relative z-10 flex-1 overflow-y-auto bg-transparent [scrollbar-width:none] [&::-webkit-scrollbar]:hidden p-4 sm:p-6">
+                                <div className="content-start grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 sm:gap-4 md:gap-5">
                                     {albumViewer.content.map((item, index) => {
                                         const mediaUrl = item.url || item.thumbUrl || item.coverUrl;
                                         if (!mediaUrl) {
                                             return (
                                                 <div
                                                     key={item.contentId}
-                                                    className="flex aspect-square w-full items-center justify-center bg-white/5 text-[10px] text-white/40 ring-1 ring-white/10 sm:rounded-2xl"
+                                                    className="flex aspect-square w-full items-center justify-center bg-white/5 text-[10px] text-white/40 ring-1 ring-white/10 rounded-2xl sm:rounded-[1.25rem]"
                                                 >
                                                     Unavailable
                                                 </div>
@@ -3946,7 +3946,7 @@ import { processAutoDownload } from "../../services/autoDownloader";
                                                 type="button"
                                                 key={item.contentId}
                                                 onClick={() => openAlbumMediaViewer(index)}
-                                                className="group relative aspect-square w-full overflow-hidden bg-[color-mix(in_srgb,var(--surface)_60%,transparent)] ring-1 ring-white/10 transition-all duration-500 hover:z-10 hover:scale-[1.03] hover:ring-[var(--accent)] hover:shadow-[0_0_20px_color-mix(in_srgb,var(--accent)_35%,transparent)] sm:rounded-2xl"
+                                                className="group relative aspect-square w-full overflow-hidden rounded-2xl sm:rounded-[1.25rem] bg-[color-mix(in_srgb,var(--surface-2)_50%,transparent)] backdrop-blur-md border border-white/20 dark:border-white/10 transition-all duration-500 hover:z-10 hover:scale-[1.05] hover:border-white/50 hover:shadow-[0_15px_40px_-10px_rgba(0,0,0,0.6),_0_0_20px_color-mix(in_srgb,var(--accent)_40%,transparent)] active:scale-[0.95]"
                                             >
                                                 {item.contentType?.startsWith("video/") ? (
                                                     <video 
