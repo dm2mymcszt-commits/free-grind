@@ -1210,11 +1210,12 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 
 					{/* Bottom actions bar — desktop modal */}
 					{messageProfileId && (
-						<div className="pointer-events-none absolute inset-x-0 bottom-4 z-30 flex justify-center px-4">
+						<div className="pointer-events-none absolute inset-x-0 bottom-6 md:bottom-8 z-30 flex justify-center px-4">
 							<div
 								ref={controlsBarRef}
-								className="pointer-events-auto flex w-full max-w-[440px] items-center gap-1 rounded-full border border-white/10 dark:border-white/5 p-1.5 backdrop-blur-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)]"
+								className="pointer-events-auto flex w-full max-w-[400px] md:max-w-[500px] items-center gap-1 rounded-full border border-white/10 dark:border-white/5 p-1.5 backdrop-blur-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)]"
 								style={{
+									backgroundColor: "rgba(15, 17, 21, 0.25)",
 									background: "color-mix(in srgb, var(--surface) 25%, transparent)"
 								}}
 								onPointerDown={(e) => e.stopPropagation()}
@@ -1232,7 +1233,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 									}
 								}}
 								placeholder={t("profile_details.quick_message_placeholder", "Message...")}
-								className="relative h-11 w-full rounded-full bg-transparent px-4 text-sm text-[var(--text)] placeholder:text-[var(--text-muted)] outline-none"
+								className="relative h-12 w-full rounded-full bg-transparent px-4 text-sm text-[var(--text)] placeholder:text-[var(--text-muted)] outline-none"
 								style={{ opacity: barInputVisible ? 1 : 0, transition: barInputVisible ? "opacity 0.25s" : "opacity 0.12s" }}
 							/>
 						</div>
@@ -1250,7 +1251,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 										onClick={() => fireTap(id)}
 										onMouseEnter={() => setBarTapHoverId(id)}
 										onMouseLeave={() => setBarTapHoverId(null)}
-										className={`flex h-11 w-13 cursor-pointer items-center justify-center text-2xl leading-none transition-all duration-150 ${barTapHoverId === id ? "origin-bottom scale-[2] opacity-100" : "opacity-60"}`}
+										className={`flex h-12 w-14 cursor-pointer items-center justify-center text-[28px] leading-none transition-all duration-150 ${barTapHoverId === id ? "origin-bottom scale-[2] opacity-100" : "opacity-60"}`}
 										style={barTapHoverId === id ? { filter: barTapGlow(id) } : undefined}
 									>
 										{barTapEmoji(id)}
@@ -1267,16 +1268,16 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 							onPointerUp={handleBarTapPointerUp}
 							onPointerCancel={() => { setBarTapPickerOpen(false); setBarTapHoverId(null); barTapStickyRef.current = false; if (barTapLongPressRef.current) clearTimeout(barTapLongPressRef.current); barInputTimerRef.current = setTimeout(() => setBarInputVisible(true), 210); }}
 							disabled={isTapDisabled}
-							className={`tap-btn-base relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-none bg-transparent text-2xl leading-none transition-all touch-none select-none disabled:opacity-40 ${barTapPickerOpen ? "text-[var(--text-muted)]" : isTapActive || barTapHoverId !== null ? "text-white" : "text-[var(--text-muted)]"}`}
+							className={`tap-btn-base relative inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-none bg-transparent text-[28px] leading-none transition-all touch-none select-none disabled:opacity-40 ${barTapPickerOpen ? "text-[var(--text-muted)]" : isTapActive || barTapHoverId !== null ? "text-white" : "text-[var(--text-muted)]"}`}
 							style={!barTapPickerOpen && barTapHoverId !== null ? { filter: barTapGlow(barTapHoverId) } : undefined}
 						>
 							{barTapPickerOpen
-								? <X className="h-5 w-5" strokeWidth={2} />
+								? <X className="h-6 w-6" strokeWidth={2} />
 								: barTapHoverId !== null
 									? barTapEmoji(barTapHoverId)
 									: isTapActive
 										? barTapEmoji(tapVisualState.tapId)
-										: <Flame className="h-5 w-5" strokeWidth={1.8} />
+										: <Flame className="h-6 w-6" strokeWidth={1.8} />
 							}
 						</button>
 
@@ -1292,9 +1293,9 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 										onMessageProfile?.(String(messageProfileId));
 									}
 								}}
-								className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-none bg-transparent text-[var(--accent)] transition hover:brightness-110"
+								className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-none bg-transparent text-[var(--accent)] transition hover:brightness-110"
 							>
-								<MessageCircle className="h-5 w-5" strokeWidth={1.8} />
+								<MessageCircle className="h-6 w-6" strokeWidth={1.8} />
 							</button>
 						)}
 						</div>
