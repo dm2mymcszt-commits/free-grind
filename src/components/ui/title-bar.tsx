@@ -60,7 +60,7 @@ export function TitleBar() {
 			onMouseDown={handleDragStart}
 		>
 			{/* Logo + App Name */}
-			<div className="flex items-center gap-2 px-3 text-[var(--text-muted)]">
+			<div className="flex items-center gap-2 px-3 text-gray-200">
 				<img
 					src={freegrindLogo}
 					alt="Free Grind"
@@ -76,7 +76,7 @@ export function TitleBar() {
 				<button
 					onMouseDown={(e) => e.stopPropagation()}
 					onClick={handleMinimize}
-					className="h-full px-3 inline-flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-white/10 transition-colors"
+					className="h-full px-3 inline-flex items-center justify-center text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
 					title="Minimize"
 				>
 					<Minus className="w-4 h-4" />
@@ -84,7 +84,7 @@ export function TitleBar() {
 				<button
 					onMouseDown={(e) => e.stopPropagation()}
 					onClick={handleMaximize}
-					className="h-full px-3 inline-flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-white/10 transition-colors"
+					className="h-full px-3 inline-flex items-center justify-center text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
 					title="Maximize"
 				>
 					<Square className="w-3.5 h-3.5" />
@@ -92,7 +92,7 @@ export function TitleBar() {
 				<button
 					onMouseDown={(e) => e.stopPropagation()}
 					onClick={handleClose}
-					className="h-full px-3 inline-flex items-center justify-center text-[var(--text-muted)] hover:text-white hover:bg-red-500/80 transition-colors rounded-tr-[20px]"
+					className="h-full px-3 inline-flex items-center justify-center text-gray-300 hover:text-white hover:bg-red-500/80 transition-colors rounded-tr-[12px]"
 					title="Close"
 				>
 					<X className="w-4 h-4" />

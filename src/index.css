@@ -376,7 +376,7 @@
 	}
 
 	body.has-titlebar #app {
-		/* Inset the app slightly to prevent shadow edge bleeding */
+		/* Inset the app slightly to prevent edge clipping */
 		height: calc(100vh - 2px);
 		width: calc(100% - 2px);
 		margin: 1px;
@@ -385,9 +385,8 @@
 		overflow: hidden;
 		background: var(--bg);
 		
-		/* Subtle inner highlight covers up any remaining dark anti-aliasing pixels */
+		/* Subtle inner highlight to make the glass edge pop */
 		border: 1px solid rgba(255, 255, 255, 0.08);
-		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
 		
 		/* Creates containing block so position:fixed children (titlebar, navbar, glow)
 		   are clipped by overflow:hidden + border-radius */
