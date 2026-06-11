@@ -450,10 +450,10 @@ export function ProfileDetailsContent({
                         </div>
                     )
                 ) : (
-                    <div className="w-full max-w-sm mx-auto overflow-hidden rounded-2xl border border-white/10 aspect-square flex items-center justify-center relative" style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--surface-2) 80%, transparent), color-mix(in srgb, var(--surface) 60%, transparent))', backdropFilter: 'blur(20px)' }}>
-                        <div className="absolute inset-0 rounded-2xl" style={{ background: 'radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--accent) 6%, transparent), transparent 70%)' }} />
-                        <div className="relative animate-pulse" style={{ animationDuration: '3s' }}>
-                            <ProfileImage alt={t("profile_details.default_profile")} />
+                    <div className="w-full max-w-sm mx-auto overflow-hidden rounded-2xl border border-white/10 aspect-square flex items-center justify-center relative backdrop-blur-[20px]" style={{ background: 'color-mix(in srgb, var(--surface) 25%, transparent)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2), 0 12px 40px rgba(0,0,0,0.45)' }}>
+                        <div className="absolute inset-0 rounded-2xl" style={{ background: 'radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 60%)' }} />
+                        <div className="relative flex h-full w-full items-center justify-center" style={{ filter: 'drop-shadow(0 0 20px rgba(255,255,255,0.08))' }}>
+                            <ProfileImage alt={t("profile_details.default_profile")} className="bg-transparent text-[var(--text-muted)]" iconClassName="h-1/3 w-1/3 opacity-70" />
                         </div>
                     </div>
                 )}
@@ -461,10 +461,10 @@ export function ProfileDetailsContent({
 
             {/* PROFILE HEADER & STANDARD ACTIONS */}
             <div className="px-3">
-                <div className="rounded-2xl border border-white/[0.07] p-4" style={{ background: 'color-mix(in srgb, var(--surface-2) 50%, transparent)', backdropFilter: 'blur(12px)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), 0 4px 24px rgba(0,0,0,0.12)' }}>
+                <div className="rounded-2xl border border-white/10 p-5 backdrop-blur-[20px]" style={{ background: 'color-mix(in srgb, var(--surface) 25%, transparent)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2), 0 12px 40px rgba(0,0,0,0.45)' }}>
                 <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                        <h2 className="text-2xl font-bold leading-tight tracking-tight sm:text-3xl">
+                        <h2 className="text-2xl font-bold leading-tight tracking-tight sm:text-3xl" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.3)' }}>
                             {activeProfileName}
                             {activeProfile.age && Number.isFinite(activeProfile.age) && (
                                 <span className="ml-2 text-xl font-normal text-[var(--text-muted)] sm:text-2xl">
@@ -475,7 +475,7 @@ export function ProfileDetailsContent({
                         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[var(--text-muted)]">
                             {profileStatusLabel && (
                                 <span className="flex items-center gap-1.5">
-                                    <span className={`h-2 w-2 rounded-full ${profileStatusLevel === "online" ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]" : profileStatusLevel === "recent" ? "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.4)]" : "bg-[var(--text-muted)]/40"}`} />
+                                    <span className={`h-2.5 w-2.5 rounded-full ${profileStatusLevel === "online" ? "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.6)]" : profileStatusLevel === "recent" ? "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.5)]" : "bg-[var(--text-muted)]/40"}`} />
                                     {profileStatusLabel}
                                 </span>
                             )}
@@ -492,11 +492,11 @@ export function ProfileDetailsContent({
                             src={freegrindLogo}
                             alt="Free Grind user"
                             title={t("profile_details.uses_free_grind")}
-                            className="mt-1 h-6 w-6 shrink-0 rounded-full border border-white/15 shadow-[0_0_10px_rgba(255,140,0,0.25)]"
+                            className="mt-1 h-7 w-7 shrink-0 rounded-full border border-white/20 shadow-[0_0_14px_rgba(255,140,0,0.35)]"
                         />
                     )}
                 </div>
-                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[var(--text-muted)]">
+                <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[var(--text-muted)]">
                     <span className="flex items-center gap-1">
                         <Hash className="h-3 w-3" />
                         {activeProfile.profileId}
@@ -517,11 +517,12 @@ export function ProfileDetailsContent({
 
                 {/* Regular Desktop / Non-Glass Actions */}
                 {isDesktopLike && messageProfileId && onMessageProfile ? (
-                    <div className="mt-4 flex items-center justify-center gap-4 py-1">
+                    <div className="mt-4 flex items-center justify-center gap-3 py-2">
                         <button
                             type="button"
                             onClick={() => onMessageProfile(messageProfileId)}
-                            className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/15 text-[var(--text)] transition-all duration-300 hover:border-[var(--accent)]/50 hover:shadow-[0_0_16px_rgba(255,204,1,0.15)]" style={{ background: 'color-mix(in srgb, var(--surface-2) 50%, transparent)', backdropFilter: 'blur(12px)' }}
+                            className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/10 text-[var(--text-muted)] backdrop-blur-[20px] transition-all duration-300 hover:scale-105 hover:bg-[var(--accent)] hover:text-white hover:shadow-[0_0_15px_var(--accent)] active:scale-95"
+                            style={{ background: 'color-mix(in srgb, var(--surface) 25%, transparent)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2), 0 8px 24px rgba(0,0,0,0.35)' }}
                             aria-label={t("profile_details.message")}
                         >
                             <MessageCircle className="h-5 w-5" />
@@ -540,8 +541,8 @@ export function ProfileDetailsContent({
                                 type="button"
                                 onClick={() => onTriangleProfile(messageProfileId)}
                                 disabled={isTriangleDisabled || isLocatingProfile}
-                                className={`inline-flex h-12 w-12 items-center justify-center rounded-full border transition-all duration-300 ${isTriangleDisabled ? "border-white/10 text-[var(--text-muted)] opacity-50" : "border-white/15 text-[var(--text)] hover:border-[var(--accent)]/50 hover:shadow-[0_0_16px_rgba(255,204,1,0.15)]"}`}
-                                style={{ background: 'color-mix(in srgb, var(--surface-2) 50%, transparent)', backdropFilter: 'blur(12px)' }}
+                                className={`inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/10 backdrop-blur-[20px] transition-all duration-300 active:scale-95 ${isTriangleDisabled ? "text-[var(--text-muted)] opacity-50" : "text-[var(--text-muted)] hover:scale-105 hover:bg-[var(--accent)] hover:text-white hover:shadow-[0_0_15px_var(--accent)]"}`}
+                                style={{ background: 'color-mix(in srgb, var(--surface) 25%, transparent)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2), 0 8px 24px rgba(0,0,0,0.35)' }}
                                 aria-label="Run location finder"
                                 title={isLocatingProfile ? "Locating..." : "Locate"}
                             >
@@ -556,7 +557,7 @@ export function ProfileDetailsContent({
             <div className="grid gap-5 px-3 lg:grid-cols-[1.25fr_1fr]">
                 <div className="grid gap-5">
                     {hasTagsContent && (
-                        <div className="rounded-2xl border border-white/[0.07] p-4" style={{ background: 'color-mix(in srgb, var(--surface-2) 40%, transparent)', backdropFilter: 'blur(8px)' }}>
+                        <div className="rounded-2xl border border-white/10 p-4 backdrop-blur-[20px]" style={{ background: 'color-mix(in srgb, var(--surface) 25%, transparent)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2), 0 12px 40px rgba(0,0,0,0.45)' }}>
                             <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
                                 {t("profile_details.tags")}
                             </p>
@@ -574,7 +575,7 @@ export function ProfileDetailsContent({
                     )}
 
                     {hasAboutContent && (
-                        <div className="rounded-2xl border border-white/[0.07] p-4" style={{ background: 'color-mix(in srgb, var(--surface-2) 40%, transparent)', backdropFilter: 'blur(8px)' }}>
+                        <div className="rounded-2xl border border-white/10 p-4 backdrop-blur-[20px]" style={{ background: 'color-mix(in srgb, var(--surface) 25%, transparent)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2), 0 12px 40px rgba(0,0,0,0.45)' }}>
                             <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
                                 {t("profile_details.about")}
                             </p>
@@ -587,7 +588,7 @@ export function ProfileDetailsContent({
                     )}
 
                     {hasExpectationsFields && (
-                        <div className="rounded-2xl border border-white/[0.07] p-4" style={{ background: 'color-mix(in srgb, var(--surface-2) 40%, transparent)', backdropFilter: 'blur(8px)' }}>
+                        <div className="rounded-2xl border border-white/10 p-4 backdrop-blur-[20px]" style={{ background: 'color-mix(in srgb, var(--surface) 25%, transparent)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2), 0 12px 40px rgba(0,0,0,0.45)' }}>
                             <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
                                 {t("profile_details.expectations")}
                             </p>
@@ -633,7 +634,7 @@ export function ProfileDetailsContent({
                     )}
 
                     {hasHealthFields && (
-                        <div className="rounded-2xl border border-white/[0.07] p-4" style={{ background: 'color-mix(in srgb, var(--surface-2) 40%, transparent)', backdropFilter: 'blur(8px)' }}>
+                        <div className="rounded-2xl border border-white/10 p-4 backdrop-blur-[20px]" style={{ background: 'color-mix(in srgb, var(--surface) 25%, transparent)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2), 0 12px 40px rgba(0,0,0,0.45)' }}>
                             <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
                                 {t("profile_details.health")}
                             </p>
@@ -669,7 +670,7 @@ export function ProfileDetailsContent({
 
                 <div className="grid gap-5">
                     {hasStatsFields && (
-                        <div className="rounded-2xl border border-white/[0.07] p-4" style={{ background: 'color-mix(in srgb, var(--surface-2) 40%, transparent)', backdropFilter: 'blur(8px)' }}>
+                        <div className="rounded-2xl border border-white/10 p-4 backdrop-blur-[20px]" style={{ background: 'color-mix(in srgb, var(--surface) 25%, transparent)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2), 0 12px 40px rgba(0,0,0,0.45)' }}>
                             <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
                                 {t("profile_details.stats")}
                             </p>
@@ -715,7 +716,7 @@ export function ProfileDetailsContent({
                     )}
 
                     {hasSocialFields && (
-                        <div className="rounded-2xl border border-white/[0.07] p-4" style={{ background: 'color-mix(in srgb, var(--surface-2) 40%, transparent)', backdropFilter: 'blur(8px)' }}>
+                        <div className="rounded-2xl border border-white/10 p-4 backdrop-blur-[20px]" style={{ background: 'color-mix(in srgb, var(--surface) 25%, transparent)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2), 0 12px 40px rgba(0,0,0,0.45)' }}>
                             <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
                                 {t("profile_details.social")}
                             </p>
