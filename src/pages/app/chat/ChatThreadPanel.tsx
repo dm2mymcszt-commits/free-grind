@@ -449,6 +449,11 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
     const [recordDragX, setRecordDragX] = useState(0);
     const [hasRestoredScroll, setHasRestoredScroll] = useState(false);
     
+    // --- LONG PRESS STATE ---
+    const wasLongPressRef = useRef(false);
+    const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const pointerStartPos = useRef({ x: 0, y: 0 });
+    
     // --- AUDIO / VIDEO UPLOAD ---
     const [isMicMenuOpen, setIsMicMenuOpen] = useState(false);
     const audioFileInputRef = useRef<HTMLInputElement>(null);
@@ -2052,20 +2057,77 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                             e.stopPropagation();
                                             setIsMicMenuOpen(true);
                                         }}
-                                        onClick={isDesktop ? () => void startRecording() : undefined}
-                                        onPointerDown={!isDesktop ? (e) => {
-                                            e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); swipeStartXRef.current = e.clientX; isCapturingRef.current = true; hasVibratedRef.current = false; setRecordDragX(0); holdTimerRef.current = setTimeout(() => setShowRecordCircle(true), 150); void startRecording();
-                                        } : undefined}
-                                        onPointerMove={!isDesktop ? (e) => {
-                                            if (!isCapturingRef.current) return;
-                                            const dx = e.clientX - swipeStartXRef.current; setRecordDragX(Math.min(0, dx));
-                                            if (!hasVibratedRef.current && dx < -CANCEL_THRESHOLD) {
-                                                hasVibratedRef.current = true; isCapturingRef.current = false; e.currentTarget.releasePointerCapture(e.pointerId); if (holdTimerRef.current) clearTimeout(holdTimerRef.current); navigator.vibrate?.(80); setTrashBounce(true); setTimeout(() => { setTrashBounce(false); setRecordDragX(0); setShowRecordCircle(false); cancelRecording(); }, 280);
+                                        onPointerDown={(e) => {
+                                            if (e.button !== 0 && e.pointerType === "mouse") return; // Only left click or touch
+                                            e.preventDefault();
+                                            e.currentTarget.setPointerCapture(e.pointerId);
+                                            pointerStartPos.current = { x: e.clientX, y: e.clientY };
+                                            wasLongPressRef.current = false;
+                                            
+                                            // Start long press timer
+                                            longPressTimerRef.current = setTimeout(() => {
+                                                wasLongPressRef.current = true;
+                                                setIsMicMenuOpen(true);
+                                                longPressTimerRef.current = null;
+                                                if (!isDesktop && isCapturingRef.current) {
+                                                    cancelRecording();
+                                                    setShowRecordCircle(false);
+                                                    setRecordDragX(0);
+                                                }
+                                            }, 450);
+
+                                            if (!isDesktop) {
+                                                swipeStartXRef.current = e.clientX; 
+                                                isCapturingRef.current = true; 
+                                                hasVibratedRef.current = false; 
+                                                setRecordDragX(0); 
+                                                holdTimerRef.current = setTimeout(() => setShowRecordCircle(true), 150); 
+                                                void startRecording();
                                             }
-                                        } : undefined}
-                                        onPointerUp={!isDesktop ? () => { isCapturingRef.current = false; setRecordDragX(0); if (holdTimerRef.current) clearTimeout(holdTimerRef.current); setShowRecordCircle(false); stopRecording(true); } : undefined}
-                                        onPointerCancel={!isDesktop ? () => { isCapturingRef.current = false; setRecordDragX(0); if (holdTimerRef.current) clearTimeout(holdTimerRef.current); setShowRecordCircle(false); cancelRecording(); } : undefined}
-                                        className="relative self-stretch shrink-0 w-[55px] rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.25)] transition-all duration-300 hover:scale-105 active:scale-95 flex items-center justify-center text-[var(--accent-contrast)] bg-[var(--accent)] disabled:opacity-50"
+                                        }}
+                                        onPointerMove={(e) => {
+                                            if (longPressTimerRef.current) {
+                                                const dx = Math.abs(e.clientX - pointerStartPos.current.x);
+                                                const dy = Math.abs(e.clientY - pointerStartPos.current.y);
+                                                if (dx > 10 || dy > 10) {
+                                                    clearTimeout(longPressTimerRef.current);
+                                                    longPressTimerRef.current = null;
+                                                }
+                                            }
+                                            if (!isDesktop && isCapturingRef.current) {
+                                                const dx = e.clientX - swipeStartXRef.current; setRecordDragX(Math.min(0, dx));
+                                                if (!hasVibratedRef.current && dx < -CANCEL_THRESHOLD) {
+                                                    hasVibratedRef.current = true; isCapturingRef.current = false; e.currentTarget.releasePointerCapture(e.pointerId); if (holdTimerRef.current) clearTimeout(holdTimerRef.current); navigator.vibrate?.(80); setTrashBounce(true); setTimeout(() => { setTrashBounce(false); setRecordDragX(0); setShowRecordCircle(false); cancelRecording(); }, 280);
+                                                }
+                                            }
+                                        }}
+                                        onPointerUp={(e) => {
+                                            const isLong = wasLongPressRef.current;
+                                            if (longPressTimerRef.current) {
+                                                clearTimeout(longPressTimerRef.current);
+                                                longPressTimerRef.current = null;
+                                            }
+                                            if (isDesktop) {
+                                                if (!isLong) {
+                                                    void startRecording();
+                                                }
+                                            } else {
+                                                isCapturingRef.current = false; setRecordDragX(0); if (holdTimerRef.current) clearTimeout(holdTimerRef.current); setShowRecordCircle(false); 
+                                                if (!isLong) {
+                                                    stopRecording(true);
+                                                }
+                                            }
+                                        }}
+                                        onPointerCancel={(e) => {
+                                            if (longPressTimerRef.current) {
+                                                clearTimeout(longPressTimerRef.current);
+                                                longPressTimerRef.current = null;
+                                            }
+                                            if (!isDesktop) {
+                                                isCapturingRef.current = false; setRecordDragX(0); if (holdTimerRef.current) clearTimeout(holdTimerRef.current); setShowRecordCircle(false); cancelRecording();
+                                            }
+                                        }}
+                                        className="relative self-stretch shrink-0 w-[55px] rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.25)] transition-all duration-300 hover:scale-105 active:scale-95 flex items-center justify-center text-[var(--accent-contrast)] bg-[var(--accent)] disabled:opacity-50 select-none touch-none"
                                         style={showRecordCircle ? { transform: `translateX(${recordDragX}px)`, transition: recordDragX === 0 ? "transform 0.3s cubic-bezier(0.34,1.56,0.64,1)" : "none" } : undefined}
                                         disabled={isProcessingAudioFile}
                                     >
