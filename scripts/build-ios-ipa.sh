@@ -27,6 +27,17 @@ awk '
 
 xcodegen generate --spec "$TEMP_SPEC"
 
+# Downgrade the project format for Xcode less than 16 compatibility.
+sed -i '' 's/objectVersion = 77;/objectVersion = 60;/' src-tauri/gen/apple/free-grind.xcodeproj/project.pbxproj
+
+# Build the rust core for device with custom protocol enabled, since the
+# preBuildScripts phase that normally does this was stripped above. Without
+# custom-protocol, the binary is compiled in dev mode and tries to load the
+# frontend from the vite dev server instead of the bundled assets.
+(cd src-tauri && cargo build --target aarch64-apple-ios --release --features custom-protocol)
+mkdir -p src-tauri/gen/apple/Externals/arm64/release
+cp src-tauri/target/aarch64-apple-ios/release/libopen_grind_lib.a src-tauri/gen/apple/Externals/arm64/release/libapp.a
+
 xcodebuild \
 	-scheme free-grind_iOS \
 	-workspace src-tauri/gen/apple/free-grind.xcodeproj/project.xcworkspace \
