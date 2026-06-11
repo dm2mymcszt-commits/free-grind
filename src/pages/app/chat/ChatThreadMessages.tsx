@@ -612,6 +612,18 @@ export function ChatThreadMessages({
                         const audioUrl = getMessageAudioUrl(message);
                         const location = getMessageLocation(message);
                         const albumId = getMessageAlbumId(message);
+
+                        const senderParticipant =
+                            selectedConversation.data.participants.find(
+                                (participant) =>
+                                    Number(participant.profileId) === Number(message.senderId),
+                            ) ?? null;
+                        const senderAvatarUrl =
+                            senderParticipant?.primaryMediaHash &&
+                            validateMediaHash(senderParticipant.primaryMediaHash)
+                                ? getThumbImageUrl(senderParticipant.primaryMediaHash, "320x320")
+                                : null;
+
                         const albumCover = getMessageAlbumCoverUrl(message) || senderAvatarUrl;
                         const messageText = getMessageText(message, t);
                         const replyPreviewRaw = message.replyPreview as {
@@ -767,16 +779,6 @@ export function ChatThreadMessages({
                             ? "blur-xl transition"
                             : "";
 
-                        const senderParticipant =
-                            selectedConversation.data.participants.find(
-                                (participant) =>
-                                    Number(participant.profileId) === Number(message.senderId),
-                            ) ?? null;
-                        const senderAvatarUrl =
-                            senderParticipant?.primaryMediaHash &&
-                            validateMediaHash(senderParticipant.primaryMediaHash)
-                                ? getThumbImageUrl(senderParticipant.primaryMediaHash, "320x320")
-                                : null;
                         const senderLabel = mine
                             ? t("chat.you")
                             : selectedConversation.data.name?.trim() || t("chat.unknown");
