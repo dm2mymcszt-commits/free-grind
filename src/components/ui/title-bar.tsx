@@ -1,26 +1,12 @@
 import { useEffect, useState } from "react";
 import { Minus, Square, X } from "lucide-react";
 import freegrindLogo from "../../../images/freegrind-logo.webp";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+
+const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 export function TitleBar() {
-	const [isDesktop, setIsDesktop] = useState(false);
-
-	useEffect(() => {
-		// Check if we are running in a Tauri environment
-		const checkTauri = async () => {
-			try {
-				const { getCurrentWindow } = await import("@tauri-apps/api/window");
-				const appWindow = getCurrentWindow();
-				if (appWindow) {
-					setIsDesktop(true);
-				}
-			} catch (e) {
-				// Not running in Tauri
-				setIsDesktop(false);
-			}
-		};
-		void checkTauri();
-	}, []);
+	const [isDesktop, setIsDesktop] = useState(isTauri);
 
 	useEffect(() => {
 		if (isDesktop) {
@@ -37,7 +23,6 @@ export function TitleBar() {
 
 	const handleMinimize = async () => {
 		try {
-			const { getCurrentWindow } = await import("@tauri-apps/api/window");
 			await getCurrentWindow().minimize();
 		} catch (e) {
 			console.error("Failed to minimize", e);
@@ -46,7 +31,6 @@ export function TitleBar() {
 
 	const handleMaximize = async () => {
 		try {
-			const { getCurrentWindow } = await import("@tauri-apps/api/window");
 			await getCurrentWindow().toggleMaximize();
 		} catch (e) {
 			console.error("Failed to toggle maximize", e);
@@ -55,7 +39,6 @@ export function TitleBar() {
 
 	const handleClose = async () => {
 		try {
-			const { getCurrentWindow } = await import("@tauri-apps/api/window");
 			await getCurrentWindow().close();
 		} catch (e) {
 			console.error("Failed to close", e);
