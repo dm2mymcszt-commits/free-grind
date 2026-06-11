@@ -27,6 +27,10 @@ awk '
 
 xcodegen generate --spec "$TEMP_SPEC"
 
+# tauri ios init/xcodegen doesnt merge src-taur/info.plist for ios, and xcodegen
+# overwrites free-grind_iOS/Info.plist as part of generate, so we merge ours in after,
+/usr/libexec/PlistBuddy -c "Merge src-tauri/Info.plist" src-tauri/gen/apple/free-grind_iOS/Info.plist
+
 # Downgrade the project format for Xcode less than 16 compatibility.
 sed -i '' 's/objectVersion = 77;/objectVersion = 60;/' src-tauri/gen/apple/free-grind.xcodeproj/project.pbxproj
 
