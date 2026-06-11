@@ -1995,7 +1995,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 
                             {/* --- INPUT OR AUDIO RECORDER --- */}
                             {pendingAudioBlob ? (
-                                <div className="relative flex-1 flex items-center gap-2 rounded-full border border-[var(--accent)]/30 bg-black/40 backdrop-blur-xl pl-4 pr-2 py-1.5 min-h-[50px] shadow-inner animate-in fade-in zoom-in-95 duration-300">
+                                <div className="relative flex-1 min-w-0 flex items-center gap-2 rounded-full border border-[var(--accent)]/30 bg-black/40 backdrop-blur-xl pl-4 pr-2 py-1.5 min-h-[50px] shadow-inner animate-in fade-in zoom-in-95 duration-300">
                                     <div className="flex-1 min-w-0 flex items-center">
                                         <AudioPreviewPlayer blob={pendingAudioBlob} durationMs={pendingAudioDuration} recordedBars={recordedWaveform} recordedFraction={Math.min(1, pendingAudioDuration / 60_000)} />
                                     </div>
