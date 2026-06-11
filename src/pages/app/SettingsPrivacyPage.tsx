@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { BarChart3, Eye, Ghost, ImageOff } from "lucide-react";
+import { BarChart3, Eye, Ghost, ImageOff, ScanSearch } from "lucide-react";
 import { BackToSettings } from "../../components/BackToSettings";
 import { ToggleRow } from "../../components/ui/toggle-row";
 import { usePreferences } from "../../contexts/PreferencesContext";
@@ -17,6 +17,8 @@ export function SettingsPrivacyPage() {
 	const [ghostMode, setGhostMode] = useState(() => window.localStorage.getItem("fg-ghost-mode") === "true");
 	const [showGhostButton, setShowGhostButton] = useState(() => window.localStorage.getItem("fg-show-ghost-btn") !== "false");
 	const [analyticsConsent, setAnalyticsConsent] = useState<AnalyticsConsentChoice | null>(() => readAnalyticsConsentChoice());
+	const [imageScannerEnabled, setImageScannerEnabled] = useState(() => window.localStorage.getItem("fg-image-scanner-enabled") === "true");
+	const [blurOutgoingMedia, setBlurOutgoingMedia] = useState(() => window.localStorage.getItem("fg-blur-outgoing-media") === "true");
 
 	return (
 		<section className="app-screen">
@@ -27,6 +29,24 @@ export function SettingsPrivacyPage() {
 			</header>
 
 			<div className="grid gap-6">
+
+				{/* Security */}
+				<div>
+					<p className="mb-2 px-1 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">Security</p>
+					<div className="surface-card overflow-hidden divide-y divide-[var(--border)]">
+						<ToggleRow
+							icon={<ScanSearch className="h-5 w-5" />}
+							iconClass="bg-blue-500/15 text-blue-400"
+							label="Anti-Catfish Scanner"
+							description="Adds a Scanner Hub to the photo viewer to instantly reverse-search images using Google Lens and TinEye."
+							checked={imageScannerEnabled}
+							onChange={(checked) => {
+								setImageScannerEnabled(checked);
+								window.localStorage.setItem("fg-image-scanner-enabled", String(checked));
+							}}
+						/>
+					</div>
+				</div>
 
 				{/* Ghost Mode */}
 				<div>
@@ -60,14 +80,25 @@ export function SettingsPrivacyPage() {
 				{/* NSFW Content */}
 				<div>
 					<p className="mb-2 px-1 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">{t("privacy.nsfw_content")}</p>
-					<div className="surface-card overflow-hidden">
+					<div className="surface-card overflow-hidden divide-y divide-[var(--border)]">
 						<ToggleRow
 							icon={<ImageOff className="h-5 w-5" />}
 							iconClass="bg-sky-500/15 text-sky-400"
-							label={t("customizability.blur_incoming_media")}
-							description={t("customizability.blur_incoming_media_description")}
+							label={t("customizability.blur_incoming_media", { defaultValue: "Blur Incoming Media" })}
+							description={t("customizability.blur_incoming_media_description", { defaultValue: "Blur received photos until tapped to protect against NSFW surprises." })}
 							checked={blurIncomingMedia}
 							onChange={(checked) => void setPreferences({ blurIncomingMedia: checked })}
+						/>
+						<ToggleRow
+							icon={<ImageOff className="h-5 w-5" />}
+							iconClass="bg-pink-500/15 text-pink-400"
+							label="Blur Outgoing Media"
+							description="Blur images you send to prevent people nearby from seeing your screen."
+							checked={blurOutgoingMedia}
+							onChange={(checked) => {
+								setBlurOutgoingMedia(checked);
+								window.localStorage.setItem("fg-blur-outgoing-media", String(checked));
+							}}
 						/>
 					</div>
 				</div>

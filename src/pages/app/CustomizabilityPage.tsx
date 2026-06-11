@@ -129,10 +129,6 @@ export function CustomizabilityPage() {
     const [geminiKey, setGeminiKey] = useState(() => window.localStorage.getItem("fg-gemini-key") || "");
 
     // --- CUSTOM STATE (PRIVACY & MEDIA) ---
-    const [blurOutgoingMedia, setBlurOutgoingMedia] = useState(() => window.localStorage.getItem("fg-blur-outgoing-media") === "true");
-    const [imageScannerEnabled, setImageScannerEnabled] = useState(() => window.localStorage.getItem("fg-image-scanner-enabled") === "true");
-    const [ghostMode, setGhostMode] = useState(() => window.localStorage.getItem("fg-ghost-mode") === "true");
-    const [showGhostButton, setShowGhostButton] = useState(() => window.localStorage.getItem("fg-show-ghost-btn") !== "false");
     const [analyticsConsent, setAnalyticsConsent] = useState<AnalyticsConsentChoice | null>(() => readAnalyticsConsentChoice());
 
     const schemeOptions = useMemo(() => [
@@ -403,42 +399,7 @@ export function CustomizabilityPage() {
                     </div>
                 </div>
 
-                {/* NEW: PRIVACY & SECURITY */}
-                <div>
-                    <SectionLabel>Privacy & Security</SectionLabel>
-                    <div className="surface-card overflow-hidden divide-y divide-[var(--border)]">
-                        <ToggleRow
-                            icon={<ScanSearch className="h-5 w-5" />} iconClass="bg-blue-500/15 text-blue-400"
-                            label="Anti-Catfish Scanner" description="Adds a Scanner Hub to the photo viewer to instantly reverse-search images using Google Lens and TinEye."
-                            checked={imageScannerEnabled}
-                            onChange={(checked) => { setImageScannerEnabled(checked); window.localStorage.setItem("fg-image-scanner-enabled", String(checked)); }}
-                        />
-                        <ToggleRow
-                            icon={<EyeOff className="h-5 w-5" />} iconClass="bg-zinc-500/15 text-zinc-400"
-                            label="Global Ghost Mode" description="Prevent Grindr from sending Read Receipts by default for all chats."
-                            checked={ghostMode}
-                            onChange={(checked) => { setGhostMode(checked); window.localStorage.setItem("fg-ghost-mode", String(checked)); }}
-                        />
-                        <ToggleRow
-                            icon={<Shield className="h-5 w-5" />} iconClass="bg-zinc-500/15 text-zinc-400"
-                            label="Per-Chat Overrides" description="Shows an Eye button in the chat header to override Ghost Mode for specific people."
-                            checked={showGhostButton}
-                            onChange={(checked) => { setShowGhostButton(checked); window.localStorage.setItem("fg-show-ghost-btn", String(checked)); }}
-                        />
-                        <ToggleRow
-                            icon={<ImageOff className="h-5 w-5" />} iconClass="bg-pink-500/15 text-pink-400"
-                            label="Blur Incoming Media" description="Blur received photos until tapped to protect against NSFW surprises."
-                            checked={blurIncomingMedia}
-                            onChange={(checked) => void setPreferences({ blurIncomingMedia: checked })}
-                        />
-                        <ToggleRow
-                            icon={<ImageOff className="h-5 w-5" />} iconClass="bg-pink-500/15 text-pink-400"
-                            label="Blur Outgoing Media" description="Blur images you send to prevent people nearby from seeing your screen."
-                            checked={blurOutgoingMedia}
-                            onChange={(checked) => { setBlurOutgoingMedia(checked); window.localStorage.setItem("fg-blur-outgoing-media", String(checked)); }}
-                        />
-                    </div>
-                </div>
+
 
                 {/* REGIONAL & SYSTEM */}
                 <div>
