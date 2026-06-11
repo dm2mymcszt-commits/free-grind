@@ -1140,10 +1140,10 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 					)}
 				</div>
 
-				<div className="relative flex-1 min-h-0 overflow-hidden rounded-b-2xl">
+				<div className="relative flex flex-col flex-1 min-h-0 overflow-hidden rounded-b-2xl">
 					<div
 						data-lenis-prevent
-						className="absolute inset-0 overflow-y-auto overscroll-contain p-4 sm:p-5 pb-24"
+						className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5 pb-24"
 					>
 						{activeProfileError ? (
 							<p className="text-sm text-[var(--text-muted)]">
