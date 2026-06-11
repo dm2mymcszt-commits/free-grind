@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Minus, Square, X } from "lucide-react";
-import freegrindLogo from "../../../images/freegrind-logo.webp";
+import freegrindLogo from "../../images/freegrind-logo.webp";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
