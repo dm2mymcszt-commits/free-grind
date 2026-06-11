@@ -1055,9 +1055,9 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 					<span className="text-sm font-semibold text-white tracking-wide drop-shadow-md">{t("profile_details.loading")}</span>
 				</div>
 			) : (
-				<div className={`pointer-events-auto relative flex max-h-[calc(100dvh-1.5rem)] w-full max-w-4xl sm:max-h-[calc(100dvh-8rem)] flex-col ${isClosing ? "animate-modal-out" : "animate-modal-in"}`} onClick={(event) => event.stopPropagation()}>
+				<div className={`pointer-events-auto relative flex max-h-[calc(100dvh-1.5rem)] w-full max-w-4xl sm:max-h-[calc(100dvh-8rem)] flex-col`} onClick={(event) => event.stopPropagation()}>
 					<div
-						className="flex flex-1 min-h-0 w-full flex-col overflow-hidden rounded-2xl border border-white/10 dark:border-white/5 backdrop-blur-[40px]"
+						className={`flex flex-1 min-h-0 w-full flex-col overflow-hidden rounded-2xl border border-white/10 dark:border-white/5 backdrop-blur-[40px] ${isClosing ? "animate-modal-out" : "animate-modal-in"}`}
 						style={{ 
 							backgroundColor: "rgba(15, 17, 21, 0.35)",
 							background: "color-mix(in srgb, var(--surface) 35%, transparent)",
@@ -1216,7 +1216,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 						<div className="pointer-events-none absolute inset-x-0 bottom-6 md:bottom-8 z-30 flex justify-center px-4">
 							<div
 								ref={controlsBarRef}
-								className="pointer-events-auto flex w-full max-w-[400px] md:max-w-[500px] items-center gap-1 rounded-full border border-white/10 dark:border-white/5 p-1.5 backdrop-blur-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)]"
+								className={`pointer-events-auto flex w-full max-w-[400px] md:max-w-[500px] items-center gap-1 rounded-full border border-white/10 dark:border-white/5 p-1.5 backdrop-blur-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)] ${isClosing ? "animate-modal-out" : "animate-modal-in"}`}
 								style={{
 									backgroundColor: "rgba(15, 17, 21, 0.25)",
 									background: "color-mix(in srgb, var(--surface) 25%, transparent)"
