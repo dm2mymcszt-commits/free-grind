@@ -36,6 +36,7 @@ export function createProfileMethods(fetchRest: RestFetcher, t: (key: string) =>
 				return [];
 			}
 
+
 			return blocking
 				.map((entry) => {
 					if (typeof entry !== "object" || entry === null) {
