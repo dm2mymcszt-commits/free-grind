@@ -1232,6 +1232,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 						) : null}
 					</div>
 					</div>
+					</div>
 
 					{/* Bottom actions bar — desktop modal */}
 					{messageProfileId && (
@@ -1325,6 +1326,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 						)}
 						</div>
 					</div>
+				)}
 				</>
 			)}
 			{barTapFlyEmoji && (
@@ -1378,9 +1380,6 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 				isProcessing={isBlockingProfile}
 			/>
 			</dialog>
-		</>
-	);/>
-		</div>
 		</>
 	);
 }
