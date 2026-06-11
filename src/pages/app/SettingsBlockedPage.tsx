@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ExternalLink, Search, ShieldOff, UserX, X } from "lucide-react";
+import { Search, ShieldOff, UserX, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -44,7 +44,6 @@ export function SettingsBlockedPage() {
 	const [mutatingProfileId, setMutatingProfileId] = useState<string | null>(null);
 	const [isUnblockingAll, setIsUnblockingAll] = useState(false);
 	const [confirmUnblockAll, setConfirmUnblockAll] = useState(false);
-	const [selectedProfile, setSelectedProfile] = useState<BlockedProfileListItem | null>(null);
 
 	// ── Sentinel ref for IntersectionObserver ─────────────────────────────
 	const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -267,9 +266,6 @@ export function SettingsBlockedPage() {
 			await unblockProfileMutation(profileId);
 			toast.success(t("profile_details.unblock_success"));
 
-			// Close modal if this profile was selected
-			if (selectedProfile?.profileId === profileId) setSelectedProfile(null);
-
 			// Remove from local cache
 			const updated = new Map(profileCacheRef.current);
 			updated.delete(profileId);
@@ -306,16 +302,6 @@ export function SettingsBlockedPage() {
 	};
 
 	const handleProfileClick = (profileId: string) => {
-		const cached = profileCache.get(profileId);
-		if (cached) {
-			setSelectedProfile(cached);
-		} else {
-			setSelectedProfile({ profileId, displayName: t("profile_details.profile_fallback", { id: profileId }), avatarUrl: null });
-		}
-	};
-
-	const handleViewFullProfile = (profileId: string) => {
-		setSelectedProfile(null);
 		navigate(`/profile/${profileId}`, { state: { returnTo: "/settings/blocked" } });
 	};
 
@@ -538,102 +524,6 @@ export function SettingsBlockedPage() {
 				)}
 			</div>
 
-			{/* ── Blocked Profile Glass Modal ──────────────────────── */}
-			{selectedProfile && (
-				<div
-					className="fixed inset-0 z-50 flex items-center justify-center p-4"
-					style={{ animation: "var(--animate-backdrop-in)" }}
-					onClick={() => setSelectedProfile(null)}
-				>
-					{/* Backdrop */}
-					<div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-
-					{/* Modal card */}
-					<div
-						className="relative w-full max-w-sm overflow-hidden rounded-3xl border border-white/10 bg-[var(--surface)]/95 shadow-2xl backdrop-blur-xl"
-						style={{
-							animation: "var(--animate-modal-in)",
-							background: "color-mix(in srgb, var(--surface) 92%, transparent)",
-							boxShadow: "0 32px 64px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.06) inset, 0 1px 0 rgba(255,255,255,0.08) inset",
-						}}
-						onClick={(e) => e.stopPropagation()}
-					>
-						{/* Close button */}
-						<button
-							type="button"
-							onClick={() => setSelectedProfile(null)}
-							className="absolute right-3 top-3 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-[var(--text-muted)] transition hover:bg-white/20 hover:text-[var(--text)]"
-						>
-							<X className="h-4 w-4" />
-						</button>
-
-						{/* Decorative glow */}
-						<div
-							className="pointer-events-none absolute -top-20 left-1/2 h-40 w-40 -translate-x-1/2 rounded-full opacity-30"
-							style={{
-								background: "radial-gradient(circle, var(--accent) 0%, transparent 70%)",
-								filter: "blur(40px)",
-							}}
-						/>
-
-						{/* Content */}
-						<div className="flex flex-col items-center gap-5 px-6 pb-6 pt-10">
-							{/* Avatar */}
-							<div
-								className="relative h-24 w-24 overflow-hidden rounded-full ring-2 ring-white/15 ring-offset-2 ring-offset-[var(--surface)]"
-								style={{ boxShadow: "0 8px 32px rgba(0,0,0,0.25)" }}
-							>
-								<ProfileImage
-									src={selectedProfile.avatarUrl}
-									alt={selectedProfile.displayName}
-								/>
-							</div>
-
-							{/* Name + ID */}
-							<div className="text-center">
-								<h3 className="text-lg font-bold leading-tight">
-									{selectedProfile.displayName}
-								</h3>
-								<p className="mt-1 text-xs text-[var(--text-muted)]">
-									{t("settings_blocked.profile_id", { id: selectedProfile.profileId })}
-								</p>
-							</div>
-
-							{/* Blocked badge */}
-							<div className="inline-flex items-center gap-1.5 rounded-full bg-red-500/12 px-3 py-1.5 text-xs font-semibold text-red-400">
-								<ShieldOff className="h-3.5 w-3.5" />
-								{t("settings_blocked.blocked_label", { defaultValue: "Blocked" })}
-							</div>
-
-							{/* Action buttons */}
-							<div className="mt-1 flex w-full flex-col gap-2.5">
-								{/* View full profile */}
-								<button
-									type="button"
-									onClick={() => handleViewFullProfile(selectedProfile.profileId)}
-									className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 text-sm font-semibold text-[var(--text)] transition hover:bg-[var(--surface-2)]/80"
-								>
-									<ExternalLink className="h-4 w-4" />
-									{t("settings_blocked.view_profile", { defaultValue: "View Full Profile" })}
-								</button>
-
-								{/* Unblock */}
-								<button
-									type="button"
-									onClick={() => handleUnblockPress(selectedProfile.profileId)}
-									disabled={mutatingProfileId === selectedProfile.profileId}
-									className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-400 transition hover:bg-red-500/20 disabled:opacity-50"
-								>
-									<UserX className="h-4 w-4" />
-									{mutatingProfileId === selectedProfile.profileId
-										? t("profile_details.unblock_in_progress")
-										: t("profile_details.unblock")}
-								</button>
-							</div>
-						</div>
-					</div>
-				</div>
-			)}
 
 			<ConfirmDialog
 				isOpen={confirmUnblockAll}
