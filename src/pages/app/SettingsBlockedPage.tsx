@@ -96,10 +96,27 @@ export function SettingsBlockedPage() {
 			}
 
 			const displayNameRaw = (first as { displayName?: unknown }).displayName;
-			const displayName =
-				typeof displayNameRaw === "string" && displayNameRaw.trim().length > 0
-					? displayNameRaw.trim()
-					: fallbackName;
+			const aboutMeRaw = (first as { aboutMe?: unknown }).aboutMe;
+
+			// The Grindr API returns placeholder data for blocked profiles
+			// (e.g. displayName: "4"). Detect these and prefer aboutMe or
+			// the profile-id fallback instead.
+			const isPlaceholder = (v: unknown): boolean => {
+				if (typeof v !== "string" || v.trim().length === 0) return true;
+				const trimmed = v.trim();
+				// Pure numeric strings of 5 digits or less are almost certainly placeholders
+				if (trimmed.length <= 5 && /^\d+$/.test(trimmed)) return true;
+				return false;
+			};
+
+			let displayName = fallbackName;
+			if (!isPlaceholder(displayNameRaw)) {
+				displayName = (displayNameRaw as string).trim();
+			} else if (typeof aboutMeRaw === "string" && aboutMeRaw.trim().length > 0) {
+				// Use the first line of aboutMe as a rough name substitute
+				const firstLine = aboutMeRaw.trim().split("\n")[0].slice(0, 40);
+				if (firstLine.length > 0) displayName = firstLine;
+			}
 
 			const hashRaw = (first as { profileImageMediaHash?: unknown }).profileImageMediaHash;
 			const avatarUrl =
@@ -107,7 +124,22 @@ export function SettingsBlockedPage() {
 					? getThumbImageUrl(hashRaw, "75x75")
 					: null;
 
-			return { displayName, avatarUrl };
+			// Also try medias array for a photo hash
+			let finalAvatarUrl = avatarUrl;
+			if (!finalAvatarUrl) {
+				const medias = (first as { medias?: unknown[] }).medias;
+				if (Array.isArray(medias)) {
+					for (const m of medias) {
+						const mh = (m as { mediaHash?: unknown }).mediaHash;
+						if (typeof mh === "string" && validateMediaHash(mh)) {
+							finalAvatarUrl = getThumbImageUrl(mh, "75x75");
+							break;
+						}
+					}
+				}
+			}
+
+			return { displayName, avatarUrl: finalAvatarUrl };
 		},
 		[t],
 	);
@@ -192,9 +224,9 @@ export function SettingsBlockedPage() {
 			} catch {
 				// Best effort — failures get fallback entries
 			} finally {
-				if (!cancelled) {
-					fetchingBatchRef.current = false;
-				}
+				// ALWAYS reset the lock — even if the effect was cleaned up.
+				// Otherwise the ref stays true forever and blocks all future batches.
+				fetchingBatchRef.current = false;
 			}
 		};
 
