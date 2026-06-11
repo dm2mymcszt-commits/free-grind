@@ -1993,21 +1993,15 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                 </div>
                             )}
 
-                            {/* Input Container */}
-                    {/* --- PENDING AUDIO PREVIEW --- */}
-                            {pendingAudioBlob && (
-                                <div className="absolute bottom-[calc(100%+10px)] left-0 w-full animate-in slide-in-from-bottom-2 fade-in">
-                                    <div className="rounded-2xl border border-white/10 bg-black/60 backdrop-blur-xl pl-3 pr-2 py-2 flex items-center gap-2 shadow-2xl">
-                                        <div className="flex-1 min-w-0">
-                                            <AudioPreviewPlayer blob={pendingAudioBlob} durationMs={pendingAudioDuration} recordedBars={recordedWaveform} recordedFraction={Math.min(1, pendingAudioDuration / 60_000)} />
-                                        </div>
-                                        <button type="button" onClick={() => { setRecordedWaveform([]); cancelAudio(); }} className="h-9 w-9 flex items-center justify-center rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition"><Trash2 className="h-4 w-4" /></button>
-                                    </div>
-                                </div>
-                            )}
-
                             {/* --- INPUT OR AUDIO RECORDER --- */}
-                            {!pendingAudioBlob && isRecording ? (
+                            {pendingAudioBlob ? (
+                                <div className="relative flex-1 flex items-center gap-2 rounded-full border border-[var(--accent)]/30 bg-black/40 backdrop-blur-xl pl-4 pr-2 py-1.5 min-h-[50px] shadow-inner animate-in fade-in zoom-in-95 duration-300">
+                                    <div className="flex-1 min-w-0 flex items-center">
+                                        <AudioPreviewPlayer blob={pendingAudioBlob} durationMs={pendingAudioDuration} recordedBars={recordedWaveform} recordedFraction={Math.min(1, pendingAudioDuration / 60_000)} />
+                                    </div>
+                                    <button type="button" onClick={() => { setRecordedWaveform([]); cancelAudio(); }} className="shrink-0 h-9 w-9 flex items-center justify-center rounded-full bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white transition shadow-sm"><Trash2 className="h-4 w-4" /></button>
+                                </div>
+                            ) : isRecording ? (
                                 <div className={`relative flex-1 flex items-center gap-3 rounded-full border transition-colors ${recordingMs >= 50_000 ? "border-red-500/50 bg-red-500/10" : "border-[var(--accent)]/50 bg-black/30 backdrop-blur-lg"} pl-2 pr-4 py-2 h-[50px] shadow-inner`}>
                                     <button type="button" onClick={cancelRecording} className="shrink-0 h-8 w-8 flex items-center justify-center rounded-full bg-red-500 text-white shadow-md hover:scale-105 active:scale-95 transition">
                                         <Trash2 className="h-4 w-4" />
@@ -2023,7 +2017,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                     )}
                                 </div>
                             ) : (
-                                <div className={`relative flex-1 flex items-end ${pendingAudioBlob ? "opacity-0 pointer-events-none" : ""}`}>
+                                <div className={`relative flex-1 flex items-end`}>
                                     <textarea
                                         ref={textareaRef}
                                         value={draft}
@@ -2043,7 +2037,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 
                             {/* --- ACTION BUTTON (SEND OR MIC) --- */}
                             {pendingAudioBlob ? (
-                                <button type="button" onClick={() => { setRecordedWaveform([]); void confirmAudio(); }} disabled={isSendingAudio} className="self-stretch shrink-0 px-6 rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.25)] transition-all duration-300 hover:scale-105 active:scale-95 flex items-center justify-center disabled:opacity-50 text-white bg-green-500 border border-green-400">
+                                <button type="button" onClick={() => { setRecordedWaveform([]); void confirmAudio(); }} disabled={isSendingAudio} className="self-stretch shrink-0 px-6 rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.25)] transition-all duration-300 hover:scale-105 active:scale-95 flex items-center justify-center disabled:opacity-50 bg-[var(--accent)] text-[var(--accent-contrast)] hover:shadow-[0_6px_20px_rgba(0,0,0,0.4)]">
                                     {isSendingAudio ? <Loader2 className="h-5 w-5 animate-spin" /> : <SendHorizontal className="h-5 w-5" />}
                                 </button>
                             ) : draft.trim().length > 0 || isSending || pendingLocationShare ? (
