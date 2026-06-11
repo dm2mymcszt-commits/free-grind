@@ -684,6 +684,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
     // --- IMMUTABLE DYNAMIC STATE (Fixes Reactivity Bug!) ---
     const showGhostButton = window.localStorage.getItem("fg-show-ghost-btn") !== "false";
     const isGhosted = selectedConversation ? isChatGhosted(selectedConversation.data.conversationId) : false;
+    const isDraft = selectedConversation ? selectedConversation.data.conversationId.startsWith("direct:") : false;
 
     const closeBlockConfirm = () => {
         if (isBlockingProfile) {
@@ -1168,7 +1169,13 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                             {!isActive && (
                                 <>
                                     {isDesktop && (
-                                        <>
+                                        <div
+                                            className={`flex flex-nowrap items-center gap-2 transition-all duration-500 ease-in-out overflow-hidden origin-right ${
+                                                isDraft
+                                                    ? "max-w-0 opacity-0 scale-95 pointer-events-none"
+                                                    : "max-w-[600px] opacity-100 scale-100"
+                                            }`}
+                                        >
                                             {showGhostButton && selectedConversation && (
                                                 <button
                                                     type="button"
@@ -1243,7 +1250,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                                     ? t("profile_details.block_in_progress")
                                                     : t("profile_details.block")}
                                             </button>
-                                        </>
+                                        </div>
                                     )}
 
                                     <div
@@ -1280,7 +1287,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                                     {t("chat.view_profile")}
                                                 </button>
 
-                                                {!isDesktop && showGhostButton && selectedConversation && (
+                                                {!isDesktop && showGhostButton && selectedConversation && !isDraft && (
                                                     <button
                                                         type="button"
                                                         onClick={() => {
@@ -1362,7 +1369,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                                     {localNickname ? t("chat.nicknames.edit") : t("chat.nicknames.set")}
                                                 </button>
 
-                                                {!isDesktop && (
+                                                {!isDesktop && !isDraft && (
                                                     <>
                                                         <button
                                                             type="button"
@@ -1415,7 +1422,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                                     {selectedConversation.data.muted ? t("chat.unmute") : t("chat.mute")}
                                                 </button>
 
-                                                {!isDesktop && (
+                                                {!isDesktop && !isDraft && (
                                                     <button
                                                         type="button"
                                                         onClick={requestBlockProfile}

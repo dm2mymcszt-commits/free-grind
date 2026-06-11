@@ -110,7 +110,7 @@ export function RightNowFiltersPage({ onClose, onApply, initialDraft }: RightNow
 				onClick={(e) => e.stopPropagation()}
 			>
 				{/* Header */}
-				<header className="relative z-10 flex items-start justify-between px-[var(--app-px)] pb-2 pt-[calc(env(safe-area-inset-top,0px)+1rem)]">
+				<header className="right-now-filters-header relative z-10 flex items-start justify-between px-[var(--app-px)] pb-2">
 					<h2 className="mt-8 text-xl font-bold tracking-tight text-[var(--text)]">
 						{t("right_now_filters.title")}
 					</h2>

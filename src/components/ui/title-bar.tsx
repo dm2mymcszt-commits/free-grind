@@ -92,7 +92,7 @@ export function TitleBar() {
 				<button
 					onMouseDown={(e) => e.stopPropagation()}
 					onClick={handleClose}
-					className="h-full px-3 inline-flex items-center justify-center text-gray-300 hover:text-white hover:bg-red-500/80 transition-colors rounded-tr-[12px]"
+					className="h-full px-3 inline-flex items-center justify-center text-gray-300 hover:text-white hover:bg-red-500/80 transition-colors"
 					title="Close"
 				>
 					<X className="w-4 h-4" />

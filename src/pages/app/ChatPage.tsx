@@ -216,6 +216,9 @@ import { processAutoDownload } from "../../services/autoDownloader";
     const selectedConversationUnreadCountRef = useRef(0);
     const lastLoadedConversationIdRef = useRef<string | null>(null);
     const lastMessageIdRef = useRef<string | null>(null);
+    const transitionSilentRef = useRef(false);
+    const transitionProfileIdRef = useRef<number | null>(null);
+    const transitionProfileDetailRef = useRef<any>(null);
     const conversationsWithPendingUnreadRef = useRef(new Set<string>());
 
     const [conversations, setConversations] = useState<ConversationEntry[]>([]);
@@ -614,7 +617,11 @@ import { processAutoDownload } from "../../services/autoDownloader";
         const found = conversations.find(
             (c) => c.data.conversationId === selectedConversationId
         );
-        if (found) return found;
+        if (found) {
+            transitionProfileIdRef.current = null;
+            transitionProfileDetailRef.current = null;
+            return found;
+        }
 
         // Generate a synthetic "Draft" conversation for new chats
         if (selectedConversationId.startsWith("direct:")) {
@@ -652,6 +659,45 @@ import { processAutoDownload } from "../../services/autoDownloader";
                     lastActivityTimestamp: Date.now(),
                     name: displayName ? `Start a new chat with ${displayName}` : "Start a new chat",
                     preview: { text: "Draft", type: "Text" }
+                }
+            } as unknown as ConversationEntry;
+        }
+
+        // Check if we are transitioning from a draft to this real conversation ID
+        if (transitionProfileIdRef.current && transitionProfileDetailRef.current) {
+            const profileId = transitionProfileIdRef.current;
+            const detail = transitionProfileDetailRef.current;
+
+            let primaryMediaHash = undefined;
+            if (detail?.profileImageMediaHash) {
+                primaryMediaHash = detail.profileImageMediaHash;
+            } else if (detail?.medias?.length > 0) {
+                primaryMediaHash = detail.medias[0].mediaHash;
+            }
+
+            const rawName = detail?.displayName || detail?.name || detail?.profile?.name || detail?.profile?.displayName || `Profile ${profileId}`;
+            const displayName = localNicknamesByProfileId[profileId] || rawName;
+            
+            const isOnline = presenceResults[profileId] === true;
+            const fakedLastOnline = detail?.lastOnline ?? (isOnline ? Date.now() : undefined);
+            const fakedOnlineUntil = detail?.onlineUntil ?? (isOnline ? Date.now() + 60000 : undefined);
+
+            return {
+                data: {
+                    conversationId: selectedConversationId,
+                    participants: [{ 
+                        profileId: Number(profileId),
+                        primaryMediaHash,
+                        lastOnline: fakedLastOnline,
+                        onlineUntil: fakedOnlineUntil
+                    }],
+                    unreadCount: 0,
+                    pinned: false,
+                    muted: false,
+                    favorite: false,
+                    lastActivityTimestamp: Date.now(),
+                    name: displayName,
+                    preview: { text: "", type: "Text" }
                 }
             } as unknown as ConversationEntry;
         }
@@ -1916,7 +1962,9 @@ import { processAutoDownload } from "../../services/autoDownloader";
         }
 
         setThreadLastReadTimestamp(null);
-        void loadThread({ conversationId: selectedConversationId, older: false });
+        const silent = transitionSilentRef.current;
+        transitionSilentRef.current = false;
+        void loadThread({ conversationId: selectedConversationId, older: false, silent });
     }, [loadThread, selectedConversationId]);
 
     useEffect(() => {
@@ -2646,6 +2694,9 @@ import { processAutoDownload } from "../../services/autoDownloader";
                     }));
                 } else {
                     // It was a draft or missing, so swap the URL to the real conversation ID
+                    transitionSilentRef.current = true;
+                    transitionProfileIdRef.current = Number(targetProfileIdValue);
+                    transitionProfileDetailRef.current = draftProfileDetail;
                     openConversationById(sentMessage.conversationId);
                     void loadInbox({ page: 1, replace: true, silent: true });
                 }
@@ -2710,6 +2761,9 @@ import { processAutoDownload } from "../../services/autoDownloader";
                 if (selectedConversation && !isDraft) {
                     setThreadMessages((previous) => [...previous, sentMessage]);
                 } else {
+                    transitionSilentRef.current = true;
+                    transitionProfileIdRef.current = Number(targetProfileIdValue);
+                    transitionProfileDetailRef.current = draftProfileDetail;
                     openConversationById(sentMessage.conversationId);
                     void loadInbox({ page: 1, replace: true });
                 }
@@ -2860,6 +2914,9 @@ import { processAutoDownload } from "../../services/autoDownloader";
                         },
                     }));
                 } else {
+                    transitionSilentRef.current = true;
+                    transitionProfileIdRef.current = Number(targetProfileIdValue);
+                    transitionProfileDetailRef.current = draftProfileDetail;
                     openConversationById(sentMessage.conversationId);
                     void loadInbox({ page: 1, replace: true });
                 }
@@ -3414,6 +3471,9 @@ import { processAutoDownload } from "../../services/autoDownloader";
                         },
                     }));
                 } else if (finalSentMessage) {
+                    transitionSilentRef.current = true;
+                    transitionProfileIdRef.current = Number(targetProfileIdValue);
+                    transitionProfileDetailRef.current = draftProfileDetail;
                     openConversationById(finalSentMessage.conversationId);
                     void loadInbox({ page: 1, replace: true, silent: true });
                 }

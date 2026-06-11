@@ -490,7 +490,7 @@ export function ProfileDetailsModal({
                         transition: profileSwipeDelta === 0 ? "transform 250ms ease-out" : "none",
                     }}
                 >
-                    <header className="pointer-events-none absolute inset-x-0 top-0 z-40 flex shrink-0 flex-col px-[var(--app-px)] pb-3 pt-[calc(env(safe-area-inset-top,0px)+10px)] sm:pb-3.5 sm:pt-[calc(env(safe-area-inset-top,0px)+12px)]">
+                    <header className="profile-modal-header pointer-events-none absolute inset-x-0 top-0 z-40 flex shrink-0 flex-col px-[var(--app-px)] pb-3 sm:pb-3.5">
                         <div
                             className={`absolute inset-0 bg-[var(--bg)] backdrop-blur-xl ${headerScrolled ? "border-b border-[var(--border)]" : ""}`}
                             style={{ opacity: headerOpacity, transition: `opacity ${headerFadeDuration}ms ease-out` }}
@@ -529,7 +529,7 @@ export function ProfileDetailsModal({
                     </header>
 
                     <FeedScrollContainer ref={scrollContainerRef}>
-                        <div className="mx-auto w-full max-w-4xl px-[var(--app-px)] pt-0 pb-[calc(env(safe-area-inset-bottom,0px)+7rem)] sm:pt-0 sm:pb-[7rem]">
+                        <div className="profile-content-container mx-auto w-full max-w-4xl px-[var(--app-px)] pb-[calc(env(safe-area-inset-bottom,0px)+7rem)] sm:pb-[7rem]">
                             {isLoadingActiveProfile ? (
                                 <p className="text-sm text-[var(--text-muted)]">
                                     {t("profile_details.loading")}

@@ -376,10 +376,9 @@
 	}
 
 	body.has-titlebar #app {
-		/* Inset the app slightly to prevent edge clipping */
-		height: calc(100vh - 2px);
-		width: calc(100% - 2px);
-		margin: 1px;
+		height: 100vh;
+		width: 100%;
+		margin: 0;
 		
 		border-radius: 20px;
 		overflow: hidden;
@@ -387,6 +386,7 @@
 		
 		/* Subtle inner highlight to make the glass edge pop */
 		border: 1px solid rgba(255, 255, 255, 0.08);
+		box-sizing: border-box;
 		
 		/* Creates containing block so position:fixed children (titlebar, navbar, glow)
 		   are clipped by overflow:hidden + border-radius */
@@ -394,7 +394,7 @@
 	}
 
 	body.has-titlebar .app-shell {
-		height: calc(100vh - 2px);
+		height: 100vh;
 		overflow-y: auto;
 	}
 
@@ -833,3 +833,65 @@
 .animate-trash-bounce {
   animation: trash-bounce 0.3s ease-out forwards;
 }
+
+/* --- MESSAGE POP-UP/INCOMING ANIMATIONS --- */
+@keyframes msg-pop-mine {
+  0% {
+    opacity: 0;
+    transform: translateY(12px) translateX(6px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) translateX(0) scale(1);
+  }
+}
+
+@keyframes msg-pop-other {
+  0% {
+    opacity: 0;
+    transform: translateY(12px) translateX(-6px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) translateX(0) scale(1);
+  }
+}
+
+.animate-message-pop-mine {
+  animation: msg-pop-mine 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.animate-message-pop-other {
+  animation: msg-pop-other 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  will-change: transform, opacity;
+}
+
+/* --- TITLE BAR PADDING OFFSETS FOR FULL-SCREEN PANELS --- */
+.profile-modal-header {
+  padding-top: calc(var(--titlebar-height, 0px) + env(safe-area-inset-top, 0px) + 10px);
+}
+@media (min-width: 640px) {
+  .profile-modal-header {
+    padding-top: calc(var(--titlebar-height, 0px) + env(safe-area-inset-top, 0px) + 12px);
+  }
+}
+
+.browse-location-container {
+  padding-top: calc(var(--titlebar-height, 0px) + env(safe-area-inset-top, 0px) + 16px);
+}
+
+.right-now-filters-header {
+  padding-top: calc(var(--titlebar-height, 0px) + env(safe-area-inset-top, 0px) + 1rem);
+}
+
+.right-now-post-header {
+  padding-top: calc(var(--titlebar-height, 0px) + env(safe-area-inset-top, 0px) + 1rem);
+}
+
+.profile-content-container {
+  padding-top: calc(var(--titlebar-height, 0px) + 16px);
+}
+
+
+

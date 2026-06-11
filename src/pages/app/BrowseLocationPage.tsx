@@ -299,7 +299,7 @@ export function BrowseLocationPage() {
 
     return (
         <section className="app-screen bg-transparent">
-            <div className="mx-auto w-full max-w-4xl pt-[calc(env(safe-area-inset-top,0px)+16px)] px-3 pb-24">
+            <div className="browse-location-container mx-auto w-full max-w-4xl px-3 pb-24">
                 <header className="mb-6 flex items-center gap-4">
                     <button
                         type="button"

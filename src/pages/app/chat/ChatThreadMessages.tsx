@@ -184,6 +184,36 @@ export function ChatThreadMessages({
     const [revealedMediaMessageIds, setRevealedMediaMessageIds] = useState<Set<string>>(() => new Set());
     const [hoveredMediaMessageId, setHoveredMediaMessageId] = useState<string | null>(null);
 
+    // --- NEW MESSAGE POP-UP ANIMATION TRACKING ---
+    const lastConversationIdRef = useRef<string | null>(null);
+    const initialMessageIdsRef = useRef<Set<string>>(new Set());
+    const prevFirstMessageIdRef = useRef<string | null>(null);
+
+    const activeConversationId = selectedConversation.data.conversationId;
+
+    if (lastConversationIdRef.current !== activeConversationId) {
+        lastConversationIdRef.current = activeConversationId;
+        initialMessageIdsRef.current = new Set(threadMessages.map((m) => m.messageId));
+        prevFirstMessageIdRef.current = threadMessages[0]?.messageId || null;
+    } else {
+        const firstMsgId = threadMessages[0]?.messageId || null;
+        if (firstMsgId !== prevFirstMessageIdRef.current) {
+            // Historical messages prepended at the top
+            for (const m of threadMessages) {
+                initialMessageIdsRef.current.add(m.messageId);
+            }
+            prevFirstMessageIdRef.current = firstMsgId;
+        }
+    }
+
+    useEffect(() => {
+        // Once threadMessages is rendered, register all messages as "seen/initial"
+        // so that they don't trigger the animation again on subsequent re-renders.
+        for (const m of threadMessages) {
+            initialMessageIdsRef.current.add(m.messageId);
+        }
+    }, [threadMessages]);
+
     // --- SWIPE TO REPLY STATE ---
     const swipeStateRef = useRef<{
         messageId: string;
@@ -839,7 +869,13 @@ export function ChatThreadMessages({
                                             messageElementRefs.current.delete(message.messageId);
                                         }
                                     }}
-                                    className={`relative flex w-full ${mine ? "justify-end" : "justify-start"} ${isLastMessage && !mine ? "pb-6" : ""}`}
+                                    className={`relative flex w-full ${mine ? "justify-end" : "justify-start"} ${isLastMessage && !mine ? "pb-6" : ""} ${
+                                        !initialMessageIdsRef.current.has(message.messageId)
+                                            ? mine
+                                                ? "animate-message-pop-mine"
+                                                : "animate-message-pop-other"
+                                            : ""
+                                    }`}
                                     style={{ touchAction: "pan-y" }}
                                     onTouchStart={(event) => handleMobileTouchStart(event, message)}
                                     onTouchEnd={handleMobileTouchEnd}

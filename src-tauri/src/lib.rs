@@ -36,7 +36,9 @@ pub fn run() {
                 {
                     use tauri::Manager;
                     use tauri::webview::Color;
-                    use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_BORDER_COLOR};
+                    use windows::Win32::Graphics::Dwm::{
+                        DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND
+                    };
                     use windows::Win32::Foundation::HWND;
                     
                     // Set webview background to fully transparent so the rounded
@@ -47,8 +49,18 @@ pub fn run() {
                         // Remove the 1px border that Windows 11 draws around transparent layered windows
                         if let Ok(hwnd) = webview.hwnd() {
                             let hwnd_val = HWND(hwnd.0 as _);
-                            let color = 0xFFFFFFFE_u32; // DWMWA_COLOR_NONE
                             unsafe {
+                                // Prevent Windows 11 DWM from drawing native rounded corners (which often draws a 1px border line)
+                                let corner_preference = DWMWCP_DONOTROUND;
+                                let _ = DwmSetWindowAttribute(
+                                    hwnd_val,
+                                    DWMWA_WINDOW_CORNER_PREFERENCE,
+                                    &corner_preference as *const _ as *const _,
+                                    std::mem::size_of::<i32>() as u32,
+                                );
+
+                                // Set border color to NONE to suppress the 1px border
+                                let color = 0xFFFFFFFE_u32; // DWMWA_COLOR_NONE
                                 let _ = DwmSetWindowAttribute(
                                     hwnd_val,
                                     DWMWA_BORDER_COLOR,

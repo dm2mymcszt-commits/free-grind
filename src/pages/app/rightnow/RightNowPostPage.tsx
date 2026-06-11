@@ -384,7 +384,7 @@ export function RightNowPostPage({ onClose, onPost }: RightNowPostPageProps) {
 				onClick={(e) => e.stopPropagation()}
 			>
 				{/* Header */}
-				<header className="relative z-10 flex items-center justify-between px-[var(--app-px)] py-4 pt-[calc(env(safe-area-inset-top,0px)+1rem)]">
+				<header className="right-now-post-header relative z-10 flex items-center justify-between px-[var(--app-px)] py-4">
 					<h2 className="text-xl font-bold text-[var(--text)]">
 						{isEditMode
 							? t("right_now.edit_session_title")
