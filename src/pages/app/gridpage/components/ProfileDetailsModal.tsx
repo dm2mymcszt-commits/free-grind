@@ -1140,7 +1140,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 					)}
 				</div>
 
-				<div className="relative flex flex-col flex-1 min-h-0 overflow-hidden rounded-b-2xl">
+				<div className="relative flex flex-col flex-1 min-h-0">
 					<div
 						data-lenis-prevent
 						className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5 pb-24"
@@ -1223,10 +1223,10 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 								{/* Chat input */}
 								<div className="relative min-w-0 flex-1" style={{ pointerEvents: barInputVisible ? "auto" : "none" }}>
 							<div
-								className="pointer-events-none absolute inset-0 rounded-xl backdrop-blur-md"
+								className="pointer-events-none absolute inset-0 rounded-xl"
 								style={{
-									background: "color-mix(in srgb, var(--surface-2) 50%, transparent)",
-									border: "1px solid color-mix(in srgb, var(--border) 60%, transparent)",
+									background: "color-mix(in srgb, var(--surface-2) 40%, transparent)",
+									border: "1px solid color-mix(in srgb, var(--border) 40%, transparent)",
 									opacity: barInputVisible ? 1 : 0,
 									transition: barInputVisible ? "opacity 0.25s" : "opacity 0.12s",
 								}}
