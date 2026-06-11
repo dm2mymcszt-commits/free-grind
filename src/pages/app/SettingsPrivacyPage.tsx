@@ -21,7 +21,7 @@ export function SettingsPrivacyPage() {
 	const [blurOutgoingMedia, setBlurOutgoingMedia] = useState(() => window.localStorage.getItem("fg-blur-outgoing-media") === "true");
 
 	return (
-		<section className="app-screen">
+		<section className="app-screen pb-32">
 			<header className="mb-7">
 				<BackToSettings />
 				<h1 className="app-title mb-1">{t("settings.privacy")}</h1>

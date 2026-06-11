@@ -169,7 +169,7 @@ export function CustomizabilityPage() {
     };
 
     return (
-        <section className="app-screen pb-12">
+        <section className="app-screen pb-32">
             <header className="mb-7">
                 <BackToSettings />
                 <h1 className="app-title mb-1">{t("settings.customizability")}</h1>
