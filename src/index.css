@@ -376,26 +376,17 @@
 	}
 
 	body.has-titlebar #app {
-		/* Inset the app slightly to prevent shadow edge bleeding */
-		height: calc(100vh - 2px);
-		width: calc(100% - 2px);
-		margin: 1px;
-		
-		border-radius: 12px;
+		height: 100vh;
+		width: 100%;
 		overflow: hidden;
 		background: var(--bg);
-		
-		/* Subtle inner highlight covers up any remaining dark anti-aliasing pixels */
-		border: 1px solid rgba(255, 255, 255, 0.08);
-		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
-		
 		/* Creates containing block so position:fixed children (titlebar, navbar, glow)
-		   are clipped by overflow:hidden + border-radius */
+		   are clipped by overflow:hidden */
 		transform: translateZ(0);
 	}
 
 	body.has-titlebar .app-shell {
-		height: calc(100vh - 2px);
+		height: 100vh;
 		overflow-y: auto;
 	}
 
