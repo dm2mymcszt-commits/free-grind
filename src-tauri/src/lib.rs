@@ -15,30 +15,14 @@ pub fn run() {
     // tokio-tungstenite when using rustls TLS backend).
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    // Keyring initialization should not block app startup.
-    // Some environments (including certain Intel macOS setups) can fail keychain init.
-    if let Err(e) = storage::init_keyring() {
-        eprintln!(
-            "Warning: keyring initialization failed (continuing without persisted sessions): {:?}",
-            e
-        );
-    }
-
     let client = GrindrClient::new().ok();
 
     // Platform-specific setup for plugins
     #[cfg(not(mobile))]
     {
         let context = tauri::generate_context!();
-        let (hotswap, context) = match tauri_plugin_hotswap::init(context) {
-            Ok((h, c)) => (h, c),
-            Err(e) => {
-                panic!("failed to initialize hotswap plugin: {}", e);
-            }
-        };
 
         tauri::Builder::default()
-            .plugin(hotswap)
             .plugin(tauri_plugin_notification::init())
             .plugin(tauri_plugin_os::init())
             .plugin(tauri_plugin_geolocation::init())
@@ -48,16 +32,29 @@ pub fn run() {
             .manage(AppState { client })
             .manage(Arc::new(WsState::new()))
             .setup(|app| {
+                #[cfg(target_os = "windows")]
+                {
+                    use tauri::Manager;
+                    use tauri::webview::Color;
+                    // Set webview background to fully transparent so the rounded
+                    // CSS corners don't show a white rectangle behind them.
+                    if let Some(webview) = app.get_webview_window("main") {
+                        let _ = webview.set_background_color(Some(Color(0, 0, 0, 0)));
+                    }
+                }
+
                 #[cfg(target_os = "linux")]
                 {
                     use tauri::Manager;
                     use webkit2gtk::{PermissionRequestExt, WebViewExt};
                     if let Some(win) = app.get_webview_window("main") {
                         let _ = win.with_webview(|webview| {
-                            webview.inner().connect_permission_request(|_view, request| {
-                                request.allow();
-                                true
-                            });
+                            webview
+                                .inner()
+                                .connect_permission_request(|_view, request| {
+                                    request.allow();
+                                    true
+                                });
                         });
                     }
                 }
@@ -84,15 +81,8 @@ pub fn run() {
     #[cfg(mobile)]
     {
         let context = tauri::generate_context!();
-        let (hotswap, context) = match tauri_plugin_hotswap::init(context) {
-            Ok((h, c)) => (h, c),
-            Err(e) => {
-                panic!("failed to initialize hotswap plugin: {}", e);
-            }
-        };
 
         tauri::Builder::default()
-            .plugin(hotswap)
             .plugin(tauri_plugin_notification::init())
             .plugin(tauri_plugin_os::init())
             .plugin(tauri_plugin_geolocation::init())
