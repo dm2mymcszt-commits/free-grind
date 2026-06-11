@@ -3884,14 +3884,14 @@ import { processAutoDownload } from "../../services/autoDownloader";
 
                 {albumViewer ? (
                     <div
-                        className="fixed inset-0 z-50 flex flex-col bg-black/40 backdrop-blur-[20px] sm:p-6 md:p-12 transition-all duration-300"
+                        className="fixed inset-0 z-50 flex flex-col bg-black/40 backdrop-blur-[20px] p-2 sm:p-6 md:p-12 transition-all duration-300 animate-in fade-in duration-300"
                         onClick={() => {
                             setAlbumViewerMediaIndex(null);
                             setAlbumViewer(null);
                         }}
                     >
                         <div
-                            className="mx-auto flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden shadow-[0_20px_80px_rgba(0,0,0,0.8),_inset_0_1px_0_rgba(255,255,255,0.2)] backdrop-blur-[40px] border border-white/20 dark:border-white/10 bg-[color-mix(in_srgb,var(--surface)_70%,transparent)] sm:h-[95dvh] sm:mt-[2.5dvh] sm:rounded-[3rem] relative"
+                            className="m-auto flex h-auto max-h-[95dvh] w-[95vw] max-w-5xl flex-col overflow-hidden shadow-[0_30px_100px_rgba(0,0,0,0.8),_inset_0_1px_0_rgba(255,255,255,0.2)] backdrop-blur-[40px] border border-white/20 dark:border-white/10 bg-[color-mix(in_srgb,var(--surface)_70%,transparent)] rounded-3xl sm:rounded-[3rem] relative animate-in fade-in zoom-in-95 duration-300 ease-out"
                             onClick={(event) => event.stopPropagation()}
                         >
                             {/* --- MODERN HEADER --- */}
