@@ -615,6 +615,10 @@
 			calc(env(safe-area-inset-bottom, 0px) + clamp(92px, 10vw, 114px));
 	}
 
+	body.has-titlebar .app-screen {
+		padding-top: calc(env(safe-area-inset-top, 0px) + clamp(14px, 2.2vw, 28px) + 32px);
+	}
+
 	@media (min-width: 1024px) {
 		.app-screen {
 			padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 104px);
