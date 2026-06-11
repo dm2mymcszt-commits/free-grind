@@ -1053,15 +1053,15 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 					<span className="text-sm font-semibold text-white tracking-wide drop-shadow-md">{t("profile_details.loading")}</span>
 				</div>
 			) : (
-				<div
-					className={`flex max-h-[calc(100dvh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl sm:max-h-[calc(100dvh-8rem)] border border-white/10 dark:border-white/5 backdrop-blur-[40px] ${isClosing ? "animate-modal-out" : "animate-modal-in"}`}
-					style={{ 
-                        backgroundColor: "rgba(15, 17, 21, 0.35)",
-                        background: "color-mix(in srgb, var(--surface) 35%, transparent)",
-                        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2), 0 24px 48px rgba(0,0,0,0.45)' 
-                    }}
-					onClick={(event) => event.stopPropagation()}
-				>
+				<div className={`relative flex max-h-[calc(100dvh-1.5rem)] w-full max-w-4xl sm:max-h-[calc(100dvh-8rem)] flex-col ${isClosing ? "animate-modal-out" : "animate-modal-in"}`} onClick={(event) => event.stopPropagation()}>
+					<div
+						className="flex flex-1 min-h-0 w-full flex-col overflow-hidden rounded-2xl border border-white/10 dark:border-white/5 backdrop-blur-[40px]"
+						style={{ 
+							backgroundColor: "rgba(15, 17, 21, 0.35)",
+							background: "color-mix(in srgb, var(--surface) 35%, transparent)",
+							boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2), 0 24px 48px rgba(0,0,0,0.45)' 
+						}}
+					>
 				<div className="flex relative z-10 items-center gap-3 bg-transparent px-4 py-3 sm:px-5">
 					<button
 						type="button"
@@ -1206,6 +1206,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 								relationshipStatusLabels={relationshipStatusLabels}
 							/>
 						) : null}
+					</div>
 					</div>
 
 					{/* Bottom actions bar — desktop modal */}
