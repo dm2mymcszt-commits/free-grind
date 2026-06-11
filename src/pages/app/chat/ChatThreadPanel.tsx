@@ -37,6 +37,13 @@ import {
     Images,
     Mic,
     Square,
+    Camera,
+    Download,
+    Image as ImageIcon,
+    Link,
+    MoreHorizontal,
+    ShieldOff,
+    FileAudio,
 } from "lucide-react";
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
@@ -71,6 +78,9 @@ import {
     getMessageAlbumId,
     getMessageAlbumCoverUrl,
 } from "./chatUtils";
+import { getMessageAlbumId as getMessageAlbumIdHelper, getMessagePhotoContentId } from "../../utils/messages";
+import { extractAudioToWav, getAudioDuration } from "../../utils/audioUtils";
+import { cn } from "../../../utils/cn";
 import { getThumbImageUrl } from "../../../utils/media";
 import { formatDistance } from "../gridpage/utils";
 import { ProfileImage } from "../../../components/ui/profile-image";
@@ -437,6 +447,12 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
     const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const hasVibratedRef = useRef(false);
     const [recordDragX, setRecordDragX] = useState(0);
+    const [hasRestoredScroll, setHasRestoredScroll] = useState(false);
+    
+    // --- AUDIO / VIDEO UPLOAD ---
+    const [isMicMenuOpen, setIsMicMenuOpen] = useState(false);
+    const audioFileInputRef = useRef<HTMLInputElement>(null);
+    const [isProcessingAudioFile, setIsProcessingAudioFile] = useState(false);
     const [showRecordCircle, setShowRecordCircle] = useState(false);
     const [trashBounce, setTrashBounce] = useState(false);
     const CANCEL_THRESHOLD = window.innerWidth * 0.35;
@@ -642,15 +658,23 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 
     // Close popups on outside click
     useEffect(() => {
-        const handleClickOutside = () => {
-            setIsEmojiPickerOpen(false);
-            setIsGifPickerOpen(false);
+        const handleClickOutside = (e: MouseEvent) => {
+            // Placeholder references for closing logic
+            const emojiPickerRef = { current: null }; 
+            const gifPickerRef = { current: null };
+            
+            if (emojiPickerRef.current && !(emojiPickerRef.current as any).contains(e.target as Node)) setIsEmojiPickerOpen(false);
+            if (gifPickerRef.current && !(gifPickerRef.current as any).contains(e.target as Node)) setIsGifPickerOpen(false);
+            
+            // Close mic menu if clicking outside
+            setIsMicMenuOpen(false);
         };
-        if (isEmojiPickerOpen || isGifPickerOpen) {
+        
+        if (isEmojiPickerOpen || isGifPickerOpen || isMicMenuOpen) {
             window.addEventListener('click', handleClickOutside);
         }
         return () => window.removeEventListener('click', handleClickOutside);
-    }, [isEmojiPickerOpen, isGifPickerOpen]);
+    }, [isEmojiPickerOpen, isGifPickerOpen, isMicMenuOpen]);
 
     // --- IMMUTABLE DYNAMIC STATE (Fixes Reactivity Bug!) ---
     const showGhostButton = window.localStorage.getItem("fg-show-ghost-btn") !== "false";
@@ -790,6 +814,48 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
             }
             return ids;
         }, [threadMessages]);
+
+        const handleLocationSelect = useCallback(async (lat: number, lon: number) => {
+            const setIsLocationPickerOpen = (v: boolean) => {}; // shim
+            setIsLocationPickerOpen(false);
+            setPendingLocationShare({ lat, lon });
+        }, []);
+
+        const handleAudioFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            
+            setIsMicMenuOpen(false);
+            setIsProcessingAudioFile(true);
+            
+            try {
+                let audioBlob: Blob;
+                
+                // If it's a video file, extract the audio into WAV
+                if (file.type.startsWith("video/")) {
+                    toast.loading(t("chat.extracting_audio", { defaultValue: "Extracting audio from video..." }), { id: "audio-extract" });
+                    audioBlob = await extractAudioToWav(file);
+                    toast.success(t("chat.extracted_audio", { defaultValue: "Audio extracted!" }), { id: "audio-extract" });
+                } else {
+                    audioBlob = file;
+                }
+                
+                // Get duration
+                const durationMs = await getAudioDuration(audioBlob);
+                
+                // Send directly to the existing audio recorded pipeline
+                onAudioRecorded(audioBlob, durationMs, true);
+                
+            } catch (err) {
+                appLog.error("Error processing audio file:", err);
+                toast.error(t("chat.errors.process_audio_failed", { defaultValue: "Failed to process audio file" }));
+            } finally {
+                setIsProcessingAudioFile(false);
+                if (audioFileInputRef.current) {
+                    audioFileInputRef.current.value = "";
+                }
+            }
+        };
 
         const handleLocationShareRequest = () => {
         if (pendingLocationShare) {
@@ -1978,27 +2044,65 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                     {isSending ? <Loader2 className="h-5 w-5 animate-spin" /> : t("chat.send")}
                                 </button>
                             ) : !isRecording && (
-                                <button
-                                    type="button"
-                                    onClick={isDesktop ? () => void startRecording() : undefined}
-                                    onPointerDown={!isDesktop ? (e) => {
-                                        e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); swipeStartXRef.current = e.clientX; isCapturingRef.current = true; hasVibratedRef.current = false; setRecordDragX(0); holdTimerRef.current = setTimeout(() => setShowRecordCircle(true), 150); void startRecording();
-                                    } : undefined}
-                                    onPointerMove={!isDesktop ? (e) => {
-                                        if (!isCapturingRef.current) return;
-                                        const dx = e.clientX - swipeStartXRef.current; setRecordDragX(Math.min(0, dx));
-                                        if (!hasVibratedRef.current && dx < -CANCEL_THRESHOLD) {
-                                            hasVibratedRef.current = true; isCapturingRef.current = false; e.currentTarget.releasePointerCapture(e.pointerId); if (holdTimerRef.current) clearTimeout(holdTimerRef.current); navigator.vibrate?.(80); setTrashBounce(true); setTimeout(() => { setTrashBounce(false); setRecordDragX(0); setShowRecordCircle(false); cancelRecording(); }, 280);
-                                        }
-                                    } : undefined}
-                                    onPointerUp={!isDesktop ? () => { isCapturingRef.current = false; setRecordDragX(0); if (holdTimerRef.current) clearTimeout(holdTimerRef.current); setShowRecordCircle(false); stopRecording(true); } : undefined}
-                                    onPointerCancel={!isDesktop ? () => { isCapturingRef.current = false; setRecordDragX(0); if (holdTimerRef.current) clearTimeout(holdTimerRef.current); setShowRecordCircle(false); cancelRecording(); } : undefined}
-                                    className="relative self-stretch shrink-0 w-[55px] rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.25)] transition-all duration-300 hover:scale-105 active:scale-95 flex items-center justify-center text-[var(--accent-contrast)] bg-[var(--accent)]"
-                                    style={showRecordCircle ? { transform: `translateX(${recordDragX}px)`, transition: recordDragX === 0 ? "transform 0.3s cubic-bezier(0.34,1.56,0.64,1)" : "none" } : undefined}
-                                >
-                                    {showRecordCircle && <span className="pointer-events-none absolute rounded-full" style={{ inset: "-15px", background: `color-mix(in srgb, var(--accent) ${Math.round((1 - dragProgress) * 100)}%, #ef4444)`, opacity: 0.2 }} />}
-                                    <Mic className="h-5 w-5" />
-                                </button>
+                                <div className="relative flex self-stretch shrink-0">
+                                    <button
+                                        type="button"
+                                        onContextMenu={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setIsMicMenuOpen(true);
+                                        }}
+                                        onClick={isDesktop ? () => void startRecording() : undefined}
+                                        onPointerDown={!isDesktop ? (e) => {
+                                            e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); swipeStartXRef.current = e.clientX; isCapturingRef.current = true; hasVibratedRef.current = false; setRecordDragX(0); holdTimerRef.current = setTimeout(() => setShowRecordCircle(true), 150); void startRecording();
+                                        } : undefined}
+                                        onPointerMove={!isDesktop ? (e) => {
+                                            if (!isCapturingRef.current) return;
+                                            const dx = e.clientX - swipeStartXRef.current; setRecordDragX(Math.min(0, dx));
+                                            if (!hasVibratedRef.current && dx < -CANCEL_THRESHOLD) {
+                                                hasVibratedRef.current = true; isCapturingRef.current = false; e.currentTarget.releasePointerCapture(e.pointerId); if (holdTimerRef.current) clearTimeout(holdTimerRef.current); navigator.vibrate?.(80); setTrashBounce(true); setTimeout(() => { setTrashBounce(false); setRecordDragX(0); setShowRecordCircle(false); cancelRecording(); }, 280);
+                                            }
+                                        } : undefined}
+                                        onPointerUp={!isDesktop ? () => { isCapturingRef.current = false; setRecordDragX(0); if (holdTimerRef.current) clearTimeout(holdTimerRef.current); setShowRecordCircle(false); stopRecording(true); } : undefined}
+                                        onPointerCancel={!isDesktop ? () => { isCapturingRef.current = false; setRecordDragX(0); if (holdTimerRef.current) clearTimeout(holdTimerRef.current); setShowRecordCircle(false); cancelRecording(); } : undefined}
+                                        className="relative self-stretch shrink-0 w-[55px] rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.25)] transition-all duration-300 hover:scale-105 active:scale-95 flex items-center justify-center text-[var(--accent-contrast)] bg-[var(--accent)] disabled:opacity-50"
+                                        style={showRecordCircle ? { transform: `translateX(${recordDragX}px)`, transition: recordDragX === 0 ? "transform 0.3s cubic-bezier(0.34,1.56,0.64,1)" : "none" } : undefined}
+                                        disabled={isProcessingAudioFile}
+                                    >
+                                        {showRecordCircle && <span className="pointer-events-none absolute rounded-full" style={{ inset: "-15px", background: `color-mix(in srgb, var(--accent) ${Math.round((1 - dragProgress) * 100)}%, #ef4444)`, opacity: 0.2 }} />}
+                                        {isProcessingAudioFile ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic className="h-5 w-5" />}
+                                    </button>
+                                    
+                                    {/* Glassmorphism Popup Menu for Audio/Video Upload */}
+                                    <div 
+                                        className={cn(
+                                            "absolute bottom-full right-0 mb-3 w-[220px] origin-bottom-right rounded-2xl border border-white/10 bg-[var(--surface)]/80 backdrop-blur-xl p-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.3)] transition-all duration-300",
+                                            isMicMenuOpen ? "scale-100 opacity-100" : "pointer-events-none scale-90 opacity-0"
+                                        )}
+                                    >
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                audioFileInputRef.current?.click();
+                                            }}
+                                            className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium text-[var(--text)] transition-colors hover:bg-white/10 active:bg-white/5"
+                                        >
+                                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent)] text-[var(--accent-contrast)]">
+                                                <FileAudio className="h-4 w-4" />
+                                            </div>
+                                            <span>{t("chat.upload_audio_video", { defaultValue: "Upload Audio/Video" })}</span>
+                                        </button>
+                                    </div>
+                                    
+                                    <input
+                                        type="file"
+                                        ref={audioFileInputRef}
+                                        accept="audio/mp4, audio/aac, audio/mpeg, audio/ogg, audio/wav, audio/webm, video/mp4, video/webm, video/quicktime"
+                                        className="hidden"
+                                        onChange={handleAudioFileSelect}
+                                    />
+                                </div>
                             )}
                         </div>
                     </form>
