@@ -371,24 +371,7 @@
 
 	html.has-titlebar,
 	body.has-titlebar {
-		background: transparent !important;
 		--titlebar-height: 32px;
-	}
-
-	body.has-titlebar #app {
-		border-radius: 20px;
-		overflow: hidden;
-		background: var(--bg);
-		border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
-		box-shadow: 0 0 0 1px rgba(0,0,0,0.5), 0 10px 40px rgba(0,0,0,0.5);
-		/* Liquid glass feel for the main app container edges */
-		transition: border-radius 0.3s ease;
-		/* Crucial: creates a containing block so overflow: hidden clips position: fixed children like the background glow */
-		transform: translateZ(0);
-	}
-
-	body.has-titlebar .app-shell {
-		background: transparent !important;
 	}
 
 	body {
