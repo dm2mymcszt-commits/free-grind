@@ -47,21 +47,19 @@ export function TitleBar() {
 
 	return (
 		<div
-			data-tauri-drag-region
 			className="fixed top-0 left-0 right-0 h-8 z-[9999] flex justify-between items-center px-1 select-none"
-			// Completely transparent by default.
-			style={{ WebkitAppRegion: "drag" } as any}
 		>
-            <div className="flex items-center gap-2 px-2 pointer-events-none text-[var(--text-muted)]">
+            <div data-tauri-drag-region className="absolute inset-0 z-0" />
+            
+            <div className="relative z-10 flex items-center gap-2 px-2 pointer-events-none text-[var(--text-muted)]">
                 <img src={freegrindLogo} alt="Free Grind" className="h-4 w-4 drop-shadow-md" />
                 <span className="text-xs font-semibold tracking-wide drop-shadow-md">Free Grind</span>
             </div>
             
-            <div className="flex h-full">
+            <div className="relative z-10 flex h-full pointer-events-auto">
                 <button
                     onClick={handleMinimize}
                     className="h-full px-3 inline-flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] transition-colors rounded-md mr-1"
-                    style={{ WebkitAppRegion: "no-drag" } as any}
                     title="Minimize"
                 >
                     <Minus className="w-4 h-4" />
@@ -69,7 +67,6 @@ export function TitleBar() {
                 <button
                     onClick={handleMaximize}
                     className="h-full px-3 inline-flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] transition-colors rounded-md mr-1"
-                    style={{ WebkitAppRegion: "no-drag" } as any}
                     title="Maximize"
                 >
                     <Square className="w-3.5 h-3.5" />
@@ -77,7 +74,6 @@ export function TitleBar() {
                 <button
                     onClick={handleClose}
                     className="h-full px-3 inline-flex items-center justify-center text-[var(--text-muted)] hover:text-white hover:bg-red-500 transition-colors rounded-md"
-                    style={{ WebkitAppRegion: "no-drag" } as any}
                     title="Close"
                 >
                     <X className="w-4 h-4" />
