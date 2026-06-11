@@ -37,7 +37,7 @@ export function AlbumViewerPanel({
             onClick={closeViewer}
         >
             <div
-                className="relative mx-auto flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden bg-[color-mix(in_srgb,var(--surface)_85%,transparent)] backdrop-blur-[30px] shadow-[0_20px_60px_rgba(0,0,0,0.6),_inset_0_1px_0_rgba(255,255,255,0.1)] sm:h-full sm:rounded-[2.5rem] border border-white/10 dark:border-white/5"
+                className="relative mx-auto flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden bg-[color-mix(in_srgb,var(--surface)_70%,transparent)] backdrop-blur-[40px] shadow-[0_20px_80px_rgba(0,0,0,0.8),_inset_0_1px_0_rgba(255,255,255,0.2)] sm:h-[95dvh] sm:mt-[2.5dvh] sm:rounded-[3rem] border border-white/20 dark:border-white/10"
                 onClick={(event) => event.stopPropagation()}
             >
 
@@ -47,38 +47,28 @@ export function AlbumViewerPanel({
                     style={{ paddingTop: "max(16px, env(safe-area-inset-top, 0px))" }}
                 >
                     <div className="flex items-start justify-between gap-4">
-                        <div className="min-w-0 flex-1 flex items-center gap-4">
-                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--accent)] to-purple-600 shadow-[0_0_20px_var(--accent)]/30 overflow-hidden p-[1px]">
-                                <div className="flex h-full w-full items-center justify-center rounded-[15px] bg-[var(--surface)]/80 backdrop-blur-md">
-                                    <span className="text-lg font-black text-white drop-shadow-md">
-                                        {viewer.content.length}
-                                    </span>
-                                </div>
+                        <div className="min-w-0 flex-1">
+                            <div className="mb-2.5 inline-flex items-center gap-1.5 rounded-full bg-[var(--surface-2)] px-3 py-1 ring-1 ring-white/10 backdrop-blur-md">
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
+                                    {t("shared_albums.album_label", { defaultValue: "Album" })}
+                                </span>
                             </div>
-                            <div className="min-w-0">
-                                <h2 className="truncate text-xl font-bold tracking-tight text-[var(--text)] drop-shadow-sm">
-                                    {viewer.albumName?.trim() || `Album #${viewer.albumId}`}
-                                </h2>
-                                <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-                                    <span className="flex items-center gap-1 text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
-                                        <UserRound className="h-3 w-3 shrink-0" />
-                                        <span className="truncate">{viewer.profileName}</span>
-                                    </span>
-                                    <span className="h-1 w-1 shrink-0 rounded-full bg-white/20" />
-                                    <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
-                                        {t("shared_albums.items_count", { count: viewer.content.length })}
-                                        {selectedViewerItem ? ` · ${viewerIndex + 1}/${viewer.content.length}` : ""}
-                                    </span>
-                                </div>
-                            </div>
+                            <h2 className="truncate text-3xl font-black tracking-tight text-[var(--text)] drop-shadow-sm">
+                                {viewer.albumName?.trim() || "Album"}
+                            </h2>
+                            <p className="mt-1.5 text-sm font-medium text-[var(--text-muted)]">
+                                {t("shared_albums.items_count", { count: viewer.content.length, defaultValue: `${viewer.content.length} items` })}
+                                {selectedViewerItem ? ` · ${viewerIndex + 1}/${viewer.content.length}` : ""}
+                            </p>
                         </div>
                         <button
                             type="button"
                             onClick={closeViewer}
-                            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--text-muted)] shadow-lg backdrop-blur-md transition-all hover:bg-white/10 hover:text-[var(--text)] active:scale-95"
+                            className="group relative overflow-hidden rounded-full bg-[var(--surface-2)] p-3 text-[var(--text-muted)] ring-1 ring-white/10 transition-all hover:bg-[var(--accent)] hover:text-[var(--accent-contrast)] hover:shadow-[0_0_20px_color-mix(in_srgb,var(--accent)_35%,transparent)] hover:scale-[1.02] active:scale-95"
                             aria-label={t("shared_albums.close_viewer")}
                         >
-                            <X className="h-5 w-5" />
+                            <div className="absolute inset-0 bg-gradient-to-tr from-white/0 to-white/0 transition-colors group-hover:from-white/5 group-hover:to-transparent" />
+                            <X className="relative z-10 h-6 w-6 transition-transform group-hover:rotate-90 group-hover:scale-110" />
                         </button>
                     </div>
 
@@ -117,9 +107,9 @@ export function AlbumViewerPanel({
                     </div>
                 ) : (
                     /* --- PERFECTLY CROPPED APPLE-PHOTOS STYLE GRID --- */
-                    <div className="relative flex-1 overflow-y-auto bg-transparent [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:p-6">
+                    <div className="relative flex-1 overflow-y-auto bg-transparent [scrollbar-width:none] [&::-webkit-scrollbar]:hidden p-4 sm:p-6">
                         <div 
-                            className="content-start grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-3 lg:grid-cols-5"
+                            className="content-start grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 sm:gap-4 md:gap-5"
                             style={{ paddingBottom: "max(24px, env(safe-area-inset-bottom, 0px))" }}
                         >
                             {viewer.content.map((item, index) => {
@@ -134,10 +124,10 @@ export function AlbumViewerPanel({
                                         type="button"
                                         key={item.contentId}
                                         onClick={() => openFullScreen(index)}
-                                        className={`group relative aspect-square w-full overflow-hidden bg-[color-mix(in_srgb,var(--surface)_60%,transparent)] ring-1 ring-white/10 transition-all duration-500 hover:z-10 hover:scale-[1.03] hover:ring-[var(--accent)] hover:shadow-[0_0_20px_color-mix(in_srgb,var(--accent)_35%,transparent)] sm:rounded-2xl ${
+                                        className={`group relative aspect-square w-full overflow-hidden rounded-2xl sm:rounded-[1.25rem] bg-[color-mix(in_srgb,var(--surface-2)_50%,transparent)] backdrop-blur-md border border-white/20 dark:border-white/10 transition-all duration-500 hover:z-10 hover:scale-[1.05] hover:border-white/50 hover:shadow-[0_15px_40px_-10px_rgba(0,0,0,0.6),_0_0_20px_color-mix(in_srgb,var(--accent)_40%,transparent)] ${
                                             isActive
                                                 ? "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[var(--surface)] scale-[0.95]"
-                                                : "hover:scale-[1.03] hover:shadow-[0_10px_30px_-10px_rgba(0,0,0,0.5)] active:scale-[0.95]"
+                                                : "active:scale-[0.95]"
                                         }`}
                                     >
                                         {mediaUrl ? (
