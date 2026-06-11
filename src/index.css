@@ -369,10 +369,27 @@
 		min-height: 100%;
 	}
 
+	html.has-titlebar,
+	body.has-titlebar {
+		background: transparent !important;
+		--titlebar-height: 32px;
+	}
+
+	body.has-titlebar #app {
+		border-radius: 20px;
+		overflow: hidden;
+		background: var(--bg);
+		border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+		box-shadow: 0 0 0 1px rgba(0,0,0,0.5), 0 10px 40px rgba(0,0,0,0.5);
+		/* Liquid glass feel for the main app container edges */
+		transition: border-radius 0.3s ease;
+	}
+
 	body {
 		margin: 0;
 		background: var(--bg);
 		color: var(--text);
+		--titlebar-height: 0px;
 		font-family: "IBM Plex Sans Variable", "IBM Plex Sans", sans-serif;
 		font-feature-settings:
 			"rlig" 1,
@@ -610,13 +627,9 @@
 		width: min(100%, var(--content-max));
 		margin-inline: auto;
 		/* Uses --app-px for consistent horizontal alignment while allowing overrides (like edge-to-edge grids) */
-		padding: calc(env(safe-area-inset-top, 0px) + clamp(14px, 2.2vw, 28px))
+		padding: calc(env(safe-area-inset-top, 0px) + var(--titlebar-height) + clamp(14px, 2.2vw, 28px))
 			var(--app-px)
 			calc(env(safe-area-inset-bottom, 0px) + clamp(92px, 10vw, 114px));
-	}
-
-	body.has-titlebar .app-screen {
-		padding-top: calc(env(safe-area-inset-top, 0px) + clamp(14px, 2.2vw, 28px) + 32px);
 	}
 
 	@media (min-width: 1024px) {

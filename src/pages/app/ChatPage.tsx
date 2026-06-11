@@ -3848,7 +3848,7 @@ import { processAutoDownload } from "../../services/autoDownloader";
                                                         className="grid w-full grid-cols-[360px_minmax(0,1fr)] gap-3"
                                                         style={{
                                                             height:
-                                                                "calc(100dvh - (env(safe-area-inset-top, 0px) + 16px) - (env(safe-area-inset-bottom, 0px) + 120px))",
+                                                                "calc(100dvh - (env(safe-area-inset-top, 0px) + 16px + var(--titlebar-height)) - (env(safe-area-inset-bottom, 0px) + 120px))",
                                                     }}
                                                 >
                             <div className={glassWrapperClasses}>
