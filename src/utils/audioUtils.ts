@@ -44,7 +44,7 @@ export async function extractAudioToWav(file: File): Promise<{blob: Blob, durati
         offset++;
     }
 
-    return { blob: new Blob([buffer], { type: "audio/wav" }), durationMs: audioBuffer.duration * 1000 };
+    return { blob: new Blob([buffer], { type: "audio/mp4" }), durationMs: audioBuffer.duration * 1000 };
 }
 
 export function getAudioDuration(file: Blob): Promise<number> {

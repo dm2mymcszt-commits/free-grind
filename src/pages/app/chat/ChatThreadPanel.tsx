@@ -850,8 +850,8 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                     durationMs = await getAudioDuration(audioBlob);
                 }
                 
-                // Send directly to the existing audio recorded pipeline
-                onAudioRecorded(audioBlob, durationMs, true);
+                // Send to the preview pipeline so the user can verify and send it
+                onAudioRecorded(audioBlob, Math.round(durationMs), false);
                 
             } catch (err) {
                 appLog.error("Error processing audio file:", err);
