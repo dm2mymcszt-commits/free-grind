@@ -1,5 +1,5 @@
 import { useAuth } from "../../contexts/useAuth";
-import { MapPin, SlidersHorizontal, ListFilter, Star, Plane, Droplet, Search } from "lucide-react";
+import { MapPin, SlidersHorizontal, ListFilter, Star, Plane, Droplet, Search, Eye, EyeOff } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useApiFunctions } from "../../hooks/useApiFunctions";
@@ -138,6 +138,18 @@ export function GridPage() {
 
 	const isDesktop = useDesktopBreakpoint();
 	const [mobileKeyboardInset, setMobileKeyboardInset] = useState(0);
+	const [hideGridImages, setHideGridImages] = useState(() => {
+		if (typeof window === "undefined") return false;
+		return localStorage.getItem("fg-hide-grid-images") === "true";
+	});
+
+	const toggleHideGridImages = () => {
+		setHideGridImages((prev) => {
+			const next = !prev;
+			localStorage.setItem("fg-hide-grid-images", next.toString());
+			return next;
+		});
+	};
 
 	useEffect(() => {
 		if (isDesktop) {
@@ -1238,6 +1250,20 @@ export function GridPage() {
 
 									<button
 										type="button"
+										onClick={toggleHideGridImages}
+										className={`inline-flex min-h-8 items-center justify-center rounded-full px-5 transition ${hideGridImages ? "bg-[var(--accent)] text-[var(--accent-contrast)]" : "bg-[var(--surface-2)] text-[var(--text)]"}`}
+										aria-label="Toggle images visibility"
+										title="Toggle images visibility"
+									>
+										{hideGridImages ? (
+											<EyeOff className="h-4 w-4" />
+										) : (
+											<Eye className="h-4 w-4" />
+										)}
+									</button>
+
+									<button
+										type="button"
 										onClick={() =>
 											setBrowseFilters((prev: typeof browseFilters) => ({
 												...prev,
@@ -1392,6 +1418,27 @@ export function GridPage() {
 
 									<button
 										type="button"
+										onClick={toggleHideGridImages}
+										className={`inline-flex items-center gap-2 rounded-full border border-[var(--border)] px-3 py-1 text-xs font-medium transition ${
+											hideGridImages
+												? "bg-[var(--accent)] border-[var(--accent)] text-[var(--accent-contrast)]"
+												: "bg-[var(--surface-2)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--text)]"
+										}`}
+										aria-label="Toggle images visibility"
+										title="Toggle images visibility"
+									>
+										{hideGridImages ? (
+											<EyeOff className="h-3.5 w-3.5" />
+										) : (
+											<Eye className="h-3.5 w-3.5" />
+										)}
+										<span className="hidden lg:inline">
+											{hideGridImages ? "Hidden" : "Visible"}
+										</span>
+									</button>
+
+									<button
+										type="button"
 										onClick={() =>
 											setBrowseFilters((prev: typeof browseFilters) => ({
 												...prev,
@@ -1489,6 +1536,7 @@ export function GridPage() {
 						onLoadMore={() => {
 							void handleLoadMoreCards();
 						}}
+						hideImages={hideGridImages}
 					/>
 				</div>
 			</PullToRefreshContainer>

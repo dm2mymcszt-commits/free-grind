@@ -22,6 +22,7 @@ type BrowseCardTileProps = {
     onSelectProfile: (profileId: string) => void;
     onMessageProfile: (profileId: string) => void;
     isDesktop?: boolean;
+    hideImages?: boolean;
 };
 
 export function BrowseCardTile({
@@ -30,6 +31,7 @@ export function BrowseCardTile({
     onSelectProfile,
     onMessageProfile: _onMessageProfile,
     isDesktop = false,
+    hideImages = false,
 }: BrowseCardTileProps) {
     const { t } = useTranslation();
     const { unitsPreset, showDebugInfo } = usePreferences();
@@ -84,9 +86,11 @@ export function BrowseCardTile({
                             <img
                                 src={card.primaryImageUrl}
                                 alt={t("browse_page.profile_photo_alt", { name })}
+                                loading="lazy"
                                 className={cn(
-                                    "h-full w-full object-cover",
-                                    isDemoCard && "blur-md scale-110"
+                                    "h-full w-full object-cover transition-all duration-300",
+                                    (isDemoCard || hideImages) && "blur-xl scale-110",
+                                    hideImages && "opacity-60"
                                 )}
                             />
                         ) : (
