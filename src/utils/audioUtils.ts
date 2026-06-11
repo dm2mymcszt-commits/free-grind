@@ -1,4 +1,4 @@
-export async function extractAudioToWav(file: File): Promise<Blob> {
+export async function extractAudioToWav(file: File): Promise<{blob: Blob, durationMs: number}> {
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
     const arrayBuffer = await file.arrayBuffer();
     const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
@@ -44,7 +44,7 @@ export async function extractAudioToWav(file: File): Promise<Blob> {
         offset++;
     }
 
-    return new Blob([buffer], { type: "audio/wav" });
+    return { blob: new Blob([buffer], { type: "audio/wav" }), durationMs: audioBuffer.duration * 1000 };
 }
 
 export function getAudioDuration(file: Blob): Promise<number> {

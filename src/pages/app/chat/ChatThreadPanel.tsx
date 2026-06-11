@@ -835,18 +835,20 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
             
             try {
                 let audioBlob: Blob;
+                let durationMs: number;
                 
                 // If it's a video file, extract the audio into WAV
                 if (file.type.startsWith("video/")) {
                     toast.loading(t("chat.extracting_audio", { defaultValue: "Extracting audio from video..." }), { id: "audio-extract" });
-                    audioBlob = await extractAudioToWav(file);
+                    const result = await extractAudioToWav(file);
+                    audioBlob = result.blob;
+                    durationMs = result.durationMs;
                     toast.success(t("chat.extracted_audio", { defaultValue: "Audio extracted!" }), { id: "audio-extract" });
                 } else {
                     audioBlob = file;
+                    // Get duration
+                    durationMs = await getAudioDuration(audioBlob);
                 }
-                
-                // Get duration
-                const durationMs = await getAudioDuration(audioBlob);
                 
                 // Send directly to the existing audio recorded pipeline
                 onAudioRecorded(audioBlob, durationMs, true);
