@@ -1083,16 +1083,16 @@ export function ChatThreadMessages({
                                                 >
                                                     <div className="relative h-56 w-64 max-w-full sm:w-72">
                                                         {/* Bottom Stack Card */}
-                                                        {albumCover && !isLocked && (
-                                                            <div className={`absolute inset-0 z-0 overflow-hidden rounded-2xl border border-white/10 bg-[var(--surface-2)] opacity-0 shadow-lg transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] will-change-transform ${mine ? "origin-bottom-right group-hover/media:-translate-x-6 group-hover/media:-translate-y-3 group-hover/media:-rotate-[8deg] group-hover/media:scale-90 group-hover/media:opacity-40" : "origin-bottom-left group-hover/media:translate-x-6 group-hover/media:-translate-y-3 group-hover/media:rotate-[8deg] group-hover/media:scale-90 group-hover/media:opacity-40"}`}>
-                                                                <img src={albumCover} alt="" className="h-full w-full object-cover blur-[3px] brightness-50" />
+                                                        {!isLocked && (
+                                                            <div className={`absolute inset-0 z-0 overflow-hidden rounded-2xl border border-white/10 bg-[var(--surface-2)] shadow-lg transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] will-change-transform ${mine ? "origin-bottom-right -translate-x-2 -translate-y-1 -rotate-[2deg] scale-[0.98] opacity-60 group-hover/media:-translate-x-6 group-hover/media:-translate-y-3 group-hover/media:-rotate-[8deg] group-hover/media:scale-90 group-hover/media:opacity-40" : "origin-bottom-left translate-x-2 -translate-y-1 rotate-[2deg] scale-[0.98] opacity-60 group-hover/media:translate-x-6 group-hover/media:-translate-y-3 group-hover/media:rotate-[8deg] group-hover/media:scale-90 group-hover/media:opacity-40"}`}>
+                                                                {albumCover ? <img src={albumCover} alt="" className="h-full w-full object-cover blur-[3px] brightness-50" /> : <div className="h-full w-full bg-[var(--accent)]/20" />}
                                                             </div>
                                                         )}
 
                                                         {/* Middle Stack Card */}
-                                                        {albumCover && !isLocked && (
-                                                            <div className={`absolute inset-0 z-10 overflow-hidden rounded-2xl border border-white/20 bg-[var(--surface-2)] opacity-0 shadow-xl transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] will-change-transform ${mine ? "origin-bottom-right group-hover/media:-translate-x-3 group-hover/media:-translate-y-1.5 group-hover/media:-rotate-[4deg] group-hover/media:scale-95 group-hover/media:opacity-70" : "origin-bottom-left group-hover/media:translate-x-3 group-hover/media:-translate-y-1.5 group-hover/media:rotate-[4deg] group-hover/media:scale-95 group-hover/media:opacity-70"}`}>
-                                                                <img src={albumCover} alt="" className="h-full w-full object-cover blur-[1px] brightness-75" />
+                                                        {!isLocked && (
+                                                            <div className={`absolute inset-0 z-10 overflow-hidden rounded-2xl border border-white/20 bg-[var(--surface-2)] shadow-xl transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] will-change-transform ${mine ? "origin-bottom-right -translate-x-1 -translate-y-0.5 -rotate-[1deg] scale-[0.99] opacity-80 group-hover/media:-translate-x-3 group-hover/media:-translate-y-1.5 group-hover/media:-rotate-[4deg] group-hover/media:scale-95 group-hover/media:opacity-70" : "origin-bottom-left translate-x-1 -translate-y-0.5 rotate-[1deg] scale-[0.99] opacity-80 group-hover/media:translate-x-3 group-hover/media:-translate-y-1.5 group-hover/media:rotate-[4deg] group-hover/media:scale-95 group-hover/media:opacity-70"}`}>
+                                                                {albumCover ? <img src={albumCover} alt="" className="h-full w-full object-cover blur-[1px] brightness-75" /> : <div className="h-full w-full bg-[var(--accent)]/40" />}
                                                             </div>
                                                         )}
 
