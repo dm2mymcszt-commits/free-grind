@@ -1127,18 +1127,20 @@ export function ChatThreadMessages({
                                                                 </span>
                                                             </div>
                                                         )}
-                                                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-3 text-center text-white">
-                                                            <div className="h-16 w-16 overflow-hidden rounded-full border-white/30 bg-white/15 text-white shadow-lg backdrop-blur-sm">
-                                                                <ProfileImage
-                                                                    src={senderAvatarUrl}
-                                                                    alt={senderLabel}
-                                                                />
+                                                        {!isLocked && (
+                                                            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 px-3 text-center text-white">
+                                                                <div className="h-16 w-16 overflow-hidden rounded-full border-white/30 bg-white/15 text-white shadow-lg backdrop-blur-sm pointer-events-auto">
+                                                                    <ProfileImage
+                                                                        src={senderAvatarUrl}
+                                                                        alt={senderLabel}
+                                                                    />
+                                                                </div>
+                                                                <p className="max-w-full truncate text-sm font-semibold leading-tight text-white drop-shadow">
+                                                                    {senderLabel}
+                                                                </p>
                                                             </div>
-                                                            <p className="max-w-full truncate text-sm font-semibold leading-tight text-white drop-shadow">
-                                                                {senderLabel}
-                                                            </p>
-                                                        </div>
-                                                        <div className="absolute inset-x-0 bottom-0 flex flex-col bg-gradient-to-t from-black/80 via-black/40 to-transparent px-3 py-2 text-white">
+                                                        )}
+                                                        <div className="absolute inset-x-0 bottom-0 z-20 flex flex-col bg-gradient-to-t from-black/80 via-black/40 to-transparent px-3 py-2 text-white pointer-events-auto">
                                                             {!isLocked && isExpiringMedia && (expiresAt > Date.now() || isOnce) && (
                                                                 <AlbumExpirationCountdown
                                                                     expiresAt={expiresAt}
