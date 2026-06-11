@@ -1,4 +1,4 @@
-import { Ban, ChevronLeft, Ellipsis, Flame, MessageCircle, Star, Triangle, X } from "lucide-react";
+import { Ban, ChevronLeft, Ellipsis, Flame, Loader2, MessageCircle, Star, Triangle, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -132,6 +132,23 @@ export function ProfileDetailsModal({
 	const { unitsPreset } = usePreferences();
 	const { userId } = useAuth();
 	const apiFunctions = useApiFunctions();
+	const [shouldRender, setShouldRender] = useState(false);
+	const [isClosing, setIsClosing] = useState(false);
+
+	useEffect(() => {
+		if (isOpen) {
+			setShouldRender(true);
+			setIsClosing(false);
+		} else if (shouldRender) {
+			setIsClosing(true);
+			const timer = setTimeout(() => {
+				setShouldRender(false);
+				setIsClosing(false);
+			}, 250);
+			return () => clearTimeout(timer);
+		}
+	}, [isOpen, shouldRender]);
+
 	const [ownTags, setOwnTags] = useState<string[]>(() => (userId ? (ownProfileDataCache.get(String(userId))?.tags ?? []) : []));
 	useEffect(() => {
 		if (!userId) return;
@@ -649,7 +666,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 		/>
 	);
 
-	if (!isOpen) {
+	if (!shouldRender) {
 		return null;
 	}
 
@@ -1027,18 +1044,24 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 
 	return (
 		<div
-			className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-[12px] p-6 transition-all duration-300"
+			className={`fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-[12px] p-6 transition-all duration-300 ${isClosing ? "animate-backdrop-out" : "animate-backdrop-in"}`}
 			onClick={handleBackdropClose}
 		>
-			<div
-				className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl sm:max-h-[calc(100dvh-8rem)] border border-white/10 dark:border-white/5 backdrop-blur-[40px]"
-				style={{ 
-                    backgroundColor: "rgba(15, 17, 21, 0.35)",
-                    background: "color-mix(in srgb, var(--surface) 35%, transparent)",
-                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2), 0 24px 48px rgba(0,0,0,0.45)' 
-                }}
-				onClick={(event) => event.stopPropagation()}
-			>
+			{isLoadingActiveProfile ? (
+				<div className="flex flex-col items-center justify-center gap-4 text-center">
+					<Loader2 className="h-10 w-10 animate-spin text-[var(--accent)] drop-shadow-md mx-auto" />
+					<span className="text-sm font-semibold text-white tracking-wide drop-shadow-md">{t("profile_details.loading")}</span>
+				</div>
+			) : (
+				<div
+					className={`flex max-h-[calc(100dvh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl sm:max-h-[calc(100dvh-8rem)] border border-white/10 dark:border-white/5 backdrop-blur-[40px] ${isClosing ? "animate-modal-out" : "animate-modal-in"}`}
+					style={{ 
+                        backgroundColor: "rgba(15, 17, 21, 0.35)",
+                        background: "color-mix(in srgb, var(--surface) 35%, transparent)",
+                        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2), 0 24px 48px rgba(0,0,0,0.45)' 
+                    }}
+					onClick={(event) => event.stopPropagation()}
+				>
 				<div className="flex relative z-10 items-center gap-3 bg-transparent px-4 py-3 sm:px-5">
 					<button
 						type="button"
@@ -1121,11 +1144,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 					data-lenis-prevent
 					className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-5"
 				>
-					{isLoadingActiveProfile ? (
-						<p className="text-sm text-[var(--text-muted)]">
-							{t("profile_details.loading")}
-						</p>
-					) : activeProfileError ? (
+					{activeProfileError ? (
 						<p className="text-sm text-[var(--text-muted)]">
 							{activeProfileError}
 						</p>
@@ -1285,6 +1304,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 					</div>
 				)}
 			</div>
+			)}
 			{barTapFlyEmoji && (
 				<>
 					{barTapFlyEmoji.particles.map((p, i) => p.emoji ? (
