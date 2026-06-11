@@ -1213,10 +1213,10 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 						<div className="pointer-events-none absolute inset-x-0 bottom-0 z-30">
 							<div
 								ref={controlsBarRef}
-								className="pointer-events-auto flex items-center gap-1 px-4 py-3 border-t border-white/10 backdrop-blur-[20px]"
+								className="pointer-events-auto flex items-center gap-1 px-4 py-3 backdrop-blur-[40px]"
 								style={{
 									background: "color-mix(in srgb, var(--surface) 25%, transparent)",
-									boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2), 0 -12px 40px rgba(0,0,0,0.45)'
+									boxShadow: '0 -12px 40px rgba(0,0,0,0.45)'
 								}}
 								onPointerDown={(e) => e.stopPropagation()}
 							>
