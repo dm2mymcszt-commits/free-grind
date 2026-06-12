@@ -46,6 +46,14 @@ export function PhotoViewer({
     const scannerEnabled = window.localStorage.getItem("fg-image-scanner-enabled") === "true";
     const [isScannerHubOpen, setIsScannerHubOpen] = useState(false);
 
+    const dialogRef = useRef<HTMLDialogElement>(null);
+    useLayoutEffect(() => {
+        const d = dialogRef.current;
+        if (d && !d.open) {
+            try { d.showModal(); } catch { d.show(); }
+        }
+    }, []);
+
     const mediaRef = useRef<HTMLImageElement | HTMLVideoElement | null>(null);
 
     const touchStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -336,7 +344,12 @@ export function PhotoViewer({
     const currentMediaInfo = currentPhoto ? getMediaInfo(currentPhoto) : null;
 
     return createPortal(
-        <div className="fixed inset-0 z-[80] bg-black" onClick={onClose}>
+        <dialog
+            ref={dialogRef}
+            className="fixed inset-0 z-[80] m-0 h-full w-full max-w-none border-none bg-transparent p-0 overflow-hidden"
+            onCancel={(e) => { e.preventDefault(); onClose(); }}
+        >
+            <div className="fixed inset-0 bg-black" onClick={onClose}>
 			
             <button
                 type="button"
@@ -536,7 +549,8 @@ export function PhotoViewer({
                     </div>
                 </div>
             )}
-        </div>,
+            </div>
+        </dialog>,
         document.body,
     );
 }
