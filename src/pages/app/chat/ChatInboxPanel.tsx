@@ -424,6 +424,7 @@ export function ChatInboxPanel({
                         const isOtherParticipantOnline = otherParticipantOnlineMeta.isOnline;
                         const isSelected =
                             conversation.data.conversationId === selectedConversationId;
+                        const showActiveHighlight = isSelected && !isActive;
 
                         const databaseUnread = otherProfileId ? chatContactIndexByProfileId[otherProfileId]?.unreadCount ?? 0 : 0;
                         const apiUnread = conversation.data.unreadCount;
@@ -443,12 +444,12 @@ export function ChatInboxPanel({
                                 >
                                     <div
                                         className={`relative flex h-24 w-full shrink-0 items-stretch overflow-hidden text-left transition-all duration-300 ease-out ${
-                                            isSelected
+                                            showActiveHighlight
                                                 ? "bg-[var(--accent)] text-[var(--accent-contrast)]"
                                                 : "bg-transparent hover:bg-white/5"
                                         }`}
                                     >
-                                        {/* Glowing Vertical Selection Indicator */}
+                                        {/* Glowing Vertical Selection Indicator (remains visible to show active thread layout) */}
                                         {isSelected && (
                                             <div className="absolute left-0 top-0 bottom-0 w-1 bg-[var(--accent)] shadow-[0_0_12px_var(--accent)] z-10" />
                                         )}
@@ -463,7 +464,7 @@ export function ChatInboxPanel({
                                             }
                                         }}
                                         className={`relative w-24 shrink-0 transition-all ${
-                                            isSelected
+                                            showActiveHighlight
                                                 ? "bg-transparent"
                                                 : "bg-gradient-to-r from-[#101216] via-[#101216]/75 to-transparent"
                                         }`}
@@ -477,8 +478,12 @@ export function ChatInboxPanel({
                                                 className="h-full w-full object-cover"
                                             />
                                         ) : (
-                                            <div className="h-full w-full flex items-center justify-center bg-[var(--surface-2)]">
-                                                <User className="h-1/2 w-1/2 text-[var(--text-muted)] opacity-50" />
+                                            <div className={`h-full w-full flex items-center justify-center transition-colors duration-300 ${
+                                                showActiveHighlight ? "bg-[var(--accent-contrast)]/10" : "bg-[var(--surface-2)]"
+                                            }`}>
+                                                <User className={`h-1/2 w-1/2 opacity-50 transition-colors duration-300 ${
+                                                    showActiveHighlight ? "text-[var(--accent-contrast)]" : "text-[var(--text-muted)]"
+                                                }`} />
                                             </div>
                                         )}
                                         {/* --------------------------------- */}
@@ -509,7 +514,7 @@ export function ChatInboxPanel({
                                                         alt="Free Grind user"
                                                         title={t("profile_details.uses_free_grind")}
                                                         className={`h-4 w-4 shrink-0 rounded-full border ${
-                                                            isSelected
+                                                            showActiveHighlight
                                                                 ? "border-[var(--accent-contrast)]/20"
                                                                 : "border-[var(--border)]"
                                                         }`}
@@ -518,7 +523,7 @@ export function ChatInboxPanel({
                                             </div>
                                             <span
                                                 className={`text-xs ${
-                                                    isSelected
+                                                    showActiveHighlight
                                                         ? "text-[var(--accent-contrast)]/70"
                                                         : "text-[var(--text-muted)]"
                                                 }`}
@@ -530,10 +535,10 @@ export function ChatInboxPanel({
                                             <p
                                                 className={`mt-0.5 truncate ${
                                                     conversation.data.unreadCount > 0
-                                                        ? isSelected
+                                                        ? showActiveHighlight
                                                             ? "font-bold text-[var(--accent-contrast)]"
                                                             : "font-bold text-[var(--text)]"
-                                                        : isSelected
+                                                        : showActiveHighlight
                                                             ? "text-[var(--accent-contrast)]/80"
                                                             : "text-[var(--text-muted)]"
                                                 }`}
@@ -543,7 +548,7 @@ export function ChatInboxPanel({
                                             {conversation.data.unreadCount > 0 ? (
                                                 <span
                                                     className={`flex min-w-[20px] flex-col items-center justify-center rounded-full px-1 py-0.5 font-bold shadow-sm ${
-                                                        isSelected
+                                                        showActiveHighlight
                                                             ? "bg-[var(--accent-contrast)] text-[var(--accent)]"
                                                             : "bg-[var(--accent)] text-[var(--accent-contrast)]"
                                                     } ${showDebugInfo ? "min-h-[28px]" : "h-5"}`}
@@ -563,7 +568,7 @@ export function ChatInboxPanel({
                                             {conversation.data.muted ? (
                                                 <span
                                                     className={`rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
-                                                        isSelected
+                                                        showActiveHighlight
                                                             ? "bg-black/20 text-white backdrop-blur-sm shadow-sm"
                                                             : "bg-[var(--surface-2)] text-[var(--text-muted)]"
                                                     }`}
@@ -574,7 +579,7 @@ export function ChatInboxPanel({
                                             {isChatGhosted(conversation.data.conversationId) ? (
                                                 <span
                                                     className={`rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 ${
-                                                        isSelected
+                                                        showActiveHighlight
                                                             ? "bg-purple-500/25 text-purple-200 border border-purple-500/35"
                                                             : "bg-purple-500/15 text-purple-300 border border-purple-500/20"
                                                     }`}
