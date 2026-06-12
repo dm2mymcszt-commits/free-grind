@@ -1454,7 +1454,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                             onCancel={closeBlockConfirm}
                             isProcessing={isBlockingProfile}
                             confirmTone="danger"
-                            dontAskAgainLabel={t("profile_details.dont_ask_again")}
+                            dontAskAgainLabel={t("profile_details.dont_ask_again", { defaultValue: "Don't ask again" })}
                             dontAskAgainChecked={dontAskBlockAgain}
                             onDontAskAgainChange={setDontAskBlockAgain}
                         />
