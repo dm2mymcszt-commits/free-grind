@@ -40,12 +40,7 @@ export function SettingsBlockedPage() {
 	// ── Search ───────────────────────────────────────────────────────────
 	const [searchQuery, setSearchQuery] = useState("");
 
-	// ── UI state ─────────────────────────────────────────────────────────
-	const [mutatingProfileId, setMutatingProfileId] = useState<string | null>(null);
-	const [isUnblockingAll, setIsUnblockingAll] = useState(false);
-	const [confirmUnblockAll, setConfirmUnblockAll] = useState(false);
-
-	// ── Sentinel ref for IntersectionObserver ─────────────────────────────
+	// ── UI state ──────�	// ── Sentinel ref for IntersectionObserver ─────────────────────────────
 	const sentinelRef = useRef<HTMLDivElement | null>(null);
 
 	// ── All blocked IDs (master list) ────────────────────────────────────
@@ -75,73 +70,6 @@ export function SettingsBlockedPage() {
 
 	const hasMore = loadedUpTo < allBlockedIds.length;
 
-	// ── Extract profile metadata from raw API response ───────────────────
-	const extractBlockedProfileMeta = useCallback(
-		(rawProfilePayload: unknown, profileId: string) => {
-			const fallbackName = t("profile_details.profile_fallback", { id: profileId });
-			if (typeof rawProfilePayload !== "object" || rawProfilePayload === null) {
-				return { displayName: fallbackName, avatarUrl: null };
-			}
-
-			const profiles = (rawProfilePayload as { profiles?: unknown }).profiles;
-			if (!Array.isArray(profiles) || profiles.length === 0) {
-				return { displayName: fallbackName, avatarUrl: null };
-			}
-
-			const first = profiles[0];
-			if (typeof first !== "object" || first === null) {
-				return { displayName: fallbackName, avatarUrl: null };
-			}
-
-			const displayNameRaw = (first as { displayName?: unknown }).displayName;
-			const aboutMeRaw = (first as { aboutMe?: unknown }).aboutMe;
-
-			// The Grindr API returns placeholder data for blocked profiles
-			// (e.g. displayName: "4"). Detect these and prefer aboutMe or
-			// the profile-id fallback instead.
-			const isPlaceholder = (v: unknown): boolean => {
-				if (typeof v !== "string" || v.trim().length === 0) return true;
-				const trimmed = v.trim();
-				// Pure numeric strings of 5 digits or less are almost certainly placeholders
-				if (trimmed.length <= 5 && /^\d+$/.test(trimmed)) return true;
-				return false;
-			};
-
-			let displayName = fallbackName;
-			if (!isPlaceholder(displayNameRaw)) {
-				displayName = (displayNameRaw as string).trim();
-			} else if (typeof aboutMeRaw === "string" && aboutMeRaw.trim().length > 0) {
-				// Use the first line of aboutMe as a rough name substitute
-				const firstLine = aboutMeRaw.trim().split("\n")[0].slice(0, 40);
-				if (firstLine.length > 0) displayName = firstLine;
-			}
-
-			const hashRaw = (first as { profileImageMediaHash?: unknown }).profileImageMediaHash;
-			const avatarUrl =
-				typeof hashRaw === "string" && validateMediaHash(hashRaw)
-					? getThumbImageUrl(hashRaw, "75x75")
-					: null;
-
-			// Also try medias array for a photo hash
-			let finalAvatarUrl = avatarUrl;
-			if (!finalAvatarUrl) {
-				const medias = (first as { medias?: unknown[] }).medias;
-				if (Array.isArray(medias)) {
-					for (const m of medias) {
-						const mh = (m as { mediaHash?: unknown }).mediaHash;
-						if (typeof mh === "string" && validateMediaHash(mh)) {
-							finalAvatarUrl = getThumbImageUrl(mh, "75x75");
-							break;
-						}
-					}
-				}
-			}
-
-			return { displayName, avatarUrl: finalAvatarUrl };
-		},
-		[t],
-	);
-
 	// ── Batch-fetch profile details for a list of IDs ────────────────────
 	const fetchBatch = useCallback(
 		async (ids: string[]) => {
@@ -149,35 +77,63 @@ export function SettingsBlockedPage() {
 			const uncached = ids.filter((id) => !profileCacheRef.current.has(id));
 			if (uncached.length === 0) return;
 
-			const results = await Promise.allSettled(
-				uncached.map(async (profileId) => {
-					const raw = await apiFunctions.getRawProfile(profileId);
-					const { displayName, avatarUrl } = extractBlockedProfileMeta(raw, profileId);
-					return { profileId, displayName, avatarUrl } satisfies BlockedProfileListItem;
-				}),
-			);
-
 			const newEntries = new Map(profileCacheRef.current);
-			for (const result of results) {
-				if (result.status === "fulfilled") {
-					newEntries.set(result.value.profileId, result.value);
-				} else {
-					// For failed fetches, create a fallback entry so we don't retry
-					const failedId = uncached[results.indexOf(result)];
-					if (failedId && !newEntries.has(failedId)) {
-						newEntries.set(failedId, {
-							profileId: failedId,
-							displayName: t("profile_details.profile_fallback", { id: failedId }),
+			try {
+				const raw = await apiFunctions.getProfilesByIds(uncached);
+				const profiles =
+					raw && typeof raw === "object" && Array.isArray((raw as { profiles?: unknown }).profiles)
+						? (raw as { profiles: unknown[] }).profiles
+						: [];
+
+				const fetchedIds = new Set<string>();
+				for (const p of profiles) {
+					if (!p || typeof p !== "object") continue;
+					const idRaw = (p as { profileId?: unknown }).profileId;
+					if (idRaw == null) continue;
+					const profileId = String(idRaw);
+					fetchedIds.add(profileId);
+
+					const nameRaw = (p as { displayName?: unknown }).displayName;
+					const displayName =
+						typeof nameRaw === "string" && nameRaw.trim().length > 0
+							? nameRaw.trim()
+							: t("profile_details.profile_fallback", { id: profileId });
+					const hashRaw = (p as { profileImageMediaHash?: unknown }).profileImageMediaHash;
+					const avatarUrl =
+						typeof hashRaw === "string" && validateMediaHash(hashRaw)
+							? getThumbImageUrl(hashRaw, "75x75")
+							: null;
+
+					newEntries.set(profileId, { profileId, displayName, avatarUrl });
+				}
+
+				// For any uncached IDs that were not returned in the profiles response,
+				// create a fallback entry.
+				for (const id of uncached) {
+					if (!fetchedIds.has(id)) {
+						newEntries.set(id, {
+							profileId: id,
+							displayName: t("profile_details.profile_fallback", { id }),
 							avatarUrl: null,
 						});
 					}
+				}
+			} catch (e) {
+				console.error("Batch fetch failed", e);
+				// In case of complete failure, populate fallback entries for uncached IDs
+				for (const id of uncached) {
+					newEntries.set(id, {
+						profileId: id,
+						displayName: t("profile_details.profile_fallback", { id }),
+						avatarUrl: null,
+					});
 				}
 			}
 
 			profileCacheRef.current = newEntries;
 			setProfileCache(new Map(newEntries));
 		},
-		[apiFunctions, extractBlockedProfileMeta, t],
+		[apiFunctions, t],
 	);
 
 	// ── Sequential batch loader ───────────────────────────────────────────
