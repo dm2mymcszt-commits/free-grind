@@ -608,6 +608,7 @@
 		background: var(--bg);
 		color: var(--text);
 		z-index: 0;
+		transition: filter 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
 	/* Separate layers for the glow effects to avoid using color-mix within gradients (Webview compatibility).
@@ -946,6 +947,10 @@
 
 .profile-content-container {
   padding-top: calc(var(--titlebar-height, 0px) + 16px);
+}
+
+body.profile-modal-open .app-shell {
+	filter: blur(24px);
 }
 
 

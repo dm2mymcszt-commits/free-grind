@@ -1,6 +1,7 @@
 import { Ban, ChevronLeft, Ellipsis, Flame, Loader2, MessageCircle, Star, Triangle, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { createPortal } from "react-dom";
 import {
 	createBackdropCloseHandler,
 	useModalClose,
@@ -139,11 +140,12 @@ export function ProfileDetailsModal({
 
 	useEffect(() => {
 		const dialog = dialogRef.current;
-		let entranceTimer: NodeJS.Timeout;
+		let entranceTimer: ReturnType<typeof setTimeout>;
 		if (isOpen) {
 			setShouldRender(true);
 			setIsClosing(false);
 			setIsEntranceComplete(false);
+			document.body.classList.add("profile-modal-open");
 			entranceTimer = setTimeout(() => setIsEntranceComplete(true), 350);
 			setTimeout(() => { 
 				if (dialog && !dialog.open) {
@@ -152,15 +154,20 @@ export function ProfileDetailsModal({
 			}, 0);
 		} else if (shouldRender) {
 			setIsClosing(true);
+			document.body.classList.remove("profile-modal-open");
 			const timer = setTimeout(() => {
 				setShouldRender(false);
 				setIsClosing(false);
 				if (dialog?.open) dialog.close();
 			}, 250);
-			return () => clearTimeout(timer);
+			return () => {
+				clearTimeout(timer);
+				document.body.classList.remove("profile-modal-open");
+			};
 		}
 		return () => {
 			if (entranceTimer) clearTimeout(entranceTimer);
+			document.body.classList.remove("profile-modal-open");
 		};
 	}, [isOpen, shouldRender]);
 
@@ -900,12 +907,14 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 								style={{ pointerEvents: barInputVisible ? "auto" : "none" }}
 							>
 								<div
-									className="pointer-events-none absolute inset-0 rounded-xl backdrop-blur-md"
+									className="pointer-events-none absolute inset-0 rounded-xl"
 									style={{
 										background: "color-mix(in srgb, var(--surface-2) 50%, transparent)",
 										border: "1px solid color-mix(in srgb, var(--border) 60%, transparent)",
 										opacity: barInputVisible ? 1 : 0,
 										transition: barInputVisible ? "opacity 0.25s" : "opacity 0.12s",
+										backdropFilter: "blur(12px)",
+										WebkitBackdropFilter: "blur(12px)"
 									}}
 								/>
 								<input
@@ -1057,17 +1066,15 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 		);
 	}
 
-	return (
+	return createPortal(
 		<>
 			<style>{`
                 dialog[open]:not(.dialog-closing)::backdrop {
                     animation: backdrop-fade-in 0.35s ease-out forwards;
-                    backdrop-filter: blur(12px);
                     background-color: rgba(0, 0, 0, 0.4);
                 }
                 dialog[open].dialog-closing::backdrop {
                     animation: backdrop-fade-out 0.25s ease-in forwards;
-                    backdrop-filter: blur(12px);
                     background-color: rgba(0, 0, 0, 0);
                 }
             `}</style>
@@ -1084,10 +1091,10 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 			) : (
 				<>
 					<div
-						className={`flex flex-1 min-h-0 w-full flex-col overflow-hidden rounded-2xl border border-white/10 dark:border-white/5 backdrop-blur-[40px] ${isClosing ? "animate-modal-out" : (!isEntranceComplete ? "animate-modal-in" : "")}`}
+						className={`relative flex flex-1 min-h-0 w-full flex-col overflow-visible rounded-2xl border border-white/10 dark:border-white/5 ${isClosing ? "animate-modal-out" : (!isEntranceComplete ? "animate-modal-in" : "")}`}
 						style={{ 
-							backgroundColor: "rgba(15, 17, 21, 0.35)",
-							background: "color-mix(in srgb, var(--surface) 35%, transparent)",
+							backgroundColor: "rgba(15, 17, 21, 0.60)",
+							background: "color-mix(in srgb, var(--surface) 60%, transparent)",
 							boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2), 0 24px 48px rgba(0,0,0,0.45)' 
 						}}
 					>
@@ -1169,7 +1176,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 					)}
 				</div>
 
-				<div className="relative flex flex-col flex-1 min-h-0">
+				<div className="relative flex flex-col flex-1 min-h-0 overflow-hidden rounded-b-2xl">
 					<div
 						data-lenis-prevent
 						className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5 pb-24"
@@ -1244,10 +1251,12 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 						<div className="pointer-events-none absolute inset-x-0 bottom-6 md:bottom-8 z-30 flex justify-center px-4">
 							<div
 								ref={controlsBarRef}
-								className={`pointer-events-auto flex w-full max-w-[400px] md:max-w-[500px] items-center gap-1 rounded-full border border-white/10 dark:border-white/5 p-1.5 backdrop-blur-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)] ${isClosing ? "animate-modal-out" : (!isEntranceComplete ? "animate-modal-in" : "")}`}
+								className={`pointer-events-auto flex w-full max-w-[400px] md:max-w-[500px] items-center gap-1 rounded-full border border-white/10 dark:border-white/5 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)] ${isClosing ? "animate-modal-out" : (!isEntranceComplete ? "animate-modal-in" : "")}`}
 								style={{
 									backgroundColor: "rgba(15, 17, 21, 0.25)",
-									background: "color-mix(in srgb, var(--surface) 25%, transparent)"
+									background: "color-mix(in srgb, var(--surface) 25%, transparent)",
+									backdropFilter: "blur(20px)",
+									WebkitBackdropFilter: "blur(20px)"
 								}}
 								onPointerDown={(e) => e.stopPropagation()}
 							>
@@ -1385,6 +1394,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 				isProcessing={isBlockingProfile}
 			/>
 			</dialog>
-		</>
+		</>,
+		document.body
 	);
 }
