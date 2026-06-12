@@ -60,7 +60,7 @@ export function SelectableItem({ id, name, profileId, viewType, children, onNorm
             style={{ WebkitTouchCallout: "none" }}
             {...(!isModeActiveForThisView ? longPressGestures : {})}
         >
-            <div className={`w-full h-full relative transition-all duration-300 ${selected ? "scale-[0.96] opacity-70" : ""}`}>
+            <div className="w-full h-full relative">
                 <div className={`w-full h-full ${isModeActiveForThisView ? "pointer-events-none" : ""}`}>
                     {children}
                 </div>
