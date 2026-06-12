@@ -440,7 +440,7 @@ export function ChatInboxPanel({
                                     name={displayName}
                                     viewType="inbox"
                                     onNormalClick={() => onSelectConversation(conversation)}
-                                    roundedClassName="rounded-none"
+                                    roundedClassName="rounded-2xl"
                                 >
                                     <div
                                         className={`relative flex h-24 w-full shrink-0 items-stretch overflow-hidden text-left transition-all duration-300 ease-out ${
