@@ -1133,7 +1133,7 @@ export function ChatThreadMessages({
                                                         )}
 
                                                         {/* Top Main Card */}
-                                                        <div className={`absolute inset-0 z-20 overflow-hidden rounded-2xl bg-[color-mix(in_srgb,var(--surface)_60%,transparent)] backdrop-blur-md border border-white/10 dark:border-white/5 transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] will-change-transform ${tailCorner} group-hover/media:scale-[1.03] group-hover/media:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.5)]`}>
+                                                        <div className={`absolute inset-0 z-20 overflow-hidden rounded-2xl bg-[color-mix(in_srgb,var(--surface)_60%,transparent)] backdrop-blur-md border border-white/10 dark:border-white/5 transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] will-change-transform ${tailCorner} group-hover/media:scale-[1.03] group-hover/media:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.5)] ${mine ? "group-hover/media:-translate-x-1.5" : "group-hover/media:translate-x-1.5"}`}>
                                                             <div className="absolute inset-0 flex items-center justify-center text-[var(--text-muted)]">
                                                             <Album className="h-8 w-8" />
                                                         </div>
@@ -1579,7 +1579,7 @@ export function ChatThreadMessages({
                                                         void handleReact(message);
                                                     }}
                                                     disabled={isMutatingMessageId === message.messageId}
-                                                    className={`${fireButtonClass} z-10 cursor-pointer transition-all ${
+                                                    className={`${fireButtonClass} z-30 cursor-pointer transition-all ${
                                                         message.reactions?.some(r => Number(r.reactionType) === 1)
                                                             ? "opacity-100 pointer-events-auto"
                                                             : "opacity-0 pointer-events-none group-hover/bubble:opacity-60 group-hover/bubble:pointer-events-auto"
