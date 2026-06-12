@@ -7,7 +7,6 @@ import {
     getDisplayName,
 } from "../utils";
 import { cn } from "../../../../utils/cn";
-import { ProfileImage } from "../../../../components/ui/profile-image";
 import freegrindLogo from "../../../../images/freegrind-logo.webp";
 import { usePresenceCheck } from "../../../../hooks/usePresenceCheck";
 import { usePreferences } from "../../../../contexts/PreferencesContext";
@@ -62,6 +61,7 @@ export function BrowseCardTile({
                     name={name}
                     viewType="grid"
                     onNormalClick={() => !isDemoCard && onSelectProfile(card.profileId)}
+                    roundedClassName={isDesktop ? "rounded-xl" : "rounded-[4px]"}
                 >
                 <div
                     className={cn(
