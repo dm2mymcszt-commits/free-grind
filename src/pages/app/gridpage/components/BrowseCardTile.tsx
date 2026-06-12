@@ -51,7 +51,7 @@ export function BrowseCardTile({
 
     return (
         <div 
-            className={cn(!isDesktop && "bg-black flex", "w-full h-full")}
+            className={cn(!isDesktop && "bg-black", "w-full h-full")}
             style={{ contentVisibility: "auto", containIntrinsicSize: "250px" }}
         >
             {/* MAGIC WRAPPER INJECTED HERE */}
@@ -84,23 +84,25 @@ export function BrowseCardTile({
                         />
                     )}
 
-                    <div className="relative aspect-[5/5] bg-[var(--surface-2)] z-10 rounded-[inherit] overflow-hidden">
-                        {card.primaryImageUrl ? (
-                            <img
-                                src={card.primaryImageUrl}
-                                alt={t("browse_page.profile_photo_alt", { name })}
-                                loading="lazy"
-                                className={cn(
-                                    "h-full w-full object-cover transition-all duration-300",
-                                    (isDemoCard || hideImages) && "blur-xl scale-110",
-                                    hideImages && "opacity-60"
-                                )}
-                            />
-                        ) : (
-                            <div className="h-full w-full flex items-center justify-center bg-[var(--surface-2)]">
-                                <User className="h-1/3 w-1/3 text-[var(--text-muted)] opacity-50" />
-                            </div>
-                        )}
+                    <div className="relative w-full h-0 pb-[100%] bg-[var(--surface-2)] z-10 rounded-[inherit] overflow-hidden">
+                        <div className="absolute inset-0">
+                            {card.primaryImageUrl ? (
+                                <img
+                                    src={card.primaryImageUrl}
+                                    alt={t("browse_page.profile_photo_alt", { name })}
+                                    loading="lazy"
+                                    className={cn(
+                                        "h-full w-full object-cover transition-all duration-300",
+                                        (isDemoCard || hideImages) && "blur-xl scale-110",
+                                        hideImages && "opacity-60"
+                                    )}
+                                />
+                            ) : (
+                                <div className="h-full w-full flex items-center justify-center bg-[var(--surface-2)]">
+                                    <User className="h-1/3 w-1/3 text-[var(--text-muted)] opacity-50" />
+                                </div>
+                            )}
+                        </div>
 
                         {/* Top Header: Name, Age & Status Cluster */}
                         <div className="absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-2 bg-gradient-to-b from-black/60 via-black/20 to-transparent p-2 text-white">
