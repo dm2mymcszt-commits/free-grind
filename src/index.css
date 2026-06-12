@@ -949,8 +949,17 @@
   padding-top: calc(var(--titlebar-height, 0px) + 16px);
 }
 
-body.profile-modal-open .app-shell {
+.app-page-container {
+	transition: filter 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+body.profile-modal-open .app-page-container {
 	filter: blur(24px);
+}
+
+body.has-titlebar dialog::backdrop {
+	background-color: transparent !important;
+	backdrop-filter: none !important;
 }
 
 

@@ -126,6 +126,17 @@ export function ConfirmDialog({
                 }
             `}</style>
 			
+            {isOpen && (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) && (
+                <div 
+                    className="fixed inset-0 bg-black/55 backdrop-blur-[12px] pointer-events-none"
+                    style={{
+                        zIndex: 9990,
+                        animation: isClosing 
+                            ? "backdrop-fade-out 0.25s ease-in forwards" 
+                            : "backdrop-fade-in 0.3s ease-out forwards"
+                    }}
+                />
+            )}
             <dialog
                 ref={dialogRef}
                 className={`fixed inset-0 m-auto w-[calc(100%-2rem)] max-w-sm rounded-[2rem] border border-white/10 dark:border-white/5 bg-[color-mix(in_srgb,var(--surface)_85%,transparent)] p-0 text-[var(--text)] shadow-[0_20px_60px_rgba(0,0,0,0.6),_inset_0_1px_0_rgba(255,255,255,0.1)] backdrop-blur-[30px] ${isClosing ? "dialog-closing" : ""}`}
@@ -134,6 +145,7 @@ export function ConfirmDialog({
                         onCancel();
                     }
                 }}
+                style={{ zIndex: 9995 }}
             >
                 <div className="p-5 sm:p-6">
                     <p className="text-lg font-bold text-[var(--text)] drop-shadow-sm">{title}</p>

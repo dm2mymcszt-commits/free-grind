@@ -105,9 +105,10 @@ import { processAutoDownload } from "../../services/autoDownloader";
 
     export function ChatPage() {
     const { t } = useTranslation();
+    const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
     const glassWrapperClasses = "h-full rounded-3xl border border-white/10 dark:border-white/5 bg-zinc-950/15 dark:bg-black/25 backdrop-blur-3xl shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_16px_50px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col transition-all duration-300 hover:border-white/15";
-    const mobileGlassWrapperClasses = "h-full w-full bg-zinc-950/15 dark:bg-black/25 backdrop-blur-3xl overflow-hidden flex flex-col";
-    const mobileThreadGlassWrapperClasses = "fixed inset-0 w-full h-[100dvh] bg-zinc-950/15 dark:bg-black/25 backdrop-blur-3xl overflow-hidden flex flex-col z-30";
+    const mobileGlassWrapperClasses = `h-full w-full bg-zinc-950/15 dark:bg-black/25 backdrop-blur-3xl overflow-hidden flex flex-col ${isTauri ? "rounded-[20px]" : ""}`;
+    const mobileThreadGlassWrapperClasses = `fixed inset-0 w-full h-[100dvh] bg-zinc-950/15 dark:bg-black/25 backdrop-blur-3xl overflow-hidden flex flex-col z-30 ${isTauri ? "rounded-[20px]" : ""}`;
     const location = useLocation();
     const navigate = useNavigate();
     const { conversationId: routeConversationId } = useParams();
@@ -3923,7 +3924,7 @@ import { processAutoDownload } from "../../services/autoDownloader";
         {createPortal(
             <>
                 {isAlbumViewerLoading ? (
-                    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50">
+                    <div className={`fixed inset-0 z-40 flex items-center justify-center bg-black/50 ${isTauri ? "rounded-[20px] overflow-hidden" : ""}`}>
                         <div className="surface-card flex items-center gap-2 p-4 text-sm text-[var(--text-muted)]">
                             <Loader2 className="h-4 w-4 animate-spin" /> {t("chat.loading_album")}
                         </div>
@@ -3932,7 +3933,7 @@ import { processAutoDownload } from "../../services/autoDownloader";
 
                 {albumViewer ? (
                     <div
-                        className="fixed inset-0 z-50 flex flex-col bg-black/40 backdrop-blur-[20px] p-2 sm:p-6 md:p-12 transition-all duration-300 animate-in fade-in duration-300"
+                        className={`fixed inset-0 z-50 flex flex-col bg-black/40 backdrop-blur-[20px] p-2 sm:p-6 md:p-12 transition-all duration-300 animate-in fade-in duration-300 ${isTauri ? "rounded-[20px] overflow-hidden" : ""}`}
                         onClick={() => {
                             setAlbumViewerMediaIndex(null);
                             setAlbumViewer(null);

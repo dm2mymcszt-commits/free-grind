@@ -36,7 +36,9 @@ export function ProtectedLayout() {
             {/* Silently caches incoming views every 60s to bypass paywalls later */}
             <BackgroundViewScanner />
 			
-            <Outlet />
+            <div className="app-page-container">
+                <Outlet />
+            </div>
             {!shouldHideNavbar ? <NavBar /> : null}
         </div>
     );

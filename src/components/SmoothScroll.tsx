@@ -1,4 +1,4 @@
-import { useEffect, useRef, ReactNode } from "react";
+import { useEffect, useRef, useState, ReactNode } from "react";
 import Lenis from "lenis";
 import { useLocation } from "react-router-dom";
 import { SMOOTH_SCROLL_CONFIG } from "../config/scroll-config";
@@ -27,9 +27,46 @@ export function SmoothScroll({
 }: SmoothScrollProps) {
 	const lenisRef = useRef<Lenis | null>(null);
 	const location = useLocation();
+	const [isTauri, setIsTauri] = useState(() => {
+		if (typeof window === "undefined") return false;
+		return "__TAURI_INTERNALS__" in window;
+	});
+
+	// Check for Tauri asynchronously to handle race conditions during setup
+	useEffect(() => {
+		const checkTauri = () => {
+			const detected = typeof window !== "undefined" && (
+				"__TAURI_INTERNALS__" in window ||
+				document.body?.classList.contains("has-titlebar") ||
+				document.documentElement?.classList.contains("has-titlebar")
+			);
+			if (detected && !isTauri) {
+				setIsTauri(true);
+			}
+		};
+
+		checkTauri();
+
+		const timer1 = setTimeout(checkTauri, 100);
+		const timer2 = setTimeout(checkTauri, 300);
+		const timer3 = setTimeout(checkTauri, 800);
+
+		const observer = new MutationObserver(checkTauri);
+		observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+		if (document.body) {
+			observer.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+		}
+
+		return () => {
+			clearTimeout(timer1);
+			clearTimeout(timer2);
+			clearTimeout(timer3);
+			observer.disconnect();
+		};
+	}, [isTauri]);
 
 	useEffect(() => {
-		if (!enabled) {
+		if (!enabled || isTauri) {
 			if (lenisRef.current) {
 				lenisRef.current.destroy();
 				lenisRef.current = null;
@@ -37,6 +74,24 @@ export function SmoothScroll({
 			}
 			return;
 		}
+
+		// Helper to detect if event target or any ancestor is a scrollable container
+		const isScrollable = (el: HTMLElement | null): boolean => {
+			if (!el || el === document.body || el === document.documentElement) return false;
+			if (el.hasAttribute("data-lenis-prevent")) return true;
+			try {
+				const style = window.getComputedStyle(el);
+				const overflowY = style.overflowY;
+				const isScrollableType = overflowY === "auto" || overflowY === "scroll";
+				const canScroll = el.scrollHeight > el.clientHeight;
+				if (isScrollableType && canScroll) {
+					return true;
+				}
+			} catch (e) {
+				// Ignore computed style errors
+			}
+			return el.parentElement ? isScrollable(el.parentElement as HTMLElement) : false;
+		};
 
 		// Initialize Lenis
 		const lenis = new Lenis({
@@ -49,6 +104,7 @@ export function SmoothScroll({
 			wheelMultiplier: wheelMultiplier,
 			touchMultiplier: touchMultiplier,
 			autoResize: true,
+			prevent: (node) => isScrollable(node),
 		});
 
 		lenisRef.current = lenis;
@@ -84,7 +140,7 @@ export function SmoothScroll({
 			delete (window as any).lenis;
 			document.documentElement.classList.remove("lenis", "lenis-smooth", "lenis-scrolling");
 		};
-	}, [enabled, smoothTouch, duration, wheelMultiplier, touchMultiplier, lerp]);
+	}, [enabled, smoothTouch, duration, wheelMultiplier, touchMultiplier, lerp, isTauri]);
 
 	// Global scroll-to-top on route change
 	useEffect(() => {

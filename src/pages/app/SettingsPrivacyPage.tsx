@@ -37,8 +37,8 @@ export function SettingsPrivacyPage() {
 						<ToggleRow
 							icon={<ScanSearch className="h-5 w-5" />}
 							iconClass="bg-blue-500/15 text-blue-400"
-							label="Anti-Catfish Scanner"
-							description="Adds a Scanner Hub to the photo viewer to instantly reverse-search images using Google Lens and TinEye."
+							label="Media Scanner"
+							description="Adds a Scanner Hub to the photo viewer to instantly reverse-search images using Google Lens."
 							checked={imageScannerEnabled}
 							onChange={(checked) => {
 								setImageScannerEnabled(checked);

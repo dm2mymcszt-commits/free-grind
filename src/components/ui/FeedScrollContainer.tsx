@@ -15,8 +15,13 @@ export const FeedScrollContainer = forwardRef<HTMLDivElement, FeedScrollContaine
 		const innerRef = useRef<HTMLDivElement | null>(null);
 
 		useEffect(() => {
-			if (!isDesktop || !innerRef.current || !SMOOTH_SCROLL_CONFIG.enabled) {
-				console.log("[FeedScroll] Skipping init:", { isDesktop, hasRef: !!innerRef.current, enabled: SMOOTH_SCROLL_CONFIG.enabled });
+			const isTauri = typeof window !== "undefined" && (
+				"__TAURI_INTERNALS__" in window ||
+				document.body?.classList.contains("has-titlebar") ||
+				document.documentElement?.classList.contains("has-titlebar")
+			);
+			if (!isDesktop || !innerRef.current || !SMOOTH_SCROLL_CONFIG.enabled || isTauri) {
+				console.log("[FeedScroll] Skipping init:", { isDesktop, hasRef: !!innerRef.current, enabled: SMOOTH_SCROLL_CONFIG.enabled, isTauri });
 				return;
 			}
 

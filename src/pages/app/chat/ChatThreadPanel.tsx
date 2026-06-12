@@ -1672,7 +1672,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                     title={t("chat.attachments.ready_to_send", { file: pendingAttachmentFile.name })}
                                     onClose={cancelPendingAttachment}
                                     onConfirm={() => void handleConfirmAttachment()}
-                                    confirmLabel={attachmentMaxViews !== 2147483647 ? t("chat.attachments.send_expiring", { defaultValue: "Send Expiring" }) : t("chat.attachments.send_attachment")}
+                                    confirmLabel={attachmentMaxViews !== 2147483647 ? t("chat.attachments.send_expiring", { defaultValue: "Send Expiring" }) : t("chat.attachments.send", { defaultValue: "Send" })}
                                     cancelLabel={t("chat.actions.cancel")}
                                     isProcessing={isUploadingAttachment}
                                     isDesktop={isDesktop}

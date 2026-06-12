@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, X, ScanSearch, Search, ShieldAlert, Focus, ExternalLink } from "lucide-react";
+import { ChevronLeft, ChevronRight, X, ScanSearch } from "lucide-react";
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -42,9 +42,8 @@ export function PhotoViewer({
     const [zoomScale, setZoomScale] = useState(1);
     const [zoomOffset, setZoomOffset] = useState({ x: 0, y: 0 });
 
-    // --- SCANNER HUB STATE ---
+    // --- SCANNER STATE ---
     const scannerEnabled = window.localStorage.getItem("fg-image-scanner-enabled") === "true";
-    const [isScannerHubOpen, setIsScannerHubOpen] = useState(false);
 
     const dialogRef = useRef<HTMLDialogElement>(null);
     useLayoutEffect(() => {
@@ -52,7 +51,7 @@ export function PhotoViewer({
         if (d && !d.open) {
             try { d.showModal(); } catch { d.show(); }
         }
-    }, []);
+    }, [isOpen]);
 
     const mediaRef = useRef<HTMLImageElement | HTMLVideoElement | null>(null);
 
@@ -82,7 +81,6 @@ export function PhotoViewer({
         setDragOffset(0);
         setZoomScale(1);
         setZoomOffset({ x: 0, y: 0 });
-        setIsScannerHubOpen(false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen]);
 
@@ -119,7 +117,6 @@ export function PhotoViewer({
         setDragOffset(0);
         setZoomScale(1);
         setZoomOffset({ x: 0, y: 0 });
-        setIsScannerHubOpen(false);
     }, [N]);
 
     const showPrev = useCallback(() => {
@@ -128,7 +125,6 @@ export function PhotoViewer({
         setDragOffset(0);
         setZoomScale(1);
         setZoomOffset({ x: 0, y: 0 });
-        setIsScannerHubOpen(false);
     }, [N]);
 
     const clampOffset = useCallback((offset: { x: number; y: number }, scale: number) => {
@@ -142,6 +138,106 @@ export function PhotoViewer({
             y: Math.min(maxY, Math.max(-maxY, offset.y)),
         };
     }, []);
+
+    // --- MOUSE WHEEL ZOOM & DRAG PANNING ---
+    const mouseDownRef = useRef<{ x: number; y: number } | null>(null);
+    const isMouseDownRef = useRef(false);
+
+    const handleWheel = useCallback((e: React.WheelEvent) => {
+        const photo = photos[centerIdx];
+        if (!photo) return;
+        const mediaInfo = getMediaInfo(photo);
+        if (mediaInfo.type !== "image") return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        const zoomSpeed = 0.0015;
+        const delta = -e.deltaY;
+        const factor = Math.exp(delta * zoomSpeed);
+
+        const currentScale = zoomScaleRef.current;
+        const nextScale = Math.min(Math.max(1, currentScale * factor), 4);
+
+        if (nextScale === currentScale) return;
+
+        if (nextScale <= 1.01) {
+            setZoomScale(1);
+            setZoomOffset({ x: 0, y: 0 });
+            return;
+        }
+
+        const mouseX = e.clientX;
+        const mouseY = e.clientY;
+
+        const cx = mouseX - window.innerWidth / 2;
+        const cy = mouseY - window.innerHeight / 2;
+
+        setZoomScale(nextScale);
+        setZoomOffset((prevOffset) => {
+            const actualRatio = nextScale / currentScale;
+            return clampOffset(
+                {
+                    x: prevOffset.x * actualRatio - cx * (actualRatio - 1),
+                    y: prevOffset.y * actualRatio - cy * (actualRatio - 1),
+                },
+                nextScale,
+            );
+        });
+    }, [photos, centerIdx, clampOffset]);
+
+    const handleMouseDown = useCallback((e: React.MouseEvent) => {
+        if (e.button !== 0) return; // Only left click
+        gestureMovedRef.current = false;
+        mouseDownRef.current = { x: e.clientX, y: e.clientY };
+        isMouseDownRef.current = true;
+        isDraggingRef.current = false;
+    }, []);
+
+    const handleMouseMove = useCallback((e: React.MouseEvent) => {
+        if (!isMouseDownRef.current || !mouseDownRef.current) return;
+
+        const dx = e.clientX - mouseDownRef.current.x;
+        const dy = e.clientY - mouseDownRef.current.y;
+
+        if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+            gestureMovedRef.current = true;
+        }
+
+        if (zoomScaleRef.current > 1) {
+            const moveDx = e.clientX - mouseDownRef.current.x;
+            const moveDy = e.clientY - mouseDownRef.current.y;
+            mouseDownRef.current = { x: e.clientX, y: e.clientY };
+
+            setZoomOffset((prev) =>
+                clampOffset(
+                    { x: prev.x + moveDx, y: prev.y + moveDy },
+                    zoomScaleRef.current,
+                ),
+            );
+            return;
+        }
+
+        if (N < 2) return;
+        isDraggingRef.current = true;
+        setDragOffset(dx);
+    }, [clampOffset, N]);
+
+    const handleMouseUp = useCallback(() => {
+        if (!isMouseDownRef.current) return;
+        isMouseDownRef.current = false;
+        mouseDownRef.current = null;
+
+        if (N >= 2 && zoomScaleRef.current === 1 && isDraggingRef.current) {
+            const threshold = Math.min(70, window.innerWidth * 0.22);
+            if (dragOffset < -threshold) showNext();
+            else if (dragOffset > threshold) showPrev();
+            else setDragOffset(0);
+        } else {
+            setDragOffset(0);
+        }
+        isDraggingRef.current = false;
+    }, [dragOffset, showNext, showPrev, N]);
 
     const handleTouchStart = useCallback((e: React.TouchEvent) => {
         gestureMovedRef.current = false;
@@ -303,11 +399,7 @@ export function PhotoViewer({
         const onKey = (e: KeyboardEvent) => {
             if (e.key === "Escape") { 
                 e.stopPropagation(); 
-                if (isScannerHubOpen) {
-                    setIsScannerHubOpen(false);
-                } else {
-                    onClose(); 
-                }
+                onClose(); 
                 return; 
             }
             if (e.key === "ArrowLeft") showPrev();
@@ -315,7 +407,7 @@ export function PhotoViewer({
         };
         window.addEventListener("keydown", onKey, { capture: true });
         return () => window.removeEventListener("keydown", onKey, { capture: true });
-    }, [isOpen, onClose, showPrev, showNext, isScannerHubOpen]);
+    }, [isOpen, onClose, showPrev, showNext]);
 
     // --- SCANNER HUB ACTIONS ---
     const openExternalTool = async (targetUrl: string) => {
@@ -346,10 +438,12 @@ export function PhotoViewer({
     return createPortal(
         <dialog
             ref={dialogRef}
-            className="fixed inset-0 z-[80] m-0 h-full w-full max-w-none border-none bg-transparent p-0 overflow-hidden"
+            className={`fixed inset-0 z-[80] m-0 h-full w-full max-w-none border-none bg-transparent p-0 overflow-hidden ${typeof window !== "undefined" && "__TAURI_INTERNALS__" in window ? "rounded-[20px]" : ""}`}
             onCancel={(e) => { e.preventDefault(); onClose(); }}
         >
-            <div className="fixed inset-0 bg-black" onClick={onClose}>
+            <div className="fixed inset-0 bg-black" onClick={() => {
+                if (!gestureMovedRef.current) onClose();
+            }}>
 			
             <button
                 type="button"
@@ -367,14 +461,20 @@ export function PhotoViewer({
                     type="button"
                     onClick={(e) => {
                         e.stopPropagation();
-                        setIsScannerHubOpen(true);
+                        if (currentMediaInfo) {
+                            openExternalTool(`https://lens.google.com/uploadbyurl?url=${encodeURIComponent(currentMediaInfo.url)}`);
+                        }
                     }}
                     onTouchStart={(e) => { e.stopPropagation(); gestureMovedRef.current = false; }}
-                    onTouchEnd={(e) => handleButtonTouchEnd(e, () => setIsScannerHubOpen(true))}
-                    className="absolute left-3 top-[calc(env(safe-area-inset-top,0px)+2rem)] z-[83] inline-flex h-11 px-4 items-center justify-center gap-2 rounded-full border border-blue-500/50 bg-blue-500/20 text-white backdrop-blur-md sm:left-5 sm:top-5 transition hover:bg-blue-500/40"
+                    onTouchEnd={(e) => handleButtonTouchEnd(e, () => {
+                        if (currentMediaInfo) {
+                            openExternalTool(`https://lens.google.com/uploadbyurl?url=${encodeURIComponent(currentMediaInfo.url)}`);
+                        }
+                    })}
+                    className="absolute left-3 top-[calc(env(safe-area-inset-top,0px)+2rem)] z-[83] inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--accent)]/40 bg-black/50 text-[var(--accent)] shadow-[0_0_15px_color-mix(in_srgb,var(--accent)_30%,transparent)] backdrop-blur-md sm:left-5 sm:top-5 transition-all duration-300 hover:scale-105 hover:bg-black/70 active:scale-95"
+                    aria-label="Google Lens Search"
                 >
-                    <ScanSearch className="h-4 w-4" />
-                    <span className="text-sm font-semibold tracking-wide">Scanner Hub</span>
+                    <ScanSearch className="h-5 w-5" />
                 </button>
             )}
 
@@ -415,6 +515,11 @@ export function PhotoViewer({
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+                onWheel={handleWheel}
             >
                 <div
                     className="flex h-full"
@@ -445,7 +550,9 @@ export function PhotoViewer({
                             <div
                                 key={slotIndex}
                                 className="flex h-full w-screen flex-shrink-0 items-center justify-center p-3 sm:p-8"
-                                onClick={onClose}
+                                onClick={() => {
+                                    if (!gestureMovedRef.current) onClose();
+                                }}
                             >
                                 <div
                                     className="relative flex max-h-full max-w-full items-center justify-center overflow-hidden rounded-xl"
@@ -483,72 +590,7 @@ export function PhotoViewer({
                 </div>
             </div>
 
-            {/* --- SCANNER HUB OVERLAY --- */}
-            {isScannerHubOpen && currentMediaInfo && (
-                <div 
-                    className="absolute inset-0 z-[90] flex items-center justify-center bg-black/70 backdrop-blur-md p-4 rounded-xl transition-all" 
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        setIsScannerHubOpen(false);
-                    }}
-                    onTouchStart={(e) => e.stopPropagation()}
-                    onTouchMove={(e) => e.stopPropagation()}
-                    onTouchEnd={(e) => e.stopPropagation()}
-                >
-                    <div 
-                        className="bg-[#1a1a1a] border border-[#333] rounded-2xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <div className="p-5 border-b border-[#333] bg-[#222]">
-                            <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                <ShieldAlert className="h-5 w-5 text-blue-400" />
-                                Scanner Hub
-                            </h3>
-                            <p className="text-xs text-gray-400 mt-1">
-                                Select a tool below to reverse search this image. It will open securely in your default browser.
-                            </p>
-                        </div>
-						
-                        <div className="p-4 flex flex-col gap-3">
-							
-                            {/* Google Lens */}
-                            <button 
-                                onClick={() => openExternalTool(`https://lens.google.com/uploadbyurl?url=${encodeURIComponent(currentMediaInfo.url)}`)}
-                                className="w-full flex items-center justify-between bg-[#2a2a2a] border border-[#444] p-3 rounded-xl transition hover:bg-[#333] hover:border-blue-500/50"
-                            >
-                                <div className="flex items-center gap-3 text-left">
-                                    <div className="bg-blue-500/20 p-2 rounded-lg">
-                                        <Search className="h-5 w-5 text-blue-400" />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-bold text-white">Google Lens</p>
-                                        <p className="text-[10px] text-gray-400">Reverse search & expose SynthID watermarks</p>
-                                    </div>
-                                </div>
-                                <ExternalLink className="h-4 w-4 text-gray-500" />
-                            </button>
 
-                            {/* TinEye */}
-                            <button 
-                                onClick={() => openExternalTool(`https://tineye.com/search?url=${encodeURIComponent(currentMediaInfo.url)}`)}
-                                className="w-full flex items-center justify-between bg-[#2a2a2a] border border-[#444] p-3 rounded-xl transition hover:bg-[#333] hover:border-emerald-500/50"
-                            >
-                                <div className="flex items-center gap-3 text-left">
-                                    <div className="bg-emerald-500/20 p-2 rounded-lg">
-                                        <Focus className="h-5 w-5 text-emerald-400" />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-bold text-white">TinEye</p>
-                                        <p className="text-[10px] text-gray-400">Best for catching stolen dating/social photos</p>
-                                    </div>
-                                </div>
-                                <ExternalLink className="h-4 w-4 text-gray-500" />
-                            </button>
-
-                        </div>
-                    </div>
-                </div>
-            )}
             </div>
         </dialog>,
         document.body,
