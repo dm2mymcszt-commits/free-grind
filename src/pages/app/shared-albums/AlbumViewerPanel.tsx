@@ -1,7 +1,11 @@
-import { Images, MessageCircle, Play, UserRound, X } from "lucide-react";
+import { useState } from "react";
+import { Download, Images, MessageCircle, Play, UserRound, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import toast from "react-hot-toast";
 import { Button } from "../../../components/ui/button";
 import { EmptyState } from "../../../components/ui/states";
+import { saveMediaBatch } from "../../../services/saveMedia";
+import { appLog } from "../../../utils/logger";
 import type { AlbumViewer } from "../../../types/shared-albums";
 
 type AlbumContent = AlbumViewer["content"][number];
@@ -30,6 +34,51 @@ export function AlbumViewerPanel({
     hideProfileActions = false,
 }: AlbumViewerPanelProps) {
     const { t } = useTranslation();
+	const [isSavingAll, setIsSavingAll] = useState(false);
+
+	const handleSaveAll = async () => {
+		const items = viewer.content
+			.map((item) => ({
+				url: item.url || item.coverUrl,
+				type: (item.contentType?.startsWith("video/") ? "video" : "image") as "image" | "video",
+			}))
+			.filter((item): item is { url: string; type: "image" | "video" } => !!item.url);
+
+		if (items.length === 0) {
+			toast.error(t("profile_details.save_all_empty"));
+			return;
+		}
+
+		setIsSavingAll(true);
+		const toastId = toast.loading(
+			t("profile_details.save_all_progress", { done: 0, total: items.length }),
+		);
+		try {
+			const result = await saveMediaBatch(items, (done, total) => {
+				toast.loading(t("profile_details.save_all_progress", { done, total }), { id: toastId });
+			});
+
+			if (result.failed === 0) {
+				toast.success(t("profile_details.save_all_success", { count: result.succeeded }), {
+					id: toastId,
+				});
+			} else {
+				toast.error(
+					t("profile_details.save_all_partial", {
+						succeeded: result.succeeded,
+						total: result.total,
+						failed: result.failed,
+					}),
+					{ id: toastId },
+				);
+			}
+		} catch (error) {
+			appLog.error("[AlbumViewerPanel] Save all failed", error);
+			toast.error(t("profile_details.save_all_error"), { id: toastId });
+		} finally {
+			setIsSavingAll(false);
+		}
+	};
 
     return (
         <div
@@ -61,15 +110,29 @@ export function AlbumViewerPanel({
                                 {selectedViewerItem ? ` · ${viewerIndex + 1}/${viewer.content.length}` : ""}
                             </p>
                         </div>
-                        <button
-                            type="button"
-                            onClick={closeViewer}
-                            className="group relative overflow-hidden rounded-full bg-[var(--surface-2)] p-3 text-[var(--text-muted)] ring-1 ring-white/10 transition-all hover:bg-[var(--accent)] hover:text-[var(--accent-contrast)] hover:shadow-[0_0_20px_color-mix(in_srgb,var(--accent)_35%,transparent)] hover:scale-[1.02] active:scale-95"
-                            aria-label={t("shared_albums.close_viewer")}
-                        >
-                            <div className="absolute inset-0 bg-gradient-to-tr from-white/0 to-white/0 transition-colors group-hover:from-white/5 group-hover:to-transparent" />
-                            <X className="relative z-10 h-6 w-6 transition-transform group-hover:rotate-90 group-hover:scale-110" />
-                        </button>
+                        <div className="flex items-center gap-2">
+                            {viewer.content.length > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={() => void handleSaveAll()}
+                                    disabled={isSavingAll}
+                                    aria-label={t("profile_details.save_all")}
+                                    className="inline-flex h-10 items-center gap-1.5 rounded-full bg-[var(--surface-2)] px-4 text-xs font-semibold text-[var(--text-muted)] ring-1 ring-white/10 transition-all hover:bg-[var(--accent)] hover:text-[var(--accent-contrast)] disabled:opacity-50"
+                                >
+                                    <Download className="h-3.5 w-3.5" />
+                                    {t("profile_details.save_all")}
+                                </button>
+                            )}
+                            <button
+                                type="button"
+                                onClick={closeViewer}
+                                className="group relative overflow-hidden rounded-full bg-[var(--surface-2)] p-3 text-[var(--text-muted)] ring-1 ring-white/10 transition-all hover:bg-[var(--accent)] hover:text-[var(--accent-contrast)] hover:shadow-[0_0_20px_color-mix(in_srgb,var(--accent)_35%,transparent)] hover:scale-[1.02] active:scale-95"
+                                aria-label={t("shared_albums.close_viewer")}
+                            >
+                                <div className="absolute inset-0 bg-gradient-to-tr from-white/0 to-white/0 transition-colors group-hover:from-white/5 group-hover:to-transparent" />
+                                <X className="relative z-10 h-6 w-6 transition-transform group-hover:rotate-90 group-hover:scale-110" />
+                            </button>
+                        </div>
                     </div>
 
                     {!hideProfileActions && (

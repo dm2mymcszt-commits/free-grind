@@ -404,6 +404,7 @@ export function NavBar() {
                                                     // Otherwise, execute normal navigation routing or scroll to top
                                                     if (activeTab === "browse") {
                                                         window.scrollTo({ top: 0, behavior: "smooth" });
+                                                        window.dispatchEvent(new CustomEvent("browse-scroll-top"));
                                                     } else {
                                                         navigate(item.path);
                                                     }

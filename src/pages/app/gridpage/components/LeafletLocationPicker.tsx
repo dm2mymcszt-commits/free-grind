@@ -17,6 +17,8 @@ type LeafletLocationPickerProps = {
     isQueueEmpty?: boolean;
 };
 
+const TILE_URL = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+const TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
 
 export function LeafletLocationPicker({
     selectedLocation,
@@ -73,8 +75,8 @@ export function LeafletLocationPicker({
 
                 const map = L.map(mapContainerRef.current, { zoomControl: true }).setView(startCenter, startZoom);
 
-                L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-                    attribution: '&copy; OpenStreetMap contributors',
+                L.tileLayer(TILE_URL, {
+                    attribution: TILE_ATTRIBUTION,
                 }).addTo(map);
 
                 map.on("click", (event: any) => { 
@@ -112,7 +114,7 @@ export function LeafletLocationPicker({
 
         void initMap();
 
-    return () => {
+        return () => {
             mounted = false;
             if (mapRef.current) {
                 mapRef.current.off();
@@ -124,8 +126,28 @@ export function LeafletLocationPicker({
                 setIsMapReady(false);
             }
         };
-    // CRITICAL FIX: Removed initialCenter to stop the map from deleting itself every second!
     }, [defaultZoom, t]);
+
+    useEffect(() => {
+        const map = mapRef.current;
+        const L = leafletRef.current;
+        if (!map || !L || !selectedLocation) return;
+
+        if (markerRef.current) {
+            markerRef.current.setLatLng([selectedLocation.lat, selectedLocation.lon]);
+        } else {
+            const gpsIcon = L.divIcon({
+                className: 'gps-marker-transition',
+                html: '<div style="width: 18px; height: 18px; background: #ffcc01; border: 2px solid #131821; border-radius: 50%; box-shadow: 0 0 4px rgba(0,0,0,0.4);"></div>',
+                iconSize: [18, 18],
+                iconAnchor: [9, 9]
+            });
+            markerRef.current = L.marker([selectedLocation.lat, selectedLocation.lon], { icon: gpsIcon, zIndexOffset: 1000 }).addTo(map);
+        }
+
+        map.setView([selectedLocation.lat, selectedLocation.lon], Math.max(defaultZoom, map.getZoom()));
+        map.invalidateSize();
+    }, [defaultZoom, selectedLocation]);
 
     useEffect(() => {
         isDrawingRef.current = isDrawing;

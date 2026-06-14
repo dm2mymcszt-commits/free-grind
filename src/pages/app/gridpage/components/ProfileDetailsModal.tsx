@@ -411,6 +411,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 	const isDesktopBar = variant !== "page";
 
 	const handleBarTapPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+		if (isTapDisabled) return;
 		if (barTapPickerOpen && isDesktopBar) {
 			// Button acts as close (X) when picker already open on desktop
 			barTapSkipUpRef.current = true;
@@ -453,7 +454,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 	};
 
 	const fireTap = (tapId: number) => {
-		if (!onTapProfile || !messageProfileId) return;
+		if (!onTapProfile || !messageProfileId || isTapBlocked) return;
 		const bridge = (window as any).FreeGrindBridge;
 		bridge?.vibrate?.(30) ?? navigator.vibrate?.([15, 10, 25]);
 		onTapProfile(String(messageProfileId), tapId);
@@ -465,6 +466,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 	};
 
 	const handleBarTapPointerUp = (_e: React.PointerEvent<HTMLButtonElement>) => {
+		if (isTapDisabled) return;
 		if (barTapSkipUpRef.current) {
 			barTapSkipUpRef.current = false;
 			return;
@@ -713,7 +715,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 							<button
 								type="button"
 								onClick={onClose}
-								className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-colors ${headerScrolled ? "border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)]" : "border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md"}`}
+								className={`shrink-0 rounded-xl border p-2 transition-colors ${headerScrolled ? "border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)]" : "border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md"}`}
 								aria-label={t("settings.back_to_browse")}
 							>
 								<ChevronLeft className="h-4 w-4" />
@@ -891,7 +893,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 						style={{
 							paddingTop: "5rem",
 							paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)",
-							background: "linear-gradient(to top, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.35) 45%, transparent 100%)",
+							background: "linear-gradient(to top, rgba(0,0,0,0.80) 0%, rgba(0,0,0,0.7) 45%, transparent 100%)",
 						}}
 					>
 						<div
@@ -968,8 +970,8 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 										onPointerUp={handleBarTapPointerUp}
 										onPointerCancel={() => { setBarTapPickerOpen(false); setBarTapHoverId(null); if (barTapLongPressRef.current) clearTimeout(barTapLongPressRef.current); barInputTimerRef.current = setTimeout(() => setBarInputVisible(true), 210); }}
 										disabled={isTapDisabled}
-										className={`tap-btn-base relative inline-flex h-13 w-13 shrink-0 items-center justify-center rounded-xl border-none bg-transparent text-2xl leading-none transition-all touch-none select-none disabled:opacity-40 ${isTapActive || barTapHoverId !== null ? "text-white" : "text-[var(--text-muted)]"}`}
-									style={barTapHoverId !== null ? { filter: barTapGlow(barTapHoverId) } : undefined}
+										className={`tap-btn-base relative inline-flex h-13 w-13 shrink-0 items-center justify-center rounded-xl border-none bg-transparent text-2xl leading-none transition-all touch-none select-none ${isTappingProfile ? "opacity-40" : ""} ${isTapActive || barTapHoverId !== null ? "text-white" : "text-[var(--text-muted)]"}`}
+									style={isTapBlocked ? { filter: barTapGlow(tapVisualState.tapId) } : barTapHoverId !== null ? { filter: barTapGlow(barTapHoverId) } : undefined}
 									>
 										{barTapHoverId !== null
 											? barTapEmoji(barTapHoverId)
@@ -1310,7 +1312,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 							onPointerCancel={() => { setBarTapPickerOpen(false); setBarTapHoverId(null); barTapStickyRef.current = false; if (barTapLongPressRef.current) clearTimeout(barTapLongPressRef.current); barInputTimerRef.current = setTimeout(() => setBarInputVisible(true), 210); }}
 							disabled={isTapDisabled}
 							className={`tap-btn-base relative inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-none bg-transparent text-[28px] leading-none transition-all touch-none select-none disabled:opacity-40 ${barTapPickerOpen ? "text-[var(--text-muted)]" : isTapActive || barTapHoverId !== null ? "text-white" : "text-[var(--text-muted)]"}`}
-							style={!barTapPickerOpen && barTapHoverId !== null ? { filter: barTapGlow(barTapHoverId) } : undefined}
+							style={isTapBlocked ? { filter: barTapGlow(tapVisualState.tapId) } : !barTapPickerOpen && barTapHoverId !== null ? { filter: barTapGlow(barTapHoverId) } : undefined}
 						>
 							{barTapPickerOpen
 								? <X className="h-6 w-6" strokeWidth={2} />

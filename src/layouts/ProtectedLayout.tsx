@@ -11,7 +11,7 @@ export function ProtectedLayout() {
     useLocationEngine(); 
 
     const isChatConversationRoute =
-        /^\/chat\/[^/]+$/.test(location.pathname) ||
+        (/^\/chat\/[^/]+$/.test(location.pathname) && location.pathname !== "/chat/albums") ||
         (location.pathname === "/chat" && new URLSearchParams(location.search).has("targetProfileId"));
 	const isProfileRoute = /^\/profile\/[^/]+$/.test(location.pathname);
 

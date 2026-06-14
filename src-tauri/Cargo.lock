@@ -1411,6 +1411,7 @@ dependencies = [
  "tauri-plugin-geolocation",
  "tauri-plugin-hotswap",
  "tauri-plugin-http",
+ "tauri-plugin-ios-photos",
  "tauri-plugin-notification",
  "tauri-plugin-opener",
  "tauri-plugin-os",
@@ -5491,6 +5492,18 @@ dependencies = [
  "tokio",
  "url",
  "urlpattern",
+]
+
+[[package]]
+name = "tauri-plugin-ios-photos"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "74040430925537ccad4b3130b95426305166b987150cc37b3ce65e2c3de19385"
+dependencies = [
+ "serde",
+ "tauri",
+ "tauri-plugin",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

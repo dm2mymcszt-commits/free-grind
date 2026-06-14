@@ -1,8 +1,11 @@
-import { ChevronLeft, ChevronRight, X, ScanSearch } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, X, ScanSearch } from "lucide-react";
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import toast from "react-hot-toast";
+import { isIos, saveMediaToGallery } from "../services/saveMedia";
+import { appLog } from "../utils/logger";
 
 export type PhotoViewerMedia = {
     url: string;
@@ -41,6 +44,7 @@ export function PhotoViewer({
     const [dragOffset, setDragOffset] = useState(0);
     const [zoomScale, setZoomScale] = useState(1);
     const [zoomOffset, setZoomOffset] = useState({ x: 0, y: 0 });
+    const [isSaving, setIsSaving] = useState(false);
 
     // --- SCANNER STATE ---
     const scannerEnabled = window.localStorage.getItem("fg-image-scanner-enabled") === "true";
@@ -418,6 +422,38 @@ export function PhotoViewer({
         }
     };
 
+    const handleSave = async () => {
+        const photo = photos[centerIdx];
+        if (!photo || isSaving) return;
+        const { url, type } = getMediaInfo(photo);
+
+        if (!isIos()) {
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `media-${Date.now()}`;
+            a.target = "_blank";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            return;
+        }
+
+        setIsSaving(true);
+        try {
+            const saved = await saveMediaToGallery(url, type);
+            if (saved) {
+                toast.success(t("profile_details.save_to_gallery_success"));
+            } else {
+                toast.error(t("profile_details.save_to_gallery_unsupported"));
+            }
+        } catch (e) {
+            appLog.error("Failed to save media to gallery", e);
+            toast.error(t("profile_details.save_to_gallery_error"));
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
     if (!isOpen || N === 0) return null;
 
     const slots: Array<{ photoIndex: number; slotIndex: number }> =
@@ -454,6 +490,21 @@ export function PhotoViewer({
                 aria-label={t("profile_details.close_photo_viewer")}
             >
                 <X className="h-5 w-5" />
+            </button>
+
+            <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); void handleSave(); }}
+                onTouchEnd={(e) => handleButtonTouchEnd(e, () => void handleSave())}
+                disabled={isSaving}
+                className={`absolute z-[83] inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/30 bg-black/50 text-white disabled:opacity-50 transition hover:bg-black/70 ${
+                    currentMediaInfo?.type === "image" && scannerEnabled
+                        ? "left-16 sm:left-20 top-[calc(env(safe-area-inset-top,0px)+2rem)] sm:top-5"
+                        : "left-3 top-[calc(env(safe-area-inset-top,0px)+2rem)] sm:left-5 sm:top-5"
+                }`}
+                aria-label={t("profile_details.save_to_gallery")}
+            >
+                <Download className="h-5 w-5" />
             </button>
 
             {currentMediaInfo?.type === "image" && scannerEnabled && (

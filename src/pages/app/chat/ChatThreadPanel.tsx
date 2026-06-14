@@ -1,4 +1,4 @@
-import {
+﻿import {
     Ban,
     ChevronDown,
     ChevronLeft,
@@ -45,6 +45,7 @@ import "react-image-crop/dist/ReactCrop.css";
 import type { NavigateFunction } from "react-router-dom";
 import toast from "react-hot-toast";
 import { appLog } from "../../../utils/logger";
+import { isIos } from "../../../services/saveMedia";
 import {
     createBackdropCloseHandler,
     useModalClose,
@@ -127,7 +128,7 @@ type ChatThreadPanelProps = {
     startMessageLongPress: (messageId: string) => void;
     endMessageLongPress: () => void;
     messageLongPressTriggeredRef: { current: boolean };
-    openFullScreenImage: (imageUrl: string) => void;
+    openFullScreenImage: (imageUrl: string, meta?: { takenOnGrindr: boolean; createdAtLabel: string | null; timestamp: number }, mediaType?: "image" | "video") => void;
     openAlbumViewerById: (albumId: number) => void | Promise<void>;
     selectedThreadMessageMatches: Array<{ messageId: string }>;
     activeThreadSearchIndex: number;
@@ -193,8 +194,8 @@ type ChatThreadPanelProps = {
     isSending: boolean;
     selectedActionMessage: UiMessage | null;
     selectedActionMessageMine: boolean;
-    albumViewer: AlbumViewerState | null;
-    onCloseAlbumViewer: () => void;
+    isAlbumSheetOpen: boolean;
+    onOpenMediaSheet?: () => void;
     attachmentMaxViews: number;
     setAttachmentMaxViews: (value: number) => void;
     albumCoverMap?: Map<number, string>;
@@ -373,7 +374,8 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
         isSending,
         selectedActionMessage,
         selectedActionMessageMine,
-        albumViewer,
+        isAlbumSheetOpen,
+        onOpenMediaSheet,
         toggleDrawer,
         isDrawerOpen,
         isLoadingDrawer,
@@ -1079,7 +1081,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                     <button
                                         type="button"
                                         onClick={() => navigate("/chat")}
-                                        className="shrink-0 inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-2)]"
+                                        className="shrink-0 rounded-xl border border-[var(--border)] p-2 text-[var(--text-muted)] transition hover:border-[var(--accent)] hover:text-[var(--text)]"
                                         aria-label={t("browse_location.back_aria")}
                                     >
                                         <ChevronLeft className="h-4 w-4" />
@@ -1136,7 +1138,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                     </div>
                                     <p className="text-sm text-[var(--text-muted)]">
                                         {distanceLabel
-                                            ? `${otherParticipantOnlineMeta.label} · ${distanceLabel}`
+                                            ? `${otherParticipantOnlineMeta.label} ┬À ${distanceLabel}`
                                             : otherParticipantOnlineMeta.label}
                                     </p>
                                 </div>
@@ -1695,7 +1697,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                                     ) : (
                                                         <>
                                                             <option value={2147483647}>{t("chat_drawer.expiry.unlimited", { defaultValue: "Unlimited" })}</option>
-                                                            <option value={10}>{t("chat_drawer.expiry.ten_seconds", { defaultValue: "10s" })}</option>
+                                                            <option value={1}>{t("chat_drawer.expiry.ten_seconds", { defaultValue: "10s" })}</option>
                                                         </>
                                                     )}
                                                 </select>
@@ -1767,7 +1769,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                     )
                                 )}
                                     </div>
-                                    {/* Sticky toggle row — always pinned to bottom of sheet */}
+                                    {/* Sticky toggle row ÔÇö always pinned to bottom of sheet */}
                                     <div className="shrink-0 px-3 pb-3 pt-2">
                                         <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-2)]">
                                             {pendingAttachmentFile?.type.startsWith("video/") ? (
@@ -1854,7 +1856,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                             <p className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-[var(--text-muted)]">
                                                 <Reply className="h-3 w-3" />
                                                 <span>
-                                                    {`${t("chat.actions.reply", { defaultValue: "Reply" })} · ${
+                                                    {`${t("chat.actions.reply", { defaultValue: "Reply" })} ┬À ${
                                                         userId != null && Number(replyTargetMessage.senderId) === Number(userId)
                                                             ? t("chat.you")
                                                             : (selectedConversation.data.name?.trim() || t("chat.unknown"))
@@ -2186,7 +2188,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                         />
                     ) : null}
 
-                    {!isDesktop && selectedActionMessage && albumViewer === null ? (
+                    {!isDesktop && selectedActionMessage && !isAlbumSheetOpen ? (
                         <div
                             className="fixed inset-0 z-40 flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm no-touch-callout"
                             onClick={() => setOpenMessageActionId(null)}
@@ -2238,28 +2240,49 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                         );
                                     })()}
 
+                                    {/* --- DOWNLOAD / OPEN MEDIA BUTTON (MOBILE) --- */}
                                     {(() => {
                                         const imageUrl = getMessageImageUrl(selectedActionMessage);
                                         const videoUrl = getMessageVideoUrl(selectedActionMessage);
                                         const audioUrl = getMessageAudioUrl(selectedActionMessage);
-                                        const mediaUrl = imageUrl || videoUrl || audioUrl;
-										
-                                        if (!mediaUrl) return null;
+                                        const mediaUrl = imageUrl || videoUrl;
+
+                                        if (!mediaUrl && !audioUrl) return null;
+
+                                        if (mediaUrl && isIos()) {
+                                            return (
+                                                <button
+                                                    type="button"
+                                                    onClick={(event) => {
+                                                        event.preventDefault();
+                                                        event.stopPropagation();
+                                                        setOpenMessageActionId(null);
+                                                        openFullScreenImage(mediaUrl, undefined, videoUrl ? "video" : "image");
+                                                    }}
+                                                    className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-3 text-left text-sm font-medium text-[var(--text)] transition-all duration-300 hover:scale-[1.02] hover:border-[var(--accent)] hover:bg-[var(--accent)] hover:text-white hover:shadow-[0_0_20px_color-mix(in_srgb,var(--accent)_30%,transparent)] active:scale-95"
+                                                >
+                                                    Open Media
+                                                </button>
+                                            );
+                                        }
 
                                         return (
                                             <button
                                                 type="button"
-                                                onClick={() => {
-                                                    toast.success("Opening media...");
-                                                    const a = document.createElement("a");
-                                                    a.href = mediaUrl;
-                                                    a.target = "_blank";
-                                                    a.rel = "noopener noreferrer";
-                                                    a.download = `free-grind-media-${Date.now()}`;
-                                                    document.body.appendChild(a);
-                                                    a.click();
-                                                    document.body.removeChild(a);
+                                                onClick={(event) => {
+                                                    event.preventDefault();
+                                                    event.stopPropagation();
                                                     setOpenMessageActionId(null);
+                                                    const url = mediaUrl || audioUrl;
+                                                    if (url) {
+                                                        const a = document.createElement("a");
+                                                        a.href = url;
+                                                        a.download = `media-${Date.now()}`;
+                                                        a.target = "_blank";
+                                                        document.body.appendChild(a);
+                                                        a.click();
+                                                        document.body.removeChild(a);
+                                                    }
                                                 }}
                                                 className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-3 text-left text-sm font-medium text-[var(--text)] transition-all duration-300 hover:scale-[1.02] hover:border-[var(--accent)] hover:bg-[var(--accent)] hover:text-white hover:shadow-[0_0_20px_color-mix(in_srgb,var(--accent)_30%,transparent)] active:scale-95"
                                             >
@@ -2325,7 +2348,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                         </div>
                     ) : null}
 
-                            {pendingAlbumShare && albumViewer === null ? (
+                            {pendingAlbumShare && !isAlbumSheetOpen ? (
                             <div
                                 className={`fixed inset-0 z-[60] flex items-end justify-center bg-black/50 p-4 backdrop-blur-[20px] no-touch-callout transition-all duration-300 ${
                                     isDesktop ? "pb-32" : ""

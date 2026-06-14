@@ -1,7 +1,11 @@
-import { Loader2, Play, X } from "lucide-react";
+import { useState } from "react";
+import { Download, Loader2, Play, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import toast from "react-hot-toast";
 import { BottomSheet, SheetClose } from "../../../components/ui/bottom-sheet";
 import { EmptyState } from "../../../components/ui/states";
+import { saveMediaBatch } from "../../../services/saveMedia";
+import { appLog } from "../../../utils/logger";
 import type { AlbumViewerState } from "../../../types/chat-page";
 
 type ChatAlbumSheetProps = {
@@ -22,6 +26,51 @@ export function ChatAlbumSheet({
 	isDesktop,
 }: ChatAlbumSheetProps) {
 	const { t } = useTranslation();
+	const [isSavingAll, setIsSavingAll] = useState(false);
+
+	const handleSaveAll = async () => {
+		const items = (viewer?.content ?? [])
+			.map((item) => ({
+				url: item.url || item.coverUrl,
+				type: (item.contentType?.startsWith("video/") ? "video" : "image") as "image" | "video",
+			}))
+			.filter((item): item is { url: string; type: "image" | "video" } => !!item.url);
+
+		if (items.length === 0) {
+			toast.error(t("profile_details.save_all_empty"));
+			return;
+		}
+
+		setIsSavingAll(true);
+		const toastId = toast.loading(
+			t("profile_details.save_all_progress", { done: 0, total: items.length }),
+		);
+		try {
+			const result = await saveMediaBatch(items, (done, total) => {
+				toast.loading(t("profile_details.save_all_progress", { done, total }), { id: toastId });
+			});
+
+			if (result.failed === 0) {
+				toast.success(t("profile_details.save_all_success", { count: result.succeeded }), {
+					id: toastId,
+				});
+			} else {
+				toast.error(
+					t("profile_details.save_all_partial", {
+						succeeded: result.succeeded,
+						total: result.total,
+						failed: result.failed,
+					}),
+					{ id: toastId },
+				);
+			}
+		} catch (error) {
+			appLog.error("[ChatAlbumSheet] Save all failed", error);
+			toast.error(t("profile_details.save_all_error"), { id: toastId });
+		} finally {
+			setIsSavingAll(false);
+		}
+	};
 
 	return (
 		<BottomSheet onClose={onClose} isDesktop={isDesktop} panelClassName="max-h-[85dvh] overflow-hidden rounded-t-[2.5rem] sm:rounded-[2.5rem] border border-white/10 dark:border-white/5 bg-[color-mix(in_srgb,var(--surface)_85%,transparent)] backdrop-blur-[30px] shadow-[0_20px_60px_rgba(0,0,0,0.6),_inset_0_1px_0_rgba(255,255,255,0.1)]">
@@ -47,9 +96,22 @@ export function ChatAlbumSheet({
 						</p>
 					</div>
 				</div>
-				<SheetClose className="inline-flex h-10 w-10 shrink-0 self-start items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--text-muted)] shadow-lg backdrop-blur-md transition-all hover:bg-white/10 hover:text-[var(--text)] active:scale-95">
-					<X className="h-5 w-5" />
-				</SheetClose>
+				<div className="flex shrink-0 items-center gap-2 self-start">
+					{viewer && viewer.content.length > 0 && (
+						<button
+							type="button"
+							onClick={() => void handleSaveAll()}
+							disabled={isSavingAll}
+							className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white shadow-lg backdrop-blur-md transition-all hover:bg-white/10 disabled:opacity-50 active:scale-95"
+						>
+							<Download className="h-4 w-4" />
+							{t("profile_details.save_all")}
+						</button>
+					)}
+					<SheetClose className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--text-muted)] shadow-lg backdrop-blur-md transition-all hover:bg-white/10 hover:text-[var(--text)] active:scale-95">
+						<X className="h-5 w-5" />
+					</SheetClose>
+				</div>
 			</div>
 
 			{/* Body */}
