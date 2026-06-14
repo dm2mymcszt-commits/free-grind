@@ -12,17 +12,11 @@ type LeafletLocationPickerProps = {
     routePolyline?: {lat: number, lon: number}[];
     routeWaypoints?: {lat: number, lon: number, label: string}[];
     autoPan?: boolean;
+    isDrawing?: boolean;
+    onDrawingComplete?: (points: {lat: number, lon: number}[]) => void;
+    isQueueEmpty?: boolean;
 };
 
-function createPinIcon(L: any) {
-	const accentColor = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#ffcc01";
-	return L.divIcon({
-		className: "",
-		html: `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="${accentColor}" stroke="${accentColor}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3" fill="white" stroke="white"/></svg>`,
-		iconSize: [28, 28],
-		iconAnchor: [14, 28],
-	});
-}
 
 export function LeafletLocationPicker({
     selectedLocation,
@@ -34,6 +28,9 @@ export function LeafletLocationPicker({
     routePolyline,
     routeWaypoints,
     autoPan = true,
+    isDrawing = false,
+    onDrawingComplete,
+    isQueueEmpty = false,
 }: LeafletLocationPickerProps) {
     const { t } = useTranslation();
     const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -45,6 +42,18 @@ export function LeafletLocationPicker({
     const [isMapReady, setIsMapReady] = useState(false);
     
     const isFollowingRef = useRef(false);
+    const isDrawingRef = useRef(isDrawing);
+    const onDrawingCompleteRef = useRef(onDrawingComplete);
+    const drawingPolylineRef = useRef<any>(null);
+    const activePolylinesRef = useRef<any[]>([]);
+
+    useEffect(() => {
+        isDrawingRef.current = isDrawing;
+    }, [isDrawing]);
+
+    useEffect(() => {
+        onDrawingCompleteRef.current = onDrawingComplete;
+    }, [onDrawingComplete]);
 
     useEffect(() => {
         let mounted = true;
@@ -69,6 +78,7 @@ export function LeafletLocationPicker({
                 }).addTo(map);
 
                 map.on("click", (event: any) => { 
+                    if (isDrawingRef.current) return;
                     isFollowingRef.current = false;
                     onPick(event.latlng.lat, event.latlng.lng); 
                 });
@@ -116,6 +126,166 @@ export function LeafletLocationPicker({
         };
     // CRITICAL FIX: Removed initialCenter to stop the map from deleting itself every second!
     }, [defaultZoom, t]);
+
+    useEffect(() => {
+        isDrawingRef.current = isDrawing;
+        const map = mapRef.current;
+        if (!map) return;
+
+        if (isDrawing) {
+            map.dragging.disable();
+            map.touchZoom.disable();
+            map.doubleClickZoom.disable();
+            map.boxZoom.disable();
+            map.keyboard.disable();
+            if (map.tap) map.tap.disable();
+        } else {
+            map.dragging.enable();
+            map.touchZoom.enable();
+            map.doubleClickZoom.enable();
+            map.scrollWheelZoom.enable();
+            map.boxZoom.enable();
+            map.keyboard.enable();
+            if (map.tap) map.tap.enable();
+
+            // Clean up any remaining drawing polyline if drawing mode is cancelled/disabled
+            if (drawingPolylineRef.current) {
+                drawingPolylineRef.current.remove();
+                drawingPolylineRef.current = null;
+            }
+            activePolylinesRef.current.forEach(p => p.remove());
+            activePolylinesRef.current = [];
+        }
+    }, [isDrawing, isMapReady]);
+
+    useEffect(() => {
+        if (isQueueEmpty) {
+            if (drawingPolylineRef.current) {
+                drawingPolylineRef.current.remove();
+                drawingPolylineRef.current = null;
+            }
+            activePolylinesRef.current.forEach(p => p.remove());
+            activePolylinesRef.current = [];
+        }
+    }, [isQueueEmpty]);
+
+    useEffect(() => {
+        const container = mapContainerRef.current;
+        const map = mapRef.current;
+        if (!container || !map || !isMapReady) return;
+
+        let isPainting = false;
+        let isPanning = false;
+        let startX = 0;
+        let startY = 0;
+        let cumulativePoints: { lat: number; lon: number }[] = [];
+        let polyline: any = null;
+
+        const handlePointerDown = (e: PointerEvent) => {
+            if (!isDrawingRef.current) return;
+
+            if (e.button === 2) {
+                isPanning = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                container.setPointerCapture(e.pointerId);
+                e.preventDefault();
+                return;
+            }
+
+            if (e.button !== 0) return; // Only allow LMB to paint lines
+
+            isPainting = true;
+            container.setPointerCapture(e.pointerId);
+            
+            const latlng = map.mouseEventToLatLng(e);
+            cumulativePoints.push({ lat: latlng.lat, lon: latlng.lng });
+            
+            const L = leafletRef.current;
+            if (!polyline) {
+                polyline = L.polyline(cumulativePoints.map(p => [p.lat, p.lon]), { 
+                    color: '#8b5cf6', 
+                    weight: 4, 
+                    dashArray: '5, 10',
+                    lineCap: 'round',
+                    lineJoin: 'round'
+                }).addTo(map);
+                drawingPolylineRef.current = polyline;
+                activePolylinesRef.current.push(polyline);
+            } else {
+                polyline.setLatLngs(cumulativePoints.map(p => [p.lat, p.lon]));
+            }
+        };
+
+        const handlePointerMove = (e: PointerEvent) => {
+            if (!isDrawingRef.current) return;
+
+            if (isPainting && polyline) {
+                const latlng = map.mouseEventToLatLng(e);
+                cumulativePoints.push({ lat: latlng.lat, lon: latlng.lng });
+                polyline.setLatLngs(cumulativePoints.map(p => [p.lat, p.lon]));
+            } else if (isPanning && e.buttons === 2) {
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+                map.panBy([-dx, -dy], { animate: false });
+                startX = e.clientX;
+                startY = e.clientY;
+            }
+        };
+
+        const handlePointerUp = (e: PointerEvent) => {
+            if (!isDrawingRef.current) return;
+
+            if (isPainting) {
+                isPainting = false;
+                container.releasePointerCapture(e.pointerId);
+
+                if (cumulativePoints.length > 0 && onDrawingCompleteRef.current) {
+                    onDrawingCompleteRef.current(cumulativePoints);
+                }
+            } else if (isPanning) {
+                isPanning = false;
+                container.releasePointerCapture(e.pointerId);
+            }
+        };
+
+        const handleContextMenu = (e: MouseEvent) => {
+            if (isDrawingRef.current) {
+                e.preventDefault();
+            }
+        };
+
+        container.addEventListener("pointerdown", handlePointerDown);
+        container.addEventListener("pointermove", handlePointerMove);
+        container.addEventListener("pointerup", handlePointerUp);
+        container.addEventListener("pointercancel", handlePointerUp);
+        container.addEventListener("contextmenu", handleContextMenu);
+
+        return () => {
+            container.removeEventListener("pointerdown", handlePointerDown);
+            container.removeEventListener("pointermove", handlePointerMove);
+            container.removeEventListener("pointerup", handlePointerUp);
+            container.removeEventListener("pointercancel", handlePointerUp);
+            container.removeEventListener("contextmenu", handleContextMenu);
+            if (polyline) {
+                polyline.remove();
+                polyline = null;
+                drawingPolylineRef.current = null;
+            }
+            activePolylinesRef.current.forEach(p => p.remove());
+            activePolylinesRef.current = [];
+        };
+    }, [isMapReady, isDrawing, isQueueEmpty]);
+
+    useEffect(() => {
+        const container = mapContainerRef.current;
+        if (!container) return;
+        if (isDrawing) {
+            container.classList.add("drawing-map-active");
+        } else {
+            container.classList.remove("drawing-map-active");
+        }
+    }, [isDrawing]);
 
     useEffect(() => {
         if (!isMapReady) return;
@@ -198,6 +368,16 @@ export function LeafletLocationPicker({
             <style>{`
                 .gps-marker-transition { transition: transform 1s linear !important; }
                 .leaflet-zoom-anim .gps-marker-transition { transition: none !important; }
+                .drawing-map-active.leaflet-container { 
+                    cursor: crosshair !important; 
+                    user-select: none !important;
+                    -webkit-user-select: none !important;
+                    touch-action: none !important;
+                }
+                .drawing-map-active .leaflet-control-container,
+                .drawing-map-active .leaflet-control-container * {
+                    pointer-events: none !important;
+                }
             `}</style>
             <div ref={mapContainerRef} className={className} />
         </>

@@ -21,6 +21,19 @@ function interpolateCoord(lat1: number, lon1: number, lat2: number, lon2: number
 
 let globalEngineTicker: number | null = null;
 
+function shuffleQueue(array: SavedLocation[], avoidFirstId?: string): SavedLocation[] {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    if (avoidFirstId && shuffled.length > 1 && shuffled[0].id === avoidFirstId) {
+        const swapIdx = 1 + Math.floor(Math.random() * (shuffled.length - 1));
+        [shuffled[0], shuffled[swapIdx]] = [shuffled[swapIdx], shuffled[0]];
+    }
+    return shuffled;
+}
+
 export function useLocationEngine() {
     const { setPreferences } = usePreferences();
     const setPrefRef = useRef(setPreferences);
@@ -46,8 +59,23 @@ export function useLocationEngine() {
                     const queue = JSON.parse(storedQueue) as SavedLocation[];
                     if (!queue || queue.length <= 1) return;
 
-                    const intervalMinutes = Number(window.localStorage.getItem("fg-location-queue-interval") || "10");
                     const currentIndex = Number(window.localStorage.getItem("fg-location-queue-index") || "0");
+                    const currentLoc = queue[currentIndex];
+
+                    // Check for tiered dwell times
+                    const isTiered = window.localStorage.getItem("fg-location-use-tiered-dwell") === "true";
+                    let intervalMinutes = Number(window.localStorage.getItem("fg-location-queue-interval") || "10");
+
+                    if (isTiered && currentLoc && currentLoc.tier) {
+                        if (currentLoc.tier === "metropolis") {
+                            intervalMinutes = Number(window.localStorage.getItem("fg-location-dwell-metropolis") || "1440");
+                        } else if (currentLoc.tier === "medium") {
+                            intervalMinutes = Number(window.localStorage.getItem("fg-location-dwell-medium") || "180");
+                        } else if (currentLoc.tier === "small") {
+                            intervalMinutes = Number(window.localStorage.getItem("fg-location-dwell-small") || "60");
+                        }
+                    }
+
                     const timestampStr = window.localStorage.getItem("fg-location-queue-timestamp");
                     
                     if (!timestampStr) {
@@ -59,8 +87,20 @@ export function useLocationEngine() {
                     const timeRequired = intervalMinutes * 60 * 1000;
 
                     if (timePassed >= timeRequired) {
-                        const nextIndex = (currentIndex + 1) % queue.length;
-                        const nextLoc = queue[nextIndex];
+                        let nextIndex = (currentIndex + 1) % queue.length;
+                        let updatedQueue = queue;
+
+                        const dynamicMode = window.localStorage.getItem("fg-location-dynamic-mode") || "manual";
+                        const dynamicStrategy = window.localStorage.getItem("fg-location-dynamic-strategy") || "random";
+
+                        // Shuffling on wrap-around if in randomized country travel mode
+                        if (nextIndex === 0 && dynamicMode === "country" && dynamicStrategy === "random") {
+                            const lastLocId = queue[currentIndex]?.id;
+                            updatedQueue = shuffleQueue(queue, lastLocId);
+                            window.localStorage.setItem("fg-location-queue", JSON.stringify(updatedQueue));
+                        }
+
+                        const nextLoc = updatedQueue[nextIndex];
                         const nextGeohash = encodeGeohash(nextLoc.lat, nextLoc.lon);
 
                         void setPrefRef.current({ geohash: nextGeohash, locationName: nextLoc.label });

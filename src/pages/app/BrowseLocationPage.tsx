@@ -9,7 +9,13 @@ import { encodeGeohash, decodeGeohash } from "../../utils/geohash";
 import { geocodeResultSchema, type GeocodeResult, type SelectedLocation } from "./GridPage.types";
 import { LocationSettingsPanel } from "./gridpage/components/LocationSettingsPanel";
 
-export type SavedLocation = { id: string; lat: number; lon: number; label: string; };
+export type SavedLocation = { 
+    id: string; 
+    lat: number; 
+    lon: number; 
+    label: string; 
+    tier?: "metropolis" | "medium" | "small";
+};
 
 const isAgeRestrictedRegion = (lat: number, lon: number) => {
     return lat >= 49.8 && lat <= 60.9 && lon >= -8.6 && lon <= 1.8;
@@ -252,6 +258,9 @@ export function BrowseLocationPage() {
             if (storedIndex) setQueueIndex(Number(storedIndex));
             if (storedTimestamp) setQueueTimestamp(Number(storedTimestamp));
             
+            const storedQueue = window.localStorage.getItem("fg-location-queue");
+            if (storedQueue) setQueue(JSON.parse(storedQueue) as SavedLocation[]);
+
             const rProg = window.localStorage.getItem("fg-route-progress");
             const rAct = window.localStorage.getItem("fg-route-active");
             if (rProg) setRouteProgress(Number(rProg));
@@ -350,6 +359,7 @@ export function BrowseLocationPage() {
                     onDeleteQueue={(id) => updateQueue(queue.filter(q => q.id !== id))}
                     onClearQueue={() => updateQueue([])}
                     onChangeInterval={updateInterval}
+                    onUpdateQueue={updateQueue}
                     routeWaypoints={routeWaypoints}
                     routePolyline={routePolyline}
                     routeSpeed={routeSpeed}
