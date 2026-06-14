@@ -101,6 +101,7 @@ type ProfileDetailsContentProps = {
     formattedActivePronouns: string;
     lookingForLabels: LabelMap;
     meetAtLabels: LabelMap;
+    nsfwLabels: LabelMap;
     tribeLabels: LabelMap;
     hivStatusLabels: LabelMap;
     sexualHealthLabels: LabelMap;
@@ -153,6 +154,7 @@ export function ProfileDetailsContent({
     formattedActivePronouns,
     lookingForLabels,
     meetAtLabels,
+    nsfwLabels,
     tribeLabels,
     hivStatusLabels,
     sexualHealthLabels,
@@ -512,6 +514,12 @@ export function ProfileDetailsContent({
                             {(chatContactStatus?.unreadCount ?? 0) > 0 ? ` · ${chatContactStatus?.unreadCount ?? 0} ${t("chat.unread")}` : ""}
                         </span>
                     )}
+                    {activeProfile.lastReceivedTapTimestamp != null && (
+                        <span className="flex items-center gap-1">
+                            <Flame className="h-3 w-3" />
+                            {formatRelativeTime(activeProfile.lastReceivedTapTimestamp)}
+                        </span>
+                    )}
                 </div>
                 </div>
 
@@ -603,6 +611,12 @@ export function ProfileDetailsContent({
                                     <div className="flex items-start gap-2.5">
                                         <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-muted)]" />
                                         <p className="text-sm"><span className="font-semibold text-[var(--text)]">{t("profile_details.meet_at")}:</span> <span className="text-[var(--text-muted)]">{formatEnumArray(activeProfile.meetAt, meetAtLabels, t)}</span></p>
+                                    </div>
+                                )}
+                                {activeProfile.nsfw != null && !shouldHideField(formatEnumValue(activeProfile.nsfw, nsfwLabels, t)) && (
+                                    <div className="flex items-start gap-2.5">
+                                        <Shield className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-muted)]" />
+                                        <p className="text-sm"><span className="font-semibold text-[var(--text)]">{t("profile_details.accept_nsfw")}:</span> <span className="text-[var(--text-muted)]">{formatEnumValue(activeProfile.nsfw, nsfwLabels, t)}</span></p>
                                     </div>
                                 )}
                                 {!shouldHideField(formatEnumArray(activeProfile.grindrTribes, tribeLabels, t)) && (

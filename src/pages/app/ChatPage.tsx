@@ -1632,7 +1632,7 @@ export function ChatPage() {
 
 	const applyRealtimeEnvelope = useCallback(
 		(envelope: RealtimeEnvelope) => {
-			// appLog.debug(`[ChatPage] applyRealtimeEnvelope type=${envelope.type} full=${JSON.stringify(envelope)}`);
+			appLog.debug(`[ChatPage] applyRealtimeEnvelope type=${envelope.type} full=${JSON.stringify(envelope)}`);
 
 			// chat.v1.conversation.delete — remove blocked/deleted conversations
 			if (
