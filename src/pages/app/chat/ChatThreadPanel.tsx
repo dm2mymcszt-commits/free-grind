@@ -206,6 +206,7 @@ type ChatThreadPanelProps = {
     isSendingAudio: boolean;
     confirmAudio: () => void | Promise<void>;
     cancelAudio: () => void;
+    isPartnerTyping?: boolean;
 };
 
 const SKIP_BLOCK_CONFIRM_KEY = "profile_skip_block_confirm";
@@ -398,6 +399,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
         isSendingAudio,
         confirmAudio,
         cancelAudio,
+        isPartnerTyping = false,
     } = props;
 
     // --- IMAGE CROP & SAVED PHRASES UI STATE ---
@@ -1532,6 +1534,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                         handleMessageTap={handleMessageTap}
                         handleStopAlbumShare={handleStopAlbumShare}
                         threadBottomRef={threadBottomRef}
+                        isPartnerTyping={isPartnerTyping}
                     />
 
                         <form

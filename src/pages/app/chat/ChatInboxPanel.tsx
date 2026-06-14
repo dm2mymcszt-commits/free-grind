@@ -65,6 +65,7 @@ type ChatInboxPanelProps = ChatInboxHeaderProps & {
 	onOpenSearch?: () => void;
 	onOpenInbox?: () => void;
 	onOpenAlbums?: () => void;
+	typingConversationIds?: Set<string>;
 };
 
 type ChatConversationRowProps = {
@@ -75,6 +76,7 @@ type ChatConversationRowProps = {
 	nowTimestamp: number;
 	presenceResults: Record<string, boolean>;
 	isSelected: boolean;
+	isTyping: boolean;
 	onSelectConversation: (c: ConversationEntry) => void;
 	onViewProfile: (profileId: number) => void;
 };
@@ -87,6 +89,7 @@ function ChatConversationRow({
 	nowTimestamp,
 	presenceResults,
 	isSelected,
+	isTyping,
 	onSelectConversation,
 	onViewProfile,
 }: ChatConversationRowProps) {
@@ -176,7 +179,11 @@ function ChatConversationRow({
 					<p className={`truncate text-sm ${
 						conversation.data.unreadCount > 0 ? "font-semibold text-[var(--text)]" : "text-[var(--text-muted)]"
 					}`}>
-						{getPreviewText(conversation, t)}
+						{isTyping ? (
+							<span className="italic text-[var(--accent)]">{t("chat.typing")}</span>
+						) : (
+							getPreviewText(conversation, t)
+						)}
 					</p>
 					{conversation.data.unreadCount > 0 ? (
 						<span className={`flex min-w-[20px] shrink-0 flex-col items-center justify-center rounded-full bg-[var(--accent)] px-1.5 py-0.5 text-[11px] font-bold text-[var(--accent-contrast)] shadow-sm ${showDebugInfo ? "min-h-[28px]" : ""}`}>
@@ -237,6 +244,7 @@ export function ChatInboxPanel({
 	onClearInboxFilters: _onClearInboxFilters,
 	onToggleHidePinned,
 	onToggleFavoritesOnly,
+	typingConversationIds,
 }: ChatInboxPanelProps) {
 	const { t } = useTranslation();
 	const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
@@ -501,7 +509,6 @@ export function ChatInboxPanel({
 											: t("chat.no_conversations")}
 									</p>
 								</div>
-							) : (
 								<div className="flex flex-col pt-3 gap-3 px-3">
 									{filteredConversations.map((conversation) => {
 										const otherParticipant = getOtherParticipant(conversation, userId);
@@ -531,6 +538,7 @@ export function ChatInboxPanel({
 														nowTimestamp={nowTimestamp}
 														presenceResults={presenceResults}
 														isSelected={conversation.data.conversationId === selectedConversationId}
+														isTyping={typingConversationIds?.has(conversation.data.conversationId) ?? false}
 														onSelectConversation={isActive ? () => {} : onSelectConversation}
 														onViewProfile={onViewProfile}
 													/>
