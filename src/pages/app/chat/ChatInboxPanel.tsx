@@ -113,8 +113,11 @@ function ChatConversationRow({
 		<div
 			ref={ref}
 			onClick={() => onSelectConversation(conversation)}
-			style={isSelected ? { borderLeft: "2px solid var(--accent)", paddingLeft: "14px" } : { paddingLeft: "16px" }}
-			className={`flex cursor-pointer items-center gap-4 border-b border-[var(--surface-2)] py-3 pr-4 text-left transition ${revealClass}`}
+			className={`flex cursor-pointer items-center gap-4 py-3 px-4 mx-2 my-1 text-left transition border rounded-xl ${
+				isSelected 
+					? "bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] border-[var(--accent)]/30 shadow-[0_2px_12px_rgba(255,204,1,0.08)]" 
+					: "bg-transparent border-transparent hover:bg-white/5"
+			} ${revealClass}`}
 		>
 			<button
 				type="button"
@@ -398,7 +401,7 @@ export function ChatInboxPanel({
 	return (
 		<PullToRefreshContainer
 			className={`flex min-h-0 flex-col overflow-hidden ${
-				isDesktop ? "bg-slate-900/40 backdrop-blur-md border border-white/5 rounded-[18px] shadow-[0_16px_34px_rgba(0,0,0,0.17)] h-full" : "h-dvh p-0"
+				isDesktop ? "bg-black/10 backdrop-blur-xl border border-white/5 rounded-[18px] shadow-[0_16px_34px_rgba(0,0,0,0.17)] h-full" : "h-dvh p-0"
 			}`}
 			contentClassName="flex flex-1 flex-col min-h-0"
 			style={
