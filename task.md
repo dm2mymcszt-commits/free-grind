@@ -1,0 +1,36 @@
+# Trial Merge Conflict Resolution Tasks
+
+- [x] Resolve Localization & Basic Configs
+  - [x] `public/locales/fr/translation.json`
+  - [x] `scripts/build-ios-ipa.sh`
+- [x] Resolve Tauri backend & capabilities
+  - [x] `src-tauri/Cargo.toml`
+  - [x] `src-tauri/Cargo.lock`
+  - [x] `src-tauri/src/lib.rs`
+  - [x] `src-tauri/capabilities/default.json`
+- [x] Resolve Layout components & Map Picker
+  - [x] `src/pages/app/BrowseLocationPage.tsx`
+  - [x] `src/pages/app/SettingsBlockedPage.tsx`
+  - [x] `src/pages/app/gridpage/components/LeafletLocationPicker.tsx`
+  - [x] `src/pages/app/GridPage.tsx`
+  - [x] `src/index.css`
+  - [x] `src/App.tsx`
+  - [x] `src/components/NavBar.tsx`
+- [x] Resolve Browse Grid Tile Layouts
+  - [x] `src/pages/app/gridpage/components/BrowseCardTile.tsx`
+  - [x] `src/pages/app/gridpage/components/BrowseGrid.tsx`
+  - [x] `src/pages/app/gridpage/components/ProfileDetailsModal.tsx`
+- [x] Resolve Chat inbox, thread messages, panels, and photo viewer
+  - [x] `src/pages/app/ChatPage.tsx`
+  - [x] `src/pages/app/InterestPage.tsx`
+  - [x] `src/pages/app/RightNowFiltersPage.tsx`
+  - [x] `src/pages/app/SharedAlbumsPage.tsx`
+  - [x] `src/pages/app/chat/ChatAlbumSheet.tsx`
+  - [x] `src/pages/app/chat/ChatInboxPanel.tsx`
+  - [x] `src/pages/app/chat/ChatThreadMessages.tsx`
+  - [x] `src/pages/app/chat/ChatThreadPanel.tsx`
+  - [x] `src/pages/app/shared-albums/AlbumViewerPanel.tsx`
+  - [x] `src/components/PhotoViewer.tsx`
+- [x] Compilation & Verification
+  - [x] Verify using cargo check
+  - [x] Verify using typescript build check

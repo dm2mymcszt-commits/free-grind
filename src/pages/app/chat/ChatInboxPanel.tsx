@@ -398,7 +398,7 @@ export function ChatInboxPanel({
 	return (
 		<PullToRefreshContainer
 			className={`flex min-h-0 flex-col overflow-hidden ${
-				isDesktop ? "surface-card h-full" : "h-dvh p-0"
+				isDesktop ? "bg-slate-900/40 backdrop-blur-md border border-white/5 rounded-[18px] shadow-[0_16px_34px_rgba(0,0,0,0.17)] h-full" : "h-dvh p-0"
 			}`}
 			contentClassName="flex flex-1 flex-col min-h-0"
 			style={

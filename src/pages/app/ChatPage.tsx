@@ -3759,14 +3759,14 @@ export function ChatPage() {
 								{...sharedInboxHeaderProps}
 								isDesktop={true}
 							/>
-							<div className="flex-1 min-h-0 mx-auto w-full max-w-6xl px-3 pb-3 grid grid-cols-[360px_minmax(0,1fr)] gap-3">
+							<div className="flex-1 min-h-0 mx-auto w-full max-w-6xl px-3 pb-24 grid grid-cols-[360px_minmax(0,1fr)] gap-3">
 								{renderInbox}
 								{renderThread}
 							</div>
 						</>
 					)
 				) : (
-					<div className="w-full">
+					<div className={`w-full ${!(selectedConversation ?? targetProfileId) ? "pb-24" : ""}`}>
 						{isSearchRoute ? renderSearch : selectedConversation ?? targetProfileId ? renderThread : renderInbox}
 					</div>
 				)}
