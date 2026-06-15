@@ -35,7 +35,9 @@ import {
     Mic,
     Square,
     FileAudio,
+    Sticker,
 } from "lucide-react";
+import { GiphyPickerSheet } from "./GiphyPickerSheet";
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
 import { useTranslation } from "react-i18next";
@@ -186,6 +188,7 @@ type ChatThreadPanelProps = {
     onShareAlbumFromDrawer: (albumId: number, expirationType: string) => Promise<void>;
     onStopAlbumShareFromDrawer: (albumId: number) => Promise<void>;
     onSendLocation: (lat: number, lon: number) => void | Promise<void>;
+    onSendGiphy: (gif: { id: string; urlPath: string; stillPath: string; previewPath: string; width: number; height: number }) => void | Promise<void>;
     uploadProgress: number;
     draft: string;
     setDraft: (value: string) => void;
@@ -256,6 +259,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
     const { unitsPreset, geohash } = usePreferences();
     const [selectedExpirationType, setSelectedExpirationType] = useState("INDEFINITE");
     const [pendingLocationShare, setPendingLocationShare] = useState<{ lat: number; lon: number } | null>(null);
+    const [isGiphyPickerOpen, setIsGiphyPickerOpen] = useState(false);
     const [mobileKeyboardInset, setMobileKeyboardInset] = useState(0);
     const [isBlockConfirmOpen, setIsBlockConfirmOpen] = useState(false);
     const [isDeleteConversationConfirmOpen, setIsDeleteConversationConfirmOpen] =
@@ -391,6 +395,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
         onShareAlbumFromDrawer,
         onStopAlbumShareFromDrawer,
         onSendLocation,
+        onSendGiphy,
         attachmentMaxViews,
         setAttachmentMaxViews,
         onAudioRecorded,
@@ -1553,6 +1558,19 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                             <button
                                 type="button"
                                 onClick={() => {
+                                    setIsGiphyPickerOpen((prev) => !prev);
+                                    if (isDrawerOpen) toggleDrawer();
+                                    if (pendingLocationShare) handleLocationShareRequest();
+                                }}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--border)] text-[var(--text-muted)] transition hover:border-[var(--accent)] hover:text-[var(--text)]"
+                                aria-label={t("chat.giphy.button_label", { defaultValue: "Send GIF" })}
+                                title={t("chat.giphy.button_label", { defaultValue: "Send GIF" })}
+                            >
+                                <Sticker className="h-4 w-4" />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
                                     toggleAlbumPicker();
                                     if (isDrawerOpen) toggleDrawer();
                                     if (pendingLocationShare) handleLocationShareRequest();
@@ -2426,6 +2444,16 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                 </div>
                             </div>
                         </div>
+                    ) : null}
+                    {isGiphyPickerOpen ? (
+                        <GiphyPickerSheet
+                            onClose={() => setIsGiphyPickerOpen(false)}
+                            onSelect={(gif) => {
+                                setIsGiphyPickerOpen(false);
+                                void onSendGiphy(gif);
+                            }}
+                            isDesktop={isDesktop}
+                        />
                     ) : null}
         {isSavedPhrasesOpen ? (
                             <BottomSheet
