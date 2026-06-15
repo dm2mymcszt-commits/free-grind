@@ -34,12 +34,10 @@ type Props = {
 export function ChatMediaSheet({
 	conversationId,
 	senderProfileId,
-	userId,
 	isDesktop,
 	senderPhotoUrl,
 	onClose,
 	openAlbumViewerById,
-	openFullScreenImage,
 }: Props) {
 	const { t } = useTranslation();
 	const service = useApiFunctions();

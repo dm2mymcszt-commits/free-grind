@@ -1,4 +1,4 @@
-﻿import {
+import {
     Ban,
     ChevronDown,
     ChevronLeft,
@@ -50,7 +50,7 @@ import {
     createBackdropCloseHandler,
     useModalClose,
 } from "../../../hooks/useModalClose";
-import type { AlbumListItem, UiMessage, AlbumViewerState } from "../../../types/chat-page";
+import type { AlbumListItem, UiMessage } from "../../../types/chat-page";
 import type { ConversationEntry, Message } from "../../../types/messages";
 import type { DrawerMedia } from "./ChatDrawerPanel";
 import { ChatDrawerPanel } from "./ChatDrawerPanel";
@@ -375,7 +375,6 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
         selectedActionMessage,
         selectedActionMessageMine,
         isAlbumSheetOpen,
-        onOpenMediaSheet,
         toggleDrawer,
         isDrawerOpen,
         isLoadingDrawer,

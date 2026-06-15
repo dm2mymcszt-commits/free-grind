@@ -1,7 +1,6 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
+
 import {
 	type FormEvent,
-	type TouchEvent,
 	useCallback,
 	useEffect,
 	useLayoutEffect,
@@ -1156,7 +1155,7 @@ export function ChatPage() {
 					
 					const isIncoming = userId != null && Number(m.senderId) !== Number(userId);
 
-					if (isIncoming && shouldAutoBlock(messageText, "chat")) {
+					if (isIncoming && shouldAutoBlock(messageText, "message")) {
 						shouldNukeThread = true;
 						blockReason = "Keyword in message history";
 						break;
@@ -1187,8 +1186,8 @@ export function ChatPage() {
 				// 2. Fetch their profile in the background to check their Age AND Bio
 				if (blockId) {
 					service.getProfileDetail(String(blockId)).then((profile) => {
-						const matchedBioWord = shouldAutoBlock(profile.aboutMe, "chat");
-						const isBadAge = isOutsideAgeLimits(profile.age, "chat");
+						const matchedBioWord = shouldAutoBlock(profile.aboutMe, "bio");
+						const isBadAge = isOutsideAgeLimits(profile.age);
 
 						if (matchedBioWord || isBadAge) {
 							const reason = isBadAge ? `Age limit (${profile.age})` : `Keyword in Bio`;
@@ -1883,15 +1882,8 @@ export function ChatPage() {
 			return;
 		}
 
-		const container = threadScrollContainerRef.current;
 		const isNewConversation =
 			lastLoadedConversationIdRef.current !== selectedConversationId;
-
-		const isNearBottom = container
-			? container.scrollHeight - container.scrollTop - container.clientHeight < 250
-			: true;
-
-		const iSentLastMessage = userId != null && Number(lastMessage.senderId) === Number(userId);
 
 		// Always scroll on new conversation OR if a new message arrived at the end
 		if (isNewConversation || isNewMessageArrival) {

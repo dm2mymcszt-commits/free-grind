@@ -1,4 +1,4 @@
-import { Heart, Loader2, MessageCircle, Pin, PinOff, Search, SlidersHorizontal, User, Trash2, EyeOff, Ghost } from "lucide-react";
+import { MessageCircle, Pin, Trash2, Ghost } from "lucide-react";
 import { useEffect, useRef, useState, type RefObject, type TouchEventHandler } from "react";
 import { ChatSearchPanel } from "./ChatSearchPanel";
 import { ChatInboxHeader, type ChatInboxHeaderProps } from "./ChatInboxHeader";
@@ -6,12 +6,12 @@ import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
 import { usePreferences } from "../../../contexts/PreferencesContext";
 import { ProfileImage } from "../../../components/ui/profile-image";
-import type { ConversationEntry, InboxFilters } from "../../../types/messages";
+import type { ConversationEntry } from "../../../types/messages";
 import type { ChatContactIndexRecord } from "../../../types/chat-contact-index";
 import freegrindLogo from "../../../images/freegrind-logo.webp";
 import { PullToRefreshContainer } from "../components/PullToRefreshContainer";
 import { ConfirmDialog } from "../../../components/ui/confirm-dialog";
-import { PageHeaderBackground } from "../../../components/ui/PageHeaderBackground";
+
 import {
     buildChatFiltersDraft,
     formatConversationTime,
@@ -38,11 +38,7 @@ import {
 import { SelectableItem } from "../../../components/multi-select/SelectableItem";
 import { useMultiSelect } from "../../../contexts/MultiSelectContext";
 
-type RealtimeStatusMeta = {
-    className: string;
-    symbol: string;
-    label: string;
-};
+
 
 type ChatInboxPanelProps = ChatInboxHeaderProps & {
 	isLoadingInbox: boolean;
@@ -60,15 +56,15 @@ type ChatInboxPanelProps = ChatInboxHeaderProps & {
 	showHeader: boolean;
 	onRefreshInbox: () => Promise<void>;
 	onLoadMoreInbox: () => void;
-	onInboxTouchStart: TouchEventHandler<HTMLDivElement>;
-	onInboxTouchEnd: TouchEventHandler<HTMLDivElement>;
+	onInboxTouchStart?: TouchEventHandler<HTMLDivElement>;
+	onInboxTouchEnd?: TouchEventHandler<HTMLDivElement>;
 	onSelectConversation: (conversation: ConversationEntry) => void;
 	onViewProfile: (profileId: number) => void;
 	onClearInboxFilters: () => void;
-	onOpenFilters: (filtersDraft: ReturnType<typeof buildChatFiltersDraft>) => void;
-	onOpenSearch: () => void;
-	onOpenInbox: () => void;
-	onOpenAlbums: () => void;
+	onOpenFilters?: (filtersDraft: ReturnType<typeof buildChatFiltersDraft>) => void;
+	onOpenSearch?: () => void;
+	onOpenInbox?: () => void;
+	onOpenAlbums?: () => void;
 };
 
 type ChatConversationRowProps = {
@@ -234,10 +230,6 @@ export function ChatInboxPanel({
 	onClearInboxFilters: _onClearInboxFilters,
 	onToggleHidePinned,
 	onToggleFavoritesOnly,
-	onOpenFilters,
-	onOpenSearch,
-	onOpenInbox,
-	onOpenAlbums,
 }: ChatInboxPanelProps) {
 	const { t } = useTranslation();
 	const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
@@ -560,7 +552,7 @@ export function ChatInboxPanel({
 			<ConfirmDialog
 				isOpen={deleteCandidate !== null}
 				title={t("chat.dialogs.delete_conversation_title", { defaultValue: "Delete Conversation?" })}
-				description={t("chat.dialogs.delete_conversation_desc", { defaultValue: "This will delete all messages in this conversation. This action cannot be undone." })}
+				message={t("chat.dialogs.delete_conversation_desc", { defaultValue: "This will delete all messages in this conversation. This action cannot be undone." })}
 				confirmLabel={t("common.delete", { defaultValue: "Delete" })}
 				cancelLabel={t("common.cancel", { defaultValue: "Cancel" })}
 				onConfirm={async () => {

@@ -40,7 +40,12 @@ export function SettingsBlockedPage() {
 	// ── Search ───────────────────────────────────────────────────────────
 	const [searchQuery, setSearchQuery] = useState("");
 
-	// ── UI state ──────�	// ── Sentinel ref for IntersectionObserver ─────────────────────────────
+	// ── UI state ──────────────────────────────────────────────────────────
+	const [mutatingProfileId, setMutatingProfileId] = useState<string | null>(null);
+	const [isUnblockingAll, setIsUnblockingAll] = useState(false);
+	const [confirmUnblockAll, setConfirmUnblockAll] = useState(false);
+
+	// ── Sentinel ref for IntersectionObserver ─────────────────────────────
 	const sentinelRef = useRef<HTMLDivElement | null>(null);
 
 	// ── All blocked IDs (master list) ────────────────────────────────────

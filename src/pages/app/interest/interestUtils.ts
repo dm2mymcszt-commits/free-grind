@@ -36,7 +36,7 @@ export function fromStoredView(row: StoredInterestView): InterestItem {
 export function toStoredView(item: InterestItem): Omit<StoredInterestView, "updatedAt"> {
 	return {
 		profileId: item.profileId,
-        displayName: item.displayName ?? "",
+		displayName: item.displayName ?? "",
 		imageHash: item.imageHash,
 		timestamp: item.timestamp,
 		viewCount: item.viewCount,
@@ -56,7 +56,7 @@ function mergeViewItem(
 	}
 
 	const incomingLooksPlaceholder = isPlaceholderName(
-        incoming.displayName ?? "",
+		incoming.displayName ?? "",
 		incoming.profileId,
 	);
 
@@ -67,7 +67,7 @@ function mergeViewItem(
 		// Prefer real ID over preview ID
 		profileId: isIncomingPreview && !isCachedPreview ? cached.profileId : incoming.profileId,
 		displayName:
-                incomingLooksPlaceholder && !isPlaceholderName(cached.displayName ?? "", cached.profileId)
+			incomingLooksPlaceholder && !isPlaceholderName(cached.displayName ?? "", cached.profileId)
 				? cached.displayName
 				: incoming.displayName,
 		imageHash: incoming.imageHash ?? cached.imageHash,
@@ -111,7 +111,7 @@ export function toNumber(value: unknown): number | null {
 	return null;
 }
 
-function getItemDisplayName(entry: Record<string, unknown>, profileId: string): string | null {
+function getItemDisplayName(entry: Record<string, unknown>, _profileId: string): string | null {
 	const value = entry.displayName;
 	if (typeof value === "string" && value.trim().length > 0) {
 		return value;
@@ -184,7 +184,7 @@ function getPreviewSyntheticId(
 export function normalizeViews(
 	payload: unknown,
 	previouslyCached: InterestItem[],
-	t: TFunction
+	_t: TFunction
 ): InterestItem[] {
 	const root = asObject(payload);
 	if (!root) return previouslyCached;
@@ -217,8 +217,8 @@ export function normalizeViews(
 			canOpenProfile: true,
 			isFromCache: false,
 			onlineUntil: toNumber(obj.onlineUntil),
-		};
-    }).filter((it): it is any => it !== null);
+		} as InterestItem;
+	}).filter((it): it is InterestItem => it !== null);
 
 	const incomingPreviews = previewsRaw.map((entry, index) => {
 		const obj = getViewEntryRecord(entry);
@@ -240,8 +240,8 @@ export function normalizeViews(
 			canOpenProfile: recoveredMatch ? true : (getViewProfileId(obj) !== null),
 			isFromCache: !!recoveredMatch,
 			onlineUntil: recoveredMatch ? recoveredMatch.onlineUntil : toNumber(obj.onlineUntil),
-		};
-    }).filter((it): it is any => it !== null);
+		} as InterestItem;
+	}).filter((it): it is InterestItem => it !== null);
 
 	// 3. Merging
 	const mergedMap = new Map<string, InterestItem>();
@@ -254,13 +254,13 @@ export function normalizeViews(
 	// Then fresh profiles/previews from server (overwrite old items with new timestamps)
 	for (const incoming of [...incomingProfiles, incomingPreviews].flat()) {
 		const existing = mergedMap.get(incoming.profileId);
-        mergedMap.set(incoming.profileId, mergeViewItem(existing ?? null, incoming) as any);
+		mergedMap.set(incoming.profileId, mergeViewItem(existing ?? null, incoming));
 	}
 
 	return Array.from(mergedMap.values()).sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
 }
 
-export function normalizeTaps(payload: unknown, t: TFunction): InterestItem[] {
+export function normalizeTaps(payload: unknown, _t: TFunction): InterestItem[] {
 	const root = asObject(payload);
 	if (!root || !Array.isArray(root.profiles)) return [];
 
