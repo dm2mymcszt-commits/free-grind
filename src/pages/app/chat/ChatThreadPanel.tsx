@@ -2207,7 +2207,6 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                             noConversation={!selectedConversation}
                         />
                     ) : null}
-
                     {!isDesktop && selectedActionMessage && !isAlbumSheetOpen ? (
                         <div
                             className="fixed inset-0 z-40 flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm no-touch-callout"
@@ -2453,6 +2452,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                 void onSendGiphy(gif);
                             }}
                             isDesktop={isDesktop}
+                            isSending={isSending}
                         />
                     ) : null}
         {isSavedPhrasesOpen ? (
