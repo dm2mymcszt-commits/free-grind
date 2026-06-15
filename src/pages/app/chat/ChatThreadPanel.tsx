@@ -966,7 +966,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
     );
             const renderThread = selectedConversation ? (
             <div
-                className={`flex h-full flex-col ${!isDesktop ? "overflow-hidden p-0" : "overflow-hidden p-3 sm:p-4"} bg-transparent`}
+                className={`flex h-full flex-col ${!isDesktop ? "overflow-hidden p-0" : "overflow-hidden pt-0 px-3 pb-3 sm:pt-0 sm:px-4 sm:pb-4"} bg-transparent`}
                 style={
                     !isDesktop
                         ? {
@@ -1062,7 +1062,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                             return (
                             <>
                                 <div
-                                    className={`mb-3 flex items-center justify-between gap-3 pb-3 z-40 ${!isDesktop ? "fixed inset-x-0 top-0 py-3 px-[var(--app-px)] bg-zinc-950/70 dark:bg-black/75 backdrop-blur-3xl border-b border-white/5" : "sticky top-0 pt-3 bg-transparent border-none shadow-none"}`}
+                                    className={`mb-3 flex items-center justify-between gap-3 pb-3 z-40 ${!isDesktop ? "fixed inset-x-0 top-0 py-3 px-[var(--app-px)] bg-zinc-950/70 dark:bg-black/75 backdrop-blur-3xl border-b border-white/5" : "sticky top-0 pt-0 bg-transparent border-none shadow-none"}`}
                                 style={
                                     !isDesktop
                                         ? {

@@ -115,9 +115,13 @@ function ChatConversationRow({
 			onClick={() => onSelectConversation(conversation)}
 			className={`flex cursor-pointer items-center gap-4 py-3 px-4 mx-2 my-1 text-left transition border rounded-xl ${
 				isSelected 
-					? "bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] border-[var(--accent)]/30 shadow-[0_2px_12px_rgba(255,204,1,0.08)]" 
+					? "backdrop-blur-md shadow-[0_2px_12px_rgba(255,204,1,0.08)]" 
 					: "bg-transparent border-transparent hover:bg-white/5"
 			} ${revealClass}`}
+			style={isSelected ? { 
+				backgroundColor: "color-mix(in srgb, var(--accent) 12%, transparent)", 
+				borderColor: "color-mix(in srgb, var(--accent) 20%, transparent)" 
+			} : undefined}
 		>
 			<button
 				type="button"
