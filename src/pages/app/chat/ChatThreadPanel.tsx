@@ -1137,7 +1137,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                     </div>
                                     <p className="text-sm text-[var(--text-muted)]">
                                         {distanceLabel
-                                            ? `${otherParticipantOnlineMeta.label} ┬À ${distanceLabel}`
+                                            ? `${otherParticipantOnlineMeta.label} · ${distanceLabel}`
                                             : otherParticipantOnlineMeta.label}
                                     </p>
                                 </div>
@@ -1855,7 +1855,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                             <p className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-[var(--text-muted)]">
                                                 <Reply className="h-3 w-3" />
                                                 <span>
-                                                    {`${t("chat.actions.reply", { defaultValue: "Reply" })} ┬À ${
+                                                    {`${t("chat.actions.reply", { defaultValue: "Reply" })} · ${
                                                         userId != null && Number(replyTargetMessage.senderId) === Number(userId)
                                                             ? t("chat.you")
                                                             : (selectedConversation.data.name?.trim() || t("chat.unknown"))
