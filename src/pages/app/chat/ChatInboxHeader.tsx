@@ -99,7 +99,7 @@ export function ChatInboxHeader({
 					</div>
 
 					{/* Row 2: filter pills */}
-					{!isSearchOpen && (
+					{!isSearchOpen && !isDesktop && (
 						<div className="flex flex-wrap items-center gap-2 pb-4">
 							<button
 								type="button"

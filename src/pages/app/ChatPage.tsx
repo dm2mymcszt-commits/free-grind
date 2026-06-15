@@ -1,4 +1,4 @@
-
+import { Star, Pin, PinOff, SlidersHorizontal } from "lucide-react";
 import {
 	type FormEvent,
 	useCallback,
@@ -3595,6 +3595,57 @@ export function ChatPage() {
 		onToggleHidePinned: () => setHidePinned((prev) => !prev),
 	} as const;
 
+	const renderDesktopFilterPills = (
+		<div className="flex flex-wrap items-center gap-2 pb-3 shrink-0">
+			<button
+				type="button"
+				onClick={toggleInboxFavoritesOnly}
+				className={`inline-flex shrink-0 items-center gap-1.5 px-4 py-2 text-sm font-bold transition-all active:scale-95 ${
+					inboxFilters.favoritesOnly
+						? "rounded-full border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] shadow-lg shadow-[var(--accent)]/40"
+						: "glass-pill text-[var(--accent)] hover:border-[var(--accent)]/60 hover:bg-[var(--accent)]/20"
+				}`}
+				style={!inboxFilters.favoritesOnly ? { "--pill-color": "var(--accent)" } as React.CSSProperties : undefined}
+			>
+				<Star className="h-3.5 w-3.5" />
+				{t("browse_filters.options.favorites")}
+			</button>
+
+			<button
+				type="button"
+				onClick={() => setHidePinned((prev) => !prev)}
+				className={`inline-flex shrink-0 items-center gap-1.5 px-4 py-2 text-sm font-bold transition-all active:scale-95 ${
+					hidePinned
+						? "rounded-full border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] shadow-lg shadow-[var(--accent)]/40"
+						: "glass-pill text-[var(--accent)] hover:border-[var(--accent)]/60 hover:bg-[var(--accent)]/20"
+				}`}
+				style={!hidePinned ? { "--pill-color": "var(--accent)" } as React.CSSProperties : undefined}
+			>
+				{hidePinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+				{t("chat.pinned")}
+			</button>
+
+			<button
+				type="button"
+				onClick={() => { setChatFiltersDraft(buildChatFiltersDraft(inboxFilters)); setChatIsFiltersOpen(true); }}
+				className={`inline-flex shrink-0 items-center gap-1.5 px-4 py-2 text-sm font-bold transition-all active:scale-95 ${
+					hasActiveInboxFilters
+						? "rounded-full border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] shadow-lg shadow-[var(--accent)]/40"
+						: "glass-pill text-[var(--accent)] hover:border-[var(--accent)]/60 hover:bg-[var(--accent)]/20"
+				}`}
+				style={!hasActiveInboxFilters ? { "--pill-color": "var(--accent)" } as React.CSSProperties : undefined}
+			>
+				<SlidersHorizontal className="h-3.5 w-3.5" />
+				{t("right_now.filters")}
+				{hasActiveInboxFilters && chatActiveFilterCount > 0 && (
+					<span className="ml-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-white/25 px-1 text-[9px] font-bold">
+						{chatActiveFilterCount}
+					</span>
+				)}
+			</button>
+		</div>
+	);
+
 	const renderInbox = (
 		<ChatInboxPanel
 			{...sharedInboxHeaderProps}
@@ -3760,7 +3811,12 @@ export function ChatPage() {
 								isDesktop={true}
 							/>
 							<div className="flex-1 min-h-0 mx-auto w-full max-w-6xl px-3 pb-24 grid grid-cols-[360px_minmax(0,1fr)] gap-3">
-								{renderInbox}
+								<div className="flex flex-col h-full min-h-0">
+									{!chatIsSearchOpen && renderDesktopFilterPills}
+									<div className="flex-1 min-h-0">
+										{renderInbox}
+									</div>
+								</div>
 								{renderThread}
 							</div>
 						</>
