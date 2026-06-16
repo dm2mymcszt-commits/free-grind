@@ -1,5 +1,10 @@
+<<<<<<< HEAD
 import { Ban, ChevronLeft, Ellipsis, Flame, Loader2, MessageCircle, Star, Triangle, X } from "lucide-react";
+=======
+import { Ban, ChevronLeft, Ellipsis, Flame, MessageCircle, Pencil, Star, Triangle, X } from "lucide-react";
+>>>>>>> d3a95f8 (Fixes & own profile)
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import {
@@ -132,6 +137,7 @@ export function ProfileDetailsModal({
 	const { t } = useTranslation();
 	const { unitsPreset } = usePreferences();
 	const { userId } = useAuth();
+	const navigate = useNavigate();
 	const apiFunctions = useApiFunctions();
 	const [shouldRender, setShouldRender] = useState(false);
 	const [isClosing, setIsClosing] = useState(false);
@@ -225,11 +231,12 @@ export function ProfileDetailsModal({
 		: "offline";
 	const estimatedCreatedAt = formatEstimatedAccountCreation(activeProfile?.profileId, t);
 	const messageProfileId = activeProfile?.profileId ?? selectedBrowseCard?.profileId ?? null;
+	const isOwnProfile = userId != null && messageProfileId != null && String(userId) === String(messageProfileId);
 	const usesFreegrind = usePresenceCheck(messageProfileId);
 	const visualStateValue = typeof tapVisualState === "string" ? tapVisualState : tapVisualState.state;
 	const effectiveTapVisualState = isTappingProfile ? "single" : visualStateValue;
 	const isTapActive = effectiveTapVisualState !== "none";
-	const isTapDisabled = !onTapProfile || isTappingProfile || isTapBlocked;
+	const isTapDisabled = isOwnProfile || !onTapProfile || isTappingProfile || isTapBlocked;
 	const isTriangleDisabled =
 		!onTriangleProfile || !messageProfileId || isLocatingProfile;
 	const triangleButtonClassName = isTriangleDisabled
@@ -741,7 +748,17 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 						</div>
 
 						{/* Right: actions */}
-						{messageProfileId && (
+						{isOwnProfile && (
+							<button
+								type="button"
+								onClick={() => navigate("/settings/profile-editor")}
+								className={`pointer-events-auto inline-flex shrink-0 items-center justify-center rounded-xl border p-2 transition-colors ${headerScrolled ? "border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)]" : "border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md"}`}
+								aria-label={t("profile_editor.edit_profile")}
+							>
+								<Pencil className="h-4 w-4" />
+							</button>
+						)}
+						{messageProfileId && !isOwnProfile && (
 							<div className="pointer-events-auto flex shrink-0 items-center gap-1.5">
 								{/* Favorite */}
 								{onToggleFavoriteProfile && (
@@ -847,8 +864,8 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 								chatContactStatus={chatContactStatus ?? null}
 								messageProfileId={messageProfileId}
 								usesFreegrind={usesFreegrind ?? false}
-								onMessageProfile={onMessageProfile}
-								onTapProfile={onTapProfile}
+								onMessageProfile={isOwnProfile ? undefined : onMessageProfile}
+								onTapProfile={isOwnProfile ? undefined : onTapProfile}
 								onPhotoIndexChange={setMobileCarouselPhotoIndex}
 								isTapDisabled={isTapDisabled}
 								isTapBlocked={isTapBlocked}
@@ -890,7 +907,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 					</div>
 				</FeedScrollContainer>
 				{photoViewerOverlay}
-				{messageProfileId && (
+				{messageProfileId && !isOwnProfile && (
 					<div
 						className="pointer-events-none absolute inset-x-0 bottom-0 z-30"
 						style={{
@@ -1122,7 +1139,17 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 							{[profileStatusLabel, profileDistance != null ? formatDistance(profileDistance, t, unitsPreset) : null].filter(Boolean).join(" · ")}
 						</p>
 					</div>
-					{messageProfileId && (
+					{isOwnProfile && (
+						<button
+							type="button"
+							onClick={() => navigate("/settings/profile-editor")}
+							className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] transition hover:text-[var(--text)]"
+							aria-label={t("profile_editor.edit_profile")}
+						>
+							<Pencil className="h-4 w-4" />
+						</button>
+					)}
+					{messageProfileId && !isOwnProfile && (
 						<div className="flex shrink-0 items-center gap-1.5">
 							{onToggleFavoriteProfile && (
 								<button
@@ -1251,7 +1278,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 					</div>
 
 					{/* Bottom actions bar — desktop modal */}
-					{messageProfileId && (
+					{messageProfileId && !isOwnProfile && (
 						<div className="pointer-events-none absolute inset-x-0 bottom-6 md:bottom-8 z-30 flex justify-center px-4">
 							<div
 								ref={controlsBarRef}
