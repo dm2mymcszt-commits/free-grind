@@ -525,12 +525,7 @@ export function ProfileDetailsContent({
                             {(chatContactStatus?.unreadCount ?? 0) > 0 ? ` · ${chatContactStatus?.unreadCount ?? 0} ${t("chat.unread")}` : ""}
                         </span>
                     )}
-                    {activeProfile.lastReceivedTapTimestamp != null && (
-                        <span className="flex items-center gap-1">
-                            <Flame className="h-3 w-3" />
-                            {formatRelativeTime(activeProfile.lastReceivedTapTimestamp)}
-                        </span>
-                    )}
+
                 </div>
                 </div>
 
