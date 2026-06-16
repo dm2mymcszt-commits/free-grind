@@ -588,7 +588,7 @@ export function ProfileDetailsContent({
                                 {t("profile_details.about")}
                             </p>
                             <div className="rounded-xl px-1">
-                                <p className="text-base leading-relaxed text-[var(--text)]">
+                                <p className="whitespace-pre-wrap text-base leading-relaxed text-[var(--text)]">
                                     {activeProfile.aboutMe?.trim()}
                                 </p>
                             </div>
@@ -601,7 +601,7 @@ export function ProfileDetailsContent({
                                 {t("profile_details.expectations")}
                             </p>
                             <div className="space-y-2.5">
-                                {!shouldHideField(formatEnumArray(activeProfile.lookingFor, lookingForLabels)) && (
+                                {!shouldHideField(formatEnumArray(activeProfile.lookingFor, lookingForLabels, t)) && (
                                     <div className="flex items-start gap-2.5">
                                         <Search className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-muted)]" />
                                         <p className="text-sm"><span className="font-semibold text-[var(--text)]">{t("profile_details.looking_for")}:</span> <span className="text-[var(--text-muted)]">{formatEnumArray(activeProfile.lookingFor, lookingForLabels, t)}</span></p>
@@ -623,6 +623,12 @@ export function ProfileDetailsContent({
                                     <div className="flex items-start gap-2.5">
                                         <Flame className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-muted)]" />
                                         <p className="text-sm"><span className="font-semibold text-[var(--text)]">{t("profile_details.tribes")}:</span> <span className="text-[var(--text-muted)]">{formatEnumArray(activeProfile.grindrTribes, tribeLabels, t)}</span></p>
+                                    </div>
+                                )}
+                                {!shouldHideField(formatEnumArray(activeProfile.tribesImInto, tribeLabels, t)) && (
+                                    <div className="flex items-start gap-2.5">
+                                        <Flame className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-muted)]" />
+                                        <p className="text-sm"><span className="font-semibold text-[var(--text)]">{t("profile_details.tribes_im_into")}:</span> <span className="text-[var(--text-muted)]">{formatEnumArray(activeProfile.tribesImInto, tribeLabels, t)}</span></p>
                                     </div>
                                 )}
                                 {!shouldHideField(formattedActiveGenders) && (
