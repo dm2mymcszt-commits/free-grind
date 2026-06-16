@@ -31,9 +31,11 @@ import {
 	getVaccineLabelMap,
 } from "../../profile-option-builders";
 import { getProfileImageUrl } from "../../../../utils/media";
+import { ProfileImage } from "../../../../components/ui/profile-image";
 import freegrindLogo from "../../../../images/freegrind-logo.webp";
 import { usePreferences } from "../../../../contexts/PreferencesContext";
 import { formatDateTime24 } from "../../chat/chatUtils";
+import { formatRelativeTime } from "../../../../utils/relativeTime";
 import {
 	formatEstimatedAccountCreation,
 	formatDistance,
@@ -48,6 +50,7 @@ import {
 import { ProfileDetailsContent } from "./ProfileDetailsContent";
 import type { ChatContactIndexRecord } from "../../../../types/chat-contact-index";
 import { PhotoViewer } from "../../../../components/PhotoViewer";
+import { ConfirmDialog } from "../../../../components/ui/confirm-dialog";
 import { FeedScrollContainer } from "../../../../components/ui/FeedScrollContainer";
 
 type OwnProfileData = { tags: string[] };
@@ -370,13 +373,16 @@ export function ProfileDetailsModal({
 	const modalCarouselIndexRef = useRef(0);
 	const modalCarouselTotalRef = useRef(0);
 	const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+	const modalContentScrollRef = useRef<HTMLDivElement | null>(null);
 	const pageWrapRef = useRef<HTMLDivElement | null>(null);
 	const [profileSwipeDelta, setProfileSwipeDelta] = useState(0);
 	const profileSwipeRef = useRef({ startX: 0, startY: 0, decided: false, horizontal: false, dragging: false, lastDelta: 0 });
 	const [headerOpacity, setHeaderOpacity] = useState(0);
 	const [headerFadeDuration, setHeaderFadeDuration] = useState(0);
 	const headerScrolled = isDesktopLike || headerOpacity > 0.5;
+	const modalHeaderScrolled = isModalSplit || headerOpacity > 0.5;
 	const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
+	const [showBlockConfirm, setShowBlockConfirm] = useState(false);
 	const [quickMessageDraft, setQuickMessageDraft] = useState("");
 	const [barTapPickerOpen, setBarTapPickerOpen] = useState(false);
 	const [barInputVisible, setBarInputVisible] = useState(true);
@@ -717,6 +723,27 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 		el.addEventListener("scroll", onScroll, { passive: true });
 		return () => el.removeEventListener("scroll", onScroll);
 	}, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+	useEffect(() => {
+		const el = modalContentScrollRef.current;
+		if (!el || isModalSplit) return;
+		setHeaderOpacity(0);
+		setHeaderFadeDuration(0);
+		let lastScrollTop = 0;
+		const onScroll = () => {
+			const scrollTop = el.scrollTop;
+			const scrollingDown = scrollTop > lastScrollTop;
+			lastScrollTop = scrollTop;
+			setHeaderFadeDuration(scrollingDown ? 0 : 400);
+			setHeaderOpacity(Math.min(scrollTop / 150, 1));
+		};
+		el.addEventListener("scroll", onScroll, { passive: true });
+		return () => {
+			el.removeEventListener("scroll", onScroll);
+			setHeaderOpacity(0);
+			setHeaderFadeDuration(0);
+		};
+	}, [isOpen, isModalSplit]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	useEffect(() => {
         const el = pageWrapRef.current;
@@ -1329,7 +1356,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 							}}
 						>
 							{/* Left panel: full-height photo carousel (split mode only) */}
-							{isModalSplit && !isLoadingActiveProfile && !activeProfileError && activeProfile && activeProfilePhotoHashes.length > 0 && (
+							{isModalSplit && !isLoadingActiveProfile && !activeProfileError && activeProfile && (
 								<div
 									className="relative shrink-0 overflow-hidden bg-black rounded-l-2xl border-r border-white/10"
 									style={{ width: "42%" }}
@@ -1339,6 +1366,12 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 										else if (e.deltaY < 0) setMobileCarouselPhotoIndex((i) => Math.max(i - 1, 0));
 									}}
 								>
+									{activeProfilePhotoHashes.length === 0 && (
+										<ProfileImage
+											alt={t("profile_details.default_profile")}
+											className="h-full w-full object-cover brightness-50"
+										/>
+									)}
 									{activeProfilePhotoHashes.map((hash, index) => (
 										<div
 											key={hash}
@@ -1361,6 +1394,16 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 											/>
 										</div>
 									))}
+									{activeProfile.lastReceivedTapTimestamp != null && (
+										<div className="pointer-events-none absolute bottom-3 left-3 z-20">
+											<div className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
+												<Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" />
+												<span className="text-xs font-medium text-white">
+													{formatRelativeTime(activeProfile.lastReceivedTapTimestamp)}
+												</span>
+											</div>
+										</div>
+									)}
 									{activeProfilePhotoHashes.length > 1 && (
 										<div className="pointer-events-none absolute inset-y-0 right-4 z-20 flex flex-col items-center justify-center">
 											<div className="flex flex-col items-center gap-2 rounded-full bg-black/30 px-[7px] py-[14px] backdrop-blur-sm">
@@ -1382,106 +1425,174 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 							{/* Right column (or full width on non-split): header + content + footer */}
 							<div className="flex min-w-0 flex-1 flex-col overflow-hidden relative">
 								{/* Header */}
-								<div className="flex relative z-10 items-center gap-3 bg-transparent px-4 py-3 sm:px-5">
-									<button
-										type="button"
-										onClick={onClose}
-										className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/15 text-[var(--text-muted)] transition-all duration-200 hover:text-[var(--text)] hover:border-white/25" style={{ background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' }}
-										aria-label={t("profile_details.close_profile_details")}
-									>
-										<ChevronLeft className="h-4 w-4" />
-									</button>
-									<div className="min-w-0 flex-1">
-										<div className="flex items-center gap-2">
-											<p className="truncate text-base font-semibold">{activeProfileName}</p>
-											{activeProfile?.age != null && Number.isFinite(activeProfile.age) && (
-												<span className="shrink-0 text-sm text-[var(--text-muted)]">{activeProfile.age}</span>
-											)}
-										</div>
-										<p className="mt-0.5 text-xs text-[var(--text-muted)]">
-											{[profileStatusLabel, profileDistance != null ? formatDistance(profileDistance, t, unitsPreset) : null].filter(Boolean).join(" · ")}
-										</p>
-									</div>
-									{isOwnProfile && (
+								<div
+									className={isModalSplit
+										? "flex shrink-0 items-center gap-3 border-b border-white/10 bg-transparent px-4 py-3 sm:px-5 relative z-10"
+										: "pointer-events-none absolute inset-x-0 top-0 z-40 px-4 py-3 sm:px-5"
+									}
+									style={isModalSplit ? { background: 'color-mix(in srgb, var(--surface) 20%, transparent)', backdropFilter: 'blur(12px)' } : undefined}
+								>
+									{!isModalSplit && (
+										<div
+											className={`absolute inset-0 backdrop-blur-xl${modalHeaderScrolled ? " border-b border-white/10" : ""}`}
+											style={{
+												opacity: headerOpacity,
+												transition: `opacity ${headerFadeDuration}ms ease-out`,
+												background: 'color-mix(in srgb, var(--surface) 60%, transparent)',
+											}}
+											aria-hidden="true"
+										/>
+									)}
+									<div className={isModalSplit ? "flex w-full items-center gap-3" : "pointer-events-auto relative flex w-full items-center gap-3"}>
 										<button
 											type="button"
-											onClick={() => navigate("/settings/profile-editor")}
-											className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] transition hover:text-[var(--text)]"
-											aria-label={t("profile_editor.edit_profile")}
+											onClick={onClose}
+											className={`shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-xl border transition-all duration-200 ${
+												modalHeaderScrolled
+													? "border-white/15 text-[var(--text)] hover:text-[var(--text)] hover:border-white/25"
+													: "border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md"
+											}`}
+											style={modalHeaderScrolled ? { background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' } : undefined}
+											aria-label={t("profile_details.close_profile_details")}
 										>
-											<Pencil className="h-4 w-4" />
+											<ChevronLeft className="h-4 w-4" />
 										</button>
-									)}
-									{messageProfileId && !isOwnProfile && (
-										<div className="flex shrink-0 items-center gap-1.5">
-											{onToggleFavoriteProfile && (
-												<button
-													type="button"
-													onClick={() => onToggleFavoriteProfile(String(messageProfileId), isFavorite)}
-													disabled={isTogglingFavorite}
-													className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-200 disabled:opacity-60 ${isFavorite ? "border-[var(--accent)]/60 bg-[var(--accent)] text-[var(--accent-contrast)] shadow-[0_0_12px_rgba(255,204,1,0.25)]" : "border-white/15 text-[var(--text-muted)] hover:text-[var(--text)] hover:border-white/25"}`}
-													style={!isFavorite ? { background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' } : undefined}
-													aria-label={isFavorite ? t("chat.unfavorite") : t("chat.favorite")}
-												>
-													<Star className={`h-4 w-4 ${isFavorite ? "fill-current" : ""}`} />
-												</button>
-											)}
-											{(onBlockProfile || onUnblockProfile) && (
-												<button
-													type="button"
-													onClick={() => isBlocked ? onUnblockProfile?.(String(messageProfileId)) : onBlockProfile?.(String(messageProfileId))}
-													disabled={isBlockingProfile}
-													className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-200 disabled:opacity-60 ${isBlocked ? "border-red-500/40 bg-red-500/15 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.15)]" : "border-red-500/30 text-red-400 hover:border-red-500/50 hover:bg-red-500/10"}`}
-													style={!isBlocked ? { background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' } : undefined}
-													aria-label={isBlocked ? t("profile_details.unblock") : t("profile_details.block")}
-												>
-													<Ban className="h-4 w-4" />
-												</button>
-											)}
-											<div ref={actionsMenuRef} className="relative">
-												<button
-													type="button"
-													onClick={() => setIsActionsMenuOpen((v) => !v)}
-													className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/15 text-[var(--text-muted)] transition-all duration-200 hover:border-[var(--accent)]/40 hover:text-[var(--text)]"
-													style={{ background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' }}
-													aria-label="More actions"
-													aria-expanded={isActionsMenuOpen}
-												>
-													<Ellipsis className="h-4 w-4" />
-												</button>
-												{isActionsMenuOpen && (
-													<div className="absolute right-0 top-full z-50 mt-2 flex min-w-[190px] flex-col gap-1 rounded-xl border border-white/10 p-2 shadow-xl" style={{ background: 'color-mix(in srgb, var(--surface) 85%, transparent)', backdropFilter: 'blur(20px)', boxShadow: '0 12px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05)' }}>
-														<button
-															type="button"
-															disabled={isTriangleDisabled}
-															onClick={() => {
-																setIsActionsMenuOpen(false);
-																if (messageProfileId) onTriangleProfile?.(String(messageProfileId));
-															}}
-															className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text)] transition hover:bg-[var(--surface-2)] disabled:opacity-50"
-														>
-															<Triangle className="mr-2 h-4 w-4 opacity-70" />
-															{isLocatingProfile ? t("profile_details.locating") : t("profile_details.locate")}
-														</button>
-													</div>
+										<div className={`min-w-0 flex-1${modalHeaderScrolled ? "" : " drop-shadow-[0_1px_1px_rgba(0,0,0,0.85)]"}`}>
+											<div className="flex items-center gap-2">
+												<p className={`truncate text-base font-semibold${modalHeaderScrolled ? "" : " text-white"}`}>{activeProfileName}</p>
+												{activeProfile?.age != null && Number.isFinite(activeProfile.age) && (
+													<span className={`shrink-0 text-sm ${modalHeaderScrolled ? "text-[var(--text-muted)]" : "text-white/70"}`}>{activeProfile.age}</span>
 												)}
 											</div>
+											<p className={`mt-0.5 text-xs ${modalHeaderScrolled ? "text-[var(--text-muted)]" : "text-white/70"}`}>
+												{[profileStatusLabel, profileDistance != null ? formatDistance(profileDistance, t, unitsPreset) : null].filter(Boolean).join(" · ")}
+											</p>
 										</div>
-									)}
+										{isOwnProfile && (
+											<button
+												type="button"
+												onClick={() => navigate("/settings/profile-editor")}
+												className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-200 ${
+													modalHeaderScrolled
+														? "border-white/15 text-[var(--text)] hover:text-[var(--text)]"
+														: "border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md"
+												}`}
+												style={modalHeaderScrolled ? { background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' } : undefined}
+												aria-label={t("profile_editor.edit_profile")}
+											>
+												<Pencil className="h-4 w-4" />
+											</button>
+										)}
+										{messageProfileId && !isOwnProfile && (
+											<div className="flex shrink-0 items-center gap-1.5">
+												{onToggleFavoriteProfile && (
+													<button
+														type="button"
+														onClick={() => onToggleFavoriteProfile(String(messageProfileId), isFavorite)}
+														disabled={isTogglingFavorite}
+														className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-200 disabled:opacity-60 ${
+															isFavorite
+																? modalHeaderScrolled
+																	? "border-[var(--accent)]/60 bg-[var(--accent)] text-[var(--accent-contrast)] shadow-[0_0_12px_rgba(255,204,1,0.25)]"
+																	: "border-white/70 bg-white/15 text-white backdrop-blur-md"
+																: modalHeaderScrolled
+																	? "border-white/15 text-[var(--text)] hover:text-[var(--text)] hover:border-white/25"
+																	: "border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md"
+														}`}
+														style={!isFavorite && modalHeaderScrolled ? { background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' } : undefined}
+														aria-label={isFavorite ? t("chat.unfavorite") : t("chat.favorite")}
+													>
+														<Star className={`h-4 w-4 ${isFavorite ? "fill-current" : ""}`} />
+													</button>
+												)}
+												{(onBlockProfile || onUnblockProfile) && (
+													<button
+														type="button"
+														onClick={() => isBlocked ? onUnblockProfile?.(String(messageProfileId)) : setShowBlockConfirm(true)}
+														disabled={isBlockingProfile}
+														className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-200 disabled:opacity-60 ${
+															isBlocked
+																? modalHeaderScrolled
+																	? "border-red-500/40 bg-red-500/15 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.15)]"
+																	: "border-red-400/60 bg-red-500/20 text-red-300 backdrop-blur-md"
+																: modalHeaderScrolled
+																	? "border-red-500/30 text-red-400 hover:border-red-500/50 hover:bg-red-500/10"
+																	: "border-red-400/50 bg-red-500/15 text-red-300 backdrop-blur-md hover:border-red-400/80"
+														}`}
+														style={!isBlocked && modalHeaderScrolled ? { background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' } : undefined}
+														aria-label={isBlocked ? t("profile_details.unblock") : t("profile_details.block")}
+													>
+														<Ban className="h-4 w-4" />
+													</button>
+												)}
+												<div ref={actionsMenuRef} className="relative">
+													<button
+														type="button"
+														onClick={() => setIsActionsMenuOpen((v) => !v)}
+														className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-200 ${
+															modalHeaderScrolled
+																? "border-white/15 text-[var(--text-muted)] hover:border-[var(--accent)]/40 hover:text-[var(--text)]"
+																: "border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md"
+														}`}
+														style={modalHeaderScrolled ? { background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' } : undefined}
+														aria-label="More actions"
+														aria-expanded={isActionsMenuOpen}
+													>
+														<Ellipsis className="h-4 w-4" />
+													</button>
+													{isActionsMenuOpen && (
+														<div
+															className="absolute right-0 top-full z-50 mt-2 flex min-w-[190px] flex-col gap-1 rounded-xl border border-white/10 p-2 shadow-xl"
+															style={{
+																background: 'color-mix(in srgb, var(--surface) 85%, transparent)',
+																backdropFilter: 'blur(20px)',
+																boxShadow: '0 12px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05)'
+															}}
+														>
+															<button
+																type="button"
+																disabled={isTriangleDisabled}
+																onClick={() => {
+																	setIsActionsMenuOpen(false);
+																	if (messageProfileId) onTriangleProfile?.(String(messageProfileId));
+																}}
+																className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text)] transition hover:bg-[var(--surface-2)] disabled:opacity-50"
+															>
+																<Triangle className="mr-2 h-4 w-4 opacity-70" />
+																{isLocatingProfile ? t("profile_details.locating") : t("profile_details.locate")}
+															</button>
+														</div>
+													)}
+												</div>
+											</div>
+										)}
+									</div>
 								</div>
 
 								<div className="relative flex flex-col flex-1 min-h-0 overflow-hidden rounded-b-2xl">
 									<div
+										ref={modalContentScrollRef}
 										data-lenis-prevent
 										className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5 pb-24"
 									>
 										{/* Non-split: carousel scrolls with content, positioned above details */}
-										{!isModalSplit && !isLoadingActiveProfile && !activeProfileError && activeProfile && activeProfilePhotoHashes.length > 0 && (
+										{!isModalSplit && !isLoadingActiveProfile && !activeProfileError && activeProfile && (
 											<div
 												ref={modalCarouselRef}
-												className="relative overflow-hidden bg-black rounded-xl border border-white/10 shadow-lg mb-6"
+												className="relative overflow-hidden bg-black rounded-xl border border-white/10 shadow-lg mb-6 shrink-0"
 												style={{ height: `min(55dvh, calc((100vw - 3rem) * 1.25))` }}
 											>
+												<div
+													className="pointer-events-none absolute inset-x-0 top-0 z-10"
+													style={{ height: "6rem", background: "linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, transparent 100%)" }}
+													aria-hidden="true"
+												/>
+												{activeProfilePhotoHashes.length === 0 && (
+													<ProfileImage
+														alt={t("profile_details.default_profile")}
+														className="h-full w-full object-cover brightness-50"
+													/>
+												)}
 												{activeProfilePhotoHashes.map((hash, index) => (
 													<div
 														key={hash}
@@ -1504,6 +1615,16 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 														/>
 													</div>
 												))}
+												{activeProfile.lastReceivedTapTimestamp != null && (
+													<div className="pointer-events-none absolute bottom-3 left-3 z-20">
+														<div className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
+															<Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" />
+															<span className="text-xs font-medium text-white">
+																{formatRelativeTime(activeProfile.lastReceivedTapTimestamp)}
+															</span>
+														</div>
+													</div>
+												)}
 												{activeProfilePhotoHashes.length > 1 && (
 													<div className="pointer-events-none absolute inset-y-0 right-3 z-20 flex flex-col items-center justify-center">
 														<div className="flex flex-col items-center gap-1.5 rounded-full bg-black/30 px-[5px] py-[10px] backdrop-blur-sm">
@@ -1582,6 +1703,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 												hivStatusLabels={hivStatusLabels}
 												sexualHealthLabels={sexualHealthLabels}
 												vaccineLabels={vaccineLabels}
+
 												sexualPositionLabels={sexualPositionLabels}
 												bodyTypeLabels={bodyTypeLabels}
 												ethnicityLabels={ethnicityLabels}
@@ -1732,7 +1854,20 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 				</>
 			)}
 			{photoViewerOverlay}
-			</dialog>
+			<ConfirmDialog
+				isOpen={showBlockConfirm}
+				onCancel={() => setShowBlockConfirm(false)}
+				onConfirm={() => {
+					setShowBlockConfirm(false);
+					if (messageProfileId) onBlockProfile?.(String(messageProfileId));
+				}}
+				title={t("profile_details.block")}
+				message={t("profile_details.block_confirm")}
+				confirmLabel={t("profile_details.block")}
+				cancelLabel={t("common.cancel")}
+				confirmTone="danger"
+				isProcessing={isBlockingProfile}
+			/>
 		</>,
 		document.body
 	);
