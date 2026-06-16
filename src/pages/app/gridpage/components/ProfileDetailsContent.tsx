@@ -111,6 +111,7 @@ type ProfileDetailsContentProps = {
     ethnicityLabels: LabelMap;
     relationshipStatusLabels: LabelMap;
     extraTopSection?: ReactNode;
+    hidePicturesSection?: boolean;
 };
 
 export function ProfileDetailsContent({
@@ -165,6 +166,7 @@ export function ProfileDetailsContent({
     ethnicityLabels,
     relationshipStatusLabels,
     extraTopSection,
+    hidePicturesSection = false,
 }: ProfileDetailsContentProps) {
     const { t } = useTranslation();
     const { unitsPreset } = usePreferences();
@@ -318,101 +320,124 @@ export function ProfileDetailsContent({
 
             {extraTopSection}
 
-            <div className="w-full">
-                {activeProfilePhotoHashes.length > 0 ? (
-                    showMobileCarousel && !isDesktopLike ? (
-                        <>
-                            <div className="relative sm:hidden -mx-[var(--app-px)]">
-                                <div
-                                    ref={mobileCarouselRef}
-                                    className="relative h-[min(78dvh,calc(100vw*1.55))] overflow-hidden"
-                                >
-                                    {activeProfilePhotoHashes.map((hash, index) => (
-                                        <div
-                                            key={hash}
-                                            style={{
-                                                transform: `translateY(calc(${(index - mobileCarouselPhotoIndex) * 100}% + ${dragDelta}px))`,
-                                                transition: isDraggingRef.current ? "none" : "transform 300ms ease-out",
-                                            }}
-                                            className="absolute inset-0 bg-[var(--surface-2)]"
-                                        >
-                                            <button
-                                                type="button"
-                                                onClick={() => openPhotoViewer(index)}
-                                                className="absolute inset-0 z-10"
-                                                aria-label={t("profile_details.open_photo", { index: index + 1 })}
-                                            />
-                                            <img
-                                                src={getProfileImageUrl(hash, "1024x1024")}
-                                                alt={t("profile_details.photo_alt", { name: activeProfileName })}
-                                                className="h-full w-full object-cover"
-                                            />
-                                            {renderPhotoCreatedBadge(hash)}
-                                        </div>
-                                    ))}
-                                    <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-36 bg-gradient-to-b from-black/65 to-transparent" />
-
-                                    {/* Mobile Glass Quick Actions */}
-                                    {showGlassQuickActions && messageProfileId ? (
-                                        <div className="glass-actions-container pointer-events-none absolute inset-x-0 bottom-6 z-20">
-                                            <div className="pointer-events-auto flex items-center justify-center gap-3 px-3">
+            {!hidePicturesSection && (
+                <div className="w-full">
+                    {activeProfilePhotoHashes.length > 0 ? (
+                        showMobileCarousel && !isDesktopLike ? (
+                            <>
+                                <div className="relative sm:hidden -mx-[var(--app-px)]">
+                                    <div
+                                        ref={mobileCarouselRef}
+                                        className="relative h-[min(78dvh,calc(100vw*1.55))] overflow-hidden"
+                                    >
+                                        {activeProfilePhotoHashes.map((hash, index) => (
+                                            <div
+                                                key={hash}
+                                                style={{
+                                                    transform: `translateY(calc(${(index - mobileCarouselPhotoIndex) * 100}% + ${dragDelta}px))`,
+                                                    transition: isDraggingRef.current ? "none" : "transform 300ms ease-out",
+                                                }}
+                                                className="absolute inset-0 bg-[var(--surface-2)]"
+                                            >
                                                 <button
                                                     type="button"
-                                                    onClick={() => onMessageProfile?.(messageProfileId)}
-                                                    className={glassActionButtonClassName}
-                                                    aria-label={t("profile_details.message")}
-                                                >
-                                                    <MessageCircle className="h-4 w-4" />
-                                                </button>
-                                                <TapSelector
-                                                    profileId={messageProfileId}
-                                                    onTapProfile={handleTapWithBurst}
-                                                    isTapDisabled={isTapDisabled}
-                                                    isTapBlocked={isTapBlocked}
-                                                    isTapActive={isTapActive}
-                                                    tapId={tapId}
-                                                    tapButtonClassName={tapButtonClassName}
+                                                    onClick={() => openPhotoViewer(index)}
+                                                    className="absolute inset-0 z-10"
+                                                    aria-label={t("profile_details.open_photo", { index: index + 1 })}
                                                 />
-                                                {onToggleFavoriteProfile ? (
+                                                <img
+                                                    src={getProfileImageUrl(hash, "1024x1024")}
+                                                    alt={t("profile_details.photo_alt", { name: activeProfileName })}
+                                                    className="h-full w-full object-cover"
+                                                />
+                                                {renderPhotoCreatedBadge(hash)}
+                                            </div>
+                                        ))}
+                                        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-36 bg-gradient-to-b from-black/65 to-transparent" />
+
+                                        {/* Mobile Glass Quick Actions */}
+                                        {showGlassQuickActions && messageProfileId ? (
+                                            <div className="glass-actions-container pointer-events-none absolute inset-x-0 bottom-6 z-20">
+                                                <div className="pointer-events-auto flex items-center justify-center gap-3 px-3">
                                                     <button
                                                         type="button"
-                                                        onClick={handleFavoriteAction}
-                                                        disabled={isTogglingFavorite}
+                                                        onClick={() => onMessageProfile?.(messageProfileId)}
                                                         className={glassActionButtonClassName}
-                                                        aria-label={isFavorite ? t("profile_details.unfavorite") : t("browse_filters.options.favorites")}
+                                                        aria-label={t("profile_details.message")}
                                                     >
-                                                        {isTogglingFavorite ? <Loader2 className="h-4 w-4 animate-spin" /> : <Heart className={`h-4 w-4 ${isFavorite ? "fill-current" : ""}`} />}
+                                                        <MessageCircle className="h-4 w-4" />
                                                     </button>
-                                                ) : null}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => { if (messageProfileId && onTriangleProfile) onTriangleProfile(messageProfileId); }}
-                                                    disabled={isTriangleDisabled || isLocatingProfile}
-                                                    className={glassActionButtonClassName}
-                                                    title={isLocatingProfile ? "Locating..." : "Locate"}
-                                                >
-                                                    {isLocatingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : <Triangle className="h-4 w-4" />}
-                                                </button>
+                                                    <TapSelector
+                                                        profileId={messageProfileId}
+                                                        onTapProfile={handleTapWithBurst}
+                                                        isTapDisabled={isTapDisabled}
+                                                        isTapBlocked={isTapBlocked}
+                                                        isTapActive={isTapActive}
+                                                        tapId={tapId}
+                                                        tapButtonClassName={tapButtonClassName}
+                                                    />
+                                                    {onToggleFavoriteProfile ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleFavoriteAction}
+                                                            disabled={isTogglingFavorite}
+                                                            className={glassActionButtonClassName}
+                                                            aria-label={isFavorite ? t("profile_details.unfavorite") : t("browse_filters.options.favorites")}
+                                                        >
+                                                            {isTogglingFavorite ? <Loader2 className="h-4 w-4 animate-spin" /> : <Heart className={`h-4 w-4 ${isFavorite ? "fill-current" : ""}`} />}
+                                                        </button>
+                                                    ) : null}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => { if (messageProfileId && onTriangleProfile) onTriangleProfile(messageProfileId); }}
+                                                        disabled={isTriangleDisabled || isLocatingProfile}
+                                                        className={glassActionButtonClassName}
+                                                        title={isLocatingProfile ? "Locating..." : "Locate"}
+                                                    >
+                                                        {isLocatingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : <Triangle className="h-4 w-4" />}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                    {activeProfilePhotoHashes.length > 1 && (
+                                        <div className="pointer-events-none absolute right-3 inset-y-0 z-20 flex flex-col items-center justify-center">
+                                            <div className="flex flex-col items-center gap-1.5 rounded-full bg-black/30 px-[5px] py-[10px] backdrop-blur-sm">
+                                                {activeProfilePhotoHashes.map((hash, index) => (
+                                                    <span
+                                                        key={`${hash}-dot`}
+                                                        className={`w-1.5 rounded-full transition-[height,background-color] duration-300 ease-out ${index === mobileCarouselPhotoIndex ? "h-3 bg-white" : "h-1.5 bg-white/40"}`}
+                                                        aria-hidden="true"
+                                                    />
+                                                ))}
                                             </div>
                                         </div>
-                                    ) : null}
+                                    )}
                                 </div>
-                                {activeProfilePhotoHashes.length > 1 && (
-                                    <div className="pointer-events-none absolute right-3 inset-y-0 z-20 flex flex-col items-center justify-center">
-                                        <div className="flex flex-col items-center gap-1.5 rounded-full bg-black/30 px-[5px] py-[10px] backdrop-blur-sm">
-                                            {activeProfilePhotoHashes.map((hash, index) => (
-                                                <span
-                                                    key={`${hash}-dot`}
-                                                    className={`w-1.5 rounded-full transition-[height,background-color] duration-300 ease-out ${index === mobileCarouselPhotoIndex ? "h-3 bg-white" : "h-1.5 bg-white/40"}`}
-                                                    aria-hidden="true"
-                                                />
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
 
-                            <div className="hidden grid-cols-3 gap-2 sm:grid sm:grid-cols-4 lg:grid-cols-6">
+                                <div className="hidden grid-cols-3 gap-2 sm:grid sm:grid-cols-4 lg:grid-cols-6">
+                                    {activeProfilePhotoHashes.map((hash, index) => (
+                                        <button
+                                            type="button"
+                                            key={hash}
+                                            onClick={() => openPhotoViewer(index)}
+                                            className="group overflow-hidden rounded-xl border border-white/10 ring-1 ring-white/5 transition-all duration-300 hover:scale-[1.03] hover:ring-[var(--accent)]/30 hover:shadow-[0_8px_24px_rgba(0,0,0,0.3)]"
+                                            aria-label={t("profile_details.open_photo", { index: index + 1 })}
+                                        >
+                                            <div className="relative">
+                                                <img
+                                                    src={getThumbImageUrl(hash, "320x320")}
+                                                    alt={t("profile_details.photo_alt", { name: activeProfileName })}
+                                                    className="aspect-square w-full object-cover transition-transform duration-500 group-hover:scale-[1.06]"
+                                                />
+                                                {renderPhotoCreatedBadge(hash)}
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </>
+                        ) : (
+                            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
                                 {activeProfilePhotoHashes.map((hash, index) => (
                                     <button
                                         type="button"
@@ -432,38 +457,17 @@ export function ProfileDetailsContent({
                                     </button>
                                 ))}
                             </div>
-                        </>
+                        )
                     ) : (
-                        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
-                            {activeProfilePhotoHashes.map((hash, index) => (
-                                <button
-                                    type="button"
-                                    key={hash}
-                                    onClick={() => openPhotoViewer(index)}
-                                    className="group overflow-hidden rounded-xl border border-white/10 ring-1 ring-white/5 transition-all duration-300 hover:scale-[1.03] hover:ring-[var(--accent)]/30 hover:shadow-[0_8px_24px_rgba(0,0,0,0.3)]"
-                                    aria-label={t("profile_details.open_photo", { index: index + 1 })}
-                                >
-                                    <div className="relative">
-                                        <img
-                                            src={getThumbImageUrl(hash, "320x320")}
-                                            alt={t("profile_details.photo_alt", { name: activeProfileName })}
-                                            className="aspect-square w-full object-cover transition-transform duration-500 group-hover:scale-[1.06]"
-                                        />
-                                        {renderPhotoCreatedBadge(hash)}
-                                    </div>
-                                </button>
-                            ))}
+                        <div className="w-full max-w-sm mx-auto overflow-hidden rounded-2xl border border-white/10 aspect-square flex items-center justify-center relative backdrop-blur-[20px]" style={{ background: 'color-mix(in srgb, var(--surface) 25%, transparent)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2), 0 12px 40px rgba(0,0,0,0.45)' }}>
+                            <div className="absolute inset-0 rounded-2xl" style={{ background: 'radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 60%)' }} />
+                            <div className="relative flex h-full w-full items-center justify-center" style={{ filter: 'drop-shadow(0 0 20px rgba(255,255,255,0.08))' }}>
+                                <ProfileImage alt={t("profile_details.default_profile")} className="bg-transparent text-[var(--text-muted)]" iconClassName="h-1/3 w-1/3 opacity-70" />
+                            </div>
                         </div>
-                    )
-                ) : (
-                    <div className="w-full max-w-sm mx-auto overflow-hidden rounded-2xl border border-white/10 aspect-square flex items-center justify-center relative backdrop-blur-[20px]" style={{ background: 'color-mix(in srgb, var(--surface) 25%, transparent)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2), 0 12px 40px rgba(0,0,0,0.45)' }}>
-                        <div className="absolute inset-0 rounded-2xl" style={{ background: 'radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 60%)' }} />
-                        <div className="relative flex h-full w-full items-center justify-center" style={{ filter: 'drop-shadow(0 0 20px rgba(255,255,255,0.08))' }}>
-                            <ProfileImage alt={t("profile_details.default_profile")} className="bg-transparent text-[var(--text-muted)]" iconClassName="h-1/3 w-1/3 opacity-70" />
-                        </div>
-                    </div>
-                )}
-            </div>
+                    )}
+                </div>
+            )}
 
             {/* PROFILE HEADER & STANDARD ACTIONS */}
             <div className="px-3">
