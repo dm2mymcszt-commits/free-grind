@@ -51,7 +51,7 @@ import { ProfileDetailsContent } from "./ProfileDetailsContent";
 import type { ChatContactIndexRecord } from "../../../../types/chat-contact-index";
 import { PhotoViewer } from "../../../../components/PhotoViewer";
 import { ConfirmDialog } from "../../../../components/ui/confirm-dialog";
-import { FeedScrollContainer } from "../../../../components/ui/FeedScrollContainer";
+
 
 type OwnProfileData = { tags: string[] };
 const ownProfileDataCache = new Map<string, OwnProfileData>();
@@ -369,18 +369,16 @@ export function ProfileDetailsModal({
 		typeof window !== "undefined" && window.innerWidth >= 900
 	);
 	const mobileCarouselRef = useRef<HTMLDivElement | null>(null);
-	const modalCarouselRef = useRef<HTMLDivElement | null>(null);
-	const modalCarouselIndexRef = useRef(0);
-	const modalCarouselTotalRef = useRef(0);
+	const carouselIndexRef = useRef(0);
+	const carouselTotalRef = useRef(0);
 	const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-	const modalContentScrollRef = useRef<HTMLDivElement | null>(null);
 	const pageWrapRef = useRef<HTMLDivElement | null>(null);
 	const [profileSwipeDelta, setProfileSwipeDelta] = useState(0);
 	const profileSwipeRef = useRef({ startX: 0, startY: 0, decided: false, horizontal: false, dragging: false, lastDelta: 0 });
 	const [headerOpacity, setHeaderOpacity] = useState(0);
 	const [headerFadeDuration, setHeaderFadeDuration] = useState(0);
-	const headerScrolled = isDesktopLike || headerOpacity > 0.5;
-	const modalHeaderScrolled = isModalSplit || headerOpacity > 0.5;
+	const inlineScrolled = headerOpacity > 0.5;
+	const [carouselDragDelta, setCarouselDragDelta] = useState(0);
 	const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
 	const [showBlockConfirm, setShowBlockConfirm] = useState(false);
 	const [quickMessageDraft, setQuickMessageDraft] = useState("");
@@ -709,24 +707,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 
 	useEffect(() => {
 		const el = scrollContainerRef.current;
-		if (!el) return;
-		setHeaderOpacity(0);
-		setHeaderFadeDuration(0);
-		let lastScrollTop = 0;
-		const onScroll = () => {
-			const scrollTop = el.scrollTop;
-			const scrollingDown = scrollTop > lastScrollTop;
-			lastScrollTop = scrollTop;
-			setHeaderFadeDuration(scrollingDown ? 0 : 400);
-			setHeaderOpacity(Math.min(scrollTop / 150, 1));
-		};
-		el.addEventListener("scroll", onScroll, { passive: true });
-		return () => el.removeEventListener("scroll", onScroll);
-	}, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
-
-	useEffect(() => {
-		const el = modalContentScrollRef.current;
-		if (!el || isModalSplit) return;
+		if (!el || (variant === "modal" && isModalSplit)) return;
 		setHeaderOpacity(0);
 		setHeaderFadeDuration(0);
 		let lastScrollTop = 0;
@@ -743,7 +724,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 			setHeaderOpacity(0);
 			setHeaderFadeDuration(0);
 		};
-	}, [isOpen, isModalSplit]); // eslint-disable-line react-hooks/exhaustive-deps
+	}, [isOpen, isModalSplit, variant]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	useEffect(() => {
         const el = pageWrapRef.current;
@@ -846,15 +827,15 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 	}, []);
 
 	// Keep refs in sync so the wheel handler always sees current values
-	modalCarouselIndexRef.current = mobileCarouselPhotoIndex;
-	modalCarouselTotalRef.current = activeProfilePhotoHashes.length;
+	carouselIndexRef.current = mobileCarouselPhotoIndex;
+	carouselTotalRef.current = activeProfilePhotoHashes.length;
 
 	useEffect(() => {
-		const el = modalCarouselRef.current;
+		const el = mobileCarouselRef.current;
 		if (!el || isModalSplit) return;
 		const onWheel = (e: WheelEvent) => {
-			const idx = modalCarouselIndexRef.current;
-			const total = modalCarouselTotalRef.current;
+			const idx = carouselIndexRef.current;
+			const total = carouselTotalRef.current;
 			if (e.deltaY > 0 && idx < total - 1) {
 				e.preventDefault();
 				setMobileCarouselPhotoIndex((i) => Math.min(i + 1, total - 1));
@@ -940,7 +921,384 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 		/>
 	);
 
-	if (!shouldRender) {
+	const renderInlineLayout = () => (
+		<>
+			{/* Floating header — transparent over carousel, opaque after scrolling */}
+			<div
+				className="pointer-events-none absolute inset-x-0 top-0 z-40 px-4 sm:px-5"
+				style={{
+					paddingTop: variant === "page" ? "calc(env(safe-area-inset-top,0px) + 10px)" : "0.75rem",
+					paddingBottom: "0.75rem",
+				}}
+			>
+				<div
+					className={`absolute inset-0 ${variant === "page" ? "bg-[var(--bg)]" : "bg-transparent"} backdrop-blur-xl${inlineScrolled ? " border-b border-white/10" : ""}`}
+					style={{
+						opacity: headerOpacity,
+						transition: `opacity ${headerFadeDuration}ms ease-out`,
+						background: inlineScrolled ? 'color-mix(in srgb, var(--surface) 60%, transparent)' : undefined,
+					}}
+					aria-hidden="true"
+				/>
+				<div className="pointer-events-auto relative flex w-full items-center gap-3">
+					<button
+						type="button"
+						onClick={onClose}
+						className={`shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-xl border transition-all duration-200 ${
+							inlineScrolled
+								? "border-white/15 text-[var(--text)] hover:text-[var(--text)] hover:border-white/25"
+								: "border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md"
+						}`}
+						style={inlineScrolled ? { background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' } : undefined}
+						aria-label={t(variant === "page" ? "settings.back_to_browse" : "profile_details.close_profile_details")}
+					>
+						<ChevronLeft className="h-4 w-4" />
+					</button>
+					<div className={`min-w-0 flex-1${inlineScrolled ? "" : " drop-shadow-[0_1px_1px_rgba(0,0,0,0.85)]"}`}>
+						<div className="flex items-center gap-1.5 min-w-0">
+							<p className={`truncate text-base font-semibold leading-tight${inlineScrolled ? "" : " text-white"}`}>{activeProfileName}</p>
+							{usesFreegrind && (
+								<img src={freegrindLogo} alt="Free Grind user" title={t("profile_details.uses_free_grind")} className="h-4 w-4 shrink-0 rounded-full border border-white/10" />
+							)}
+							{activeProfile?.age != null && Number.isFinite(activeProfile.age) && (
+								<span className={`shrink-0 text-sm${inlineScrolled ? " text-[var(--text-muted)]" : " text-white/70"}`}>{activeProfile.age}</span>
+							)}
+						</div>
+						<p className={`text-xs leading-tight${inlineScrolled ? " text-[var(--text-muted)]" : " text-white/70"}`}>
+							{[profileStatusLabel, profileDistance != null ? formatDistance(profileDistance, t, unitsPreset) : null].filter(Boolean).join(" · ")}
+						</p>
+					</div>
+					{isOwnProfile && (
+						<button
+							type="button"
+							onClick={() => navigate("/settings/profile-editor")}
+							className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-200 ${
+								inlineScrolled
+									? "border-white/15 text-[var(--text)] hover:text-[var(--text)]"
+									: "border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md"
+							}`}
+							style={inlineScrolled ? { background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' } : undefined}
+							aria-label={t("profile_editor.edit_profile")}
+						>
+							<Pencil className="h-4 w-4" />
+						</button>
+					)}
+					{messageProfileId && !isOwnProfile && (
+						<div className="flex shrink-0 items-center gap-1.5">
+							{onToggleFavoriteProfile && (
+								<button
+									type="button"
+									onClick={() => onToggleFavoriteProfile(String(messageProfileId), isFavorite)}
+									disabled={isTogglingFavorite}
+									className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-200 disabled:opacity-60 ${
+										isFavorite
+											? inlineScrolled
+												? "border-[var(--accent)]/60 bg-[var(--accent)] text-[var(--accent-contrast)] shadow-[0_0_12px_rgba(255,204,1,0.25)]"
+												: "border-white/70 bg-white/15 text-white backdrop-blur-md"
+											: inlineScrolled
+												? "border-white/15 text-[var(--text)] hover:text-[var(--text)] hover:border-white/25"
+												: "border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md"
+									}`}
+									style={!isFavorite && inlineScrolled ? { background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' } : undefined}
+									aria-label={isFavorite ? t("chat.unfavorite") : t("chat.favorite")}
+								>
+									<Star className={`h-4 w-4 ${isFavorite ? "fill-current" : ""}`} />
+								</button>
+							)}
+							{(onBlockProfile || onUnblockProfile) && (
+								<button
+									type="button"
+									onClick={() => isBlocked ? onUnblockProfile?.(String(messageProfileId)) : setShowBlockConfirm(true)}
+									disabled={isBlockingProfile}
+									className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-200 disabled:opacity-60 ${
+										isBlocked
+											? inlineScrolled
+												? "border-red-500/40 bg-red-500/15 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.15)]"
+												: "border-red-400/60 bg-red-500/20 text-red-300 backdrop-blur-md"
+											: inlineScrolled
+												? "border-red-500/30 text-red-400 hover:border-red-500/50 hover:bg-red-500/10"
+												: "border-red-400/50 bg-red-500/15 text-red-300 backdrop-blur-md hover:border-red-400/80"
+									}`}
+									style={!isBlocked && inlineScrolled ? { background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' } : undefined}
+									aria-label={isBlocked ? t("profile_details.unblock") : t("profile_details.block")}
+								>
+									<Ban className="h-4 w-4" />
+								</button>
+							)}
+							<div ref={actionsMenuRef} className="relative">
+								<button
+									type="button"
+									onClick={() => setIsActionsMenuOpen((v) => !v)}
+									className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-200 ${
+										inlineScrolled
+											? "border-white/15 text-[var(--text-muted)] hover:border-[var(--accent)]/40 hover:text-[var(--text)]"
+											: "border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md"
+									}`}
+									style={inlineScrolled ? { background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' } : undefined}
+									aria-label="More actions"
+									aria-expanded={isActionsMenuOpen}
+								>
+									<Ellipsis className="h-4 w-4" />
+								</button>
+								{isActionsMenuOpen && (
+									<div
+										className="absolute right-0 top-full z-50 mt-2 flex min-w-[190px] flex-col gap-1 rounded-xl border border-white/10 p-2 shadow-xl"
+										style={{
+											background: 'color-mix(in srgb, var(--surface) 85%, transparent)',
+											backdropFilter: 'blur(20px)',
+											boxShadow: '0 12px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05)'
+										}}
+									>
+										<button
+											type="button"
+											disabled={isTriangleDisabled}
+											onClick={() => {
+												setIsActionsMenuOpen(false);
+												if (messageProfileId) onTriangleProfile?.(String(messageProfileId));
+											}}
+											className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text)] transition hover:bg-[var(--surface-2)] disabled:opacity-50"
+										>
+											<Triangle className="mr-2 h-4 w-4 opacity-70" />
+											{isLocatingProfile ? t("profile_details.locating") : t("profile_details.locate")}
+										</button>
+									</div>
+								)}
+							</div>
+						</div>
+					)}
+				</div>
+			</div>
+
+			{/* Scrollable content — carousel first, profile details below */}
+			<div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain" data-lenis-prevent>
+				{!isLoadingActiveProfile && !activeProfileError && activeProfile && (
+					<div
+						ref={mobileCarouselRef}
+						className="relative overflow-hidden bg-black rounded-xl border border-white/10 shadow-lg mb-6 shrink-0"
+						style={{ height: variant === "page" ? "min(78dvh, calc(100vw * 1.55))" : "min(55dvh, calc((100vw - 3rem) * 1.25))" }}
+					>
+						<div
+							className="pointer-events-none absolute inset-x-0 top-0 z-10"
+							style={{ height: "6rem", background: "linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, transparent 100%)" }}
+							aria-hidden="true"
+						/>
+						{activeProfilePhotoHashes.length === 0 && (
+							<ProfileImage alt={t("profile_details.default_profile")} className="h-full w-full object-cover brightness-50" />
+						)}
+						{activeProfilePhotoHashes.map((hash, index) => (
+							<div
+								key={hash}
+								className="absolute inset-0"
+								style={{
+									transform: `translateY(calc(${(index - mobileCarouselPhotoIndex) * 100}% + ${carouselDragDelta}px))`,
+									transition: carouselDragDelta !== 0 ? "none" : "transform 300ms ease-out",
+								}}
+							>
+								<button
+									type="button"
+									onClick={() => openPhotoViewer(index)}
+									className="absolute inset-0 z-10"
+									aria-label={t("profile_details.open_photo", { index: index + 1 })}
+								/>
+								<img
+									src={getProfileImageUrl(hash, "1024x1024")}
+									alt={t("profile_details.photo_alt", { name: activeProfileName })}
+									className="h-full w-full object-cover"
+								/>
+							</div>
+						))}
+						{activeProfile.lastReceivedTapTimestamp != null && (
+							<div className="pointer-events-none absolute bottom-3 left-3 z-20">
+								<div className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
+									<Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" />
+									<span className="text-xs font-medium text-white">{formatRelativeTime(activeProfile.lastReceivedTapTimestamp)}</span>
+								</div>
+							</div>
+						)}
+						{activeProfilePhotoHashes.length > 1 && (
+							<div className="pointer-events-none absolute inset-y-0 right-3 z-20 flex flex-col items-center justify-center">
+								<div className="flex flex-col items-center gap-1.5 rounded-full bg-black/30 px-[5px] py-[10px] backdrop-blur-sm">
+									{activeProfilePhotoHashes.map((hash, index) => (
+										<span
+											key={`${hash}-dot`}
+											className={`w-1.5 rounded-full transition-[height,background-color] duration-300 ease-out ${index === mobileCarouselPhotoIndex ? "h-3 bg-white" : "h-1.5 bg-white/40"}`}
+											aria-hidden="true"
+										/>
+									))}
+								</div>
+							</div>
+						)}
+					</div>
+				)}
+				<div className={`p-4 sm:p-5 ${variant === "page" ? "pb-[calc(env(safe-area-inset-bottom,0px)+6rem)] sm:pb-[calc(env(safe-area-inset-bottom,0px)+6rem)]" : "pb-28"}`}>
+					{isLoadingActiveProfile ? (
+						<p className="text-sm text-[var(--text-muted)]">{t("profile_details.loading")}</p>
+					) : activeProfileError ? (
+						<p className="text-sm text-[var(--text-muted)]">{activeProfileError}</p>
+					) : activeProfile ? (
+						<ProfileDetailsContent
+							activeProfile={activeProfile}
+							activeProfilePhotoHashes={activeProfilePhotoHashes}
+							isDesktopLike={isDesktopLike}
+							showMobileCarousel={true}
+							mobileCarouselRef={mobileCarouselRef}
+							mobileCarouselPhotoIndex={mobileCarouselPhotoIndex}
+							openPhotoViewer={openPhotoViewer}
+							photoCreatedAtByHash={photoCreatedAtByHash}
+							activeProfileName={activeProfileName}
+							estimatedCreatedAt={estimatedCreatedAt}
+							profileStatusLabel={profileStatusLabel}
+							profileStatusLevel={profileStatusLevel}
+							ownTags={ownTags}
+							profileDistance={profileDistance}
+							chatContactStatus={chatContactStatus ?? null}
+							messageProfileId={messageProfileId}
+							usesFreegrind={usesFreegrind ?? false}
+							onMessageProfile={variant === "page" && !isOwnProfile ? onMessageProfile : undefined}
+							onTapProfile={variant === "page" && !isOwnProfile ? onTapProfile : undefined}
+							onPhotoIndexChange={setMobileCarouselPhotoIndex}
+							onDragDeltaChange={setCarouselDragDelta}
+							isTapDisabled={isTapDisabled}
+							isTapBlocked={isTapBlocked}
+							isTapActive={isTapActive}
+							tapId={tapVisualState.tapId}
+							tapButtonClassName={tapButtonClassName}
+							onTriangleProfile={onTriangleProfile}
+							isTriangleDisabled={isTriangleDisabled}
+							triangleButtonClassName={triangleButtonClassName}
+							isLocatingProfile={isLocatingProfile}
+							onToggleFavoriteProfile={onToggleFavoriteProfile}
+							isFavorite={isFavorite}
+							isTogglingFavorite={isTogglingFavorite}
+							onBlockProfile={onBlockProfile}
+							onUnblockProfile={onUnblockProfile}
+							isBlocked={isBlocked}
+							isBlockingProfile={isBlockingProfile}
+							hasTagsContent={hasTagsContent}
+							hasAboutContent={hasAboutContent}
+							hasExpectationsFields={hasExpectationsFields}
+							hasHealthFields={hasHealthFields}
+							hasStatsFields={hasStatsFields}
+							hasSocialFields={hasSocialFields}
+							formattedActiveGenders={formattedActiveGenders}
+							formattedActivePronouns={formattedActivePronouns}
+							lookingForLabels={lookingForLabels}
+							meetAtLabels={meetAtLabels}
+							nsfwLabels={nsfwLabels}
+							tribeLabels={tribeLabels}
+							hivStatusLabels={hivStatusLabels}
+							sexualHealthLabels={sexualHealthLabels}
+							vaccineLabels={vaccineLabels}
+							sexualPositionLabels={sexualPositionLabels}
+							bodyTypeLabels={bodyTypeLabels}
+							ethnicityLabels={ethnicityLabels}
+							relationshipStatusLabels={relationshipStatusLabels}
+							extraTopSection={notesSectionJsx}
+							hidePicturesSection={true}
+						/>
+					) : null}
+				</div>
+			</div>
+
+			{/* Floating footer with gradient */}
+			{messageProfileId && !isOwnProfile && (
+				<div
+					className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-4"
+					style={{
+						paddingTop: "5rem",
+						paddingBottom: variant === "page" ? "calc(env(safe-area-inset-bottom,0px) + 0.75rem)" : "1.5rem",
+						background: "linear-gradient(to top, rgba(0,0,0,0.80) 0%, rgba(0,0,0,0.7) 45%, transparent 100%)",
+					}}
+				>
+					<div
+						ref={controlsBarRef}
+						className="pointer-events-auto flex w-full max-w-[400px] md:max-w-[500px] items-center gap-1 rounded-full border border-white/10 dark:border-white/5 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)]"
+						style={{
+							backgroundColor: "rgba(15, 17, 21, 0.25)",
+							background: "color-mix(in srgb, var(--surface) 25%, transparent)",
+							backdropFilter: "blur(20px)",
+							WebkitBackdropFilter: "blur(20px)"
+						}}
+						onPointerDown={(e) => e.stopPropagation()}
+					>
+						<div className="relative min-w-0 flex-1" style={{ pointerEvents: barInputVisible ? "auto" : "none" }}>
+							<input
+								type="text"
+								value={quickMessageDraft}
+								onChange={(e) => setQuickMessageDraft(e.target.value)}
+								onKeyDown={(e) => {
+									if (e.key === "Enter" && quickMessageDraft.trim()) {
+										onSendQuickMessage?.(String(messageProfileId), quickMessageDraft.trim());
+										setQuickMessageDraft("");
+									}
+								}}
+								placeholder={t("profile_details.quick_message_placeholder", "Message...")}
+								className="relative h-12 w-full rounded-full bg-transparent px-4 text-sm text-[var(--text)] placeholder:text-[var(--text-muted)] outline-none"
+								style={{ opacity: barInputVisible ? 1 : 0, transition: barInputVisible ? "opacity 0.25s" : "opacity 0.12s" }}
+							/>
+						</div>
+						<div
+							className="transition-[max-width] duration-200 ease-out"
+							style={{ maxWidth: barTapPickerOpen ? `${3 * 52}px` : "0px", overflowX: barTapPickerOpen ? "visible" : "clip", overflowY: "visible" }}
+						>
+							<div ref={barTapOptionsRef} className="flex items-center">
+								{[0, 2, 1].map((id) => (
+									<div
+										key={id}
+										data-tap-id={id}
+										onClick={() => fireTap(id)}
+										onMouseEnter={() => setBarTapHoverId(id)}
+										onMouseLeave={() => setBarTapHoverId(null)}
+										className={`flex h-12 w-14 cursor-pointer items-center justify-center text-[28px] leading-none transition-all duration-150 ${barTapHoverId === id ? "origin-bottom scale-[2] opacity-100" : "opacity-60"}`}
+										style={barTapHoverId === id ? { filter: barTapGlow(id) } : undefined}
+									>
+										{barTapEmoji(id)}
+									</div>
+								))}
+							</div>
+						</div>
+						<button
+							type="button"
+							onPointerDown={handleBarTapPointerDown}
+							onPointerMove={handleBarTapPointerMove}
+							onPointerUp={handleBarTapPointerUp}
+							onPointerCancel={() => { setBarTapPickerOpen(false); setBarTapHoverId(null); barTapStickyRef.current = false; if (barTapLongPressRef.current) clearTimeout(barTapLongPressRef.current); barInputTimerRef.current = setTimeout(() => setBarInputVisible(true), 210); }}
+							disabled={isTapDisabled}
+							className={`tap-btn-base relative inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-none bg-transparent text-[28px] leading-none transition-all touch-none select-none disabled:opacity-40 ${barTapPickerOpen ? "text-[var(--text-muted)]" : isTapActive || barTapHoverId !== null ? "text-white" : "text-[var(--text-muted)]"}`}
+							style={isTapBlocked ? { filter: barTapGlow(tapVisualState.tapId) } : !barTapPickerOpen && barTapHoverId !== null ? { filter: barTapGlow(barTapHoverId) } : undefined}
+						>
+							{barTapPickerOpen
+								? <X className="h-6 w-6" strokeWidth={2} />
+								: barTapHoverId !== null
+									? barTapEmoji(barTapHoverId)
+									: isTapActive
+										? barTapEmoji(tapVisualState.tapId)
+										: <Flame className="h-6 w-6" strokeWidth={1.8} />
+							}
+						</button>
+						{(onMessageProfile || onSendQuickMessage) && (
+							<button
+								type="button"
+								onClick={() => {
+									if (quickMessageDraft.trim()) {
+										onSendQuickMessage?.(String(messageProfileId), quickMessageDraft.trim());
+										setQuickMessageDraft("");
+									} else {
+										onMessageProfile?.(String(messageProfileId));
+									}
+								}}
+								className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-none bg-transparent text-[var(--accent)] transition hover:brightness-110"
+							>
+								<MessageCircle className="h-6 w-6" strokeWidth={1.8} />
+							</button>
+						)}
+					</div>
+				</div>
+			)}
+		</>
+	);
+
+	if (!isOpen) {
 		return null;
 	}
 
@@ -955,365 +1313,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 						transition: profileSwipeDelta === 0 ? "transform 250ms ease-out" : "none",
 					}}
 				>
-				<header className="pointer-events-none absolute inset-x-0 top-0 z-40 flex shrink-0 flex-col px-[var(--app-px)] pb-3 pt-[calc(env(safe-area-inset-top,0px)+10px)] sm:pb-3.5 sm:pt-[calc(env(safe-area-inset-top,0px)+12px)]">
-					<div
-						className={`absolute inset-0 bg-[var(--bg)] backdrop-blur-xl ${headerScrolled ? "border-b border-[var(--border)]" : ""}`}
-						style={{ opacity: isDesktopLike ? 1 : headerOpacity, transition: `opacity ${headerFadeDuration}ms ease-out` }}
-						aria-hidden="true"
-					/>
-					<div className="relative flex w-full items-center gap-3">
-						{/* Left: back + name */}
-						<div className="pointer-events-auto flex min-w-0 flex-1 items-center gap-3">
-							<button
-								type="button"
-								onClick={onClose}
-								className={`shrink-0 rounded-xl border p-2 transition-colors ${headerScrolled ? "border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)]" : "border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md"}`}
-								aria-label={t("settings.back_to_browse")}
-							>
-								<ChevronLeft className="h-4 w-4" />
-							</button>
-							<div className={`min-w-0 ${headerScrolled ? "" : "drop-shadow-[0_1px_1px_rgba(0,0,0,0.85)]"}`}>
-								<div className="flex items-center gap-1.5 min-w-0">
-									<p className={`truncate text-base font-semibold leading-tight ${headerScrolled ? "text-[var(--text)]" : "text-white"}`}>{activeProfileName}</p>
-									{usesFreegrind && (
-										<img
-											src={freegrindLogo}
-											alt="Free Grind user"
-											title={t("profile_details.uses_free_grind")}
-											className="h-4 w-4 shrink-0 rounded-full border border-[var(--border)]"
-										/>
-									)}
-								</div>
-								<p className={`text-xs leading-tight ${headerScrolled ? "text-[var(--text-muted)]" : "text-white/70"}`}>
-									{[profileStatusLabel, profileDistance != null ? formatDistance(profileDistance, t, unitsPreset) : null].filter(Boolean).join(" · ")}
-								</p>
-							</div>
-						</div>
-
-						{/* Right: actions */}
-						{isOwnProfile && (
-							<button
-								type="button"
-								onClick={() => navigate("/settings/profile-editor")}
-								className={`pointer-events-auto inline-flex shrink-0 items-center justify-center rounded-xl border p-2 transition-colors ${headerScrolled ? "border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)]" : "border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md"}`}
-								aria-label={t("profile_editor.edit_profile")}
-							>
-								<Pencil className="h-4 w-4" />
-							</button>
-						)}
-						{messageProfileId && !isOwnProfile && (
-							<div className="pointer-events-auto flex shrink-0 items-center gap-1.5">
-								{/* Favorite */}
-								{onToggleFavoriteProfile && (
-									<button
-										type="button"
-										onClick={() => onToggleFavoriteProfile(String(messageProfileId), isFavorite)}
-										disabled={isTogglingFavorite}
-										className={`inline-flex shrink-0 items-center justify-center rounded-xl border p-2 transition-colors disabled:opacity-60 ${
-											isFavorite
-												? headerScrolled
-													? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)]"
-													: "border-white/70 bg-white/15 text-white backdrop-blur-md"
-												: headerScrolled
-													? "border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)]"
-													: "border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md"
-										}`}
-										aria-label={isFavorite ? t("chat.unfavorite") : t("chat.favorite")}
-									>
-										<Star className={`h-4 w-4 ${isFavorite ? "fill-current" : ""}`} />
-									</button>
-								)}
-
-								{/* Block */}
-								{(onBlockProfile || onUnblockProfile) && (
-									<button
-										type="button"
-										onClick={() => isBlocked ? onUnblockProfile?.(String(messageProfileId)) : onBlockProfile?.(String(messageProfileId))}
-										disabled={isBlockingProfile}
-										className={`inline-flex shrink-0 items-center justify-center rounded-xl border p-2 transition-colors disabled:opacity-60 ${
-											isBlocked
-												? headerScrolled
-													? "border-red-500/50 bg-red-500/10 text-red-400"
-													: "border-red-400/60 bg-red-500/20 text-red-300 backdrop-blur-md"
-												: headerScrolled
-													? "border-red-500/40 bg-red-500/8 text-red-400 hover:border-red-500/70 hover:bg-red-500/15"
-													: "border-red-400/50 bg-red-500/15 text-red-300 backdrop-blur-md hover:border-red-400/80"
-										}`}
-										aria-label={isBlocked ? t("profile_details.unblock") : t("profile_details.block")}
-									>
-										<Ban className="h-4 w-4" />
-									</button>
-								)}
-
-								{/* Three-dot menu */}
-								<div ref={actionsMenuRef} className="relative">
-									<button
-										type="button"
-										onClick={() => setIsActionsMenuOpen((v) => !v)}
-										className={`inline-flex shrink-0 items-center justify-center rounded-xl border p-2 transition-colors ${headerScrolled ? "border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--text)]" : "border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md"}`}
-										aria-label="More actions"
-										aria-expanded={isActionsMenuOpen}
-									>
-										<Ellipsis className="h-4 w-4" />
-									</button>
-									{isActionsMenuOpen && (
-										<div className="absolute right-0 top-full z-50 mt-2 flex min-w-[190px] flex-col gap-1 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-2 shadow-lg">
-											<button
-												type="button"
-												disabled={isTriangleDisabled}
-												onClick={() => {
-													setIsActionsMenuOpen(false);
-													if (messageProfileId) onTriangleProfile?.(String(messageProfileId));
-												}}
-												className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text)] transition hover:bg-[var(--surface-2)] disabled:opacity-50"
-											>
-												<Triangle className="mr-2 h-4 w-4 opacity-70" />
-												{isLocatingProfile ? t("profile_details.locating") : t("profile_details.locate")}
-											</button>
-										</div>
-									)}
-								</div>
-							</div>
-						)}
-					</div>
-				</header>
-
-				<FeedScrollContainer ref={scrollContainerRef}>
-					<div className="mx-auto w-full max-w-4xl px-[var(--app-px)] pt-0 pb-[calc(env(safe-area-inset-bottom,0px)+6rem)] sm:pb-5">
-						{isLoadingActiveProfile ? (
-							<p className="text-sm text-[var(--text-muted)]">
-								{t("profile_details.loading")}
-							</p>
-						) : activeProfileError ? (
-							<p className="text-sm text-[var(--text-muted)]">
-								{activeProfileError}
-							</p>
-						) : activeProfile ? (
-							<ProfileDetailsContent
-								activeProfile={activeProfile}
-								activeProfilePhotoHashes={activeProfilePhotoHashes}
-								isDesktopLike={isDesktopLike}
-								showMobileCarousel={true}
-								mobileCarouselRef={mobileCarouselRef}
-								mobileCarouselPhotoIndex={mobileCarouselPhotoIndex}
-								openPhotoViewer={openPhotoViewer}
-								photoCreatedAtByHash={photoCreatedAtByHash}
-								activeProfileName={activeProfileName}
-								estimatedCreatedAt={estimatedCreatedAt}
-								profileStatusLabel={profileStatusLabel}
-								profileStatusLevel={profileStatusLevel}
-								ownTags={ownTags}
-								profileDistance={profileDistance}
-								chatContactStatus={chatContactStatus ?? null}
-								messageProfileId={messageProfileId}
-								usesFreegrind={usesFreegrind ?? false}
-								onMessageProfile={isOwnProfile ? undefined : onMessageProfile}
-								onTapProfile={isOwnProfile ? undefined : onTapProfile}
-								onPhotoIndexChange={setMobileCarouselPhotoIndex}
-								isTapDisabled={isTapDisabled}
-								isTapBlocked={isTapBlocked}
-								isTapActive={isTapActive}
-								tapId={tapVisualState.tapId}
-								tapButtonClassName={tapButtonClassName}
-								onTriangleProfile={onTriangleProfile}
-								isTriangleDisabled={isTriangleDisabled}
-								triangleButtonClassName={triangleButtonClassName}
-								isLocatingProfile={isLocatingProfile}
-								onToggleFavoriteProfile={onToggleFavoriteProfile}
-								isFavorite={isFavorite}
-								isTogglingFavorite={isTogglingFavorite}
-								onBlockProfile={onBlockProfile}
-								onUnblockProfile={onUnblockProfile}
-								isBlocked={isBlocked}
-								isBlockingProfile={isBlockingProfile}
-								hasTagsContent={hasTagsContent}
-								hasAboutContent={hasAboutContent}
-								hasExpectationsFields={hasExpectationsFields}
-								hasHealthFields={hasHealthFields}
-								hasStatsFields={hasStatsFields}
-								hasSocialFields={hasSocialFields}
-								formattedActiveGenders={formattedActiveGenders}
-								formattedActivePronouns={formattedActivePronouns}
-								lookingForLabels={lookingForLabels}
-								meetAtLabels={meetAtLabels}
-								nsfwLabels={nsfwLabels}
-								tribeLabels={tribeLabels}
-								hivStatusLabels={hivStatusLabels}
-								sexualHealthLabels={sexualHealthLabels}
-								vaccineLabels={vaccineLabels}
-								sexualPositionLabels={sexualPositionLabels}
-								bodyTypeLabels={bodyTypeLabels}
-								ethnicityLabels={ethnicityLabels}
-								relationshipStatusLabels={relationshipStatusLabels}
-								extraTopSection={notesSectionJsx}
-							/>
-						) : null}
-					</div>
-				</FeedScrollContainer>
-				{photoViewerOverlay}
-				{messageProfileId && !isOwnProfile && (
-					<div
-						className="pointer-events-none absolute inset-x-0 bottom-0 z-30"
-						style={{
-							paddingTop: "5rem",
-							paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)",
-							background: "linear-gradient(to top, rgba(0,0,0,0.80) 0%, rgba(0,0,0,0.7) 45%, transparent 100%)",
-						}}
-					>
-						<div
-							ref={controlsBarRef}
-							className="pointer-events-auto flex items-center gap-1 pl-4 pr-2"
-							onPointerDown={(e) => e.stopPropagation()}
-						>
-							{/* Left: input — parent never changes opacity (would break backdrop-filter); each child animates its own opacity */}
-							<div
-								className="relative min-w-0 flex-1"
-								style={{ pointerEvents: barInputVisible ? "auto" : "none" }}
-							>
-								<div
-									className="pointer-events-none absolute inset-0 rounded-xl"
-									style={{
-										background: "color-mix(in srgb, var(--surface-2) 50%, transparent)",
-										border: "1px solid color-mix(in srgb, var(--border) 60%, transparent)",
-										opacity: barInputVisible ? 1 : 0,
-										transition: barInputVisible ? "opacity 0.25s" : "opacity 0.12s",
-										backdropFilter: "blur(12px)",
-										WebkitBackdropFilter: "blur(12px)"
-									}}
-								/>
-								<input
-									type="text"
-									value={quickMessageDraft}
-									onChange={(e) => setQuickMessageDraft(e.target.value)}
-									onKeyDown={(e) => {
-										if (e.key === "Enter" && quickMessageDraft.trim()) {
-											onSendQuickMessage?.(String(messageProfileId), quickMessageDraft.trim());
-											onMessageProfile?.(String(messageProfileId));
-											setQuickMessageDraft("");
-										}
-									}}
-									placeholder={t("profile_details.message_placeholder")}
-									className="relative h-13 w-full rounded-xl bg-transparent px-4 text-sm text-[var(--text)] placeholder:text-[var(--text-muted)] outline-none"
-									style={{
-										opacity: barInputVisible ? 1 : 0,
-										transition: barInputVisible ? "opacity 0.25s" : "opacity 0.12s",
-									}}
-								/>
-							</div>
-
-							{/* Right: tap options (expand on long press) + tap btn + chat btn — fixed position */}
-							<div className="flex shrink-0 items-center">
-								{/* Tap options — always rendered, animate width open/closed */}
-								{/* overflow-x:clip clips horizontal without forcing overflow-y to auto, so icons can scale upward freely */}
-								<div
-									className="transition-[max-width] duration-200 ease-out"
-									style={{ maxWidth: barTapPickerOpen ? `${3 * 52}px` : "0px", overflowX: barTapPickerOpen ? "visible" : "clip", overflowY: "visible" }}
-								>
-									<div
-										ref={barTapOptionsRef}
-										className="flex items-center"
-									>
-										{[0, 2, 1].map((id) => (
-											<div
-												key={id}
-												data-tap-id={id}
-												className={`flex h-13 w-13 cursor-pointer items-center justify-center text-2xl leading-none transition-all duration-150 ${barTapHoverId === id ? "origin-bottom scale-[2] opacity-100" : "opacity-60"}`}
-										style={barTapHoverId === id ? { filter: barTapGlow(id) } : undefined}
-											>
-												{barTapEmoji(id)}
-											</div>
-										))}
-									</div>
-								</div>
-								{/* Tap button — always visible, kept in DOM for pointer capture */}
-								<div>
-									<button
-										type="button"
-										onPointerDown={handleBarTapPointerDown}
-										onPointerMove={handleBarTapPointerMove}
-										onPointerUp={handleBarTapPointerUp}
-										onPointerCancel={() => { setBarTapPickerOpen(false); setBarTapHoverId(null); if (barTapLongPressRef.current) clearTimeout(barTapLongPressRef.current); barInputTimerRef.current = setTimeout(() => setBarInputVisible(true), 210); }}
-										disabled={isTapDisabled}
-										className={`tap-btn-base relative inline-flex h-13 w-13 shrink-0 items-center justify-center rounded-xl border-none bg-transparent text-2xl leading-none transition-all touch-none select-none ${isTappingProfile ? "opacity-40" : ""} ${isTapActive || barTapHoverId !== null ? "text-white" : "text-[var(--text-muted)]"}`}
-									style={isTapBlocked ? { filter: barTapGlow(tapVisualState.tapId) } : barTapHoverId !== null ? { filter: barTapGlow(barTapHoverId) } : undefined}
-									>
-										{barTapHoverId !== null
-											? barTapEmoji(barTapHoverId)
-											: isTapActive
-												? barTapEmoji(tapVisualState.tapId)
-												: <Flame className="h-6 w-6" strokeWidth={1.8} />
-										}
-									</button>
-								</div>
-								{(onMessageProfile || onSendQuickMessage) && (
-									<button
-										type="button"
-										onClick={() => {
-											if (quickMessageDraft.trim()) {
-												onSendQuickMessage?.(String(messageProfileId), quickMessageDraft.trim());
-												setQuickMessageDraft("");
-											}
-											onMessageProfile?.(String(messageProfileId));
-										}}
-										className="inline-flex h-13 w-13 shrink-0 items-center justify-center rounded-xl border-none bg-transparent text-[var(--accent)] transition hover:brightness-110"
-										aria-label={t("profile_details.message")}
-									>
-										<MessageCircle className="h-6 w-6" />
-									</button>
-								)}
-							</div>
-						</div>
-					</div>
-				)}
-				{barTapFlyEmoji && (
-					<>
-						{barTapFlyEmoji.particles.map((p, i) => p.emoji ? (
-							<span
-								key={`p-${barTapFlyEmoji.key}-${i}`}
-								className="animate-emoji-particle-rise"
-								style={{
-									left: "50%",
-									top: "50%",
-									opacity: 0,
-									fontSize: `${p.size}px`,
-									lineHeight: 1,
-									filter: barTapGlow(barTapFlyEmoji.id),
-									zIndex: 202,
-									"--dx": `${p.dx}px`,
-									"--dy": `${p.dy}px`,
-									"--dur": `${p.dur}s`,
-									"--delay": `${p.delay}s`,
-								} as React.CSSProperties}
-							>{p.emoji}</span>
-						) : (
-							<div
-								key={`p-${barTapFlyEmoji.key}-${i}`}
-								className="animate-particle-rise"
-								style={{
-									left: "50%",
-									top: "50%",
-									opacity: 0,
-									width: `${p.size}px`,
-									height: `${p.size}px`,
-									background: barTapParticleColor(barTapFlyEmoji.id),
-									boxShadow: `0 0 ${p.size * 3}px ${p.size}px ${barTapParticleColor(barTapFlyEmoji.id)}`,
-									zIndex: 202,
-									"--dx": `${p.dx}px`,
-									"--dy": `${p.dy}px`,
-									"--dur": `${p.dur}s`,
-									"--delay": `${p.delay}s`,
-								} as React.CSSProperties}
-							/>
-						))}
-						<span
-							key={`emoji-${barTapFlyEmoji.key}`}
-							className="animate-tap-fly-center fixed pointer-events-none"
-							style={{ left: "50%", top: "50%", zIndex: 201, filter: barTapGlow(barTapFlyEmoji.id) }}
-						>
-							{barTapEmoji(barTapFlyEmoji.id)}
-						</span>
-					</>
-				)}
+					{renderInlineLayout()}
 				</div>
 			</div>
 		);
@@ -1424,392 +1424,279 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 
 							{/* Right column (or full width on non-split): header + content + footer */}
 							<div className="flex min-w-0 flex-1 flex-col overflow-hidden relative">
-								{/* Header */}
-								<div
-									className={isModalSplit
-										? "flex shrink-0 items-center gap-3 border-b border-white/10 bg-transparent px-4 py-3 sm:px-5 relative z-10"
-										: "pointer-events-none absolute inset-x-0 top-0 z-40 px-4 py-3 sm:px-5"
-									}
-									style={isModalSplit ? { background: 'color-mix(in srgb, var(--surface) 20%, transparent)', backdropFilter: 'blur(12px)' } : undefined}
-								>
-									{!isModalSplit && (
+								{!isModalSplit ? renderInlineLayout() : (
+									<>
+										{/* Solid split-mode header with glass details */}
 										<div
-											className={`absolute inset-0 backdrop-blur-xl${modalHeaderScrolled ? " border-b border-white/10" : ""}`}
-											style={{
-												opacity: headerOpacity,
-												transition: `opacity ${headerFadeDuration}ms ease-out`,
-												background: 'color-mix(in srgb, var(--surface) 60%, transparent)',
-											}}
-											aria-hidden="true"
-										/>
-									)}
-									<div className={isModalSplit ? "flex w-full items-center gap-3" : "pointer-events-auto relative flex w-full items-center gap-3"}>
-										<button
-											type="button"
-											onClick={onClose}
-											className={`shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-xl border transition-all duration-200 ${
-												modalHeaderScrolled
-													? "border-white/15 text-[var(--text)] hover:text-[var(--text)] hover:border-white/25"
-													: "border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md"
-											}`}
-											style={modalHeaderScrolled ? { background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' } : undefined}
-											aria-label={t("profile_details.close_profile_details")}
+											className="flex shrink-0 items-center gap-3 border-b border-white/10 bg-transparent px-4 py-3 sm:px-5 relative z-10"
+											style={{ background: 'color-mix(in srgb, var(--surface) 20%, transparent)', backdropFilter: 'blur(12px)' }}
 										>
-											<ChevronLeft className="h-4 w-4" />
-										</button>
-										<div className={`min-w-0 flex-1${modalHeaderScrolled ? "" : " drop-shadow-[0_1px_1px_rgba(0,0,0,0.85)]"}`}>
-											<div className="flex items-center gap-2">
-												<p className={`truncate text-base font-semibold${modalHeaderScrolled ? "" : " text-white"}`}>{activeProfileName}</p>
-												{activeProfile?.age != null && Number.isFinite(activeProfile.age) && (
-													<span className={`shrink-0 text-sm ${modalHeaderScrolled ? "text-[var(--text-muted)]" : "text-white/70"}`}>{activeProfile.age}</span>
-												)}
-											</div>
-											<p className={`mt-0.5 text-xs ${modalHeaderScrolled ? "text-[var(--text-muted)]" : "text-white/70"}`}>
-												{[profileStatusLabel, profileDistance != null ? formatDistance(profileDistance, t, unitsPreset) : null].filter(Boolean).join(" · ")}
-											</p>
-										</div>
-										{isOwnProfile && (
-											<button
-												type="button"
-												onClick={() => navigate("/settings/profile-editor")}
-												className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-200 ${
-													modalHeaderScrolled
-														? "border-white/15 text-[var(--text)] hover:text-[var(--text)]"
-														: "border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md"
-												}`}
-												style={modalHeaderScrolled ? { background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' } : undefined}
-												aria-label={t("profile_editor.edit_profile")}
-											>
-												<Pencil className="h-4 w-4" />
-											</button>
-										)}
-										{messageProfileId && !isOwnProfile && (
-											<div className="flex shrink-0 items-center gap-1.5">
-												{onToggleFavoriteProfile && (
+											<div className="flex w-full items-center gap-3">
+												<button
+													type="button"
+													onClick={onClose}
+													className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/15 text-[var(--text-muted)] transition-all duration-200 hover:text-[var(--text)] hover:border-white/25"
+													style={{ background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' }}
+													aria-label={t("profile_details.close_profile_details")}
+												>
+													<ChevronLeft className="h-4 w-4" />
+												</button>
+												<div className="min-w-0 flex-1">
+													<div className="flex items-center gap-2">
+														<p className="truncate text-base font-semibold">{activeProfileName}</p>
+														{activeProfile?.age != null && Number.isFinite(activeProfile.age) && (
+															<span className="shrink-0 text-sm text-[var(--text-muted)]">{activeProfile.age}</span>
+														)}
+													</div>
+													<p className="mt-0.5 text-xs text-[var(--text-muted)]">
+														{[profileStatusLabel, profileDistance != null ? formatDistance(profileDistance, t, unitsPreset) : null].filter(Boolean).join(" · ")}
+													</p>
+												</div>
+												{isOwnProfile && (
 													<button
 														type="button"
-														onClick={() => onToggleFavoriteProfile(String(messageProfileId), isFavorite)}
-														disabled={isTogglingFavorite}
-														className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-200 disabled:opacity-60 ${
-															isFavorite
-																? modalHeaderScrolled
-																	? "border-[var(--accent)]/60 bg-[var(--accent)] text-[var(--accent-contrast)] shadow-[0_0_12px_rgba(255,204,1,0.25)]"
-																	: "border-white/70 bg-white/15 text-white backdrop-blur-md"
-																: modalHeaderScrolled
-																	? "border-white/15 text-[var(--text)] hover:text-[var(--text)] hover:border-white/25"
-																	: "border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md"
-														}`}
-														style={!isFavorite && modalHeaderScrolled ? { background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' } : undefined}
-														aria-label={isFavorite ? t("chat.unfavorite") : t("chat.favorite")}
+														onClick={() => navigate("/settings/profile-editor")}
+														className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] transition hover:text-[var(--text)]"
+														aria-label={t("profile_editor.edit_profile")}
 													>
-														<Star className={`h-4 w-4 ${isFavorite ? "fill-current" : ""}`} />
+														<Pencil className="h-4 w-4" />
 													</button>
 												)}
-												{(onBlockProfile || onUnblockProfile) && (
-													<button
-														type="button"
-														onClick={() => isBlocked ? onUnblockProfile?.(String(messageProfileId)) : setShowBlockConfirm(true)}
-														disabled={isBlockingProfile}
-														className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-200 disabled:opacity-60 ${
-															isBlocked
-																? modalHeaderScrolled
-																	? "border-red-500/40 bg-red-500/15 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.15)]"
-																	: "border-red-400/60 bg-red-500/20 text-red-300 backdrop-blur-md"
-																: modalHeaderScrolled
-																	? "border-red-500/30 text-red-400 hover:border-red-500/50 hover:bg-red-500/10"
-																	: "border-red-400/50 bg-red-500/15 text-red-300 backdrop-blur-md hover:border-red-400/80"
-														}`}
-														style={!isBlocked && modalHeaderScrolled ? { background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' } : undefined}
-														aria-label={isBlocked ? t("profile_details.unblock") : t("profile_details.block")}
-													>
-														<Ban className="h-4 w-4" />
-													</button>
-												)}
-												<div ref={actionsMenuRef} className="relative">
-													<button
-														type="button"
-														onClick={() => setIsActionsMenuOpen((v) => !v)}
-														className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-200 ${
-															modalHeaderScrolled
-																? "border-white/15 text-[var(--text-muted)] hover:border-[var(--accent)]/40 hover:text-[var(--text)]"
-																: "border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md"
-														}`}
-														style={modalHeaderScrolled ? { background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' } : undefined}
-														aria-label="More actions"
-														aria-expanded={isActionsMenuOpen}
-													>
-														<Ellipsis className="h-4 w-4" />
-													</button>
-													{isActionsMenuOpen && (
-														<div
-															className="absolute right-0 top-full z-50 mt-2 flex min-w-[190px] flex-col gap-1 rounded-xl border border-white/10 p-2 shadow-xl"
-															style={{
-																background: 'color-mix(in srgb, var(--surface) 85%, transparent)',
-																backdropFilter: 'blur(20px)',
-																boxShadow: '0 12px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05)'
-															}}
-														>
+												{messageProfileId && !isOwnProfile && (
+													<div className="flex shrink-0 items-center gap-1.5">
+														{onToggleFavoriteProfile && (
 															<button
 																type="button"
-																disabled={isTriangleDisabled}
-																onClick={() => {
-																	setIsActionsMenuOpen(false);
-																	if (messageProfileId) onTriangleProfile?.(String(messageProfileId));
-																}}
-																className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text)] transition hover:bg-[var(--surface-2)] disabled:opacity-50"
+																onClick={() => onToggleFavoriteProfile(String(messageProfileId), isFavorite)}
+																disabled={isTogglingFavorite}
+																className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-200 disabled:opacity-60 ${isFavorite ? "border-[var(--accent)]/60 bg-[var(--accent)] text-[var(--accent-contrast)] shadow-[0_0_12px_rgba(255,204,1,0.25)]" : "border-white/15 text-[var(--text-muted)] hover:text-[var(--text)] hover:border-white/25"}`}
+																style={!isFavorite ? { background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' } : undefined}
+																aria-label={isFavorite ? t("chat.unfavorite") : t("chat.favorite")}
 															>
-																<Triangle className="mr-2 h-4 w-4 opacity-70" />
-																{isLocatingProfile ? t("profile_details.locating") : t("profile_details.locate")}
+																<Star className={`h-4 w-4 ${isFavorite ? "fill-current" : ""}`} />
 															</button>
+														)}
+														{(onBlockProfile || onUnblockProfile) && (
+															<button
+																type="button"
+																onClick={() => isBlocked ? onUnblockProfile?.(String(messageProfileId)) : setShowBlockConfirm(true)}
+																disabled={isBlockingProfile}
+																className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-200 disabled:opacity-60 ${isBlocked ? "border-red-500/40 bg-red-500/15 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.15)]" : "border-red-500/30 text-red-400 hover:border-red-500/50 hover:bg-red-500/10"}`}
+																style={!isBlocked ? { background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' } : undefined}
+																aria-label={isBlocked ? t("profile_details.unblock") : t("profile_details.block")}
+															>
+																<Ban className="h-4 w-4" />
+															</button>
+														)}
+														<div ref={actionsMenuRef} className="relative">
+															<button
+																type="button"
+																onClick={() => setIsActionsMenuOpen((v) => !v)}
+																className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/15 text-[var(--text-muted)] transition-all duration-200 hover:border-[var(--accent)]/40 hover:text-[var(--text)]"
+																style={{ background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' }}
+																aria-label="More actions"
+																aria-expanded={isActionsMenuOpen}
+															>
+																<Ellipsis className="h-4 w-4" />
+															</button>
+															{isActionsMenuOpen && (
+																<div
+																	className="absolute right-0 top-full z-50 mt-2 flex min-w-[190px] flex-col gap-1 rounded-xl border border-white/10 p-2 shadow-xl"
+																	style={{
+																		background: 'color-mix(in srgb, var(--surface) 85%, transparent)',
+																		backdropFilter: 'blur(20px)',
+																		boxShadow: '0 12px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05)'
+																	}}
+																>
+																	<button
+																		type="button"
+																		disabled={isTriangleDisabled}
+																		onClick={() => {
+																			setIsActionsMenuOpen(false);
+																			if (messageProfileId) onTriangleProfile?.(String(messageProfileId));
+																		}}
+																		className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text)] transition hover:bg-[var(--surface-2)] disabled:opacity-50"
+																	>
+																		<Triangle className="mr-2 h-4 w-4 opacity-70" />
+																		{isLocatingProfile ? t("profile_details.locating") : t("profile_details.locate")}
+																	</button>
+																</div>
+															)}
 														</div>
+													</div>
+												)}
+											</div>
+										</div>
+
+										{/* Split-mode content */}
+										<div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-b-2xl" data-lenis-prevent>
+											<div className="p-4 pb-28 sm:p-5 sm:pb-28">
+												{isLoadingActiveProfile ? (
+													<p className="text-sm text-[var(--text-muted)]">{t("profile_details.loading")}</p>
+												) : activeProfileError ? (
+													<p className="text-sm text-[var(--text-muted)]">{activeProfileError}</p>
+												) : activeProfile ? (
+													<ProfileDetailsContent
+														activeProfile={activeProfile}
+														activeProfilePhotoHashes={activeProfilePhotoHashes}
+														isDesktopLike={isDesktopLike}
+														showMobileCarousel={false}
+														mobileCarouselRef={mobileCarouselRef}
+														mobileCarouselPhotoIndex={mobileCarouselPhotoIndex}
+														openPhotoViewer={openPhotoViewer}
+														photoCreatedAtByHash={photoCreatedAtByHash}
+														activeProfileName={activeProfileName}
+														estimatedCreatedAt={estimatedCreatedAt}
+														profileStatusLabel={profileStatusLabel}
+														profileStatusLevel={profileStatusLevel}
+														ownTags={ownTags}
+														profileDistance={profileDistance}
+														chatContactStatus={chatContactStatus ?? null}
+														messageProfileId={messageProfileId}
+														usesFreegrind={usesFreegrind ?? false}
+														onMessageProfile={undefined}
+														onTapProfile={undefined}
+														isTapDisabled={isTapDisabled}
+														isTapBlocked={isTapBlocked}
+														isTapActive={isTapActive}
+														tapId={tapVisualState.tapId}
+														tapButtonClassName={tapButtonClassName}
+														onTriangleProfile={onTriangleProfile}
+														isTriangleDisabled={isTriangleDisabled}
+														triangleButtonClassName={triangleButtonClassName}
+														isLocatingProfile={isLocatingProfile}
+														onToggleFavoriteProfile={onToggleFavoriteProfile}
+														isFavorite={isFavorite}
+														isTogglingFavorite={isTogglingFavorite}
+														onBlockProfile={onBlockProfile}
+														onUnblockProfile={onUnblockProfile}
+														isBlocked={isBlocked}
+														isBlockingProfile={isBlockingProfile}
+														hasTagsContent={hasTagsContent}
+														hasAboutContent={hasAboutContent}
+														hasExpectationsFields={hasExpectationsFields}
+														hasHealthFields={hasHealthFields}
+														hasStatsFields={hasStatsFields}
+														hasSocialFields={hasSocialFields}
+														formattedActiveGenders={formattedActiveGenders}
+														formattedActivePronouns={formattedActivePronouns}
+														lookingForLabels={lookingForLabels}
+														meetAtLabels={meetAtLabels}
+														nsfwLabels={nsfwLabels}
+														tribeLabels={tribeLabels}
+														hivStatusLabels={hivStatusLabels}
+														sexualHealthLabels={sexualHealthLabels}
+														vaccineLabels={vaccineLabels}
+														sexualPositionLabels={sexualPositionLabels}
+														bodyTypeLabels={bodyTypeLabels}
+														ethnicityLabels={ethnicityLabels}
+														relationshipStatusLabels={relationshipStatusLabels}
+														extraTopSection={notesSectionJsx}
+														hidePicturesSection={true}
+													/>
+												) : null}
+											</div>
+										</div>
+
+										{/* Split-mode footer */}
+										{messageProfileId && !isOwnProfile && (
+											<div
+												className="pointer-events-none absolute inset-x-0 bottom-6 md:bottom-8 z-30 flex justify-center px-4"
+											>
+												<div
+													ref={controlsBarRef}
+													className="pointer-events-auto flex w-full max-w-[400px] md:max-w-[500px] items-center gap-1 rounded-full border border-white/10 dark:border-white/5 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)]"
+													style={{
+														backgroundColor: "rgba(15, 17, 21, 0.25)",
+														background: "color-mix(in srgb, var(--surface) 25%, transparent)",
+														backdropFilter: "blur(20px)",
+														WebkitBackdropFilter: "blur(20px)"
+													}}
+													onPointerDown={(e) => e.stopPropagation()}
+												>
+													{/* Chat input */}
+													<div className="relative min-w-0 flex-1" style={{ pointerEvents: barInputVisible ? "auto" : "none" }}>
+														<input
+															type="text"
+															value={quickMessageDraft}
+															onChange={(e) => setQuickMessageDraft(e.target.value)}
+															onKeyDown={(e) => {
+																if (e.key === "Enter" && quickMessageDraft.trim()) {
+																	onSendQuickMessage?.(String(messageProfileId), quickMessageDraft.trim());
+																	setQuickMessageDraft("");
+																}
+															}}
+															placeholder={t("profile_details.quick_message_placeholder", "Message...")}
+															className="relative h-12 w-full rounded-full bg-transparent px-4 text-sm text-[var(--text)] placeholder:text-[var(--text-muted)] outline-none"
+															style={{ opacity: barInputVisible ? 1 : 0, transition: barInputVisible ? "opacity 0.25s" : "opacity 0.12s" }}
+														/>
+													</div>
+
+													{/* Tap options */}
+													<div
+														className="transition-[max-width] duration-200 ease-out"
+														style={{ maxWidth: barTapPickerOpen ? `${3 * 52}px` : "0px", overflowX: barTapPickerOpen ? "visible" : "clip", overflowY: "visible" }}
+													>
+														<div ref={barTapOptionsRef} className="flex items-center">
+															{[0, 2, 1].map((id) => (
+																<div
+																	key={id}
+																	data-tap-id={id}
+																	onClick={() => fireTap(id)}
+																	onMouseEnter={() => setBarTapHoverId(id)}
+																	onMouseLeave={() => setBarTapHoverId(null)}
+																	className={`flex h-12 w-14 cursor-pointer items-center justify-center text-[28px] leading-none transition-all duration-150 ${barTapHoverId === id ? "origin-bottom scale-[2] opacity-100" : "opacity-60"}`}
+																	style={barTapHoverId === id ? { filter: barTapGlow(id) } : undefined}
+																>
+																	{barTapEmoji(id)}
+																</div>
+															))}
+														</div>
+													</div>
+
+													{/* Tap button */}
+													<button
+														type="button"
+														onPointerDown={handleBarTapPointerDown}
+														onPointerMove={handleBarTapPointerMove}
+														onPointerUp={handleBarTapPointerUp}
+														onPointerCancel={() => { setBarTapPickerOpen(false); setBarTapHoverId(null); barTapStickyRef.current = false; if (barTapLongPressRef.current) clearTimeout(barTapLongPressRef.current); barInputTimerRef.current = setTimeout(() => setBarInputVisible(true), 210); }}
+														disabled={isTapDisabled}
+														className={`tap-btn-base relative inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-none bg-transparent text-[28px] leading-none transition-all touch-none select-none disabled:opacity-40 ${barTapPickerOpen ? "text-[var(--text-muted)]" : isTapActive || barTapHoverId !== null ? "text-white" : "text-[var(--text-muted)]"}`}
+														style={isTapBlocked ? { filter: barTapGlow(tapVisualState.tapId) } : !barTapPickerOpen && barTapHoverId !== null ? { filter: barTapGlow(barTapHoverId) } : undefined}
+													>
+														{barTapPickerOpen
+															? <X className="h-6 w-6" strokeWidth={2} />
+															: barTapHoverId !== null
+																? barTapEmoji(barTapHoverId)
+																: isTapActive
+																	? barTapEmoji(tapVisualState.tapId)
+																	: <Flame className="h-6 w-6" strokeWidth={1.8} />
+														}
+													</button>
+
+													{/* Message button */}
+													{(onMessageProfile || onSendQuickMessage) && (
+														<button
+															type="button"
+															onClick={() => {
+																if (quickMessageDraft.trim()) {
+																	onSendQuickMessage?.(String(messageProfileId), quickMessageDraft.trim());
+																	setQuickMessageDraft("");
+																} else {
+																	onMessageProfile?.(String(messageProfileId));
+																}
+															}}
+															className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-none bg-transparent text-[var(--accent)] transition hover:brightness-110"
+														>
+															<MessageCircle className="h-6 w-6" strokeWidth={1.8} />
+														</button>
 													)}
 												</div>
 											</div>
 										)}
-									</div>
-								</div>
-
-								<div className="relative flex flex-col flex-1 min-h-0 overflow-hidden rounded-b-2xl">
-									<div
-										ref={modalContentScrollRef}
-										data-lenis-prevent
-										className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5 pb-24"
-									>
-										{/* Non-split: carousel scrolls with content, positioned above details */}
-										{!isModalSplit && !isLoadingActiveProfile && !activeProfileError && activeProfile && (
-											<div
-												ref={modalCarouselRef}
-												className="relative overflow-hidden bg-black rounded-xl border border-white/10 shadow-lg mb-6 shrink-0"
-												style={{ height: `min(55dvh, calc((100vw - 3rem) * 1.25))` }}
-											>
-												<div
-													className="pointer-events-none absolute inset-x-0 top-0 z-10"
-													style={{ height: "6rem", background: "linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, transparent 100%)" }}
-													aria-hidden="true"
-												/>
-												{activeProfilePhotoHashes.length === 0 && (
-													<ProfileImage
-														alt={t("profile_details.default_profile")}
-														className="h-full w-full object-cover brightness-50"
-													/>
-												)}
-												{activeProfilePhotoHashes.map((hash, index) => (
-													<div
-														key={hash}
-														className="absolute inset-0"
-														style={{
-															transform: `translateY(${(index - mobileCarouselPhotoIndex) * 100}%)`,
-															transition: "transform 300ms ease-out",
-														}}
-													>
-														<button
-															type="button"
-															onClick={() => openPhotoViewer(index)}
-															className="absolute inset-0 z-10"
-															aria-label={t("profile_details.open_photo", { index: index + 1 })}
-														/>
-														<img
-															src={getProfileImageUrl(hash, "1024x1024")}
-															alt={t("profile_details.photo_alt", { name: activeProfileName })}
-															className="h-full w-full object-cover"
-														/>
-													</div>
-												))}
-												{activeProfile.lastReceivedTapTimestamp != null && (
-													<div className="pointer-events-none absolute bottom-3 left-3 z-20">
-														<div className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
-															<Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" />
-															<span className="text-xs font-medium text-white">
-																{formatRelativeTime(activeProfile.lastReceivedTapTimestamp)}
-															</span>
-														</div>
-													</div>
-												)}
-												{activeProfilePhotoHashes.length > 1 && (
-													<div className="pointer-events-none absolute inset-y-0 right-3 z-20 flex flex-col items-center justify-center">
-														<div className="flex flex-col items-center gap-1.5 rounded-full bg-black/30 px-[5px] py-[10px] backdrop-blur-sm">
-															{activeProfilePhotoHashes.map((hash, index) => (
-																<span
-																	key={`${hash}-dot`}
-																	className={`w-1.5 rounded-full transition-[height,background-color] duration-300 ease-out ${
-																		index === mobileCarouselPhotoIndex ? "h-3 bg-white" : "h-1.5 bg-white/40"
-																	}`}
-																	aria-hidden="true"
-																/>
-															))}
-														</div>
-													</div>
-												)}
-											</div>
-										)}
-
-										{isLoadingActiveProfile ? (
-											<p className="text-sm text-[var(--text-muted)]">
-												{t("profile_details.loading")}
-											</p>
-										) : activeProfileError ? (
-											<p className="text-sm text-[var(--text-muted)]">
-												{activeProfileError}
-											</p>
-										) : activeProfile ? (
-											<ProfileDetailsContent
-												activeProfile={activeProfile}
-												activeProfilePhotoHashes={activeProfilePhotoHashes}
-												isDesktopLike={isDesktopLike}
-												showMobileCarousel={false}
-												mobileCarouselRef={mobileCarouselRef}
-												mobileCarouselPhotoIndex={mobileCarouselPhotoIndex}
-												openPhotoViewer={openPhotoViewer}
-												photoCreatedAtByHash={photoCreatedAtByHash}
-												activeProfileName={activeProfileName}
-												estimatedCreatedAt={estimatedCreatedAt}
-												profileStatusLabel={profileStatusLabel}
-												profileStatusLevel={profileStatusLevel}
-												ownTags={ownTags}
-												profileDistance={profileDistance}
-												chatContactStatus={chatContactStatus ?? null}
-												messageProfileId={messageProfileId}
-												usesFreegrind={usesFreegrind ?? false}
-												onMessageProfile={undefined}
-												onTapProfile={undefined}
-												isTapDisabled={isTapDisabled}
-												isTapBlocked={isTapBlocked}
-												isTapActive={isTapActive}
-												tapId={tapVisualState.tapId}
-												tapButtonClassName={tapButtonClassName}
-												onTriangleProfile={onTriangleProfile}
-												isTriangleDisabled={isTriangleDisabled}
-												triangleButtonClassName={triangleButtonClassName}
-												isLocatingProfile={isLocatingProfile}
-												onToggleFavoriteProfile={onToggleFavoriteProfile}
-												isFavorite={isFavorite}
-												isTogglingFavorite={isTogglingFavorite}
-												onBlockProfile={onBlockProfile}
-												onUnblockProfile={onUnblockProfile}
-												isBlocked={isBlocked}
-												isBlockingProfile={isBlockingProfile}
-												hasTagsContent={hasTagsContent}
-												hasAboutContent={hasAboutContent}
-												hasExpectationsFields={hasExpectationsFields}
-												hasHealthFields={hasHealthFields}
-												hasStatsFields={hasStatsFields}
-												hasSocialFields={hasSocialFields}
-												formattedActiveGenders={formattedActiveGenders}
-												formattedActivePronouns={formattedActivePronouns}
-												lookingForLabels={lookingForLabels}
-												meetAtLabels={meetAtLabels}
-												nsfwLabels={nsfwLabels}
-												tribeLabels={tribeLabels}
-												hivStatusLabels={hivStatusLabels}
-												sexualHealthLabels={sexualHealthLabels}
-												vaccineLabels={vaccineLabels}
-
-												sexualPositionLabels={sexualPositionLabels}
-												bodyTypeLabels={bodyTypeLabels}
-												ethnicityLabels={ethnicityLabels}
-												relationshipStatusLabels={relationshipStatusLabels}
-												extraTopSection={notesSectionJsx}
-												hidePicturesSection={isModalSplit}
-											/>
-										) : null}
-									</div>
-
-									{/* Bottom actions bar — desktop modal */}
-									{messageProfileId && !isOwnProfile && (
-										<div className="pointer-events-none absolute inset-x-0 bottom-6 md:bottom-8 z-30 flex justify-center px-4">
-											<div
-												ref={controlsBarRef}
-												className={`pointer-events-auto flex w-full max-w-[400px] md:max-w-[500px] items-center gap-1 rounded-full border border-white/10 dark:border-white/5 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)] ${isClosing ? "animate-modal-out" : (!isEntranceComplete ? "animate-modal-in" : "")}`}
-												style={{
-													backgroundColor: "rgba(15, 17, 21, 0.25)",
-													background: "color-mix(in srgb, var(--surface) 25%, transparent)",
-													backdropFilter: "blur(20px)",
-													WebkitBackdropFilter: "blur(20px)"
-												}}
-												onPointerDown={(e) => e.stopPropagation()}
-											>
-												{/* Chat input */}
-												<div className="relative min-w-0 flex-1" style={{ pointerEvents: barInputVisible ? "auto" : "none" }}>
-													<input
-														type="text"
-														value={quickMessageDraft}
-														onChange={(e) => setQuickMessageDraft(e.target.value)}
-														onKeyDown={(e) => {
-															if (e.key === "Enter" && quickMessageDraft.trim()) {
-																onSendQuickMessage?.(String(messageProfileId), quickMessageDraft.trim());
-																setQuickMessageDraft("");
-															}
-														}}
-														placeholder={t("profile_details.quick_message_placeholder", "Message...")}
-														className="relative h-12 w-full rounded-full bg-transparent px-4 text-sm text-[var(--text)] placeholder:text-[var(--text-muted)] outline-none"
-														style={{ opacity: barInputVisible ? 1 : 0, transition: barInputVisible ? "opacity 0.25s" : "opacity 0.12s" }}
-													/>
-												</div>
-
-												{/* Tap options */}
-												<div
-													className="transition-[max-width] duration-200 ease-out"
-													style={{ maxWidth: barTapPickerOpen ? `${3 * 52}px` : "0px", overflowX: barTapPickerOpen ? "visible" : "clip", overflowY: "visible" }}
-												>
-													<div ref={barTapOptionsRef} className="flex items-center">
-														{[0, 2, 1].map((id) => (
-															<div
-																key={id}
-																data-tap-id={id}
-																onClick={() => fireTap(id)}
-																onMouseEnter={() => setBarTapHoverId(id)}
-																onMouseLeave={() => setBarTapHoverId(null)}
-																className={`flex h-12 w-14 cursor-pointer items-center justify-center text-[28px] leading-none transition-all duration-150 ${barTapHoverId === id ? "origin-bottom scale-[2] opacity-100" : "opacity-60"}`}
-																style={barTapHoverId === id ? { filter: barTapGlow(id) } : undefined}
-															>
-																{barTapEmoji(id)}
-															</div>
-														))}
-													</div>
-												</div>
-
-												{/* Tap button */}
-												<button
-													type="button"
-													onPointerDown={handleBarTapPointerDown}
-													onPointerMove={handleBarTapPointerMove}
-													onPointerUp={handleBarTapPointerUp}
-													onPointerCancel={() => { setBarTapPickerOpen(false); setBarTapHoverId(null); barTapStickyRef.current = false; if (barTapLongPressRef.current) clearTimeout(barTapLongPressRef.current); barInputTimerRef.current = setTimeout(() => setBarInputVisible(true), 210); }}
-													disabled={isTapDisabled}
-													className={`tap-btn-base relative inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-none bg-transparent text-[28px] leading-none transition-all touch-none select-none disabled:opacity-40 ${barTapPickerOpen ? "text-[var(--text-muted)]" : isTapActive || barTapHoverId !== null ? "text-white" : "text-[var(--text-muted)]"}`}
-													style={isTapBlocked ? { filter: barTapGlow(tapVisualState.tapId) } : !barTapPickerOpen && barTapHoverId !== null ? { filter: barTapGlow(barTapHoverId) } : undefined}
-												>
-													{barTapPickerOpen
-														? <X className="h-6 w-6" strokeWidth={2} />
-														: barTapHoverId !== null
-															? barTapEmoji(barTapHoverId)
-															: isTapActive
-																? barTapEmoji(tapVisualState.tapId)
-																: <Flame className="h-6 w-6" strokeWidth={1.8} />
-													}
-												</button>
-
-												{/* Message button */}
-												{(onMessageProfile || onSendQuickMessage) && (
-													<button
-														type="button"
-														onClick={() => {
-															if (quickMessageDraft.trim()) {
-																onSendQuickMessage?.(String(messageProfileId), quickMessageDraft.trim());
-																setQuickMessageDraft("");
-															} else {
-																onMessageProfile?.(String(messageProfileId));
-															}
-														}}
-														className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-none bg-transparent text-[var(--accent)] transition hover:brightness-110"
-													>
-														<MessageCircle className="h-6 w-6" strokeWidth={1.8} />
-													</button>
-												)}
-											</div>
-										</div>
-									)}
-								</div>
+									</>
+								)}
 							</div>
 						</div>
 					</>

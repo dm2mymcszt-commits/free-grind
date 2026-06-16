@@ -112,6 +112,7 @@ type ProfileDetailsContentProps = {
     relationshipStatusLabels: LabelMap;
     extraTopSection?: ReactNode;
     hidePicturesSection?: boolean;
+    onDragDeltaChange?: (delta: number) => void;
 };
 
 export function ProfileDetailsContent({
@@ -167,6 +168,7 @@ export function ProfileDetailsContent({
     relationshipStatusLabels,
     extraTopSection,
     hidePicturesSection = false,
+    onDragDeltaChange,
 }: ProfileDetailsContentProps) {
     const { t } = useTranslation();
     const { unitsPreset } = usePreferences();
@@ -250,11 +252,11 @@ export function ProfileDetailsContent({
                     e.preventDefault();
                 }
             }
-
             if (!navigating) return;
             e.preventDefault();
             lastDeltaRef.current = dy;
             setDragDelta(dy);
+            onDragDeltaChange?.(dy);
         };
 
         const onEnd = () => {
@@ -271,6 +273,7 @@ export function ProfileDetailsContent({
             }
             lastDeltaRef.current = 0;
             setDragDelta(0);
+            onDragDeltaChange?.(0);
         };
 
         el.addEventListener("touchstart", onStart, { passive: true });
