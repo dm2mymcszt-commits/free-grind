@@ -509,6 +509,7 @@ export function ChatInboxPanel({
 											: t("chat.no_conversations")}
 									</p>
 								</div>
+							) : (
 								<div className="flex flex-col pt-3 gap-3 px-3">
 									{filteredConversations.map((conversation) => {
 										const otherParticipant = getOtherParticipant(conversation, userId);

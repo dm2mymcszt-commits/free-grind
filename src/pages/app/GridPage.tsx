@@ -8,22 +8,16 @@ import { useTranslation } from "react-i18next";
 import { decodeGeohash, encodeGeohash } from "../../utils/geohash";
 import { getThumbImageUrl, validateMediaHash } from "../../utils/media";
 import { usePreferences } from "../../contexts/PreferencesContext";
-import { type BrowseCard, type ManagedOption, type ProfileDetail } from "./GridPage.types";
+import { type BrowseCard, type ProfileDetail } from "./GridPage.types";
 import { BrowseGrid } from "./gridpage/components/BrowseGrid";
 import { FeedScrollContainer } from "../../components/ui/FeedScrollContainer";
 import { ProfileDetailsModal } from "./gridpage/components/ProfileDetailsModal";
 import {
 	getCachedBrowseCards,
-	getCachedGenderOptions,
 	getCachedProfileDetail,
-	getCachedPronounOptions,
-	getCachedBlockedProfileIds,
 	getCachedOwnProfilePhotoHash,
 	setCachedBrowseCards,
-	setCachedGenderOptions,
 	setCachedProfileDetail,
-	setCachedPronounOptions,
-	setCachedBlockedProfileIds,
 	setCachedOwnProfilePhotoHash,
 } from "./gridpage/cache";
 import { isCurrentlyOnline } from "./gridpage/utils";

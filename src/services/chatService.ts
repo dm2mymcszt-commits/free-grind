@@ -25,7 +25,6 @@ import type {
     AlbumDetailsResponse,
     CreateAlbumResponse,
     RestFetcher,
-    RestResponse,
     SearchProfilesParams,
     SearchProfilesResponse,
     SharedConversationImage,
@@ -38,7 +37,6 @@ import type {
 import { shouldAutoBlock, isOutsideAgeLimits, isOutsideDistanceLimits, notifyAutoBlock } from "../utils/autoblock";
 import { isChatGhosted } from "../utils/privacy";
 import { ApiFunctionError, assertSuccess, parseJsonSafe } from "./apiHelpers";
-import { appLog } from "../utils/logger";
 import { sendViaRealtime } from "./chatRealtime";
 
 export { ApiFunctionError as ChatApiError };
@@ -63,7 +61,7 @@ function sortMessages(messages: Message[]): Message[] {
 
 export function createChatService(
     fetchRest: RestFetcher,
-    sendWebsocket: (payload: unknown) => Promise<void>,
+    _sendWebsocket: (payload: unknown) => Promise<void>,
     t: (key: string) => string
 ) {
     return {

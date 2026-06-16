@@ -366,7 +366,7 @@ export function ChatRealtimeBridge() {
 					}),
 				);
 			},
-			onRawMessage: (raw) => {
+			onRawMessage: () => {
 				// Cleaned up raw message trap
 			},
 			onParseError: (raw, error) => {
