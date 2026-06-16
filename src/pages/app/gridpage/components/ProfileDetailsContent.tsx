@@ -27,7 +27,7 @@ import {
     User,
     Zap
 } from "lucide-react";
-import { type RefObject, type UIEvent, useEffect, useRef, useState } from "react";
+import { type ReactNode, type RefObject, type UIEvent, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ProfileDetail } from "../../GridPage.types";
 import {
@@ -110,6 +110,7 @@ type ProfileDetailsContentProps = {
     bodyTypeLabels: LabelMap;
     ethnicityLabels: LabelMap;
     relationshipStatusLabels: LabelMap;
+    extraTopSection?: ReactNode;
 };
 
 export function ProfileDetailsContent({
@@ -163,6 +164,7 @@ export function ProfileDetailsContent({
     bodyTypeLabels,
     ethnicityLabels,
     relationshipStatusLabels,
+    extraTopSection,
 }: ProfileDetailsContentProps) {
     const { t } = useTranslation();
     const { unitsPreset } = usePreferences();
@@ -313,6 +315,8 @@ export function ProfileDetailsContent({
                     </span>
                 </div>
             )}
+
+            {extraTopSection}
 
             <div className="w-full">
                 {activeProfilePhotoHashes.length > 0 ? (
