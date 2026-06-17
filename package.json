@@ -46,6 +46,7 @@
         "@tauri-apps/plugin-os": "~2",
         "@tauri-apps/plugin-sql": "^2",
         "copy-to-clipboard": "^3.3.3",
+        "emoji-mart": "^5.6.0",
         "i18next": "^26.0.8",
         "i18next-browser-languagedetector": "^8.2.1",
         "i18next-http-backend": "^3.0.6",
