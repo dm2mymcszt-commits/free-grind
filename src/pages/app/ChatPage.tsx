@@ -518,11 +518,47 @@ export function ChatPage() {
 	}, [searchParams]);
 	const isSearchRoute = routeConversationId === "search";
 
-	const selectedConversationId = targetProfileId || isSearchRoute
-		? null
-		: isDesktop
-			? selectedDesktopConversationId
-			: (routeConversationId ?? null);
+	const [targetProfileDetail, setTargetProfileDetail] = useState<any | null>(null);
+
+	useEffect(() => {
+		if (!targetProfileId) {
+			setTargetProfileDetail(null);
+			return;
+		}
+
+		const hasExisting = conversations.some((conversation) =>
+			conversation.data.participants.some(
+				(participant) => Number(participant.profileId) === targetProfileId,
+			),
+		);
+		if (hasExisting) {
+			setTargetProfileDetail(null);
+			return;
+		}
+
+		let cancelled = false;
+		service
+			.getProfileDetail(String(targetProfileId))
+			.then((detail) => {
+				if (cancelled) return;
+				setTargetProfileDetail(detail);
+			})
+			.catch((err) => {
+				appLog.warn("[chat] failed to fetch target profile detail for draft", err);
+			});
+
+		return () => {
+			cancelled = true;
+		};
+	}, [targetProfileId, conversations, service]);
+
+	const selectedConversationId = targetProfileId
+		? `direct:${targetProfileId}`
+		: isSearchRoute
+			? null
+			: isDesktop
+				? selectedDesktopConversationId
+				: (routeConversationId ?? null);
 
 	// Keep selection in sync when the layout breakpoint flips (e.g. fullscreen toggle).
 	const prevIsDesktopRef = useRef(isDesktop);
@@ -570,14 +606,62 @@ export function ChatPage() {
 		isSearchRoute,
 	]);
 
-	const selectedConversation = useMemo(
-		() =>
-			conversations.find(
-				(conversation) =>
-					conversation.data.conversationId === selectedConversationId,
-			) ?? null,
-		[conversations, selectedConversationId],
-	);
+	const selectedConversation = useMemo(() => {
+		const existing = conversations.find(
+			(conversation) =>
+				conversation.data.conversationId === selectedConversationId,
+		);
+		if (existing) {
+			return existing;
+		}
+
+		if (targetProfileId) {
+			const existingByProfile = conversations.find((conversation) =>
+				conversation.data.participants.some(
+					(participant) => Number(participant.profileId) === targetProfileId,
+				),
+			);
+			if (existingByProfile) {
+				return existingByProfile;
+			}
+
+			const otherParticipantName = targetProfileDetail?.displayName || `User ${targetProfileId}`;
+			const otherParticipantAvatar = targetProfileDetail?.profileImageMediaHash || null;
+			const otherParticipantLastOnline = targetProfileDetail?.seen || null;
+			const otherParticipantOnlineUntil = targetProfileDetail?.onlineUntil || null;
+			const otherParticipantDistance = targetProfileDetail?.distance || null;
+
+			return {
+				type: "Direct",
+				data: {
+					conversationId: `direct:${targetProfileId}`,
+					name: otherParticipantName,
+					participants: [
+						{
+							profileId: userId || 0,
+							primaryMediaHash: null,
+						},
+						{
+							profileId: targetProfileId,
+							primaryMediaHash: otherParticipantAvatar,
+							lastOnline: otherParticipantLastOnline,
+							onlineUntil: otherParticipantOnlineUntil,
+							distanceMetres: otherParticipantDistance,
+							position: null,
+							isInAList: targetProfileDetail?.isInAList ?? false,
+						},
+					],
+					lastActivityTimestamp: Date.now(),
+					unreadCount: 0,
+					muted: false,
+					pinned: false,
+					favorite: targetProfileDetail?.isFavorite ?? false,
+				},
+			} as ConversationEntry;
+		}
+
+		return null;
+	}, [conversations, selectedConversationId, targetProfileId, targetProfileDetail, userId]);
 
 	const selectedConversationOtherProfileId = useMemo(() => {
 		if (!selectedConversation || userId == null) {
@@ -882,6 +966,14 @@ export function ChatPage() {
 						setThreadLastReadTimestamp(localData.lastReadTimestamp ?? null);
 					}
 				});
+			}
+
+			// If it's a draft conversation, it has no remote messages yet.
+			if (conversationId.startsWith("direct:")) {
+				setThreadMessages([]);
+				setMessagePageKey(null);
+				setIsLoadingThread(false);
+				return;
 			}
 
 			try {
@@ -2182,7 +2274,7 @@ export function ChatPage() {
 
 		const existingConversation = conversations.find((conversation) =>
 			conversation.data.participants.some(
-				(participant) => participant.profileId === targetProfileId,
+				(participant) => Number(participant.profileId) === targetProfileId,
 			),
 		);
 
@@ -2589,7 +2681,7 @@ export function ChatPage() {
 					return [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
 				});
 
-				if (selectedConversation) {
+				if (selectedConversation && !selectedConversation.data.conversationId.startsWith("direct:")) {
 					syncConversation((conversation) => ({
 						...conversation,
 						data: {
@@ -2680,7 +2772,7 @@ export function ChatPage() {
 				});
 
 				setReplyTargetMessageId(null);
-				if (selectedConversation) {
+				if (selectedConversation && !selectedConversation.data.conversationId.startsWith("direct:")) {
 					setThreadMessages((previous) => [...previous, sentMessage]);
 				} else {
 					openConversationById(sentMessage.conversationId);
@@ -2730,7 +2822,7 @@ export function ChatPage() {
 				});
 
 				setReplyTargetMessageId(null);
-				if (selectedConversation) {
+				if (selectedConversation && !selectedConversation.data.conversationId.startsWith("direct:")) {
 					setThreadMessages((previous) => [...previous, sentMessage]);
 				} else {
 					openConversationById(sentMessage.conversationId);
@@ -2870,7 +2962,7 @@ export function ChatPage() {
 					return [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
 				});
 
-				if (selectedConversation) {
+				if (selectedConversation && !selectedConversation.data.conversationId.startsWith("direct:")) {
 					syncConversation((conversation) => ({
 						...conversation,
 						data: {
@@ -2991,7 +3083,7 @@ export function ChatPage() {
 				multipart: { body: audioBytes, contentType: blob.type || "audio/webm" },
 				options: { looping: false, takenOnGrindr: false, durationSeconds: durationMs },
 			});
-			await service.sendMessage({
+			const sentMessage = await service.sendMessage({
 				type: "Audio",
 				target: { type: "Direct", targetId: Number(targetIdValue) },
 				body: {
@@ -3007,6 +3099,11 @@ export function ChatPage() {
 			setPendingAudioBlob(null);
 			setPendingAudioDuration(0);
 			setReplyTargetMessageId(null);
+
+			if (!selectedConversation || selectedConversation.data.conversationId.startsWith("direct:")) {
+				openConversationById(sentMessage.conversationId);
+				void loadInbox({ page: 1, replace: true });
+			}
 		} catch (err) {
 			console.error("[sendAudioBlob] failed", {
 				err,
@@ -3306,11 +3403,13 @@ export function ChatPage() {
             toast.success(t("chat.toasts.album_shared"));
             setPendingAlbumShare(null);
             setIsAlbumPickerOpen(false);
-            if (selectedConversation) {
+            if (selectedConversation && !selectedConversation.data.conversationId.startsWith("direct:")) {
                 void loadThread({
                     conversationId: selectedConversation.data.conversationId,
                     older: false,
                 });
+            } else {
+                void loadInbox({ page: 1, replace: true });
             }
         } catch (error) {
             toast.error(error instanceof Error ? error.message : t("chat.errors.album_share_failed"));

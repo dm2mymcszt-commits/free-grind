@@ -56,6 +56,8 @@ import { ConfirmDialog } from "../../../../components/ui/confirm-dialog";
 type OwnProfileData = { tags: string[] };
 const ownProfileDataCache = new Map<string, OwnProfileData>();
 
+const SKIP_BLOCK_CONFIRM_KEY = "profile_skip_block_confirm";
+
 type ProfileDetailsModalProps = {
 	isOpen: boolean;
 	onClose: () => void;
@@ -381,6 +383,13 @@ export function ProfileDetailsModal({
 	const [carouselDragDelta, setCarouselDragDelta] = useState(0);
 	const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
 	const [showBlockConfirm, setShowBlockConfirm] = useState(false);
+	const [dontAskAgainChecked, setDontAskAgainChecked] = useState(false);
+	const [skipBlockConfirm, setSkipBlockConfirm] = useState(() => {
+		if (typeof window === "undefined") {
+			return false;
+		}
+		return localStorage.getItem(SKIP_BLOCK_CONFIRM_KEY) === "true";
+	});
 	const [quickMessageDraft, setQuickMessageDraft] = useState("");
 	const [barTapPickerOpen, setBarTapPickerOpen] = useState(false);
 	const [barInputVisible, setBarInputVisible] = useState(true);
@@ -1008,7 +1017,16 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 							{(onBlockProfile || onUnblockProfile) && (
 								<button
 									type="button"
-									onClick={() => isBlocked ? onUnblockProfile?.(String(messageProfileId)) : setShowBlockConfirm(true)}
+									onClick={() => {
+										if (isBlocked) {
+											onUnblockProfile?.(String(messageProfileId));
+										} else if (skipBlockConfirm) {
+											if (messageProfileId) onBlockProfile?.(String(messageProfileId));
+										} else {
+											setDontAskAgainChecked(false);
+											setShowBlockConfirm(true);
+										}
+									}}
 									disabled={isBlockingProfile}
 									className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-200 disabled:opacity-60 ${
 										isBlocked
@@ -1298,7 +1316,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 		</>
 	);
 
-	if (!isOpen) {
+	if (!shouldRender) {
 		return null;
 	}
 
@@ -1331,6 +1349,10 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
                     background-color: rgba(0, 0, 0, 0);
                 }
             `}</style>
+			<div 
+				className={`fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 z-40 ${isClosing ? "opacity-0" : "opacity-100"}`}
+				onClick={onClose}
+			/>
 			<dialog
 				ref={dialogRef}
 				className={`fixed inset-0 m-auto flex w-full max-w-4xl flex-col rounded-2xl bg-transparent p-0 overflow-visible ${isClosing ? "dialog-closing" : ""}`}
@@ -1347,8 +1369,10 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 						<div
 							className={`relative flex flex-1 min-h-0 w-full overflow-visible rounded-2xl border border-white/10 dark:border-white/5 ${isClosing ? "animate-modal-out" : (!isEntranceComplete ? "animate-modal-in" : "")}`}
 							style={{ 
-								backgroundColor: "rgba(15, 17, 21, 0.60)",
-								background: "color-mix(in srgb, var(--surface) 60%, transparent)",
+								backgroundColor: isModalSplit ? "rgba(15, 17, 21, 0.98)" : "rgba(15, 17, 21, 0.60)",
+								background: isModalSplit 
+									? "color-mix(in srgb, var(--surface) 98%, transparent)" 
+									: "color-mix(in srgb, var(--surface) 60%, transparent)",
 								boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2), 0 24px 48px rgba(0,0,0,0.45)',
 								flexDirection: isModalSplit ? "row" : "column",
 								maxHeight: isModalSplit ? "calc(100dvh - 8rem)" : "calc(100dvh - 1.5rem)",
@@ -1358,8 +1382,15 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 							{/* Left panel: full-height photo carousel (split mode only) */}
 							{isModalSplit && !isLoadingActiveProfile && !activeProfileError && activeProfile && (
 								<div
-									className="relative shrink-0 overflow-hidden bg-black rounded-l-2xl border-r border-white/10"
-									style={{ width: "42%" }}
+									className="relative shrink-0 overflow-hidden rounded-l-2xl"
+									style={{ 
+										width: "55%",
+										marginRight: "-13%",
+										WebkitMaskImage: "linear-gradient(to right, black 76.4%, transparent)",
+										maskImage: "linear-gradient(to right, black 76.4%, transparent)",
+										transform: "translateZ(0)",
+										isolation: "isolate"
+									}}
 									onWheel={(e) => {
 										e.preventDefault();
 										if (e.deltaY > 0) setMobileCarouselPhotoIndex((i) => Math.min(i + 1, activeProfilePhotoHashes.length - 1));
@@ -1384,7 +1415,8 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 											<button
 												type="button"
 												onClick={() => openPhotoViewer(index)}
-												className="absolute inset-0 z-10"
+												className="absolute inset-y-0 left-0 z-10"
+												style={{ width: "76.4%" }}
 												aria-label={t("profile_details.open_photo", { index: index + 1 })}
 											/>
 											<img
@@ -1405,7 +1437,10 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 										</div>
 									)}
 									{activeProfilePhotoHashes.length > 1 && (
-										<div className="pointer-events-none absolute inset-y-0 right-4 z-20 flex flex-col items-center justify-center">
+										<div 
+											className="pointer-events-none absolute inset-y-0 z-20 flex flex-col items-center justify-center"
+											style={{ right: "calc(13% + 1rem)" }}
+										>
 											<div className="flex flex-col items-center gap-2 rounded-full bg-black/30 px-[7px] py-[14px] backdrop-blur-sm">
 												{activeProfilePhotoHashes.map((hash, index) => (
 													<span
@@ -1423,13 +1458,12 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 							)}
 
 							{/* Right column (or full width on non-split): header + content + footer */}
-							<div className="flex min-w-0 flex-1 flex-col overflow-hidden relative">
+							<div className={`flex min-w-0 flex-1 flex-col overflow-hidden relative ${isModalSplit ? "rounded-r-2xl" : "rounded-2xl"}`}>
 								{!isModalSplit ? renderInlineLayout() : (
 									<>
 										{/* Solid split-mode header with glass details */}
 										<div
-											className="flex shrink-0 items-center gap-3 border-b border-white/10 bg-transparent px-4 py-3 sm:px-5 relative z-10"
-											style={{ background: 'color-mix(in srgb, var(--surface) 20%, transparent)', backdropFilter: 'blur(12px)' }}
+											className="flex shrink-0 items-center gap-3 bg-transparent pl-10 pr-4 py-3 sm:pl-12 sm:pr-5 relative z-10"
 										>
 											<div className="flex w-full items-center gap-3">
 												<button
@@ -1479,7 +1513,16 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 														{(onBlockProfile || onUnblockProfile) && (
 															<button
 																type="button"
-																onClick={() => isBlocked ? onUnblockProfile?.(String(messageProfileId)) : setShowBlockConfirm(true)}
+																onClick={() => {
+																	if (isBlocked) {
+																		onUnblockProfile?.(String(messageProfileId));
+																	} else if (skipBlockConfirm) {
+																		if (messageProfileId) onBlockProfile?.(String(messageProfileId));
+																	} else {
+																		setDontAskAgainChecked(false);
+																		setShowBlockConfirm(true);
+																	}
+																}}
 																disabled={isBlockingProfile}
 																className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-200 disabled:opacity-60 ${isBlocked ? "border-red-500/40 bg-red-500/15 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.15)]" : "border-red-500/30 text-red-400 hover:border-red-500/50 hover:bg-red-500/10"}`}
 																style={!isBlocked ? { background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' } : undefined}
@@ -1530,7 +1573,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 
 										{/* Split-mode content */}
 										<div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-b-2xl" data-lenis-prevent>
-											<div className="p-4 pb-28 sm:p-5 sm:pb-28">
+											<div className="pl-10 pr-4 pt-4 pb-28 sm:pl-12 sm:pr-5 sm:pt-5 sm:pb-28">
 												{isLoadingActiveProfile ? (
 													<p className="text-sm text-[var(--text-muted)]">{t("profile_details.loading")}</p>
 												) : activeProfileError ? (
@@ -1746,6 +1789,10 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 				onCancel={() => setShowBlockConfirm(false)}
 				onConfirm={() => {
 					setShowBlockConfirm(false);
+					if (dontAskAgainChecked && typeof window !== "undefined") {
+						localStorage.setItem(SKIP_BLOCK_CONFIRM_KEY, "true");
+						setSkipBlockConfirm(true);
+					}
 					if (messageProfileId) onBlockProfile?.(String(messageProfileId));
 				}}
 				title={t("profile_details.block")}
@@ -1754,6 +1801,9 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 				cancelLabel={t("common.cancel")}
 				confirmTone="danger"
 				isProcessing={isBlockingProfile}
+				dontAskAgainLabel={t("profile_details.dont_ask_again", { defaultValue: "Don't ask again" })}
+				dontAskAgainChecked={dontAskAgainChecked}
+				onDontAskAgainChange={setDontAskAgainChecked}
 			/>
 		</>,
 		document.body
