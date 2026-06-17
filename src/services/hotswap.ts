@@ -12,6 +12,25 @@ import {
 } from "./apiFunctions";
 import { appLog } from "../utils/logger";
 
+let isHotswapPluginMissing = false;
+
+async function safeHotswapCall<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+	if (isHotswapPluginMissing) {
+		return fallback;
+	}
+	try {
+		return await fn();
+	} catch (error) {
+		const msg = String(error);
+		if (msg.includes("plugin hotswap not found") || msg.includes("not found")) {
+			isHotswapPluginMissing = true;
+			appLog.warn("[hotswap] Hotswap plugin is not registered on the Rust side.");
+			return fallback;
+		}
+		throw error;
+	}
+}
+
 // Subscribe to hotswap lifecycle events for debugging
 if (typeof window !== "undefined") {
 	void (async () => {
@@ -120,7 +139,7 @@ export function getCurrentHotswapChannel(): HotswapChannel {
 }
 
 export function isHotswapAvailable(): boolean {
-	return isTauri();
+	return isTauri() && !isHotswapPluginMissing;
 }
 
 export async function markHotswapStartupReady(): Promise<void> {
@@ -128,8 +147,8 @@ export async function markHotswapStartupReady(): Promise<void> {
 		return;
 	}
 
-	await configure({ channel: currentChannel });
-	await notifyReady();
+	await safeHotswapCall(() => configure({ channel: currentChannel }), undefined);
+	await safeHotswapCall(() => notifyReady(), undefined);
 	startupReadyNotified = true;
 }
 
@@ -246,7 +265,7 @@ export async function setHotswapChannel(channel: HotswapChannel): Promise<void> 
 		return;
 	}
 
-	await configure({ channel });
+	await safeHotswapCall(() => configure({ channel }), undefined);
 }
 
 export async function clearContributorChannel(): Promise<void> {
@@ -261,14 +280,22 @@ export async function checkForHotswapUpdate(): Promise<HotswapCheckResult> {
 	// Track update checks during normal polling
 	void trackUpdateCheck();
 
-	const result = await checkUpdate();
-	const parsedNotes = parseBinaryRequiredNotes(result.notes);
+	try {
+		const result = await safeHotswapCall(() => checkUpdate(), null);
+		if (!result) {
+			return { available: false, requiresBinaryUpdate: false, notes: null };
+		}
+		const parsedNotes = parseBinaryRequiredNotes(result.notes);
 
-	return {
-		available: result.available,
-		requiresBinaryUpdate: parsedNotes.requiresBinaryUpdate,
-		notes: parsedNotes.message,
-	};
+		return {
+			available: result.available,
+			requiresBinaryUpdate: parsedNotes.requiresBinaryUpdate,
+			notes: parsedNotes.message,
+		};
+	} catch (error) {
+		// If checkUpdate failed for some other reason, propagate
+		throw error;
+	}
 }
 
 export async function installHotswapUpdate(): Promise<void> {
@@ -276,7 +303,7 @@ export async function installHotswapUpdate(): Promise<void> {
 		return;
 	}
 
-	await applyUpdate();
+	await safeHotswapCall(() => applyUpdate(), undefined);
 
 	// Retry once to reduce chance of missing analytics/presence due to transient network issues.
 	try {
