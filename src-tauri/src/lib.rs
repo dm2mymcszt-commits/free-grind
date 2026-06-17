@@ -39,7 +39,10 @@ pub fn run() {
         let _instance_lock_guard = match instance_lock::acquire_for_current_child_instance() {
             Ok(guard) => guard,
             Err(error) => {
-                eprintln!("Free Grind failed to acquire child instance lock: {}", error);
+                eprintln!(
+                    "Free Grind failed to acquire child instance lock: {}",
+                    error
+                );
                 return;
             }
         };
@@ -50,7 +53,18 @@ pub fn run() {
         let is_manager_runtime = false;
 
         let context = tauri::generate_context!();
-        let (hotswap, context) = if is_manager_runtime {
+        let hotswap_config_valid = context
+            .config()
+            .plugins
+            .0
+            .get("hotswap")
+            .and_then(|v| serde_json::from_value::<tauri_plugin_hotswap::HotswapConfig>(v.clone()).ok())
+            .is_some();
+
+        let (hotswap, context) = if is_manager_runtime || !hotswap_config_valid {
+            if !is_manager_runtime {
+                eprintln!("Warning: hotswap configuration is missing or invalid in tauri.conf.json. Running with embedded assets.");
+            }
             (None, context)
         } else {
             match tauri_plugin_hotswap::init(context) {
@@ -78,18 +92,19 @@ pub fn run() {
             .setup(|app| {
                 #[cfg(target_os = "windows")]
                 {
-                    use tauri::Manager;
                     use tauri::webview::Color;
-                    use windows::Win32::Graphics::Dwm::{
-                        DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND
-                    };
+                    use tauri::Manager;
                     use windows::Win32::Foundation::HWND;
-                    
+                    use windows::Win32::Graphics::Dwm::{
+                        DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE,
+                        DWMWCP_DONOTROUND,
+                    };
+
                     // Set webview background to fully transparent so the rounded
                     // CSS corners don't show a white rectangle behind them.
                     if let Some(webview) = app.get_webview_window("main") {
                         let _ = webview.set_background_color(Some(Color(0, 0, 0, 0)));
-                        
+
                         // Remove the 1px border that Windows 11 draws around transparent layered windows
                         if let Ok(hwnd) = webview.hwnd() {
                             let hwnd_val = HWND(hwnd.0 as _);

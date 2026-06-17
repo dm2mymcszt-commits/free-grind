@@ -86,7 +86,17 @@ impl GrindrClient {
         };
 
         let auth_token = self.authorization_header().await;
-        let mut response = make_request(auth_token.clone(), &device)
+        let req = make_request(auth_token.clone(), &device);
+        #[cfg(debug_assertions)]
+        {
+            let headers_built = if auth_token.is_some() {
+                build_headers(&device, "Free", auth_token.as_deref())
+            } else {
+                build_headers(&device, "Free", None)
+            };
+            eprintln!("[HTTP-DEBUG] Method: {}, URL: {}\nHeaders: {:?}", method, url, headers_built);
+        }
+        let mut response = req
             .send()
             .await
             .map_err(|e| {

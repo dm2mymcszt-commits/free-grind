@@ -1,5 +1,6 @@
 import { Loader2, Check } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 type ConfirmDialogProps = {
     isOpen: boolean;
@@ -87,7 +88,11 @@ export function ConfirmDialog({
     const confirmButtonClassName =
         "inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-6 text-sm font-bold text-[var(--text)] transition-all duration-300 hover:scale-[1.02] hover:border-[var(--accent)] hover:bg-[var(--accent)] hover:text-white hover:shadow-[0_0_20px_color-mix(in_srgb,var(--accent)_35%,transparent)] active:scale-95 disabled:opacity-60 disabled:hover:scale-100 disabled:hover:bg-[var(--surface-2)] disabled:hover:border-[var(--border)] disabled:hover:text-[var(--text)] disabled:hover:shadow-none";
 
-    return (
+    if (typeof document === "undefined") {
+        return null;
+    }
+
+    return createPortal(
         <>
             <style>{`
                 /* Entrance Animation */
@@ -132,8 +137,8 @@ export function ConfirmDialog({
                     style={{
                         zIndex: 9990,
                         animation: isClosing 
-                            ? "backdrop-fade-out 0.25s ease-in forwards" 
-                            : "backdrop-fade-in 0.3s ease-out forwards"
+                             ? "backdrop-fade-out 0.25s ease-in forwards" 
+                             : "backdrop-fade-in 0.3s ease-out forwards"
                     }}
                 />
             )}
@@ -192,6 +197,7 @@ export function ConfirmDialog({
                     </div>
                 </div>
             </dialog>
-        </>
+        </>,
+        document.body
     );
 }

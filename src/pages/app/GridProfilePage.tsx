@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Triangle } from "lucide-react";
 import {
     useLocation,
@@ -792,7 +793,7 @@ export function GridProfilePage() {
             />
 
             {/* Custom Liquid Glass Settings Modal for Advanced Locate */}
-            {isLocateConfirmOpen && (
+            {isLocateConfirmOpen && typeof document !== "undefined" && createPortal(
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-md transition-all animate-in fade-in duration-300">
                     <div
                         className="w-full max-w-sm overflow-hidden rounded-[2.5rem] border border-white/10 dark:border-white/5 bg-[color-mix(in_srgb,var(--surface)_70%,transparent)] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)] backdrop-blur-[30px] animate-in zoom-in-95 duration-300"
@@ -933,7 +934,8 @@ export function GridProfilePage() {
                             )}
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             <ConfirmDialog

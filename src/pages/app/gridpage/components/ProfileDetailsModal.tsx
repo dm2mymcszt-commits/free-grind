@@ -149,7 +149,7 @@ export function ProfileDetailsModal({
 			entranceTimer = setTimeout(() => setIsEntranceComplete(true), 350);
 			setTimeout(() => { 
 				if (dialog && !dialog.open) {
-					try { dialog.showModal(); } catch { dialog.show(); }
+					try { dialog.show(); } catch {}
 				}
 			}, 0);
 		} else if (shouldRender) {
@@ -1058,7 +1058,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 		);
 	}
 
-	const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
 
 	return createPortal(
 		<>
@@ -1072,17 +1072,15 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
                     background-color: rgba(0, 0, 0, 0);
                 }
             `}</style>
-			{isTauri && (
-				<div 
-					className="fixed inset-0 bg-black/40 pointer-events-none rounded-[20px] overflow-hidden"
-					style={{
-						zIndex: 40,
-						animation: isClosing 
-							? "backdrop-out 0.25s ease-in forwards" 
-							: "backdrop-in 0.35s ease-out forwards"
-					}}
-				/>
-			)}
+			<div 
+				className="fixed inset-0 bg-black/40 pointer-events-none rounded-[20px] overflow-hidden"
+				style={{
+					zIndex: 40,
+					animation: isClosing 
+						? "backdrop-out 0.25s ease-in forwards" 
+						: "backdrop-in 0.35s ease-out forwards"
+				}}
+			/>
 			<dialog
 				ref={dialogRef}
 				className={`fixed inset-0 m-auto flex max-h-[calc(100dvh-1.5rem)] w-full max-w-4xl sm:max-h-[calc(100dvh-8rem)] flex-col rounded-2xl bg-transparent p-0 overflow-visible ${isClosing ? "dialog-closing" : ""}`}

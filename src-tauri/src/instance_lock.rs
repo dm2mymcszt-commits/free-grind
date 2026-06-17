@@ -4,15 +4,19 @@ use std::fs::OpenOptions;
 use std::io::Write;
 #[cfg(target_os = "windows")]
 use std::path::PathBuf;
+#[cfg(target_os = "windows")]
+use std::os::windows::fs::OpenOptionsExt;
 
 #[cfg(target_os = "windows")]
 pub struct InstanceLockGuard {
+    file: Option<std::fs::File>,
     path: PathBuf,
 }
 
 #[cfg(target_os = "windows")]
 impl Drop for InstanceLockGuard {
     fn drop(&mut self) {
+        self.file.take(); // Close the file handle to release the OS sharing lock
         let _ = std::fs::remove_file(&self.path);
     }
 }
@@ -35,9 +39,12 @@ pub fn acquire_for_current_child_instance() -> Result<Option<InstanceLockGuard>,
         })?;
     }
 
+    // Open the lock file with exclusive write access (share_access = 0).
+    // If another process is holding the handle, this will fail with a sharing violation (PermissionDenied).
     let mut file = OpenOptions::new()
-        .create_new(true)
         .write(true)
+        .create(true)
+        .share_mode(0) // 0 = Exclusive access (no sharing)
         .open(&lock_path)
         .map_err(|error| {
             format!(
@@ -50,5 +57,8 @@ pub fn acquire_for_current_child_instance() -> Result<Option<InstanceLockGuard>,
 
     let _ = writeln!(file, "pid={}", std::process::id());
 
-    Ok(Some(InstanceLockGuard { path: lock_path }))
+    Ok(Some(InstanceLockGuard {
+        file: Some(file),
+        path: lock_path,
+    }))
 }
