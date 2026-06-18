@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from "react";
+import React, { useEffect, useCallback } from "react";
 import { Minus, Square, X } from "lucide-react";
 import freegrindLogo from "../../images/freegrind-logo.webp";
 import { getCurrentWindow } from "@tauri-apps/api/window";
