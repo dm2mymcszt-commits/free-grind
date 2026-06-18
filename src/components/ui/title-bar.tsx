@@ -1,13 +1,15 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useCallback } from "react";
 import { Minus, Square, X } from "lucide-react";
 import freegrindLogo from "../../images/freegrind-logo.webp";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useDesktopBreakpoint } from "../../hooks/useDesktopBreakpoint";
 
 const isTauri =
 	typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 export function TitleBar() {
-	const [isDesktop] = useState(isTauri);
+	const isDesktopDevice = useDesktopBreakpoint();
+	const isDesktop = isTauri && isDesktopDevice;
 
 	useEffect(() => {
 		if (isDesktop) {
@@ -18,6 +20,9 @@ export function TitleBar() {
 				document.body.classList.remove("has-titlebar");
 				document.documentElement.classList.remove("has-titlebar");
 			};
+		} else {
+			document.body.classList.remove("has-titlebar");
+			document.documentElement.classList.remove("has-titlebar");
 		}
 	}, [isDesktop]);
 

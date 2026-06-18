@@ -291,10 +291,21 @@ export function NavBar() {
     }, [location.pathname]);
 
     const handleTabChange = (value: string) => {
+        if (isLongPressingRef.current) {
+            isLongPressingRef.current = false;
+            return;
+        }
         setActiveTab(value);
         const item = navItems.find((i) => i.value === value);
-        if (item && value !== "browse") {
-            navigate(item.path);
+        if (item) {
+            if (value === "browse") {
+                const isCurrentlyBrowse = location.pathname === "/" || location.pathname.startsWith("/browse/");
+                if (!isCurrentlyBrowse) {
+                    navigate(item.path);
+                }
+            } else {
+                navigate(item.path);
+            }
         }
     };
 
@@ -340,14 +351,13 @@ export function NavBar() {
                     {/* 1. Liquid Glass Browse Options Popover (Sibling) */}
                     <div
                         className={cn(
-                            "select-none touch-none absolute bottom-[calc(100%+0.8rem)] z-[60] flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 dark:border-white/5 p-1.5 backdrop-blur-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)] transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]",
-                            navItems.length === 2 ? "left-[25%]" : navItems.length === 3 ? "left-[16.66%]" : "left-[12.5%]",
+                            "select-none touch-none absolute bottom-[calc(100%+0.8rem)] z-[60] flex translate-x-0 md:-translate-x-1/2 origin-bottom-left md:origin-bottom items-center gap-2 rounded-full border border-white/10 dark:border-white/5 p-1.5 backdrop-blur-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)] transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]",
+                            navItems.length === 2 ? "left-3 md:left-[25%]" : navItems.length === 3 ? "left-3 md:left-[16.66%]" : "left-3 md:left-[12.5%]",
                             showBrowseMenu ? "scale-100 opacity-100" : "pointer-events-none scale-50 opacity-0 translate-y-4"
                         )}
                         style={{
                             backgroundColor: "rgba(15, 17, 21, 0.45)", // Stronger tint to pop over scrolling feed content
-                            background: "color-mix(in srgb, var(--surface) 45%, transparent)",
-                            transformOrigin: "bottom center"
+                            background: "color-mix(in srgb, var(--surface) 45%, transparent)"
                         }}
                     >
                         <div
@@ -377,7 +387,7 @@ export function NavBar() {
 
                     {/* 2. Main Liquid Glass Navbar Container (Sibling) */}
                     <div
-                        className="w-full rounded-full border border-white/10 dark:border-white/5 p-1.5 backdrop-blur-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)]"
+                        className="w-full rounded-full border border-white/10 dark:border-white/5 p-1.5 backdrop-blur-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)] select-none"
                         style={{
                             backgroundColor: "rgba(15, 17, 21, 0.25)",
                             background: "color-mix(in srgb, var(--surface) 25%, transparent)",
@@ -411,7 +421,7 @@ export function NavBar() {
                                                 }
                                             }}
                                             className={cn(
-                                                "flex h-full flex-col items-center justify-center gap-1 rounded-full text-[var(--text-muted)] transition-all duration-300 ease-out active:scale-95 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)] md:gap-1.5",
+                                                "flex h-full flex-col items-center justify-center gap-1 rounded-full text-[var(--text-muted)] transition-all duration-300 ease-out active:scale-95 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)] md:gap-1.5 select-none",
                                                 item.value === "right-now"
                                                     ? "focus-visible:ring-[var(--right-now)] data-[state=active]:bg-[var(--right-now)] data-[state=active]:text-white"
                                                     : "focus-visible:ring-[var(--accent)] data-[state=active]:bg-[var(--accent)] data-[state=active]:text-[var(--accent-contrast)]"
