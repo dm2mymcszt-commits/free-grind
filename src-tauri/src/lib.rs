@@ -53,32 +53,8 @@ pub fn run() {
         let is_manager_runtime = false;
 
         let context = tauri::generate_context!();
-        let hotswap_config_valid = context
-            .config()
-            .plugins
-            .0
-            .get("hotswap")
-            .and_then(|v| serde_json::from_value::<tauri_plugin_hotswap::HotswapConfig>(v.clone()).ok())
-            .is_some();
-
-        let (hotswap, context) = if is_manager_runtime || !hotswap_config_valid {
-            if !is_manager_runtime {
-                eprintln!("Warning: hotswap configuration is missing or invalid in tauri.conf.json. Running with embedded assets.");
-            }
-            (None, context)
-        } else {
-            match tauri_plugin_hotswap::init(context) {
-                Ok((h, c)) => (Some(h), c),
-                Err(e) => {
-                    panic!("failed to initialize hotswap plugin: {}", e);
-                }
-            }
-        };
 
         let mut builder = tauri::Builder::default();
-        if let Some(hotswap_plugin) = hotswap {
-            builder = builder.plugin(hotswap_plugin);
-        }
 
         builder
             .plugin(tauri_plugin_notification::init())

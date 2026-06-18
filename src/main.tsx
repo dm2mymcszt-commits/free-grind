@@ -8,7 +8,7 @@ import "@fontsource-variable/ibm-plex-sans/index.css";
 import App from "./App";
 import ManagerApp from "./ManagerApp";
 import "./i18n";
-import { markHotswapStartupReady, autoCheckAndInstallUpdate } from "./services/hotswap";
+
 import { initChatContactIndex } from "./services/chatContactIndex";
 import { isTauri } from "@tauri-apps/api/core";
 import { appLog } from "./utils/logger";
@@ -38,11 +38,6 @@ void (async () => {
 		runtimeContext.mode === "manager" || runtimeContext.instanceLabel === "manager";
 
 	if (!renderManager) {
-		// Only enable Hotswap OTA updates for child app mode in production.
-		// Manager mode should stay on the local manager UI bundle.
-		if (import.meta.env.PROD) {
-			void markHotswapStartupReady().then(() => autoCheckAndInstallUpdate());
-		}
 
 		if (isTauri()) {
 			void initChatContactIndex().catch((err) => {
