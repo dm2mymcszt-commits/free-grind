@@ -47,11 +47,6 @@ pub fn run() {
             }
         };
 
-        #[cfg(target_os = "windows")]
-        let is_manager_runtime = windows_instance::WindowsInstance::current().is_manager();
-        #[cfg(not(target_os = "windows"))]
-        let is_manager_runtime = false;
-
         let context = tauri::generate_context!();
 
         let mut builder = tauri::Builder::default();
