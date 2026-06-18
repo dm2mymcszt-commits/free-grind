@@ -10,7 +10,6 @@
         "core:window:allow-close",
         "core:window:allow-start-dragging",
         "core:window:allow-set-shadow",
-        "hotswap:default",
         "opener:default",
         {
             "identifier": "opener:allow-open-url",
