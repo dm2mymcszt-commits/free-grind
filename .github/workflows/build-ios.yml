@@ -45,7 +45,7 @@ jobs:
           # (cfg(dev) is NOT set → WKWebView loads embedded assets, not localhost:1420),
           # and runs xcodebuild. Extra args after `--` are forwarded to xcodebuild.
           bunx tauri ios build --ci \
-            --target aarch64-apple-ios \
+            --target aarch64 \
             -- \
             -derivedDataPath "$DERIVED_DATA_PATH" \
             CODE_SIGNING_ALLOWED=NO \
