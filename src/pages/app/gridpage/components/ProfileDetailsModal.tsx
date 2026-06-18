@@ -1350,7 +1350,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 				) : (
 					<>
 						<div
-							className={`relative flex flex-col min-h-0 w-full max-w-4xl pointer-events-auto overflow-visible rounded-2xl border border-white/10 dark:border-white/5 ${isClosing ? "animate-modal-out" : "animate-modal-in"}`}
+							className={`relative flex flex-col min-h-0 w-full max-w-4xl pointer-events-auto overflow-visible rounded-2xl border border-white/10 dark:border-white/5 opacity-100 ${isClosing ? "animate-modal-out" : "animate-modal-in"}`}
 							style={{ 
 								backgroundColor: isModalSplit ? "rgba(15, 17, 21, 0.98)" : "rgba(15, 17, 21, 0.60)",
 								background: isModalSplit 

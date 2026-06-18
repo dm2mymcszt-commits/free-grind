@@ -28,6 +28,7 @@ import { getChatContactIndexForProfiles } from "../../services/chatContactIndex"
 import type { ChatContactIndexRecord } from "../../types/chat-contact-index";
 import { appLog } from "../../utils/logger";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
+import { useDesktopBreakpoint } from "../../hooks/useDesktopBreakpoint";
 
 const SKIP_BLOCK_CONFIRM_KEY = "profile_skip_block_confirm";
 const SKIP_UNBLOCK_CONFIRM_KEY = "profile_skip_unblock_confirm";
@@ -108,15 +109,7 @@ export function GridProfilePage() {
         return localStorage.getItem(SKIP_UNBLOCK_CONFIRM_KEY) === "true";
     });
 
-	const [isDesktopLike, setIsDesktopLike] = useState(() =>
-		window.matchMedia("(hover: hover) and (pointer: fine)").matches
-	);
-	useEffect(() => {
-		const query = window.matchMedia("(hover: hover) and (pointer: fine)");
-		const update = () => setIsDesktopLike(query.matches);
-		query.addEventListener("change", update);
-		return () => query.removeEventListener("change", update);
-	}, []);
+	const isDesktopLike = useDesktopBreakpoint();
 
     // --- CUSTOM DIALOGS STATE ---
     const [isLocateConfirmOpen, setIsLocateConfirmOpen] = useState(false);
