@@ -31,6 +31,6 @@
   - [x] `src/pages/app/chat/ChatThreadPanel.tsx`
   - [x] `src/pages/app/shared-albums/AlbumViewerPanel.tsx`
   - [x] `src/components/PhotoViewer.tsx`
-- [x] Compilation & Verification
+- [x] Run build test to verify compilation
   - [x] Verify using cargo check
   - [x] Verify using typescript build check

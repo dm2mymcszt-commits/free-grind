@@ -2027,7 +2027,15 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                     <span className={`text-sm font-bold tabular-nums shrink-0 ${recordingMs >= 50_000 ? "text-red-500 animate-pulse" : "text-[var(--accent)]"}`}>
                                         {`${Math.floor(Math.floor(recordingMs / 1000) / 60)}:${(Math.floor(recordingMs / 1000) % 60).toString().padStart(2, "0")}`}
                                     </span>
-                                    <div className="flex-1" />
+                                    <div className="flex-1 flex items-center justify-center gap-[3px] h-6 px-2 overflow-hidden">
+                                        {waveformBars.slice(-25).map((bar, i) => (
+                                            <div
+                                                key={i}
+                                                className="w-[3px] rounded-full bg-[var(--accent)] min-h-[3px] transition-all duration-75"
+                                                style={{ height: `${Math.max(15, Math.round(bar * 100))}%` }}
+                                            />
+                                        ))}
+                                    </div>
                                     {isDesktop ? (
                                         <button type="button" onClick={() => stopRecording()} className="shrink-0 text-red-500 hover:text-red-400 transition"><Square className="h-5 w-5 fill-current" /></button>
                                     ) : (
@@ -2081,23 +2089,18 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                             // Start long press timer
                                             longPressTimerRef.current = setTimeout(() => {
                                                 wasLongPressRef.current = true;
-                                                setIsMicMenuOpen(true);
                                                 longPressTimerRef.current = null;
-                                                if (!isDesktop && isCapturingRef.current) {
-                                                    cancelRecording();
-                                                    setShowRecordCircle(false);
-                                                    setRecordDragX(0);
+                                                if (isDesktop) {
+                                                    setIsMicMenuOpen(true);
+                                                } else {
+                                                    swipeStartXRef.current = e.clientX; 
+                                                    isCapturingRef.current = true; 
+                                                    hasVibratedRef.current = false; 
+                                                    setRecordDragX(0); 
+                                                    setShowRecordCircle(true); 
+                                                    void startRecording();
                                                 }
-                                            }, 450);
-
-                                            if (!isDesktop) {
-                                                swipeStartXRef.current = e.clientX; 
-                                                isCapturingRef.current = true; 
-                                                hasVibratedRef.current = false; 
-                                                setRecordDragX(0); 
-                                                holdTimerRef.current = setTimeout(() => setShowRecordCircle(true), 150); 
-                                                void startRecording();
-                                            }
+                                            }, 250);
                                         }}
                                         onPointerMove={(e) => {
                                             if (longPressTimerRef.current) {
@@ -2109,36 +2112,58 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                                 }
                                             }
                                             if (!isDesktop && isCapturingRef.current) {
-                                                const dx = e.clientX - swipeStartXRef.current; setRecordDragX(Math.min(0, dx));
+                                                const dx = e.clientX - swipeStartXRef.current; 
+                                                setRecordDragX(Math.min(0, dx));
                                                 if (!hasVibratedRef.current && dx < -CANCEL_THRESHOLD) {
-                                                    hasVibratedRef.current = true; isCapturingRef.current = false; e.currentTarget.releasePointerCapture(e.pointerId); if (holdTimerRef.current) clearTimeout(holdTimerRef.current); navigator.vibrate?.(80); setTimeout(() => { setRecordDragX(0); setShowRecordCircle(false); cancelRecording(); }, 280);
+                                                    hasVibratedRef.current = true; 
+                                                    isCapturingRef.current = false; 
+                                                    e.currentTarget.releasePointerCapture(e.pointerId); 
+                                                    if (holdTimerRef.current) clearTimeout(holdTimerRef.current); 
+                                                    navigator.vibrate?.(80); 
+                                                    setTimeout(() => { 
+                                                        setRecordDragX(0); 
+                                                        setShowRecordCircle(false); 
+                                                        cancelRecording(); 
+                                                    }, 280);
                                                 }
                                             }
                                         }}
-                                        onPointerUp={() => {
+                                        onPointerUp={(e) => {
                                             const isLong = wasLongPressRef.current;
                                             if (longPressTimerRef.current) {
                                                 clearTimeout(longPressTimerRef.current);
                                                 longPressTimerRef.current = null;
                                             }
+                                            e.currentTarget.releasePointerCapture(e.pointerId);
+                                            
                                             if (isDesktop) {
                                                 if (!isLong) {
                                                     void startRecording();
                                                 }
                                             } else {
-                                                isCapturingRef.current = false; setRecordDragX(0); if (holdTimerRef.current) clearTimeout(holdTimerRef.current); setShowRecordCircle(false); 
-                                                if (!isLong) {
-                                                    stopRecording(true);
+                                                isCapturingRef.current = false; 
+                                                setRecordDragX(0); 
+                                                if (holdTimerRef.current) clearTimeout(holdTimerRef.current); 
+                                                setShowRecordCircle(false); 
+                                                if (isLong) {
+                                                    stopRecording(false);
+                                                } else {
+                                                    setIsMicMenuOpen(true);
                                                 }
                                             }
                                         }}
-                                        onPointerCancel={() => {
+                                        onPointerCancel={(e) => {
                                             if (longPressTimerRef.current) {
                                                 clearTimeout(longPressTimerRef.current);
                                                 longPressTimerRef.current = null;
                                             }
+                                            e.currentTarget.releasePointerCapture(e.pointerId);
                                             if (!isDesktop) {
-                                                isCapturingRef.current = false; setRecordDragX(0); if (holdTimerRef.current) clearTimeout(holdTimerRef.current); setShowRecordCircle(false); cancelRecording();
+                                                isCapturingRef.current = false; 
+                                                setRecordDragX(0); 
+                                                if (holdTimerRef.current) clearTimeout(holdTimerRef.current); 
+                                                setShowRecordCircle(false); 
+                                                cancelRecording();
                                             }
                                         }}
                                         className="relative self-stretch shrink-0 w-[55px] rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.25)] transition-all duration-300 hover:scale-105 active:scale-95 flex items-center justify-center text-[var(--accent-contrast)] bg-[var(--accent)] disabled:opacity-50 select-none touch-none"

@@ -143,30 +143,18 @@ export function ProfileDetailsModal({
 	const apiFunctions = useApiFunctions();
 	const [shouldRender, setShouldRender] = useState(false);
 	const [isClosing, setIsClosing] = useState(false);
-	const [isEntranceComplete, setIsEntranceComplete] = useState(false);
-	const dialogRef = useRef<HTMLDialogElement | null>(null);
 
 	useEffect(() => {
-		const dialog = dialogRef.current;
-		let entranceTimer: ReturnType<typeof setTimeout>;
 		if (isOpen) {
 			setShouldRender(true);
 			setIsClosing(false);
-			setIsEntranceComplete(false);
 			document.body.classList.add("profile-modal-open");
-			entranceTimer = setTimeout(() => setIsEntranceComplete(true), 350);
-			setTimeout(() => { 
-				if (dialog && !dialog.open) {
-					try { dialog.show(); } catch {}
-				}
-			}, 0);
 		} else if (shouldRender) {
 			setIsClosing(true);
 			document.body.classList.remove("profile-modal-open");
 			const timer = setTimeout(() => {
 				setShouldRender(false);
 				setIsClosing(false);
-				if (dialog?.open) dialog.close();
 			}, 250);
 			return () => {
 				clearTimeout(timer);
@@ -174,7 +162,6 @@ export function ProfileDetailsModal({
 			};
 		}
 		return () => {
-			if (entranceTimer) clearTimeout(entranceTimer);
 			document.body.classList.remove("profile-modal-open");
 		};
 	}, [isOpen, shouldRender]);
@@ -1339,35 +1326,31 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 
 	return createPortal(
 		<>
-			<style>{`
-                dialog[open]:not(.dialog-closing)::backdrop {
-                    animation: backdrop-fade-in 0.35s ease-out forwards;
-                    background-color: rgba(0, 0, 0, 0.4);
-                }
-                dialog[open].dialog-closing::backdrop {
-                    animation: backdrop-fade-out 0.25s ease-in forwards;
-                    background-color: rgba(0, 0, 0, 0);
-                }
-            `}</style>
 			<div 
-				className={`fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 z-40 ${isClosing ? "opacity-0" : "opacity-100"}`}
+				className={`fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 z-40 cursor-pointer ${isClosing ? "opacity-0" : "opacity-100"}`}
 				onClick={onClose}
 			/>
-			<dialog
-				ref={dialogRef}
-				className={`fixed inset-0 m-auto flex w-full max-w-4xl flex-col rounded-2xl bg-transparent p-0 overflow-visible ${isClosing ? "dialog-closing" : ""}`}
-				onClick={handleBackdropClose}
-				style={{ zIndex: 50 }}
+			<div
+				role="dialog"
+				aria-modal="true"
+				className={`fixed inset-0 z-50 flex items-center justify-center p-3 pointer-events-none sm:p-4 ${isClosing ? "dialog-closing" : ""}`}
+				style={{ outline: "none" }}
 			>
 				{isLoadingActiveProfile ? (
-					<div className="flex h-full flex-col items-center justify-center gap-4 text-center rounded-2xl" style={{ backgroundColor: "rgba(15, 17, 21, 0.60)" }}>
+					<div 
+						className="flex h-40 w-full max-w-md pointer-events-auto flex-col items-center justify-center gap-4 text-center rounded-2xl border border-white/10 dark:border-white/5" 
+						style={{ 
+							backgroundColor: "rgba(15, 17, 21, 0.95)",
+							boxShadow: '0 24px 48px rgba(0,0,0,0.45)'
+						}}
+					>
 						<Loader2 className="h-10 w-10 animate-spin text-[var(--accent)] drop-shadow-md mx-auto" />
 						<span className="text-sm font-semibold text-white tracking-wide drop-shadow-md">{t("profile_details.loading")}</span>
 					</div>
 				) : (
 					<>
 						<div
-							className={`relative flex flex-1 min-h-0 w-full overflow-visible rounded-2xl border border-white/10 dark:border-white/5 ${isClosing ? "animate-modal-out" : (!isEntranceComplete ? "animate-modal-in" : "")}`}
+							className={`relative flex flex-col min-h-0 w-full max-w-4xl pointer-events-auto overflow-visible rounded-2xl border border-white/10 dark:border-white/5 ${isClosing ? "animate-modal-out" : "animate-modal-in"}`}
 							style={{ 
 								backgroundColor: isModalSplit ? "rgba(15, 17, 21, 0.98)" : "rgba(15, 17, 21, 0.60)",
 								background: isModalSplit 
@@ -1375,8 +1358,8 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 									: "color-mix(in srgb, var(--surface) 60%, transparent)",
 								boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2), 0 24px 48px rgba(0,0,0,0.45)',
 								flexDirection: isModalSplit ? "row" : "column",
-								maxHeight: isModalSplit ? "calc(100dvh - 8rem)" : "calc(100dvh - 1.5rem)",
-								height: isModalSplit ? "calc(100dvh - 8rem)" : undefined,
+								maxHeight: isModalSplit ? "calc(100% - 8rem)" : "calc(100% - 1.5rem)",
+								height: isModalSplit ? "calc(100% - 8rem)" : "calc(100% - 1.5rem)",
 							}}
 						>
 							{/* Left panel: full-height photo carousel (split mode only) */}
@@ -1744,7 +1727,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 						</div>
 					</>
 				)}
-			</dialog>
+			</div>
 			{barTapFlyEmoji && (
 				<>
 					{barTapFlyEmoji.particles.map((p, i) => p.emoji ? (

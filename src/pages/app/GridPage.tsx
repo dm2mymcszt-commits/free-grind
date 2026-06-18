@@ -43,6 +43,7 @@ import {
 } from "../../services/chatContactIndex";
 import type { ChatContactIndexRecord } from "../../types/chat-contact-index";
 import { appLog } from "../../utils/logger";
+import { getCurrentLocationPosition } from "../../utils/geolocation";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { cn } from "../../utils/cn";
 import { DEMO_CARDS, DEMO_CHAT_STATUS, SHOW_DEMO_DATA } from "./gridpage/demoData";
@@ -389,25 +390,20 @@ export function GridPage() {
 	);
 
 	const refreshLocation = useCallback(async () => {
-		if (!useAutoLocation || !("geolocation" in navigator)) {
+		if (!useAutoLocation) {
 			return;
 		}
 
-		const getPosition = (options: PositionOptions) =>
-			new Promise<GeolocationPosition>((resolve, reject) => {
-				navigator.geolocation.getCurrentPosition(resolve, reject, options);
-			});
-
 		try {
 			// First attempt with high accuracy
-			const position = await getPosition({
+			const position = await getCurrentLocationPosition({
 				enableHighAccuracy: true,
 				timeout: 15000,
 				maximumAge: 10000, // Allow 10s old cached data
 			});
 
-			const lat = position.coords.latitude;
-			const lon = position.coords.longitude;
+			const lat = position.latitude;
+			const lon = position.longitude;
 			const nextGeohash = encodeGeohash(lat, lon);
 
 			await setPreferences({
@@ -418,15 +414,15 @@ export function GridPage() {
 			return nextGeohash;
 		} catch (error: any) {
 			// If HighAccuracy fails, try once without (often more stable in emulator/buildings)
-			if (error.code === 3 || error.code === 2) { // Timeout or PositionUnavailable
+			if (error && (error.code === 3 || error.code === 2)) { // Timeout or PositionUnavailable
 				try {
-					const fallbackPosition = await getPosition({
+					const fallbackPosition = await getCurrentLocationPosition({
 						enableHighAccuracy: false,
 						timeout: 10000,
 						maximumAge: 60000,
 					});
-					const lat = fallbackPosition.coords.latitude;
-					const lon = fallbackPosition.coords.longitude;
+					const lat = fallbackPosition.latitude;
+					const lon = fallbackPosition.longitude;
 					const nextGeohash = encodeGeohash(lat, lon);
 					await setPreferences({ geohash: nextGeohash });
 					appLog.info("[grid] auto-location updated (fallback)", { lat, lon });
@@ -439,8 +435,8 @@ export function GridPage() {
 				}
 			} else {
 				appLog.error("[grid] auto-location failed", {
-					code: error.code,
-					message: error.message
+					code: error?.code,
+					message: error?.message
 				});
 			}
 			return null;

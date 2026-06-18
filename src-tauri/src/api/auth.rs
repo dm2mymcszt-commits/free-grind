@@ -33,7 +33,9 @@ pub struct SessionResponse {
 pub struct LoginRequest {
     pub email: String,
     pub password: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub geohash: Option<String>,
 }
 
@@ -58,7 +60,9 @@ impl AuthRequest for RefreshRequest {
 pub struct RefreshRequest {
     pub email: String,
     pub auth_token: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub geohash: Option<String>,
 }
 

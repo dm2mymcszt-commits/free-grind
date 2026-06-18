@@ -5,6 +5,7 @@ import z from "zod";
 import { PageHeaderBackground } from "../../components/ui/PageHeaderBackground";
 import { usePreferences } from "../../contexts/PreferencesContext";
 import { appLog } from "../../utils/logger";
+import { getCurrentLocationPosition } from "../../utils/geolocation";
 import { decodeGeohash, encodeGeohash } from "../../utils/geohash";
 import { type GeocodeResult, type SelectedLocation, geocodeResultSchema } from "./GridPage.types";
 import { LeafletLocationPicker } from "./gridpage/components/LeafletLocationPicker";
@@ -90,20 +91,8 @@ export function LocationOverlay({ onClose }: LocationOverlayProps) {
 		setIsDetectingLocation(true);
 		setLocationError(null);
 		try {
-			const tauriGeo = await import("@tauri-apps/plugin-geolocation").catch(() => null);
-			if (tauriGeo) {
-				let perms = await tauriGeo.checkPermissions();
-				if (perms.location !== "granted" && perms.location !== "denied") perms = await tauriGeo.requestPermissions(["location"]);
-				if (perms.location !== "granted") { setLocationError(t("browse_location.error_access")); return; }
-				const pos = await tauriGeo.getCurrentPosition({ enableHighAccuracy: true, timeout: 12000, maximumAge: 20000 });
-				await saveAndClose(pos.coords.latitude, pos.coords.longitude, t("browse_location.current_location_label"), true);
-				return;
-			}
-			if (!("geolocation" in navigator)) { setLocationError(t("browse_location.error_geolocation")); return; }
-			const pos = await new Promise<GeolocationPosition>((res, rej) =>
-				navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 12000, maximumAge: 20000 })
-			);
-			await saveAndClose(pos.coords.latitude, pos.coords.longitude, t("browse_location.current_location_label"), true);
+			const coords = await getCurrentLocationPosition({ enableHighAccuracy: true, timeout: 12000, maximumAge: 20000 });
+			await saveAndClose(coords.latitude, coords.longitude, t("browse_location.current_location_label"), true);
 		} catch (e) {
 			appLog.error("Geolocation failed", e);
 			setLocationError(t("browse_location.error_access"));

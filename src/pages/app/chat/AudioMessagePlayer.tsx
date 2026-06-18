@@ -155,7 +155,8 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 					setIsPlaying(false);
 				});
 			};
-			const supportsLiveAnalyser = !/Android/i.test(navigator.userAgent) && src.startsWith("blob:");
+			const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+			const supportsLiveAnalyser = !isIOS && !/Android/i.test(navigator.userAgent) && src.startsWith("blob:");
 			if (supportsLiveAnalyser && !liveAudioCtxRef.current) {
 				try {
 					const ctx = new AudioContext();
