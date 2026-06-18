@@ -35,6 +35,11 @@ jobs:
       - name: Build frontend assets
         run: bun run build
 
+      - name: Initialize iOS project
+        run: |
+          rm -rf src-tauri/gen/apple
+          bunx tauri ios init --ci
+
       - name: Build iOS app (production mode, unsigned)
         id: ios_build
         run: |
