@@ -102,7 +102,7 @@ export function AboutPage() {
 	);
 
 	return (
-		<section className="app-screen">
+		<section className="app-screen pb-32">
 			<div className="mx-auto grid w-full max-w-6xl gap-6">
 				<header className="grid gap-4">
 					<BackToSettings />

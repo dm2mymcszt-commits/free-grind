@@ -170,7 +170,7 @@ export function SettingsPage() {
     };
 
     return (
-        <section className="app-screen">
+        <section className="app-screen pb-32">
             <header className="mb-7">
                 <button
                     type="button"

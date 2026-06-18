@@ -166,7 +166,7 @@ export function SettingsAutomationPage() {
     const riskLabel = viewIntervalNum < 15 ? "Aggressive (High risk of rate limits / soft-bans)" : viewIntervalNum < 30 ? "Balanced (Moderate risk)" : "Safe (Low risk of rate limits)";
 
     return (
-        <section className="app-screen pb-12">
+        <section className="app-screen pb-32">
             <header className="mb-7">
                 <BackToSettings />
                 <h1 className="app-title mb-1">{t("settings.automation")}</h1>
