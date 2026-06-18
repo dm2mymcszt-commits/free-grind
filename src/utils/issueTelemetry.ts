@@ -1,4 +1,3 @@
-import { getCurrentHotswapChannel } from "../services/hotswap";
 import { getRecentAppLogs } from "./logger";
 
 const ISSUE_LOG_LIMIT = 100;
@@ -42,7 +41,7 @@ export function getIssueAppInfo(): {
 	return {
 		appVersion: import.meta.env.VITE_APP_VERSION || "unknown",
 		platform: detectClientPlatform(),
-		otaChannel: getCurrentHotswapChannel(),
+		otaChannel: "n/a",
 	};
 }
 
