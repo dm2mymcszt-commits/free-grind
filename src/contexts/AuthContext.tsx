@@ -83,7 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			dispatch({ type: "SET_LOADING", payload: true });
 			dispatch({ type: "SET_ERROR", payload: null });
 
-			const result = await callMethod("login", { email, password });
+			const result = await callMethod("login", { email: email.trim(), password });
 			appLog.info("[Auth] login: succeeded");
 			dispatch({ type: "SET_USER", payload: result.profileId });
 			toast.success("Login successful");

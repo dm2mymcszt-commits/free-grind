@@ -40,7 +40,7 @@ export function SignInPage() {
 		e.preventDefault();
 		setIsPasswordLoading(true);
 		try {
-			await login(email, password);
+			await login(email.trim(), password);
 			navigate("/");
 		} catch {
 			// AuthContext updates `error`, which is rendered in the form.
