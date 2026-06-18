@@ -40,6 +40,17 @@ jobs:
           rm -rf src-tauri/gen/apple
           bunx tauri ios init --ci
 
+      - name: Merge iOS permissions plist
+        run: |
+          INFO_PLIST=$(find src-tauri/gen/apple -name "Info.plist" | head -n 1)
+          if [ -n "$INFO_PLIST" ]; then
+            /usr/libexec/PlistBuddy -c "Merge src-tauri/Info.plist" "$INFO_PLIST"
+            echo "Successfully merged Info.plist keys!"
+          else
+            echo "Warning: Info.plist not found in gen/apple!"
+            exit 1
+          fi
+
       - name: Build iOS Rust static library
         run: |
           cargo build --manifest-path src-tauri/Cargo.toml --target aarch64-apple-ios --features custom-protocol --release
