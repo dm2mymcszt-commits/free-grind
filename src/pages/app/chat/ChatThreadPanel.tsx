@@ -228,14 +228,7 @@ async function fixWebmDuration(blob: Blob, durationMs: number): Promise<Blob> {
 }
 
 function AudioPreviewPlayer({ blob, durationMs, recordedBars, recordedFraction }: { blob: Blob; durationMs: number; recordedBars: number[]; recordedFraction: number }) {
-    const [url, setUrl] = useState<string | null>(null);
-    useEffect(() => {
-        const u = URL.createObjectURL(blob);
-        setUrl(u);
-        return () => { setTimeout(() => URL.revokeObjectURL(u), 3000); };
-    }, [blob]);
-    if (!url) return null;
-    return <AudioMessagePlayer src={url} messageId="preview" mine={false} className="w-full" durationHint={durationMs / 1000} hideSpeed compact initialBars={recordedBars} recordedFraction={recordedFraction} />;
+    return <AudioMessagePlayer src={blob} messageId="preview" mine={false} className="w-full" durationHint={durationMs / 1000} hideSpeed compact initialBars={recordedBars} recordedFraction={recordedFraction} />;
 }
 
 export function ChatThreadPanel(props: ChatThreadPanelProps) {

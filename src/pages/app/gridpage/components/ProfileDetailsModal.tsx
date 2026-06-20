@@ -1087,7 +1087,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 				{!isLoadingActiveProfile && !activeProfileError && activeProfile && (
 					<div
 						ref={mobileCarouselRef}
-						className="relative overflow-hidden bg-black rounded-xl border border-white/10 shadow-lg mb-6 shrink-0"
+						className="relative overflow-hidden bg-black rounded-xl border border-white/10 shadow-lg mb-6 shrink-0 select-none"
 						style={{ height: variant === "page" ? "min(78dvh, calc(100vw * 1.55))" : "min(55dvh, calc((100vw - 3rem) * 1.25))" }}
 					>
 						<div
@@ -1101,7 +1101,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 						{activeProfilePhotoHashes.map((hash, index) => (
 							<div
 								key={hash}
-								className="absolute inset-0"
+								className="absolute inset-0 select-none"
 								style={{
 									transform: `translateY(calc(${(index - mobileCarouselPhotoIndex) * 100}% + ${carouselDragDelta}px))`,
 									transition: carouselDragDelta !== 0 ? "none" : "transform 300ms ease-out",
@@ -1110,7 +1110,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 								<button
 									type="button"
 									onClick={() => openPhotoViewer(index)}
-									className="absolute inset-0 z-10"
+									className="absolute inset-0 z-10 bg-transparent select-none"
 									aria-label={t("profile_details.open_photo", { index: index + 1 })}
 								/>
 								<img
@@ -1406,7 +1406,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 											<button
 												type="button"
 												onClick={() => openPhotoViewer(index)}
-												className="absolute inset-y-0 left-0 z-10"
+												className="absolute inset-y-0 left-0 z-10 bg-transparent select-none"
 												style={{ width: "76.4%" }}
 												aria-label={t("profile_details.open_photo", { index: index + 1 })}
 											/>

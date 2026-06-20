@@ -43,7 +43,7 @@ const SPEEDS = [1, 1.5, 2] as const;
 const BARS = 36;
 
 type Props = {
-	src: string;
+	src: string | Blob;
 	messageId: string;
 	mine: boolean;
 	className?: string;
@@ -64,9 +64,12 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 	const [duration, setDuration] = useState(durationHint ?? 0);
 	const [speedIdx, setSpeedIdx] = useState(0);
 
-	const [audioSrc, setAudioSrc] = useState(src);
-	const isRemote = src && !src.startsWith("blob:") && !src.startsWith("data:");
-	const isLoading = isRemote && audioSrc === src;
+	const [audioSrc, setAudioSrc] = useState<string>(() => {
+		if (typeof src === "string") return src;
+		return "";
+	});
+	const isRemote = typeof src === "string" && !src.startsWith("blob:") && !src.startsWith("data:");
+	const isLoading = typeof src === "string" ? (isRemote && audioSrc === src) : !audioSrc;
 
 	const trackBarsRef = useRef(BARS);
 	const [trackBars, setTrackBars] = useState(BARS);
@@ -95,7 +98,7 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 	useEffect(() => {
 		if (!src) return;
 
-		if (src.startsWith("data:")) {
+		if (typeof src === "string" && src.startsWith("data:")) {
 			setAudioSrc(src);
 			return;
 		}
@@ -105,7 +108,9 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 		const loadAudio = async () => {
 			try {
 				let blob: Blob;
-				if (src.startsWith("blob:")) {
+				if (src instanceof Blob) {
+					blob = src;
+				} else if (src.startsWith("blob:")) {
 					const res = await fetch(src);
 					blob = await res.blob();
 				} else {
@@ -140,12 +145,14 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 				setAudioSrc(dataUrl);
 			} catch (err) {
 				console.error("[AudioMessagePlayer] Failed to fetch and convert audio:", err);
-				if (active) setAudioSrc(src);
+				if (active && typeof src === "string") setAudioSrc(src);
 			}
 		};
 
-		if (!src.startsWith("blob:") && !src.startsWith("data:")) {
+		if (typeof src === "string" && !src.startsWith("blob:") && !src.startsWith("data:")) {
 			setAudioSrc(src); // Reset immediately to remote URL to trigger loading state
+		} else if (src instanceof Blob) {
+			setAudioSrc(""); // Reset immediately to empty string for blob to trigger loading state
 		}
 		void loadAudio();
 
@@ -254,7 +261,7 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 			};
 			const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
 				(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-			const supportsLiveAnalyser = !isMobile && src.startsWith("blob:");
+			const supportsLiveAnalyser = !isMobile && (src instanceof Blob || (typeof src === "string" && src.startsWith("blob:")));
 			if (supportsLiveAnalyser && !liveAudioCtxRef.current) {
 				try {
 					const ctx = new AudioContext();

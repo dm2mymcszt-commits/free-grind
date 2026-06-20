@@ -331,7 +331,7 @@ export function ProfileDetailsContent({
                                 <div className="relative sm:hidden -mx-[var(--app-px)]">
                                     <div
                                         ref={mobileCarouselRef}
-                                        className="relative h-[min(78dvh,calc(100vw*1.55))] overflow-hidden"
+                                        className="relative h-[min(78dvh,calc(100vw*1.55))] overflow-hidden select-none"
                                     >
                                         {activeProfilePhotoHashes.map((hash, index) => (
                                             <div
@@ -340,12 +340,12 @@ export function ProfileDetailsContent({
                                                     transform: `translateY(calc(${(index - mobileCarouselPhotoIndex) * 100}% + ${dragDelta}px))`,
                                                     transition: isDraggingRef.current ? "none" : "transform 300ms ease-out",
                                                 }}
-                                                className="absolute inset-0 bg-[var(--surface-2)]"
+                                                className="absolute inset-0 bg-[var(--surface-2)] select-none"
                                             >
                                                 <button
                                                     type="button"
                                                     onClick={() => openPhotoViewer(index)}
-                                                    className="absolute inset-0 z-10"
+                                                    className="absolute inset-0 z-10 bg-transparent select-none"
                                                     aria-label={t("profile_details.open_photo", { index: index + 1 })}
                                                 />
                                                 <img
