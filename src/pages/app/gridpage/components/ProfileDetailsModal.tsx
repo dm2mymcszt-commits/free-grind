@@ -148,7 +148,9 @@ export function ProfileDetailsModal({
 		if (isOpen) {
 			setShouldRender(true);
 			setIsClosing(false);
-			document.body.classList.add("profile-modal-open");
+			if (variant !== "page") {
+				document.body.classList.add("profile-modal-open");
+			}
 		} else if (shouldRender) {
 			setIsClosing(true);
 			document.body.classList.remove("profile-modal-open");
@@ -164,7 +166,7 @@ export function ProfileDetailsModal({
 		return () => {
 			document.body.classList.remove("profile-modal-open");
 		};
-	}, [isOpen, shouldRender]);
+	}, [isOpen, shouldRender, variant]);
 
 	const [ownTags, setOwnTags] = useState<string[]>(() => (userId ? (ownProfileDataCache.get(String(userId))?.tags ?? []) : []));
 	useEffect(() => {

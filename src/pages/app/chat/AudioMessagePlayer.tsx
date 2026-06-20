@@ -55,6 +55,30 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 
 	const [audioSrc, setAudioSrc] = useState(src);
 
+	const trackBarsRef = useRef(BARS);
+	const [trackBars, setTrackBars] = useState(BARS);
+	const waveform = initialBars && initialBars.length > 0
+		? resample(initialBars, trackBars)
+		: seededWaveform(messageId, trackBars);
+
+	const rafRef = useRef<number | null>(null);
+	const clipRef = useRef<HTMLDivElement | null>(null);
+	const durationRef = useRef(durationHint ?? 0);
+
+	const liveAudioCtxRef = useRef<AudioContext | null>(null);
+	const liveAnalyserRef = useRef<AnalyserNode | null>(null);
+	const liveAnalyserData = useRef<Uint8Array | null>(null);
+	const [liveBars, setLiveBars] = useState<number[] | null>(null);
+	const recordedFractionRef = useRef(recordedFraction ?? 1);
+	useEffect(() => { recordedFractionRef.current = recordedFraction ?? 1; }, [recordedFraction]);
+
+	const updateProgress = useCallback((t: number) => {
+		const d = durationRef.current;
+		if (clipRef.current && d > 0) {
+			clipRef.current.style.clipPath = `inset(0 ${(1 - t / d) * 100}% 0 0)`;
+		}
+	}, []);
+
 	useEffect(() => {
 		if (!src || src.startsWith("blob:") || src.startsWith("data:")) {
 			setAudioSrc(src);
@@ -93,30 +117,6 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 		setCurrentTime(0);
 		updateProgress(0);
 	}, [audioSrc, updateProgress]);
-
-	const trackBarsRef = useRef(BARS);
-	const [trackBars, setTrackBars] = useState(BARS);
-	const waveform = initialBars && initialBars.length > 0
-		? resample(initialBars, trackBars)
-		: seededWaveform(messageId, trackBars);
-
-	const rafRef = useRef<number | null>(null);
-	const clipRef = useRef<HTMLDivElement | null>(null);
-	const durationRef = useRef(durationHint ?? 0);
-
-	const liveAudioCtxRef = useRef<AudioContext | null>(null);
-	const liveAnalyserRef = useRef<AnalyserNode | null>(null);
-	const liveAnalyserData = useRef<Uint8Array | null>(null);
-	const [liveBars, setLiveBars] = useState<number[] | null>(null);
-	const recordedFractionRef = useRef(recordedFraction ?? 1);
-	useEffect(() => { recordedFractionRef.current = recordedFraction ?? 1; }, [recordedFraction]);
-
-	const updateProgress = useCallback((t: number) => {
-		const d = durationRef.current;
-		if (clipRef.current && d > 0) {
-			clipRef.current.style.clipPath = `inset(0 ${(1 - t / d) * 100}% 0 0)`;
-		}
-	}, []);
 
 	useEffect(() => {
 		const el = trackRef.current;
