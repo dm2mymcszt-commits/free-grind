@@ -352,7 +352,8 @@ export function ProfileDetailsModal({
 		if (typeof window === "undefined") {
 			return true;
 		}
-		const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+		const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+			(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 		return !isMobile && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 	});
 	const [isModalSplit, setIsModalSplit] = useState(() =>
@@ -812,7 +813,8 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 	useEffect(() => {
 		const query = window.matchMedia("(hover: hover) and (pointer: fine)");
 		const update = () => {
-			const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+			const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+				(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 			setIsDesktopLike(!isMobile && query.matches);
 		};
 		update();

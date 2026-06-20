@@ -53,6 +53,47 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 	const [duration, setDuration] = useState(durationHint ?? 0);
 	const [speedIdx, setSpeedIdx] = useState(0);
 
+	const [audioSrc, setAudioSrc] = useState(src);
+
+	useEffect(() => {
+		if (!src || src.startsWith("blob:") || src.startsWith("data:")) {
+			setAudioSrc(src);
+			return;
+		}
+
+		let active = true;
+		let objectUrl: string | null = null;
+
+		const loadAudio = async () => {
+			try {
+				const res = await fetch(src);
+				if (!res.ok) throw new Error(`HTTP ${res.status}`);
+				const blob = await res.blob();
+				if (!active) return;
+				objectUrl = URL.createObjectURL(blob);
+				setAudioSrc(objectUrl);
+			} catch (err) {
+				console.error("[AudioMessagePlayer] Failed to fetch audio as blob, falling back to direct URL:", err);
+				if (active) setAudioSrc(src);
+			}
+		};
+
+		void loadAudio();
+
+		return () => {
+			active = false;
+			if (objectUrl) {
+				URL.revokeObjectURL(objectUrl);
+			}
+		};
+	}, [src]);
+
+	useEffect(() => {
+		setIsPlaying(false);
+		setCurrentTime(0);
+		updateProgress(0);
+	}, [audioSrc, updateProgress]);
+
 	const trackBarsRef = useRef(BARS);
 	const [trackBars, setTrackBars] = useState(BARS);
 	const waveform = initialBars && initialBars.length > 0
@@ -153,7 +194,7 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 			audio.removeEventListener("error", onError);
 			void liveAudioCtxRef.current?.close();
 		};
-	}, [updateProgress, durationHint]);
+	}, [updateProgress, durationHint, audioSrc]);
 
 	const togglePlay = () => {
 		const audio = audioRef.current;
@@ -166,8 +207,9 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 					setIsPlaying(false);
 				});
 			};
-			const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-			const supportsLiveAnalyser = !isIOS && !/Android/i.test(navigator.userAgent) && src.startsWith("blob:");
+			const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+				(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+			const supportsLiveAnalyser = !isMobile && audioSrc.startsWith("blob:");
 			if (supportsLiveAnalyser && !liveAudioCtxRef.current) {
 				try {
 					const ctx = new AudioContext();
@@ -233,7 +275,7 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 
 	return (
 		<div className={`flex items-center gap-2.5 ${compact ? "py-0" : "py-1"} ${className ?? "w-64"}`}>
-			<audio ref={audioRef} src={src} preload="auto" className="absolute w-0 h-0 opacity-0 pointer-events-none overflow-hidden" />
+			<audio ref={audioRef} src={audioSrc} preload="auto" className="absolute w-0 h-0 opacity-0 pointer-events-none overflow-hidden" />
 
 			<button
 				type="button"

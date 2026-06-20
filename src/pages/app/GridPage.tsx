@@ -832,7 +832,7 @@ export function GridPage() {
 	);
 
 	const selfCardImageUrl = useMemo(
-		() => profileImageHash ? getThumbImageUrl(profileImageHash, "320x320") : null,
+		() => profileImageHash ? getThumbImageUrl(profileImageHash, "480x480") : null,
 		[profileImageHash],
 	);
 

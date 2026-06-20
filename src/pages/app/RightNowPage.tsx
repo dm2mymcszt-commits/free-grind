@@ -84,7 +84,7 @@ function getItemName(item: RightNowFeedItem, t: TFunction): string {
 
 function getItemImageUrl(item: RightNowFeedItem): string | null {
 	return item.profileImageMediaHash && validateMediaHash(item.profileImageMediaHash)
-		? getThumbImageUrl(item.profileImageMediaHash, "320x320")
+		? getThumbImageUrl(item.profileImageMediaHash, "480x480")
 		: null;
 }
 

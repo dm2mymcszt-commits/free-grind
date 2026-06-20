@@ -50,7 +50,7 @@ function AlbumCard({ item, onClick, t }: { item: SharedAlbumItem; onClick: () =>
 		item.album.content?.coverUrl ||
 		null;
 	const avatarUrl = item.profileMediaHash
-		? getThumbImageUrl(item.profileMediaHash, "320x320")
+		? getThumbImageUrl(item.profileMediaHash, "480x480")
 		: null;
 
 	return (

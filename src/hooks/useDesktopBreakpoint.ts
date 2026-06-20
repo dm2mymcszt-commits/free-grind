@@ -7,7 +7,8 @@ import { useEffect, useState } from "react";
 export function useDesktopBreakpoint() {
 	const [isDesktop, setIsDesktop] = useState(() => {
 		if (typeof window === "undefined") return false;
-		const isMobilePlatform = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+		const isMobilePlatform = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+			(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 		const hasDesktopQuery = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 		return !isMobilePlatform && window.innerWidth >= 768 && hasDesktopQuery;
 	});
@@ -17,7 +18,8 @@ export function useDesktopBreakpoint() {
 
 		const query = window.matchMedia("(hover: hover) and (pointer: fine)");
 		const handleResize = () => {
-			const isMobilePlatform = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+			const isMobilePlatform = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+				(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 			setIsDesktop(!isMobilePlatform && window.innerWidth >= 768 && query.matches);
 		};
 

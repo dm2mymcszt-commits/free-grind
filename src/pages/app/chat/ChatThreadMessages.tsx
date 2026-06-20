@@ -572,7 +572,7 @@ export function ChatThreadMessages({
                         if ((t === "AlbumContentReaction" || t === "AlbumContentReply") && typeof b?.previewUrl === "string") return b.previewUrl;
                         return null;
                     })();
-                    const replyThumbUrl = replyImageUrl ?? (replyImageHash ? getThumbImageUrl(replyImageHash, "320x320") : null) ?? replyPreviewUrl ?? albumContentThumbUrl ?? replyToMsgThumbUrl;
+                    const replyThumbUrl = replyImageUrl ?? (replyImageHash ? getThumbImageUrl(replyImageHash, "480x480") : null) ?? replyPreviewUrl ?? albumContentThumbUrl ?? replyToMsgThumbUrl;
                     const replyAudioDuration = (() => {
                         if (!replyIsAudio) return null;
                         const embedded = message.replyToMessage as Record<string, unknown> | null | undefined;

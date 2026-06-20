@@ -429,7 +429,7 @@ export function ProfileDetailsContent({
                                         >
                                             <div className="relative">
                                                 <img
-                                                    src={getThumbImageUrl(hash, "320x320")}
+                                                    src={getThumbImageUrl(hash, "480x480")}
                                                     alt={t("profile_details.photo_alt", { name: activeProfileName })}
                                                     className="aspect-square w-full object-cover transition-transform duration-500 group-hover:scale-[1.06]"
                                                 />
@@ -451,7 +451,7 @@ export function ProfileDetailsContent({
                                     >
                                         <div className="relative">
                                             <img
-                                                src={getThumbImageUrl(hash, "320x320")}
+                                                src={getThumbImageUrl(hash, "480x480")}
                                                 alt={t("profile_details.photo_alt", { name: activeProfileName })}
                                                 className="aspect-square w-full object-cover transition-transform duration-500 group-hover:scale-[1.06]"
                                             />

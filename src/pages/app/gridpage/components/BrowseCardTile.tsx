@@ -88,7 +88,7 @@ export function BrowseCardTile({
                         <div className="absolute inset-0">
                             {card.primaryImageUrl ? (
                                 <img
-                                    src={card.primaryImageUrl}
+                                    src={card.primaryImageUrl ? card.primaryImageUrl.replace("/320x320/", "/480x480/") : undefined}
                                     alt={t("browse_page.profile_photo_alt", { name })}
                                     loading="lazy"
                                     className={cn(
