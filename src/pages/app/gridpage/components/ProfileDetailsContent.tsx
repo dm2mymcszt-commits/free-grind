@@ -224,12 +224,15 @@ export function ProfileDetailsContent({
         if (!el || !showMobileCarousel || isDesktopLike) return;
 
         let startY = 0, startX = 0;
+        let endY = 0, endX = 0;
         let decided = false, navigating = false;
 
         const onStart = (e: TouchEvent) => {
             if ((e.target as HTMLElement).closest(".glass-actions-container")) return;
             startY = e.touches[0].clientY;
             startX = e.touches[0].clientX;
+            endY = startY;
+            endX = startX;
             decided = false;
             navigating = false;
             isDraggingRef.current = false;
@@ -237,8 +240,10 @@ export function ProfileDetailsContent({
         };
 
         const onMove = (e: TouchEvent) => {
-            const dy = e.touches[0].clientY - startY;
-            const dx = e.touches[0].clientX - startX;
+            endY = e.touches[0].clientY;
+            endX = e.touches[0].clientX;
+            const dy = endY - startY;
+            const dx = endX - startX;
 
             if (!decided) {
                 if (Math.abs(dy) < 8 && Math.abs(dx) < 8) return;
@@ -261,7 +266,14 @@ export function ProfileDetailsContent({
 
         const onEnd = () => {
             isDraggingRef.current = false;
-            if (!navigating) return;
+            if (!navigating) {
+                const distY = Math.abs(endY - startY);
+                const distX = Math.abs(endX - startX);
+                if (distY < 12 && distX < 12) {
+                    openPhotoViewer(currentIndexRef.current);
+                }
+                return;
+            }
             navigating = false;
             const dy = lastDeltaRef.current;
             const idx = currentIndexRef.current;
@@ -284,7 +296,7 @@ export function ProfileDetailsContent({
             el.removeEventListener("touchmove", onMove);
             el.removeEventListener("touchend", onEnd);
         };
-    }, [activeProfilePhotoHashes.length, showMobileCarousel, isDesktopLike, mobileCarouselRef]);
+    }, [activeProfilePhotoHashes.length, showMobileCarousel, isDesktopLike, mobileCarouselRef, openPhotoViewer]);
 
     const showGlassQuickActions = showMobileCarousel && !isDesktopLike && activeProfilePhotoHashes.length > 0 && Boolean(messageProfileId && onMessageProfile);
     const glassActionButtonClassName = "inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/45 bg-white/18 text-white shadow-[0_10px_30px_-16px_rgba(0,0,0,0.9)] backdrop-blur-md transition hover:bg-white/24 disabled:opacity-60";
