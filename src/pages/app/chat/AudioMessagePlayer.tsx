@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Pause, Play } from "lucide-react";
+import { Loader2, Pause, Play } from "lucide-react";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { isTauriRuntime } from "../../../services/tauriWebSocket";
 
@@ -56,6 +56,8 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 	const [speedIdx, setSpeedIdx] = useState(0);
 
 	const [audioSrc, setAudioSrc] = useState(src);
+	const isRemote = src && !src.startsWith("blob:") && !src.startsWith("data:");
+	const isLoading = isRemote && audioSrc === src;
 
 	const trackBarsRef = useRef(BARS);
 	const [trackBars, setTrackBars] = useState(BARS);
@@ -87,21 +89,37 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 			return;
 		}
 
+		setAudioSrc(src); // Reset immediately to remote URL to trigger loading state
 		let active = true;
 		let objectUrl: string | null = null;
 
 		const loadAudio = async () => {
 			try {
+				const lowerSrc = src.toLowerCase();
+				let mimeType = "audio/mpeg";
+				if (lowerSrc.includes(".m4a")) mimeType = "audio/mp4";
+				else if (lowerSrc.includes(".aac")) mimeType = "audio/aac";
+				else if (lowerSrc.includes(".webm")) mimeType = "audio/webm";
+				else if (lowerSrc.includes(".ogg")) mimeType = "audio/ogg";
+				else if (lowerSrc.includes(".wav")) mimeType = "audio/wav";
+
 				const fetchFn = isTauriRuntime() ? tauriFetch : fetch;
 				const res = await fetchFn(src);
 				if (!res.ok) throw new Error(`HTTP ${res.status}`);
+				
 				let blob: Blob;
 				if (typeof res.blob === "function") {
-					blob = await res.blob();
+					const tempBlob = await res.blob();
+					if (tempBlob.type === "" || tempBlob.type === "application/octet-stream") {
+						blob = new Blob([tempBlob], { type: mimeType });
+					} else {
+						blob = tempBlob;
+					}
 				} else {
 					const buf = await res.arrayBuffer();
-					blob = new Blob([buf]);
+					blob = new Blob([buf], { type: mimeType });
 				}
+				
 				if (!active) return;
 				objectUrl = URL.createObjectURL(blob);
 				setAudioSrc(objectUrl);
@@ -125,6 +143,9 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 		setIsPlaying(false);
 		setCurrentTime(0);
 		updateProgress(0);
+		if (audioRef.current) {
+			audioRef.current.load();
+		}
 	}, [audioSrc, updateProgress]);
 
 	useEffect(() => {
@@ -289,12 +310,16 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 			<button
 				type="button"
 				onClick={togglePlay}
-				className={`flex ${compact ? "h-8 w-8" : "h-9 w-9"} shrink-0 items-center justify-center rounded-full ${btnColor} shadow-sm transition active:scale-95`}
+				disabled={isLoading}
+				className={`flex ${compact ? "h-8 w-8" : "h-9 w-9"} shrink-0 items-center justify-center rounded-full ${btnColor} shadow-sm transition active:scale-95 ${isLoading ? "opacity-75 cursor-not-allowed" : ""}`}
 			>
-				{isPlaying
-					? <Pause className="h-4 w-4 fill-current" />
-					: <Play className="h-4 w-4 fill-current translate-x-[1px]" />
-				}
+				{isLoading ? (
+					<Loader2 className="h-4 w-4 animate-spin text-current" />
+				) : isPlaying ? (
+					<Pause className="h-4 w-4 fill-current" />
+				) : (
+					<Play className="h-4 w-4 fill-current translate-x-[1px]" />
+				)}
 			</button>
 
 			<div
