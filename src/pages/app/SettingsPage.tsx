@@ -383,11 +383,6 @@ export function SettingsPage() {
                             t("settings.about_desc"),
                         )}
                     </div>
-                    <div className="mt-4 text-center">
-                        <p className="font-mono text-xs text-[var(--text-muted)] opacity-60">
-                            Diagnostic Build: 9ebd172 - Mobile Fixes Active
-                        </p>
-                    </div>
                 </div>
 
                 {/* Logout */}

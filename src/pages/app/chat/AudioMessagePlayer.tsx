@@ -127,19 +127,30 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 			updateProgress(0);
 			setLiveBars(null);
 		};
+		// iOS often doesn't fire loadedmetadata for blob URLs; canplaythrough is more reliable
+		const onCanPlay = () => {
+			if (durationRef.current <= 0) onMeta();
+		};
+		const onError = () => {
+			console.error("[AudioMessagePlayer] audio error:", audio.error?.message, audio.error?.code);
+		};
 
 		audio.addEventListener("play", onPlay);
 		audio.addEventListener("pause", onPause);
 		audio.addEventListener("loadedmetadata", onMeta);
 		audio.addEventListener("durationchange", onMeta);
+		audio.addEventListener("canplaythrough", onCanPlay);
 		audio.addEventListener("ended", onEnded);
+		audio.addEventListener("error", onError);
 		return () => {
 			if (rafRef.current) cancelAnimationFrame(rafRef.current);
 			audio.removeEventListener("play", onPlay);
 			audio.removeEventListener("pause", onPause);
 			audio.removeEventListener("loadedmetadata", onMeta);
 			audio.removeEventListener("durationchange", onMeta);
+			audio.removeEventListener("canplaythrough", onCanPlay);
 			audio.removeEventListener("ended", onEnded);
+			audio.removeEventListener("error", onError);
 			void liveAudioCtxRef.current?.close();
 		};
 	}, [updateProgress, durationHint]);
@@ -222,7 +233,7 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 
 	return (
 		<div className={`flex items-center gap-2.5 ${compact ? "py-0" : "py-1"} ${className ?? "w-64"}`}>
-			<audio ref={audioRef} src={src} preload={compact ? "none" : "metadata"} className="absolute w-0 h-0 opacity-0 pointer-events-none overflow-hidden" />
+			<audio ref={audioRef} src={src} preload="auto" className="absolute w-0 h-0 opacity-0 pointer-events-none overflow-hidden" />
 
 			<button
 				type="button"

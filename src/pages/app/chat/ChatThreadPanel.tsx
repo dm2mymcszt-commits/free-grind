@@ -33,7 +33,7 @@ import {
     Clock,
     Search as SearchIcon,
     Mic,
-    Square,
+
     FileAudio,
     Sticker,
 } from "lucide-react";
@@ -646,24 +646,32 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
         }
     };
 
-    // Close popups on outside click
+    // Close popups on outside click — uses a 1-frame delay so the handler
+    // doesn't run on the same click that opened the popup (pointerUp fires
+    // before the synthetic click, so without the delay the menu opens then
+    // immediately closes).
+    const micMenuJustOpenedRef = useRef(false);
     useEffect(() => {
-        const handleClickOutside = (e: MouseEvent) => {
-            // Placeholder references for closing logic
-            const emojiPickerRef = { current: null }; 
-            const gifPickerRef = { current: null };
-            
-            if (emojiPickerRef.current && !(emojiPickerRef.current as any).contains(e.target as Node)) setIsEmojiPickerOpen(false);
-            if (gifPickerRef.current && !(gifPickerRef.current as any).contains(e.target as Node)) setIsGifPickerOpen(false);
-            
-            // Close mic menu if clicking outside
+        if (!isEmojiPickerOpen && !isGifPickerOpen && !isMicMenuOpen) return;
+        // Mark that the mic menu was just opened so the first click is ignored
+        if (isMicMenuOpen) micMenuJustOpenedRef.current = true;
+        const handleClickOutside = (_e: MouseEvent) => {
+            if (micMenuJustOpenedRef.current) {
+                micMenuJustOpenedRef.current = false;
+                return; // skip the click that opened the menu
+            }
+            setIsEmojiPickerOpen(false);
+            setIsGifPickerOpen(false);
             setIsMicMenuOpen(false);
         };
-        
-        if (isEmojiPickerOpen || isGifPickerOpen || isMicMenuOpen) {
+        // Attach on next frame so the opening click doesn't trigger it
+        const raf = requestAnimationFrame(() => {
             window.addEventListener('click', handleClickOutside);
-        }
-        return () => window.removeEventListener('click', handleClickOutside);
+        });
+        return () => {
+            cancelAnimationFrame(raf);
+            window.removeEventListener('click', handleClickOutside);
+        };
     }, [isEmojiPickerOpen, isGifPickerOpen, isMicMenuOpen]);
 
     // --- IMMUTABLE DYNAMIC STATE (Fixes Reactivity Bug!) ---
@@ -2036,11 +2044,10 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                             />
                                         ))}
                                     </div>
-                                    {isDesktop ? (
-                                        <button type="button" onClick={() => stopRecording()} className="shrink-0 text-red-500 hover:text-red-400 transition"><Square className="h-5 w-5 fill-current" /></button>
-                                    ) : (
-                                        showRecordCircle && <span className="text-[11px] font-medium text-[var(--text-muted)] shrink-0 select-none animate-pulse">Slide left to cancel</span>
-                                    )}
+                                    {/* Stop/Send button — visible on both mobile and desktop */}
+                                    <button type="button" onClick={() => stopRecording()} className="shrink-0 h-8 w-8 flex items-center justify-center rounded-full bg-[var(--accent)] text-[var(--accent-contrast)] shadow-md hover:scale-105 active:scale-95 transition">
+                                        <SendHorizontal className="h-4 w-4" />
+                                    </button>
                                 </div>
                             ) : (
                                 <div className={`relative flex-1 flex items-end`}>
