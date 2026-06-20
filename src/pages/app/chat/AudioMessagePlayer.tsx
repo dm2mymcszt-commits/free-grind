@@ -30,6 +30,15 @@ export function seededWaveform(seed: string, bars: number): number[] {
 	});
 }
 
+function blobToDataUrl(blob: Blob): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const reader = new FileReader();
+		reader.onloadend = () => resolve(reader.result as string);
+		reader.onerror = reject;
+		reader.readAsDataURL(blob);
+	});
+}
+
 const SPEEDS = [1, 1.5, 2] as const;
 const BARS = 36;
 
@@ -84,58 +93,64 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 	}, []);
 
 	useEffect(() => {
-		if (!src || src.startsWith("blob:") || src.startsWith("data:")) {
+		if (!src) return;
+
+		if (src.startsWith("data:")) {
 			setAudioSrc(src);
 			return;
 		}
 
-		setAudioSrc(src); // Reset immediately to remote URL to trigger loading state
 		let active = true;
-		let objectUrl: string | null = null;
 
 		const loadAudio = async () => {
 			try {
-				const lowerSrc = src.toLowerCase();
-				let mimeType = "audio/mpeg";
-				if (lowerSrc.includes(".m4a")) mimeType = "audio/mp4";
-				else if (lowerSrc.includes(".aac")) mimeType = "audio/aac";
-				else if (lowerSrc.includes(".webm")) mimeType = "audio/webm";
-				else if (lowerSrc.includes(".ogg")) mimeType = "audio/ogg";
-				else if (lowerSrc.includes(".wav")) mimeType = "audio/wav";
-
-				const fetchFn = isTauriRuntime() ? tauriFetch : fetch;
-				const res = await fetchFn(src);
-				if (!res.ok) throw new Error(`HTTP ${res.status}`);
-				
 				let blob: Blob;
-				if (typeof res.blob === "function") {
-					const tempBlob = await res.blob();
-					if (tempBlob.type === "" || tempBlob.type === "application/octet-stream") {
-						blob = new Blob([tempBlob], { type: mimeType });
-					} else {
-						blob = tempBlob;
-					}
+				if (src.startsWith("blob:")) {
+					const res = await fetch(src);
+					blob = await res.blob();
 				} else {
-					const buf = await res.arrayBuffer();
-					blob = new Blob([buf], { type: mimeType });
+					const lowerSrc = src.toLowerCase();
+					let mimeType = "audio/mpeg";
+					if (lowerSrc.includes(".m4a")) mimeType = "audio/mp4";
+					else if (lowerSrc.includes(".aac")) mimeType = "audio/aac";
+					else if (lowerSrc.includes(".webm")) mimeType = "audio/webm";
+					else if (lowerSrc.includes(".ogg")) mimeType = "audio/ogg";
+					else if (lowerSrc.includes(".wav")) mimeType = "audio/wav";
+
+					const fetchFn = isTauriRuntime() ? tauriFetch : fetch;
+					const res = await fetchFn(src);
+					if (!res.ok) throw new Error(`HTTP ${res.status}`);
+					
+					if (typeof res.blob === "function") {
+						const tempBlob = await res.blob();
+						if (tempBlob.type === "" || tempBlob.type === "application/octet-stream") {
+							blob = new Blob([tempBlob], { type: mimeType });
+						} else {
+							blob = tempBlob;
+						}
+					} else {
+						const buf = await res.arrayBuffer();
+						blob = new Blob([buf], { type: mimeType });
+					}
 				}
-				
+
 				if (!active) return;
-				objectUrl = URL.createObjectURL(blob);
-				setAudioSrc(objectUrl);
+				const dataUrl = await blobToDataUrl(blob);
+				if (!active) return;
+				setAudioSrc(dataUrl);
 			} catch (err) {
-				console.error("[AudioMessagePlayer] Failed to fetch audio as blob, falling back to direct URL:", err);
+				console.error("[AudioMessagePlayer] Failed to fetch and convert audio:", err);
 				if (active) setAudioSrc(src);
 			}
 		};
 
+		if (!src.startsWith("blob:") && !src.startsWith("data:")) {
+			setAudioSrc(src); // Reset immediately to remote URL to trigger loading state
+		}
 		void loadAudio();
 
 		return () => {
 			active = false;
-			if (objectUrl) {
-				URL.revokeObjectURL(objectUrl);
-			}
 		};
 	}, [src]);
 
