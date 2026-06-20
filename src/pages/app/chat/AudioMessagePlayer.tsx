@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pause, Play } from "lucide-react";
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { isTauriRuntime } from "../../../services/tauriWebSocket";
 
 function formatDuration(seconds: number) {
 	const m = Math.floor(seconds / 60);
@@ -90,9 +92,16 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 
 		const loadAudio = async () => {
 			try {
-				const res = await fetch(src);
+				const fetchFn = isTauriRuntime() ? tauriFetch : fetch;
+				const res = await fetchFn(src);
 				if (!res.ok) throw new Error(`HTTP ${res.status}`);
-				const blob = await res.blob();
+				let blob: Blob;
+				if (typeof res.blob === "function") {
+					blob = await res.blob();
+				} else {
+					const buf = await res.arrayBuffer();
+					blob = new Blob([buf]);
+				}
 				if (!active) return;
 				objectUrl = URL.createObjectURL(blob);
 				setAudioSrc(objectUrl);
@@ -209,7 +218,7 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 			};
 			const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
 				(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-			const supportsLiveAnalyser = !isMobile && audioSrc.startsWith("blob:");
+			const supportsLiveAnalyser = !isMobile && src.startsWith("blob:");
 			if (supportsLiveAnalyser && !liveAudioCtxRef.current) {
 				try {
 					const ctx = new AudioContext();
