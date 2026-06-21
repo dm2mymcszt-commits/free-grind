@@ -826,7 +826,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                 let waveform: number[] | undefined = undefined;
 
                 // Robustly check if it's an MP4/MOV video file by reading its magic bytes
-                const headerSlice = file.slice(0, 8);
+                const headerSlice = file.slice(0, Math.min(file.size, 1024));
                 const headerBuf = await new Promise<ArrayBuffer>((resolve) => {
                     const reader = new FileReader();
                     reader.onload = () => resolve(reader.result as ArrayBuffer);
@@ -834,17 +834,20 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                     reader.readAsArrayBuffer(headerSlice);
                 });
                 const view = new DataView(headerBuf);
+                const bytes = new Uint8Array(headerBuf);
                 let isMp4Mov = false;
-                if (headerBuf.byteLength >= 8) {
-                    const boxType = String.fromCharCode(
-                        view.getUint8(4),
-                        view.getUint8(5),
-                        view.getUint8(6),
-                        view.getUint8(7)
-                    );
-                    if (boxType === "ftyp") {
+                let pos = 0;
+                const limit = Math.min(headerBuf.byteLength, 1024);
+                while (pos + 8 <= limit) {
+                    const size = view.getUint32(pos);
+                    const typeBytes = bytes.slice(pos + 4, pos + 8);
+                    const type = String.fromCharCode(...typeBytes);
+                    if (["ftyp", "moov", "mdat", "wide", "free", "uuid"].includes(type)) {
                         isMp4Mov = true;
+                        break;
                     }
+                    if (size < 8) break;
+                    pos += size;
                 }
                 const isVideo = file.type.startsWith("video/") || isMp4Mov ||
                     file.name.endsWith(".mov") || file.name.endsWith(".mp4") ||
