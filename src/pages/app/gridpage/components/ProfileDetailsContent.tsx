@@ -351,16 +351,24 @@ export function ProfileDetailsContent({
                                                 }}
                                                 className="absolute inset-0 bg-[var(--surface-2)] select-none"
                                             >
-                                                <img
-                                                    src={getProfileImageUrl(hash, "1024x1024")}
-                                                    alt={t("profile_details.photo_alt", { name: activeProfileName })}
-                                                    className="h-full w-full object-cover cursor-pointer"
+                                                <button
+                                                    type="button"
                                                     onClick={() => openPhotoViewer(index)}
+                                                    className="w-full h-full p-0 border-0 bg-transparent block cursor-pointer"
                                                     style={{
                                                         WebkitTouchCallout: "default",
-                                                        pointerEvents: "auto",
                                                     }}
-                                                />
+                                                    aria-label={t("profile_details.open_photo", { index: index + 1 })}
+                                                >
+                                                    <img
+                                                        src={getProfileImageUrl(hash, "1024x1024")}
+                                                        alt={t("profile_details.photo_alt", { name: activeProfileName })}
+                                                        className="h-full w-full object-cover pointer-events-auto"
+                                                        style={{
+                                                            WebkitTouchCallout: "default",
+                                                        }}
+                                                    />
+                                                </button>
                                                 {renderPhotoCreatedBadge(hash)}
                                             </div>
                                         ))}
