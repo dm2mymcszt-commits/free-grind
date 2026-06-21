@@ -25,7 +25,7 @@ export function generateWaveformFromBuffer(audioBuffer: AudioBuffer, numBars: nu
     return bars;
 }
 
-export function removeVideoTrackFromMp4(arrayBuffer: ArrayBuffer): ArrayBuffer {
+export function disableVideoTracksInMp4(arrayBuffer: ArrayBuffer): ArrayBuffer {
     const view = new DataView(arrayBuffer);
     const bytes = new Uint8Array(arrayBuffer);
     const end = arrayBuffer.byteLength;
@@ -74,102 +74,95 @@ export function removeVideoTrackFromMp4(arrayBuffer: ArrayBuffer): ArrayBuffer {
         return boxes;
     }
 
-    function getHandlerType(trak: Box): string | null {
+    function disableVideoTrack(trak: Box) {
         const mdiaBoxes = parseBoxes(trak.payloadStart, trak.payloadEnd).filter(b => b.type === "mdia");
-        if (mdiaBoxes.length === 0) return null;
+        if (mdiaBoxes.length === 0) return;
         const mdia = mdiaBoxes[0];
         const hdlrBoxes = parseBoxes(mdia.payloadStart, mdia.payloadEnd).filter(b => b.type === "hdlr");
-        if (hdlrBoxes.length === 0) return null;
+        if (hdlrBoxes.length === 0) return;
         const hdlr = hdlrBoxes[0];
         if (hdlr.payloadStart + 12 <= hdlr.payloadEnd) {
             const hTypeBytes = bytes.slice(hdlr.payloadStart + 8, hdlr.payloadStart + 12);
-            return String.fromCharCode(...hTypeBytes);
+            const handlerType = String.fromCharCode(...hTypeBytes);
+            if (handlerType === "vide") {
+                // Overwrite 'vide' with 'null' in place to bypass HEVC decoding
+                bytes[hdlr.payloadStart + 8] = "n".charCodeAt(0);
+                bytes[hdlr.payloadStart + 9] = "u".charCodeAt(0);
+                bytes[hdlr.payloadStart + 10] = "l".charCodeAt(0);
+                bytes[hdlr.payloadStart + 11] = "l".charCodeAt(0);
+            }
         }
-        return null;
     }
 
     const topLevelBoxes = parseBoxes(0, end);
-    const moovBoxIndex = topLevelBoxes.findIndex(b => b.type === "moov");
-    if (moovBoxIndex === -1) {
+    const moovBox = topLevelBoxes.find(b => b.type === "moov");
+    if (!moovBox) {
         return arrayBuffer;
     }
 
-    const moov = topLevelBoxes[moovBoxIndex];
-    const subBoxes = parseBoxes(moov.payloadStart, moov.payloadEnd);
-    const newSubBoxBuffers: Uint8Array[] = [];
-
+    const subBoxes = parseBoxes(moovBox.payloadStart, moovBox.payloadEnd);
     for (const sub of subBoxes) {
         if (sub.type === "trak") {
-            const hType = getHandlerType(sub);
-            if (hType === "vide") {
-                continue;
-            }
-        }
-        newSubBoxBuffers.push(bytes.slice(sub.start, sub.end));
-    }
-
-    let totalPayloadSize = 0;
-    for (const buf of newSubBoxBuffers) {
-        totalPayloadSize += buf.byteLength;
-    }
-
-    const newMoovBuffer = new Uint8Array(8 + totalPayloadSize);
-    const newMoovView = new DataView(newMoovBuffer.buffer);
-    
-    newMoovView.setUint32(0, 8 + totalPayloadSize);
-    newMoovBuffer[4] = "m".charCodeAt(0);
-    newMoovBuffer[5] = "o".charCodeAt(0);
-    newMoovBuffer[6] = "o".charCodeAt(0);
-    newMoovBuffer[7] = "v".charCodeAt(0);
-
-    let offset = 8;
-    for (const buf of newSubBoxBuffers) {
-        newMoovBuffer.set(buf, offset);
-        offset += buf.byteLength;
-    }
-
-    let totalFileSize = 0;
-    for (let i = 0; i < topLevelBoxes.length; i++) {
-        if (i === moovBoxIndex) {
-            totalFileSize += newMoovBuffer.byteLength;
-        } else {
-            totalFileSize += topLevelBoxes[i].size;
+            disableVideoTrack(sub);
         }
     }
 
-    const finalBuffer = new Uint8Array(totalFileSize);
-    let writeOffset = 0;
-    for (let i = 0; i < topLevelBoxes.length; i++) {
-        if (i === moovBoxIndex) {
-            finalBuffer.set(newMoovBuffer, writeOffset);
-            writeOffset += newMoovBuffer.byteLength;
-        } else {
-            finalBuffer.set(bytes.slice(topLevelBoxes[i].start, topLevelBoxes[i].end), writeOffset);
-            writeOffset += topLevelBoxes[i].size;
-        }
-    }
-
-    return finalBuffer.buffer;
+    return arrayBuffer;
 }
 
 export async function getArrayBufferFromFile(file: Blob): Promise<ArrayBuffer> {
     let url: string | null = null;
-    const isVideo = file.type.startsWith("video/") || 
-        (file instanceof File && (file.name.endsWith(".mov") || file.name.endsWith(".mp4")));
     try {
         url = URL.createObjectURL(file);
         const res = await fetch(url);
         if (!res.ok) throw new Error("Failed to fetch local object URL");
         let buffer = await res.arrayBuffer();
+        
+        // Robustly check file signature (ftyp box) to identify MP4/MOV container
+        let isMp4Mov = false;
+        if (buffer.byteLength >= 8) {
+            const headerView = new DataView(buffer);
+            const boxType = String.fromCharCode(
+                headerView.getUint8(4),
+                headerView.getUint8(5),
+                headerView.getUint8(6),
+                headerView.getUint8(7)
+            );
+            if (boxType === "ftyp") {
+                isMp4Mov = true;
+            }
+        }
+        
+        const isVideo = file.type.startsWith("video/") || isMp4Mov ||
+            (file instanceof File && (file.name.endsWith(".mov") || file.name.endsWith(".mp4")));
+        
         if (isVideo) {
-            buffer = removeVideoTrackFromMp4(buffer);
+            buffer = disableVideoTracksInMp4(buffer);
         }
         return buffer;
     } catch (e) {
         console.warn("Fetch from object URL failed, falling back to direct arrayBuffer() read:", e);
         let buffer = await file.arrayBuffer();
+        
+        let isMp4Mov = false;
+        if (buffer.byteLength >= 8) {
+            const headerView = new DataView(buffer);
+            const boxType = String.fromCharCode(
+                headerView.getUint8(4),
+                headerView.getUint8(5),
+                headerView.getUint8(6),
+                headerView.getUint8(7)
+            );
+            if (boxType === "ftyp") {
+                isMp4Mov = true;
+            }
+        }
+        
+        const isVideo = file.type.startsWith("video/") || isMp4Mov ||
+            (file instanceof File && (file.name.endsWith(".mov") || file.name.endsWith(".mp4")));
+            
         if (isVideo) {
-            buffer = removeVideoTrackFromMp4(buffer);
+            buffer = disableVideoTracksInMp4(buffer);
         }
         return buffer;
     } finally {

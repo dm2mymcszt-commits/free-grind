@@ -824,9 +824,34 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                 let audioBlob: Blob;
                 let durationMs: number;
                 let waveform: number[] | undefined = undefined;
+
+                // Robustly check if it's an MP4/MOV video file by reading its magic bytes
+                const headerSlice = file.slice(0, 8);
+                const headerBuf = await new Promise<ArrayBuffer>((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result as ArrayBuffer);
+                    reader.onerror = () => resolve(new ArrayBuffer(0));
+                    reader.readAsArrayBuffer(headerSlice);
+                });
+                const view = new DataView(headerBuf);
+                let isMp4Mov = false;
+                if (headerBuf.byteLength >= 8) {
+                    const boxType = String.fromCharCode(
+                        view.getUint8(4),
+                        view.getUint8(5),
+                        view.getUint8(6),
+                        view.getUint8(7)
+                    );
+                    if (boxType === "ftyp") {
+                        isMp4Mov = true;
+                    }
+                }
+                const isVideo = file.type.startsWith("video/") || isMp4Mov ||
+                    file.name.endsWith(".mov") || file.name.endsWith(".mp4") ||
+                    file.name.endsWith(".MOV") || file.name.endsWith(".MP4");
                 
                 // If it's a video file, extract the audio into WAV
-                if (file.type.startsWith("video/")) {
+                if (isVideo) {
                     toast.loading(t("chat.extracting_audio", { defaultValue: "Extracting audio from video..." }), { id: "audio-extract" });
                     const result = await extractAudioToWav(file);
                     audioBlob = result.blob;

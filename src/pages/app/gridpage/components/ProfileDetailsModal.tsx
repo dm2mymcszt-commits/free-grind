@@ -908,6 +908,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 	);
 
 	const openPhotoViewer = useCallback((index: number) => {
+		console.log("[ProfileDetailsModal] openPhotoViewer called with index:", index);
 		setSelectedPhotoIndex(index);
 	}, []);
 
@@ -1101,7 +1102,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 						{activeProfilePhotoHashes.map((hash, index) => (
 							<div
 								key={hash}
-								className="absolute inset-0 select-none"
+								className={`absolute inset-0 select-none ${index === mobileCarouselPhotoIndex ? "pointer-events-auto" : "pointer-events-none"}`}
 								style={{
 									transform: `translateY(calc(${(index - mobileCarouselPhotoIndex) * 100}% + ${carouselDragDelta}px))`,
 									transition: carouselDragDelta !== 0 ? "none" : "transform 300ms ease-out",
@@ -1404,7 +1405,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 									{activeProfilePhotoHashes.map((hash, index) => (
 										<div
 											key={hash}
-											className="absolute inset-0"
+											className={`absolute inset-0 ${index === mobileCarouselPhotoIndex ? "pointer-events-auto" : "pointer-events-none"}`}
 											style={{
 												transform: `translateY(${(index - mobileCarouselPhotoIndex) * 100}%)`,
 												transition: "transform 300ms ease-out",

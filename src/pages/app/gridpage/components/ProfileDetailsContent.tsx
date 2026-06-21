@@ -349,7 +349,7 @@ export function ProfileDetailsContent({
                                                     transform: `translateY(calc(${(index - mobileCarouselPhotoIndex) * 100}% + ${dragDelta}px))`,
                                                     transition: isDraggingRef.current ? "none" : "transform 300ms ease-out",
                                                 }}
-                                                className="absolute inset-0 bg-[var(--surface-2)] select-none"
+                                                className={`absolute inset-0 bg-[var(--surface-2)] select-none ${index === mobileCarouselPhotoIndex ? "pointer-events-auto" : "pointer-events-none"}`}
                                             >
                                                 <button
                                                     type="button"
