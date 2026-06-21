@@ -49,14 +49,6 @@ export function PhotoViewer({
     // --- SCANNER STATE ---
     const scannerEnabled = window.localStorage.getItem("fg-image-scanner-enabled") === "true";
 
-    const dialogRef = useRef<HTMLDialogElement>(null);
-    useLayoutEffect(() => {
-        const d = dialogRef.current;
-        if (d && !d.open) {
-            try { d.showModal(); } catch { d.show(); }
-        }
-    }, [isOpen]);
-
     const mediaRef = useRef<HTMLImageElement | HTMLVideoElement | null>(null);
 
     const touchStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -472,10 +464,8 @@ export function PhotoViewer({
     const currentMediaInfo = currentPhoto ? getMediaInfo(currentPhoto) : null;
 
     return createPortal(
-        <dialog
-            ref={dialogRef}
+        <div
             className={`fixed inset-0 z-[300] m-0 h-full w-full max-w-none border-none bg-transparent p-0 overflow-hidden ${typeof window !== "undefined" && "__TAURI_INTERNALS__" in window ? "rounded-[20px]" : ""}`}
-            onCancel={(e) => { e.preventDefault(); onClose(); }}
         >
             <div className="fixed inset-0 bg-black" onClick={() => {
                 if (!gestureMovedRef.current) onClose();
@@ -643,7 +633,7 @@ export function PhotoViewer({
 
 
             </div>
-        </dialog>,
+        </div>,
         document.body,
     );
 }

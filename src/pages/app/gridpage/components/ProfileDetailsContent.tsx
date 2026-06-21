@@ -210,7 +210,7 @@ export function ProfileDetailsContent({
     const [dragDelta, setDragDelta] = useState(0);
     const isDraggingRef = useRef(false);
     const lastDeltaRef = useRef(0);
-    const touchStartTimeRef = useRef(0);
+    const touchStartPosRef = useRef({ x: 0, y: 0 });
     const currentIndexRef = useRef(mobileCarouselPhotoIndex);
     currentIndexRef.current = mobileCarouselPhotoIndex;
     const onPhotoIndexChangeRef = useRef(onPhotoIndexChange);
@@ -355,10 +355,16 @@ export function ProfileDetailsContent({
                                                 <button
                                                     type="button"
                                                     onClick={() => openPhotoViewer(index)}
-                                                    onTouchStart={() => { touchStartTimeRef.current = Date.now(); }}
+                                                    onTouchStart={(e) => {
+                                                        const touch = e.touches[0];
+                                                        touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
+                                                    }}
                                                     onTouchEnd={(e) => {
-                                                        const duration = Date.now() - touchStartTimeRef.current;
-                                                        if (duration < 250) {
+                                                        const touch = e.changedTouches[0];
+                                                        const dx = touch.clientX - touchStartPosRef.current.x;
+                                                        const dy = touch.clientY - touchStartPosRef.current.y;
+                                                        const dist = Math.sqrt(dx * dx + dy * dy);
+                                                        if (dist < 10) {
                                                             openPhotoViewer(index);
                                                             e.preventDefault();
                                                         }

@@ -366,7 +366,7 @@ export function ProfileDetailsModal({
 	const carouselTotalRef = useRef(0);
 	const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 	const pageWrapRef = useRef<HTMLDivElement | null>(null);
-	const touchStartTimeRef = useRef(0);
+	const touchStartPosRef = useRef({ x: 0, y: 0 });
 	const [profileSwipeDelta, setProfileSwipeDelta] = useState(0);
 	const profileSwipeRef = useRef({ startX: 0, startY: 0, decided: false, horizontal: false, dragging: false, lastDelta: 0 });
 	const [headerOpacity, setHeaderOpacity] = useState(0);
@@ -1112,10 +1112,16 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 								<button
 									type="button"
 									onClick={() => openPhotoViewer(index)}
-									onTouchStart={() => { touchStartTimeRef.current = Date.now(); }}
+									onTouchStart={(e) => {
+										const touch = e.touches[0];
+										touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
+									}}
 									onTouchEnd={(e) => {
-										const duration = Date.now() - touchStartTimeRef.current;
-										if (duration < 250) {
+										const touch = e.changedTouches[0];
+										const dx = touch.clientX - touchStartPosRef.current.x;
+										const dy = touch.clientY - touchStartPosRef.current.y;
+										const dist = Math.sqrt(dx * dx + dy * dy);
+										if (dist < 10) {
 											openPhotoViewer(index);
 											e.preventDefault();
 										}
@@ -1423,10 +1429,16 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 											<button
 												type="button"
 												onClick={() => openPhotoViewer(index)}
-												onTouchStart={() => { touchStartTimeRef.current = Date.now(); }}
+												onTouchStart={(e) => {
+													const touch = e.touches[0];
+													touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
+												}}
 												onTouchEnd={(e) => {
-													const duration = Date.now() - touchStartTimeRef.current;
-													if (duration < 250) {
+													const touch = e.changedTouches[0];
+													const dx = touch.clientX - touchStartPosRef.current.x;
+													const dy = touch.clientY - touchStartPosRef.current.y;
+													const dist = Math.sqrt(dx * dx + dy * dy);
+													if (dist < 10) {
 														openPhotoViewer(index);
 														e.preventDefault();
 													}
