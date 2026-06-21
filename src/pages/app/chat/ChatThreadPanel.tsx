@@ -72,7 +72,7 @@ import {
     getMessageAlbumId,
     getMessageAlbumCoverUrl,
 } from "./chatUtils";
-import { extractAudioToWav, getAudioDuration } from "../../../utils/audioUtils";
+import { extractAudioToWav, getAudioFileMetadata } from "../../../utils/audioUtils";
 import { cn } from "../../../utils/cn";
 import { formatDistance } from "../gridpage/utils";
 import { ChatThreadMessages } from "./ChatThreadMessages";
@@ -830,11 +830,19 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                     const result = await extractAudioToWav(file);
                     audioBlob = result.blob;
                     durationMs = result.durationMs;
+                    if (result.waveform) {
+                        setRecordedWaveform(result.waveform);
+                    }
                     toast.success(t("chat.extracted_audio", { defaultValue: "Audio extracted!" }), { id: "audio-extract" });
                 } else {
                     audioBlob = file;
-                    // Get duration
-                    durationMs = await getAudioDuration(audioBlob);
+                    toast.loading(t("chat.processing_audio", { defaultValue: "Processing audio..." }), { id: "audio-extract" });
+                    const result = await getAudioFileMetadata(audioBlob);
+                    durationMs = result.durationMs;
+                    if (result.waveform) {
+                        setRecordedWaveform(result.waveform);
+                    }
+                    toast.success(t("chat.processed_audio", { defaultValue: "Audio processed!" }), { id: "audio-extract" });
                 }
                 
                 // Send to the preview pipeline so the user can verify and send it

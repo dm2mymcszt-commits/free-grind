@@ -1,5 +1,34 @@
-export async function extractAudioToWav(file: File): Promise<{blob: Blob, durationMs: number}> {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+export function generateWaveformFromBuffer(audioBuffer: AudioBuffer, numBars: number = 36): number[] {
+    const rawData = audioBuffer.getChannelData(0); // use first channel
+    const blockSize = Math.floor(rawData.length / numBars);
+    const bars: number[] = [];
+    
+    for (let i = 0; i < numBars; i++) {
+        const start = i * blockSize;
+        let sum = 0;
+        let peak = 0;
+        const end = Math.min(start + blockSize, rawData.length);
+        if (start >= rawData.length) {
+            bars.push(0.1);
+            continue;
+        }
+        for (let j = start; j < end; j++) {
+            const val = Math.abs(rawData[j]);
+            if (val > peak) peak = val;
+            sum += val * val;
+        }
+        // Use a mix of RMS and peak, normalized, and ensure a minimum height
+        const rms = Math.sqrt(sum / Math.max(1, end - start));
+        const val = 0.2 * rms + 0.8 * peak;
+        bars.push(Math.max(0.08, Math.min(1, val)));
+    }
+    return bars;
+}
+
+export async function extractAudioToWav(file: File): Promise<{blob: Blob, durationMs: number, waveform: number[]}> {
+    const AudioContextClass = window.OfflineAudioContext || (window as any).webkitOfflineAudioContext;
+    // 1 channel, 1 sample length, 44100 sample rate
+    const audioContext = new AudioContextClass(1, 1, 44100);
     const arrayBuffer = await file.arrayBuffer();
     const audioBuffer = await new Promise<AudioBuffer>((resolve, reject) => {
         try {
@@ -57,24 +86,36 @@ export async function extractAudioToWav(file: File): Promise<{blob: Blob, durati
         offset++;
     }
 
-    return { blob: new Blob([buffer], { type: "audio/wav" }), durationMs: audioBuffer.duration * 1000 };
+    const waveform = generateWaveformFromBuffer(audioBuffer, 36);
+    return { 
+        blob: new Blob([buffer], { type: "audio/wav" }), 
+        durationMs: audioBuffer.duration * 1000,
+        waveform
+    };
 }
 
-export function getAudioDuration(file: Blob): Promise<number> {
-    return new Promise((resolve, reject) => {
-        const audio = document.createElement("audio");
-        audio.preload = "metadata";
-        
-        audio.onloadedmetadata = () => {
-            window.URL.revokeObjectURL(audio.src);
-            resolve(audio.duration * 1000); // ms
-        };
-        
-        audio.onerror = () => {
-            window.URL.revokeObjectURL(audio.src);
-            reject(new Error("Failed to load audio metadata"));
-        };
-        
-        audio.src = URL.createObjectURL(file);
+export async function getAudioFileMetadata(file: Blob): Promise<{ durationMs: number; waveform: number[] }> {
+    const AudioContextClass = window.OfflineAudioContext || (window as any).webkitOfflineAudioContext;
+    const audioContext = new AudioContextClass(1, 1, 44100);
+    const arrayBuffer = await file.arrayBuffer();
+    const audioBuffer = await new Promise<AudioBuffer>((resolve, reject) => {
+        try {
+            const promise = audioContext.decodeAudioData(
+                arrayBuffer,
+                (buffer) => resolve(buffer),
+                (err) => reject(err || new Error("Failed to decode audio data"))
+            );
+            if (promise && typeof promise.catch === "function") {
+                promise.catch((err) => reject(err));
+            }
+        } catch (e) {
+            reject(e);
+        }
     });
+
+    const waveform = generateWaveformFromBuffer(audioBuffer, 36);
+    return {
+        durationMs: audioBuffer.duration * 1000,
+        waveform
+    };
 }
