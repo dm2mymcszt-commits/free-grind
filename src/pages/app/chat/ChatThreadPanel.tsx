@@ -879,9 +879,10 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                 // Send to the preview pipeline so the user can verify and send it
                 onAudioRecorded(audioBlob, Math.round(durationMs), false, waveform);
                 
-            } catch (err) {
+            } catch (err: any) {
                 appLog.error("Error processing audio file:", err);
-                toast.error(t("chat.errors.process_audio_failed", { defaultValue: "Failed to process audio file" }));
+                const errMsg = err?.message || String(err);
+                toast.error(t("chat.errors.process_audio_failed", { defaultValue: `Failed to process audio file: ${errMsg}` }));
             } finally {
                 setIsProcessingAudioFile(false);
                 if (audioFileInputRef.current) {

@@ -167,7 +167,8 @@ export function extractAacFromMp4(arrayBuffer: ArrayBuffer): ArrayBuffer | null 
             const found = current.find(b => b.type === target);
             if (!found) return null;
             if (i === parts.length - 1) return found;
-            current = parseBoxes(found.payloadStart, found.payloadEnd);
+            const startOffset = found.type === "stsd" ? 8 : 0;
+            current = parseBoxes(found.payloadStart + startOffset, found.payloadEnd);
         }
         return null;
     }

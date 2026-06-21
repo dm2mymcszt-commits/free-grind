@@ -366,6 +366,7 @@ export function ProfileDetailsModal({
 	const carouselTotalRef = useRef(0);
 	const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 	const pageWrapRef = useRef<HTMLDivElement | null>(null);
+	const touchStartTimeRef = useRef(0);
 	const [profileSwipeDelta, setProfileSwipeDelta] = useState(0);
 	const profileSwipeRef = useRef({ startX: 0, startY: 0, decided: false, horizontal: false, dragging: false, lastDelta: 0 });
 	const [headerOpacity, setHeaderOpacity] = useState(0);
@@ -1111,6 +1112,14 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 								<button
 									type="button"
 									onClick={() => openPhotoViewer(index)}
+									onTouchStart={() => { touchStartTimeRef.current = Date.now(); }}
+									onTouchEnd={(e) => {
+										const duration = Date.now() - touchStartTimeRef.current;
+										if (duration < 250) {
+											openPhotoViewer(index);
+											e.preventDefault();
+										}
+									}}
 									className="w-full h-full p-0 border-0 bg-transparent block cursor-pointer"
 									style={{
 										WebkitTouchCallout: "default",
@@ -1414,6 +1423,14 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 											<button
 												type="button"
 												onClick={() => openPhotoViewer(index)}
+												onTouchStart={() => { touchStartTimeRef.current = Date.now(); }}
+												onTouchEnd={(e) => {
+													const duration = Date.now() - touchStartTimeRef.current;
+													if (duration < 250) {
+														openPhotoViewer(index);
+														e.preventDefault();
+													}
+												}}
 												className="w-full h-full p-0 border-0 bg-transparent block cursor-pointer"
 												style={{
 													WebkitTouchCallout: "default",

@@ -210,6 +210,7 @@ export function ProfileDetailsContent({
     const [dragDelta, setDragDelta] = useState(0);
     const isDraggingRef = useRef(false);
     const lastDeltaRef = useRef(0);
+    const touchStartTimeRef = useRef(0);
     const currentIndexRef = useRef(mobileCarouselPhotoIndex);
     currentIndexRef.current = mobileCarouselPhotoIndex;
     const onPhotoIndexChangeRef = useRef(onPhotoIndexChange);
@@ -354,6 +355,14 @@ export function ProfileDetailsContent({
                                                 <button
                                                     type="button"
                                                     onClick={() => openPhotoViewer(index)}
+                                                    onTouchStart={() => { touchStartTimeRef.current = Date.now(); }}
+                                                    onTouchEnd={(e) => {
+                                                        const duration = Date.now() - touchStartTimeRef.current;
+                                                        if (duration < 250) {
+                                                            openPhotoViewer(index);
+                                                            e.preventDefault();
+                                                        }
+                                                    }}
                                                     className="w-full h-full p-0 border-0 bg-transparent block cursor-pointer"
                                                     style={{
                                                         WebkitTouchCallout: "default",
