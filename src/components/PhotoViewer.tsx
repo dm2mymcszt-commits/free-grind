@@ -474,7 +474,7 @@ export function PhotoViewer({
     return createPortal(
         <dialog
             ref={dialogRef}
-            className={`fixed inset-0 z-[80] m-0 h-full w-full max-w-none border-none bg-transparent p-0 overflow-hidden ${typeof window !== "undefined" && "__TAURI_INTERNALS__" in window ? "rounded-[20px]" : ""}`}
+            className={`fixed inset-0 z-[300] m-0 h-full w-full max-w-none border-none bg-transparent p-0 overflow-hidden ${typeof window !== "undefined" && "__TAURI_INTERNALS__" in window ? "rounded-[20px]" : ""}`}
             onCancel={(e) => { e.preventDefault(); onClose(); }}
         >
             <div className="fixed inset-0 bg-black" onClick={() => {
