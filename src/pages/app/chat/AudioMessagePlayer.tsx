@@ -64,12 +64,8 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 	const [duration, setDuration] = useState(durationHint ?? 0);
 	const [speedIdx, setSpeedIdx] = useState(0);
 
-	const [audioSrc, setAudioSrc] = useState<string>(() => {
-		if (typeof src === "string") return src;
-		return "";
-	});
-	const isRemote = typeof src === "string" && !src.startsWith("blob:") && !src.startsWith("data:");
-	const isLoading = typeof src === "string" ? (isRemote && audioSrc === src) : !audioSrc;
+	const [audioSrc, setAudioSrc] = useState<string>("");
+	const [isLoading, setIsLoading] = useState(true);
 
 	const trackBarsRef = useRef(BARS);
 	const [trackBars, setTrackBars] = useState(BARS);
@@ -81,12 +77,7 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 	const clipRef = useRef<HTMLDivElement | null>(null);
 	const durationRef = useRef(durationHint ?? 0);
 
-	const liveAudioCtxRef = useRef<AudioContext | null>(null);
-	const liveAnalyserRef = useRef<AnalyserNode | null>(null);
-	const liveAnalyserData = useRef<Uint8Array | null>(null);
-	const [liveBars, setLiveBars] = useState<number[] | null>(null);
-	const recordedFractionRef = useRef(recordedFraction ?? 1);
-	useEffect(() => { recordedFractionRef.current = recordedFraction ?? 1; }, [recordedFraction]);
+
 
 	const updateProgress = useCallback((t: number) => {
 		const d = durationRef.current;
@@ -98,11 +89,14 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 	useEffect(() => {
 		if (!src) return;
 
+		// For data: URLs, use directly
 		if (typeof src === "string" && src.startsWith("data:")) {
 			setAudioSrc(src);
+			setIsLoading(false);
 			return;
 		}
 
+		setIsLoading(true);
 		let active = true;
 
 		const loadAudio = async () => {
@@ -143,17 +137,18 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 				const dataUrl = await blobToDataUrl(blob);
 				if (!active) return;
 				setAudioSrc(dataUrl);
+				setIsLoading(false);
 			} catch (err) {
 				console.error("[AudioMessagePlayer] Failed to fetch and convert audio:", err);
-				if (active && typeof src === "string") setAudioSrc(src);
+				if (active) {
+					if (typeof src === "string") {
+						setAudioSrc(src);
+					}
+					setIsLoading(false);
+				}
 			}
 		};
 
-		if (typeof src === "string" && !src.startsWith("blob:") && !src.startsWith("data:")) {
-			setAudioSrc(src); // Reset immediately to remote URL to trigger loading state
-		} else if (src instanceof Blob) {
-			setAudioSrc(""); // Reset immediately to empty string for blob to trigger loading state
-		}
 		void loadAudio();
 
 		return () => {
@@ -193,16 +188,6 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 				updateProgress(audio.currentTime);
 				setCurrentTime(audio.currentTime);
 			}
-			if (liveAnalyserRef.current && liveAnalyserData.current) {
-				liveAnalyserRef.current.getByteFrequencyData(liveAnalyserData.current as Uint8Array<ArrayBuffer>);
-				const data = liveAnalyserData.current;
-				const n = Math.max(1, Math.round(trackBarsRef.current * recordedFractionRef.current));
-				const bars = Array.from({ length: n }, (_, i) => {
-					const s = Math.floor(i * data.length / n), e = Math.floor((i + 1) * data.length / n);
-					return data.slice(s, e).reduce((a, b) => a + b, 0) / (e - s) / 255;
-				});
-				setLiveBars(bars);
-			}
 			rafRef.current = requestAnimationFrame(tick);
 		};
 
@@ -218,7 +203,6 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 			setIsPlaying(false);
 			setCurrentTime(0);
 			updateProgress(0);
-			setLiveBars(null);
 		};
 		// iOS often doesn't fire loadedmetadata for blob URLs; canplaythrough is more reliable
 		const onCanPlay = () => {
@@ -244,48 +228,22 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 			audio.removeEventListener("canplaythrough", onCanPlay);
 			audio.removeEventListener("ended", onEnded);
 			audio.removeEventListener("error", onError);
-			void liveAudioCtxRef.current?.close();
 		};
 	}, [updateProgress, durationHint, audioSrc]);
 
 	const togglePlay = () => {
 		const audio = audioRef.current;
 		if (!audio) return;
-		if (isPlaying) { audio.pause(); setIsPlaying(false); }
-		else {
-			const doPlay = () => {
-				audio.play().then(() => { setIsPlaying(true); }).catch((err: unknown) => {
-					console.error("[AudioMessagePlayer] play failed:", err);
-					setIsPlaying(false);
-				});
-			};
-			const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
-				(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-			const supportsLiveAnalyser = !isMobile && (src instanceof Blob || (typeof src === "string" && src.startsWith("blob:")));
-			if (supportsLiveAnalyser && !liveAudioCtxRef.current) {
-				try {
-					const ctx = new AudioContext();
-					const analyser = ctx.createAnalyser();
-					analyser.fftSize = 128;
-					analyser.smoothingTimeConstant = 0.6;
-					ctx.createMediaElementSource(audio).connect(analyser);
-					analyser.connect(ctx.destination);
-					liveAudioCtxRef.current = ctx;
-					liveAnalyserRef.current = analyser;
-					liveAnalyserData.current = new Uint8Array(analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
-				} catch { /* non-fatal, falls back to seeded waveform */ }
-			}
-			const ctx = liveAudioCtxRef.current;
-			if (ctx && ctx.state !== "running") {
-				ctx.resume().then(doPlay).catch(() => {
-					void ctx.close();
-					liveAudioCtxRef.current = null;
-					liveAnalyserRef.current = null;
-					doPlay();
-				});
-			} else {
-				doPlay();
-			}
+		if (isPlaying) {
+			audio.pause();
+			setIsPlaying(false);
+		} else {
+			audio.play().then(() => {
+				setIsPlaying(true);
+			}).catch((err: unknown) => {
+				console.error("[AudioMessagePlayer] play failed:", err);
+				setIsPlaying(false);
+			});
 		}
 	};
 
@@ -317,7 +275,7 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 	};
 	const onPointerUp = () => { isDraggingRef.current = false; };
 
-	const displayWaveform = (initialBars && initialBars.length > 0) ? waveform : (liveBars ?? waveform);
+	const displayWaveform = waveform;
 	const barColor = mine ? "bg-[var(--accent-contrast)]" : "bg-[var(--accent)]";
 	const btnColor = mine ? "bg-[var(--accent-contrast)] text-[var(--accent)]" : "bg-[var(--accent)] text-[var(--accent-contrast)]";
 	const pillColor = mine

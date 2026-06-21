@@ -1,7 +1,20 @@
 export async function extractAudioToWav(file: File): Promise<{blob: Blob, durationMs: number}> {
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
     const arrayBuffer = await file.arrayBuffer();
-    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    const audioBuffer = await new Promise<AudioBuffer>((resolve, reject) => {
+        try {
+            const promise = audioContext.decodeAudioData(
+                arrayBuffer,
+                (buffer) => resolve(buffer),
+                (err) => reject(err || new Error("Failed to decode audio data"))
+            );
+            if (promise && typeof promise.catch === "function") {
+                promise.catch((err) => reject(err));
+            }
+        } catch (e) {
+            reject(e);
+        }
+    });
     
     const numOfChan = audioBuffer.numberOfChannels;
     const length = audioBuffer.length * numOfChan * 2 + 44;
@@ -44,7 +57,7 @@ export async function extractAudioToWav(file: File): Promise<{blob: Blob, durati
         offset++;
     }
 
-    return { blob: new Blob([buffer], { type: "audio/mp4" }), durationMs: audioBuffer.duration * 1000 };
+    return { blob: new Blob([buffer], { type: "audio/wav" }), durationMs: audioBuffer.duration * 1000 };
 }
 
 export function getAudioDuration(file: Blob): Promise<number> {

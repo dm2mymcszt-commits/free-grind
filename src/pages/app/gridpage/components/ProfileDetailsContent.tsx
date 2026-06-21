@@ -214,6 +214,10 @@ export function ProfileDetailsContent({
     currentIndexRef.current = mobileCarouselPhotoIndex;
     const onPhotoIndexChangeRef = useRef(onPhotoIndexChange);
     onPhotoIndexChangeRef.current = onPhotoIndexChange;
+    const openPhotoViewerRef = useRef(openPhotoViewer);
+    openPhotoViewerRef.current = openPhotoViewer;
+    const onDragDeltaChangeRef = useRef(onDragDeltaChange);
+    onDragDeltaChangeRef.current = onDragDeltaChange;
 
     useEffect(() => {
         setDragDelta(0);
@@ -246,7 +250,7 @@ export function ProfileDetailsContent({
             const dx = endX - startX;
 
             if (!decided) {
-                if (Math.abs(dy) < 8 && Math.abs(dx) < 8) return;
+                if (Math.abs(dy) < 10 && Math.abs(dx) < 10) return;
                 decided = true;
                 if (Math.abs(dx) >= Math.abs(dy)) return; // horizontal swipe -> ignore
                 const idx = currentIndexRef.current;
@@ -261,19 +265,12 @@ export function ProfileDetailsContent({
             e.preventDefault();
             lastDeltaRef.current = dy;
             setDragDelta(dy);
-            onDragDeltaChange?.(dy);
+            onDragDeltaChangeRef.current?.(dy);
         };
 
         const onEnd = () => {
             isDraggingRef.current = false;
-            if (!navigating) {
-                const distY = Math.abs(endY - startY);
-                const distX = Math.abs(endX - startX);
-                if (distY < 12 && distX < 12) {
-                    openPhotoViewer(currentIndexRef.current);
-                }
-                return;
-            }
+            if (!navigating) return;
             navigating = false;
             const dy = lastDeltaRef.current;
             const idx = currentIndexRef.current;
@@ -285,7 +282,7 @@ export function ProfileDetailsContent({
             }
             lastDeltaRef.current = 0;
             setDragDelta(0);
-            onDragDeltaChange?.(0);
+            onDragDeltaChangeRef.current?.(0);
         };
 
         el.addEventListener("touchstart", onStart, { passive: true });
@@ -296,7 +293,7 @@ export function ProfileDetailsContent({
             el.removeEventListener("touchmove", onMove);
             el.removeEventListener("touchend", onEnd);
         };
-    }, [activeProfilePhotoHashes.length, showMobileCarousel, isDesktopLike, mobileCarouselRef, openPhotoViewer]);
+    }, [activeProfile?.profileId, activeProfilePhotoHashes.length, showMobileCarousel, isDesktopLike, mobileCarouselRef]);
 
     const showGlassQuickActions = showMobileCarousel && !isDesktopLike && activeProfilePhotoHashes.length > 0 && Boolean(messageProfileId && onMessageProfile);
     const glassActionButtonClassName = "inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/45 bg-white/18 text-white shadow-[0_10px_30px_-16px_rgba(0,0,0,0.9)] backdrop-blur-md transition hover:bg-white/24 disabled:opacity-60";
@@ -358,12 +355,18 @@ export function ProfileDetailsContent({
                                                     type="button"
                                                     onClick={() => openPhotoViewer(index)}
                                                     className="absolute inset-0 z-10 bg-transparent select-none"
+                                                    style={{
+                                                        userSelect: "none",
+                                                        WebkitUserSelect: "none",
+                                                        WebkitTouchCallout: "none",
+                                                    }}
                                                     aria-label={t("profile_details.open_photo", { index: index + 1 })}
                                                 />
                                                 <img
                                                     src={getProfileImageUrl(hash, "1024x1024")}
                                                     alt={t("profile_details.photo_alt", { name: activeProfileName })}
-                                                    className="h-full w-full object-cover"
+                                                    className="h-full w-full object-cover pointer-events-none select-none"
+                                                    draggable={false}
                                                 />
                                                 {renderPhotoCreatedBadge(hash)}
                                             </div>

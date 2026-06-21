@@ -851,7 +851,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 		};
 		el.addEventListener("wheel", onWheel, { passive: false });
 		return () => el.removeEventListener("wheel", onWheel);
-	}, [isModalSplit]);
+	}, [isModalSplit, activeProfile?.profileId]);
 
 	const photoCreatedAtByHash = useMemo(() => {
 		if (!activeProfile) {
@@ -907,9 +907,9 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 		[activeProfilePhotoHashes, photoCreatedAtByHash, t],
 	);
 
-	const openPhotoViewer = (index: number) => {
+	const openPhotoViewer = useCallback((index: number) => {
 		setSelectedPhotoIndex(index);
-	};
+	}, []);
 
 	const closePhotoViewer = () => {
 		setSelectedPhotoIndex(null);
@@ -1111,12 +1111,18 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 									type="button"
 									onClick={() => openPhotoViewer(index)}
 									className="absolute inset-0 z-10 bg-transparent select-none"
+									style={{
+										userSelect: "none",
+										WebkitUserSelect: "none",
+										WebkitTouchCallout: "none",
+									}}
 									aria-label={t("profile_details.open_photo", { index: index + 1 })}
 								/>
 								<img
 									src={getProfileImageUrl(hash, "1024x1024")}
 									alt={t("profile_details.photo_alt", { name: activeProfileName })}
-									className="h-full w-full object-cover"
+									className="h-full w-full object-cover pointer-events-none select-none"
+									draggable={false}
 								/>
 							</div>
 						))}
