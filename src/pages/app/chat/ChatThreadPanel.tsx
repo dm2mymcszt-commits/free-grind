@@ -203,7 +203,7 @@ type ChatThreadPanelProps = {
     setAttachmentMaxViews: (value: number) => void;
     albumCoverMap?: Map<number, string>;
     ownProfilePhotoUrl?: string | null;
-    onAudioRecorded: (blob: Blob, durationMs: number, autoSend?: boolean) => void;
+    onAudioRecorded: (blob: Blob, durationMs: number, autoSend?: boolean, waveform?: number[]) => void;
     pendingAudioBlob: Blob | null;
     pendingAudioDuration: number;
     isSendingAudio: boolean;
@@ -523,7 +523,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
             void fixWebmDuration(rawBlob, durationMs).then((blob) => {
                 if (durationMs >= 500) {
                     setRecordedWaveform(capturedBars);
-                    onAudioRecorded(blob, durationMs, autoSend);
+                    onAudioRecorded(blob, durationMs, autoSend, capturedBars);
                 } else {
                     toast.error(t("chat.errors.recording_too_short", { defaultValue: "Recording too short." }));
                 }
@@ -823,6 +823,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
             try {
                 let audioBlob: Blob;
                 let durationMs: number;
+                let waveform: number[] | undefined = undefined;
                 
                 // If it's a video file, extract the audio into WAV
                 if (file.type.startsWith("video/")) {
@@ -830,6 +831,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                     const result = await extractAudioToWav(file);
                     audioBlob = result.blob;
                     durationMs = result.durationMs;
+                    waveform = result.waveform;
                     if (result.waveform) {
                         setRecordedWaveform(result.waveform);
                     }
@@ -839,6 +841,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                     toast.loading(t("chat.processing_audio", { defaultValue: "Processing audio..." }), { id: "audio-extract" });
                     const result = await getAudioFileMetadata(audioBlob);
                     durationMs = result.durationMs;
+                    waveform = result.waveform;
                     if (result.waveform) {
                         setRecordedWaveform(result.waveform);
                     }
@@ -846,7 +849,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                 }
                 
                 // Send to the preview pipeline so the user can verify and send it
-                onAudioRecorded(audioBlob, Math.round(durationMs), false);
+                onAudioRecorded(audioBlob, Math.round(durationMs), false, waveform);
                 
             } catch (err) {
                 appLog.error("Error processing audio file:", err);

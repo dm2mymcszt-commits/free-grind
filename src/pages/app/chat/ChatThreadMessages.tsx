@@ -1192,6 +1192,9 @@ export function ChatThreadMessages({
                                         const audioDurationHint = audioLengthRaw != null
                                             ? (audioLengthRaw > 600 ? audioLengthRaw / 1000 : audioLengthRaw)
                                             : undefined;
+                                        const initialBars = Array.isArray(audioBody?.waveform)
+                                            ? (audioBody.waveform as number[])
+                                            : undefined;
                                         //console.log("[audio message]", { messageId: message.messageId, body: audioBody, audioLengthRaw, audioDurationHint });
                                         return (
                                             <div onClick={(e) => e.stopPropagation()}>
@@ -1200,6 +1203,7 @@ export function ChatThreadMessages({
                                                     messageId={message.messageId}
                                                     mine={mine}
                                                     durationHint={audioDurationHint}
+                                                    initialBars={initialBars}
                                                 />
                                             </div>
                                         );

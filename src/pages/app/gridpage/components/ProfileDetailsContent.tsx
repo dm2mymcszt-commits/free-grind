@@ -351,22 +351,15 @@ export function ProfileDetailsContent({
                                                 }}
                                                 className="absolute inset-0 bg-[var(--surface-2)] select-none"
                                             >
-                                                <button
-                                                    type="button"
-                                                    onClick={() => openPhotoViewer(index)}
-                                                    className="absolute inset-0 z-10 bg-transparent select-none"
-                                                    style={{
-                                                        userSelect: "none",
-                                                        WebkitUserSelect: "none",
-                                                        WebkitTouchCallout: "none",
-                                                    }}
-                                                    aria-label={t("profile_details.open_photo", { index: index + 1 })}
-                                                />
                                                 <img
                                                     src={getProfileImageUrl(hash, "1024x1024")}
                                                     alt={t("profile_details.photo_alt", { name: activeProfileName })}
-                                                    className="h-full w-full object-cover pointer-events-none select-none"
-                                                    draggable={false}
+                                                    className="h-full w-full object-cover cursor-pointer"
+                                                    onClick={() => openPhotoViewer(index)}
+                                                    style={{
+                                                        WebkitTouchCallout: "default",
+                                                        pointerEvents: "auto",
+                                                    }}
                                                 />
                                                 {renderPhotoCreatedBadge(hash)}
                                             </div>

@@ -1107,22 +1107,15 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 									transition: carouselDragDelta !== 0 ? "none" : "transform 300ms ease-out",
 								}}
 							>
-								<button
-									type="button"
-									onClick={() => openPhotoViewer(index)}
-									className="absolute inset-0 z-10 bg-transparent select-none"
-									style={{
-										userSelect: "none",
-										WebkitUserSelect: "none",
-										WebkitTouchCallout: "none",
-									}}
-									aria-label={t("profile_details.open_photo", { index: index + 1 })}
-								/>
 								<img
 									src={getProfileImageUrl(hash, "1024x1024")}
 									alt={t("profile_details.photo_alt", { name: activeProfileName })}
-									className="h-full w-full object-cover pointer-events-none select-none"
-									draggable={false}
+									className="h-full w-full object-cover cursor-pointer"
+									onClick={() => openPhotoViewer(index)}
+									style={{
+										WebkitTouchCallout: "default",
+										pointerEvents: "auto",
+									}}
 								/>
 							</div>
 						))}
@@ -1409,17 +1402,15 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 												transition: "transform 300ms ease-out",
 											}}
 										>
-											<button
-												type="button"
-												onClick={() => openPhotoViewer(index)}
-												className="absolute inset-y-0 left-0 z-10 bg-transparent select-none"
-												style={{ width: "76.4%" }}
-												aria-label={t("profile_details.open_photo", { index: index + 1 })}
-											/>
 											<img
 												src={getProfileImageUrl(hash, "1024x1024")}
 												alt={t("profile_details.photo_alt", { name: activeProfileName })}
-												className="h-full w-full object-cover"
+												className="h-full w-full object-cover cursor-pointer"
+												onClick={() => openPhotoViewer(index)}
+												style={{
+													WebkitTouchCallout: "default",
+													pointerEvents: "auto",
+												}}
 											/>
 										</div>
 									))}

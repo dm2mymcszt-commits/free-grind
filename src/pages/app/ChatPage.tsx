@@ -92,6 +92,7 @@ import { isChatGhosted } from "../../utils/privacy";
 import freegrindLogo from "../../images/freegrind-logo.webp";
 import { getCachedOwnProfilePhotoHash, setCachedOwnProfilePhotoHash } from "./gridpage/cache";
 import { getThumbImageUrl, validateMediaHash } from "../../utils/media";
+import { getArrayBufferFromFile } from "../../utils/audioUtils";
 
 /**
  * Checks whether a CloudFront signed URL has expired by reading the
@@ -458,6 +459,7 @@ export function ChatPage() {
 	const [attachmentMaxViews, setAttachmentMaxViews] = useState(2147483647);
 	const [pendingAudioBlob, setPendingAudioBlob] = useState<Blob | null>(null);
 	const [pendingAudioDuration, setPendingAudioDuration] = useState(0);
+	const [pendingAudioWaveform, setPendingAudioWaveform] = useState<number[] | undefined>(undefined);
 	const [isSendingAudio, setIsSendingAudio] = useState(false);
 	const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 	const [isLoadingDrawer, setIsLoadingDrawer] = useState(false);
@@ -3070,7 +3072,7 @@ export function ChatPage() {
 		[attachmentLooping, attachmentMaxViews, attachmentTakenOnGrindr, sendMediaAttachment],
 	);
 
-	const sendAudioBlob = useCallback(async (blob: Blob, durationMs: number) => {
+	const sendAudioBlob = useCallback(async (blob: Blob, durationMs: number, waveform?: number[]) => {
 		if (!userId) return;
 		const targetIdValue = selectedConversation
 			? (getOtherParticipant(selectedConversation, userId)?.profileId ?? null)
@@ -3078,7 +3080,7 @@ export function ChatPage() {
 		if (!targetIdValue) return;
 		setIsSendingAudio(true);
 		try {
-			const audioBytes = new Uint8Array(await blob.arrayBuffer());
+			const audioBytes = new Uint8Array(await getArrayBufferFromFile(blob));
 			const uploaded = await service.uploadChatMedia({
 				multipart: { body: audioBytes, contentType: blob.type || "audio/webm" },
 				options: { looping: false, takenOnGrindr: false, durationSeconds: durationMs },
@@ -3093,11 +3095,13 @@ export function ChatPage() {
 					contentType: blob.type || "audio/webm",
 					length: durationMs,
 					expiresAt: uploaded.expiresAt,
+					waveform,
 				},
 				replyToMessageId: replyTargetMessageId,
 			});
 			setPendingAudioBlob(null);
 			setPendingAudioDuration(0);
+			setPendingAudioWaveform(undefined);
 			setReplyTargetMessageId(null);
 
 			if (!selectedConversation || selectedConversation.data.conversationId.startsWith("direct:")) {
@@ -3122,24 +3126,26 @@ export function ChatPage() {
 	const sendAudioBlobRef = useRef(sendAudioBlob);
 	useEffect(() => { sendAudioBlobRef.current = sendAudioBlob; }, [sendAudioBlob]);
 
-	const onAudioRecorded = useCallback((blob: Blob, durationMs: number, autoSend?: boolean) => {
+	const onAudioRecorded = useCallback((blob: Blob, durationMs: number, autoSend?: boolean, waveform?: number[]) => {
 		if (autoSend) {
-			void sendAudioBlobRef.current(blob, durationMs);
+			void sendAudioBlobRef.current(blob, durationMs, waveform);
 		} else {
 			setPendingAudioBlob(blob);
 			setPendingAudioDuration(durationMs);
+			setPendingAudioWaveform(waveform);
 		}
 	}, []);
 
 	const cancelAudio = useCallback(() => {
 		setPendingAudioBlob(null);
 		setPendingAudioDuration(0);
+		setPendingAudioWaveform(undefined);
 	}, []);
 
 	const confirmAudio = useCallback(async () => {
 		if (!pendingAudioBlob) return;
-		await sendAudioBlob(pendingAudioBlob, pendingAudioDuration);
-	}, [pendingAudioBlob, pendingAudioDuration, sendAudioBlob]);
+		await sendAudioBlob(pendingAudioBlob, pendingAudioDuration, pendingAudioWaveform);
+	}, [pendingAudioBlob, pendingAudioDuration, pendingAudioWaveform, sendAudioBlob]);
 
 	const handleSend = (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();

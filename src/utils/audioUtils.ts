@@ -25,11 +25,28 @@ export function generateWaveformFromBuffer(audioBuffer: AudioBuffer, numBars: nu
     return bars;
 }
 
+export async function getArrayBufferFromFile(file: Blob): Promise<ArrayBuffer> {
+    let url: string | null = null;
+    try {
+        url = URL.createObjectURL(file);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("Failed to fetch local object URL");
+        return await res.arrayBuffer();
+    } catch (e) {
+        console.warn("Fetch from object URL failed, falling back to direct arrayBuffer() read:", e);
+        return await file.arrayBuffer();
+    } finally {
+        if (url) {
+            URL.revokeObjectURL(url);
+        }
+    }
+}
+
 export async function extractAudioToWav(file: File): Promise<{blob: Blob, durationMs: number, waveform: number[]}> {
     const AudioContextClass = window.OfflineAudioContext || (window as any).webkitOfflineAudioContext;
     // 1 channel, 1 sample length, 44100 sample rate
     const audioContext = new AudioContextClass(1, 1, 44100);
-    const arrayBuffer = await file.arrayBuffer();
+    const arrayBuffer = await getArrayBufferFromFile(file);
     const audioBuffer = await new Promise<AudioBuffer>((resolve, reject) => {
         try {
             const promise = audioContext.decodeAudioData(
@@ -97,7 +114,7 @@ export async function extractAudioToWav(file: File): Promise<{blob: Blob, durati
 export async function getAudioFileMetadata(file: Blob): Promise<{ durationMs: number; waveform: number[] }> {
     const AudioContextClass = window.OfflineAudioContext || (window as any).webkitOfflineAudioContext;
     const audioContext = new AudioContextClass(1, 1, 44100);
-    const arrayBuffer = await file.arrayBuffer();
+    const arrayBuffer = await getArrayBufferFromFile(file);
     const audioBuffer = await new Promise<AudioBuffer>((resolve, reject) => {
         try {
             const promise = audioContext.decodeAudioData(
@@ -119,3 +136,4 @@ export async function getAudioFileMetadata(file: Blob): Promise<{ durationMs: nu
         waveform
     };
 }
+

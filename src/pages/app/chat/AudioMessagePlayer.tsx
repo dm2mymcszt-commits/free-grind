@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Pause, Play } from "lucide-react";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { isTauriRuntime } from "../../../services/tauriWebSocket";
+import { getAudioFileMetadata } from "../../../utils/audioUtils";
 
 function formatDuration(seconds: number) {
 	const m = Math.floor(seconds / 60);
@@ -55,7 +56,7 @@ type Props = {
 	recordedFraction?: number;
 };
 
-export function AudioMessagePlayer({ src, messageId, mine, className, durationHint, hideSpeed, compact, initialBars, recordedFraction }: Props) {
+export function AudioMessagePlayer({ src, messageId, mine, className, durationHint, hideSpeed, compact, initialBars, recordedFraction: _recordedFraction }: Props) {
 	const audioRef = useRef<HTMLAudioElement | null>(null);
 	const trackRef = useRef<HTMLDivElement | null>(null);
 	const isDraggingRef = useRef(false);
@@ -66,12 +67,15 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 
 	const [audioSrc, setAudioSrc] = useState<string>("");
 	const [isLoading, setIsLoading] = useState(true);
+	const [decodedWaveform, setDecodedWaveform] = useState<number[] | null>(null);
 
 	const trackBarsRef = useRef(BARS);
 	const [trackBars, setTrackBars] = useState(BARS);
 	const waveform = initialBars && initialBars.length > 0
 		? resample(initialBars, trackBars)
-		: seededWaveform(messageId, trackBars);
+		: (decodedWaveform && decodedWaveform.length > 0
+			? resample(decodedWaveform, trackBars)
+			: seededWaveform(messageId, trackBars));
 
 	const rafRef = useRef<number | null>(null);
 	const clipRef = useRef<HTMLDivElement | null>(null);
@@ -137,6 +141,18 @@ export function AudioMessagePlayer({ src, messageId, mine, className, durationHi
 				const dataUrl = await blobToDataUrl(blob);
 				if (!active) return;
 				setAudioSrc(dataUrl);
+
+				if (!initialBars || initialBars.length === 0) {
+					try {
+						const meta = await getAudioFileMetadata(blob);
+						if (active && meta.waveform && meta.waveform.length > 0) {
+							setDecodedWaveform(meta.waveform);
+						}
+					} catch (decErr) {
+						console.warn("[AudioMessagePlayer] Failed to decode waveform from blob:", decErr);
+					}
+				}
+
 				setIsLoading(false);
 			} catch (err) {
 				console.error("[AudioMessagePlayer] Failed to fetch and convert audio:", err);
