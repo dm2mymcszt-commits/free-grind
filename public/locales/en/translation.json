@@ -8,8 +8,8 @@
         "profile_editor_desc": "Edit profile details, identity, and preferences.",
         "customizability": "Customizability",
         "customizability_desc": "Change color scheme and accent color.",
-        "privacy": "Privacy & Analytics",
-        "privacy_desc": "Ghost mode, media blur, and analytics.",
+        "privacy": "Privacy",
+        "privacy_desc": "Ghost mode and media blur.",
         "automation": "Automation",
         "automation_desc": "Configure automated blocking rules and automatic grid refresh.",
         "issue_board": "Issues & Feature Requests",
@@ -610,15 +610,6 @@
             "system": "System",
             "light": "Light",
             "dark": "Dark"
-        },
-        "analytics": {
-            "title": "Analytics & Discovery",
-            "description": "This controls anonymous analytics and FreeGrind user discovery. If disabled, the app will not use the API to find other FreeGrind users.",
-            "note": "Your allow/deny choice is saved on this device. If enabled, the app may send your profile identifier in API requests used for presence and discovery.",
-            "allow": "Allow",
-            "deny": "Deny",
-            "current": "Current",
-            "not_selected": "Not selected yet"
         }
     },
     "issue_search": {

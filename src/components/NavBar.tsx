@@ -329,6 +329,22 @@ export function NavBar() {
                     .animate-nav-bounce {
                         animation: nav-bounce 0.45s cubic-bezier(0.25, 1, 0.5, 1) forwards;
                     }
+                    .browse-menu-popover {
+                        left: 12px;
+                        transform: translateY(1rem) scale(0.5);
+                    }
+                    .browse-menu-popover.show {
+                        transform: translateY(0) scale(1);
+                    }
+                    @media (min-width: 768px) {
+                        .browse-menu-popover {
+                            left: ${50 / navItems.length}%;
+                            transform: translateX(-50%) translateY(1rem) scale(0.5);
+                        }
+                        .browse-menu-popover.show {
+                            transform: translateX(-50%) translateY(0) scale(1);
+                        }
+                    }
                 `}
             </style>
 
@@ -351,9 +367,8 @@ export function NavBar() {
                     {/* 1. Liquid Glass Browse Options Popover (Sibling) */}
                     <div
                         className={cn(
-                            "select-none touch-none absolute bottom-[calc(100%+0.8rem)] z-[60] flex translate-x-0 md:-translate-x-1/2 origin-bottom-left md:origin-bottom items-center gap-2 rounded-full border border-white/10 dark:border-white/5 p-1.5 backdrop-blur-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)] transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]",
-                            navItems.length === 2 ? "left-3 md:left-[25%]" : navItems.length === 3 ? "left-3 md:left-[16.66%]" : "left-3 md:left-[12.5%]",
-                            showBrowseMenu ? "scale-100 opacity-100" : "pointer-events-none scale-50 opacity-0 translate-y-4"
+                            "select-none touch-none absolute bottom-[calc(100%+0.8rem)] z-[60] flex items-center gap-2 rounded-full border border-white/10 dark:border-white/5 p-1.5 backdrop-blur-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)] transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] browse-menu-popover",
+                            showBrowseMenu ? "show opacity-100 pointer-events-auto" : "pointer-events-none opacity-0"
                         )}
                         style={{
                             backgroundColor: "rgba(15, 17, 21, 0.45)", // Stronger tint to pop over scrolling feed content

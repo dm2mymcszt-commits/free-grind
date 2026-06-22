@@ -13,11 +13,7 @@ import {
     resolveSupportedLocale,
 } from "../../utils/locales";
 import { type UnitsPreset } from "../../utils/units";
-import {
-    readAnalyticsConsentChoice,
-    writeAnalyticsConsentChoice,
-    type AnalyticsConsentChoice,
-} from "../../utils/analyticsConsent";
+
 
 const SKIP_BLOCK_CONFIRM_KEY = "profile_skip_block_confirm";
 
@@ -128,8 +124,7 @@ export function CustomizabilityPage() {
     const [openAIKey, setOpenAIKey] = useState(() => window.localStorage.getItem("fg-openai-key") || "");
     const [geminiKey, setGeminiKey] = useState(() => window.localStorage.getItem("fg-gemini-key") || "");
 
-    // --- CUSTOM STATE (PRIVACY & MEDIA) ---
-    const [analyticsConsent, setAnalyticsConsent] = useState<AnalyticsConsentChoice | null>(() => readAnalyticsConsentChoice());
+
 
     const schemeOptions = useMemo(() => [
         { value: "system" as ColorScheme, label: t("customizability.schemes.system"), icon: <Monitor className="h-5 w-5" /> },

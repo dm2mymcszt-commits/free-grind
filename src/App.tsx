@@ -31,7 +31,6 @@ import { IssueSearchPage } from "./pages/app/IssueSearchPage.tsx";
 import { SettingsAutomationPage } from "./pages/app/SettingsAutomationPage.tsx";
 import { SettingsPrivacyPage } from "./pages/app/SettingsPrivacyPage.tsx";
 import { SettingsSavedPhrasesPage } from "./pages/app/SettingsSavedPhrasesPage.tsx";
-import { AnalyticsConsentPrompt } from "./components/AnalyticsConsentPrompt";
 import { OutdatedVersionPrompt } from "./components/OutdatedVersionPrompt";
 import { PushNotificationBridge } from "./components/PushNotificationBridge";
 import { ChatRealtimeBridge } from "./components/ChatRealtimeBridge";
@@ -143,7 +142,6 @@ export default function App() {
                         <ActiveRouteBridge />
                         <EntitlementsBridge />
                         <OutdatedVersionPrompt />
-                        <AnalyticsConsentPrompt />
                         <Routes>
                             <Route element={<RootLayout />}>
                                 <Route path="/manager" element={<ManagerRoutePage />} />

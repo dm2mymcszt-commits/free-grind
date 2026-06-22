@@ -1,6 +1,7 @@
 import { Outlet, useLocation } from "react-router-dom";
 import { NavBar } from "../components/NavBar";
 import { BackgroundViewScanner } from "../components/BackgroundViewScanner";
+import { BackgroundInboxScanner } from "../components/BackgroundInboxScanner";
 import { useLocationEngine } from "../hooks/useLocationEngine";
 import { useDesktopBreakpoint } from "../hooks/useDesktopBreakpoint";
 
@@ -23,6 +24,9 @@ export function ProtectedLayout() {
         <div className="relative">
             {/* Silently caches incoming views every 60s to bypass paywalls later */}
             <BackgroundViewScanner />
+            
+            {/* Scans incoming unread chats to automatically apply block rules */}
+            <BackgroundInboxScanner />
 			
             <div className="app-page-container">
                 <Outlet />

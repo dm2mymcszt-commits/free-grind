@@ -56,6 +56,8 @@ export function SettingsAutomationPage() {
 	
     // Bot Evasion & Background Scanner
     const [blockFirstMedia, setBlockFirstMedia] = useState(() => window.localStorage.getItem("fg-block-first-media") === "true");
+    const [blockMediaDelayEnabled, setBlockMediaDelayEnabled] = useState(() => window.localStorage.getItem("fg-block-media-delay-enabled") === "true");
+    const [blockMediaDelayMinutes, setBlockMediaDelayMinutes] = useState(() => window.localStorage.getItem("fg-block-media-delay-minutes") || "2");
     const [inboxScannerEnabled, setInboxScannerEnabled] = useState(() => window.localStorage.getItem("fg-inbox-scanner-enabled") === "true");
 
     // Grindr Tags Block State
@@ -107,6 +109,9 @@ export function SettingsAutomationPage() {
         setInboxScannerEnabled(val);
         window.localStorage.setItem("fg-inbox-scanner-enabled", String(val));
         toast.success(val ? "Background Scanner Enabled" : "Background Scanner Disabled", { id: "scanner-toggle" });
+        if (val) {
+            window.dispatchEvent(new Event("fg-trigger-inbox-scan"));
+        }
     };
 
     const handleToggleViewScanner = (val: boolean) => {
@@ -144,6 +149,8 @@ export function SettingsAutomationPage() {
         window.localStorage.setItem("fg-block-bio", String(blockBio));
         window.localStorage.setItem("fg-block-message", String(blockMessage));
         window.localStorage.setItem("fg-block-first-media", String(blockFirstMedia));
+        window.localStorage.setItem("fg-block-media-delay-enabled", String(blockMediaDelayEnabled));
+        window.localStorage.setItem("fg-block-media-delay-minutes", blockMediaDelayMinutes);
         window.localStorage.setItem("fg-forbidden-words", finalWordsString); 
         window.localStorage.setItem("fg-block-min-age", minAge);
         window.localStorage.setItem("fg-block-max-age", maxAge);
@@ -375,76 +382,111 @@ export function SettingsAutomationPage() {
                                     </div>
                                 </div>
 
-                                {/* Bot Evasion */}
-                                <div className="flex items-start gap-3 p-4">
-                                    <div className="shrink-0 rounded-2xl bg-pink-500/15 p-2.5 text-pink-400">
-                                        <ImageIcon className="h-5 w-5" />
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                        <p className="text-sm font-semibold leading-snug">Bot Evasion</p>
-                                        <label className="flex items-start gap-2 mt-2 cursor-pointer">
-                                            <input type="checkbox" checked={blockFirstMedia} onChange={(e) => setBlockFirstMedia(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--accent)] shrink-0" />
-                                            <span className="text-xs text-[var(--text-muted)] leading-relaxed">
-                                                <strong className="text-[var(--text)]">Block if first message is Media.</strong> Catches bots that put spam text inside pictures. (Note: Blocks real people who open with a pic).
-                                            </span>
-                                        </label>
-                                    </div>
-                                </div>
+                                 {/* Bot Evasion */}
+                                 <div className="flex items-start gap-3 p-4">
+                                     <div className="shrink-0 rounded-2xl bg-pink-500/15 p-2.5 text-pink-400">
+                                         <ImageIcon className="h-5 w-5" />
+                                     </div>
+                                     <div className="min-w-0 flex-1">
+                                         <p className="text-sm font-semibold leading-snug">Bot Evasion</p>
+                                         <label className="flex items-start gap-2 mt-2 cursor-pointer">
+                                             <input type="checkbox" checked={blockFirstMedia} onChange={(e) => setBlockFirstMedia(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--accent)] shrink-0" />
+                                             <span className="text-xs text-[var(--text-muted)] leading-relaxed">
+                                                 <strong className="text-[var(--text)]">Block if first message is Media.</strong> Catches bots that put spam text inside pictures. (Note: Blocks real people who open with a pic).
+                                             </span>
+                                         </label>
+                                         {blockFirstMedia && (
+                                             <div className="mt-3 ml-6 flex flex-col gap-2">
+                                                 <label className="flex items-center gap-2 text-xs cursor-pointer">
+                                                     <input type="checkbox" checked={blockMediaDelayEnabled} onChange={(e) => setBlockMediaDelayEnabled(e.target.checked)} className="h-3.5 w-3.5 accent-[var(--accent)]" />
+                                                     <span className="text-[var(--text-muted)]">Delay block decision (Allow follow-up text)</span>
+                                                 </label>
+                                                 {blockMediaDelayEnabled && (
+                                                     <div className="flex items-center gap-2 pl-5.5">
+                                                         <span className="text-xs text-[var(--text-muted)]">Wait duration:</span>
+                                                         <select
+                                                             value={blockMediaDelayMinutes}
+                                                             onChange={(e) => setBlockMediaDelayMinutes(e.target.value)}
+                                                             className="bg-[var(--surface-1)] border border-[var(--border)] rounded px-2 py-0.5 text-xs text-[var(--text)] focus:outline-none focus:border-[var(--accent)]"
+                                                         >
+                                                             <option value="1">1 minute</option>
+                                                             <option value="2">2 minutes</option>
+                                                             <option value="3">3 minutes</option>
+                                                             <option value="4">4 minutes</option>
+                                                             <option value="5">5 minutes</option>
+                                                         </select>
+                                                     </div>
+                                                 )}
+                                             </div>
+                                         )}
+                                     </div>
+                                 </div>
 
-                                {/* Inbox Scanner */}
-                                <div className="flex items-start gap-3 p-4">
-                                    <div className="shrink-0 rounded-2xl bg-yellow-500/15 p-2.5 text-yellow-400">
-                                        <ShieldAlert className="h-5 w-5" />
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                        <div className="flex items-center justify-between gap-4">
-                                            <p className="text-sm font-semibold leading-snug">Silent Inbox Scanner</p>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleToggleInboxScanner(!inboxScannerEnabled)}
-                                                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${inboxScannerEnabled ? "bg-[var(--accent)]" : "bg-[var(--surface-2)]"}`}
-                                            >
-                                                <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${inboxScannerEnabled ? "translate-x-5" : "translate-x-0"}`} />
-                                            </button>
-                                        </div>
-                                        <p className="mt-1 text-xs leading-relaxed text-[var(--text-muted)]">
-                                            Queues your unread inbox and slowly fetches their full profiles in the background to check against your blocks. <strong>Warning: High API usage.</strong>
-                                        </p>
-                                    </div>
-                                </div>
+                                 {/* Inbox Scanner */}
+                                 <div className="flex items-start gap-3 p-4">
+                                     <div className="shrink-0 rounded-2xl bg-yellow-500/15 p-2.5 text-yellow-400">
+                                         <ShieldAlert className="h-5 w-5" />
+                                     </div>
+                                     <div className="min-w-0 flex-1">
+                                         <div className="flex items-center justify-between gap-4">
+                                             <p className="text-sm font-semibold leading-snug">Silent Inbox Scanner</p>
+                                             <button
+                                                 type="button"
+                                                 onClick={() => handleToggleInboxScanner(!inboxScannerEnabled)}
+                                                 className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${inboxScannerEnabled ? "bg-[var(--accent)]" : "bg-[var(--surface-2)]"}`}
+                                             >
+                                                 <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${inboxScannerEnabled ? "translate-x-5" : "translate-x-0"}`} />
+                                             </button>
+                                         </div>
+                                         <p className="mt-1 text-xs leading-relaxed text-[var(--text-muted)]">
+                                             Queues your unread inbox and safely scans profiles in the background to check against your block rules.
+                                         </p>
+                                     </div>
+                                 </div>
 
-                                {/* Tags Block */}
-                                <div className="flex items-start gap-3 p-4">
-                                    <div className="shrink-0 rounded-2xl bg-emerald-500/15 p-2.5 text-emerald-400">
-                                        <Crosshair className="h-5 w-5" />
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                        <p className="text-sm font-semibold leading-snug">Block By "Looking For" Tags</p>
-										
-                                        <div className="mt-2 mb-3 bg-[var(--surface-1)] border border-[var(--border)] rounded-lg p-2 flex flex-col sm:flex-row sm:gap-6 gap-2">
-                                            <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
-                                                <input type="radio" checked={blockedLookingForMode === "any"} onChange={() => setBlockedLookingForMode("any")} className="h-4 w-4 accent-[var(--accent)]" />
-                                                Block if they have ANY of these
-                                            </label>
-                                            <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
-                                                <input type="radio" checked={blockedLookingForMode === "only"} onChange={() => setBlockedLookingForMode("only")} className="h-4 w-4 accent-[var(--accent)]" />
-                                                Block ONLY if they exclusively want these
-                                            </label>
-                                        </div>
+                                 {/* Tags Block */}
+                                 <div className="flex items-start gap-3 p-4">
+                                     <div className="shrink-0 rounded-2xl bg-emerald-500/15 p-2.5 text-emerald-400">
+                                         <Crosshair className="h-5 w-5" />
+                                     </div>
+                                     <div className="min-w-0 flex-1">
+                                         <p className="text-sm font-semibold leading-snug">Block By "Looking For" Tags</p>
+ 										
+                                         <div className="mt-2 mb-3 bg-[var(--surface-1)] border border-[var(--border)] rounded-lg p-3 flex flex-col gap-2">
+                                             <div className="flex flex-col gap-1">
+                                                 <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
+                                                     <input type="radio" checked={blockedLookingForMode === "any"} onChange={() => setBlockedLookingForMode("any")} className="h-4 w-4 accent-[var(--accent)]" />
+                                                     Block if they have ANY of these
+                                                 </label>
+                                                 <p className="text-[10px] text-[var(--text-muted)] pl-6">
+                                                     Blocks the profile if they have one or more of the selected tags.
+                                                 </p>
+                                             </div>
+                                             <div className="border-t border-[var(--border)] my-1" />
+                                             <div className="flex flex-col gap-1">
+                                                 <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
+                                                     <input type="radio" checked={blockedLookingForMode === "only"} onChange={() => setBlockedLookingForMode("only")} className="h-4 w-4 accent-[var(--accent)]" />
+                                                     Block ONLY if they exclusively want these
+                                                 </label>
+                                                 <p className="text-[10px] text-[var(--text-muted)] pl-6">
+                                                     Blocks the profile only if all their tags are in the selected list (e.g., if they exclusively want those tags).
+                                                 </p>
+                                             </div>
+                                         </div>
 
-                                        <div className="grid grid-cols-2 gap-2 mt-3">
-                                            {getLookingForOptions(t).map((option) => (
-                                                <label key={option.value} className="flex items-center gap-2 text-xs cursor-pointer bg-[var(--surface-1)] p-2 rounded-lg border border-[var(--border)] transition hover:border-[var(--accent)]">
-                                                    <input type="checkbox" checked={blockedLookingFor.includes(option.value)} onChange={(e) => {
-                                                        if (e.target.checked) setBlockedLookingFor(prev => [...prev, option.value]);
-                                                        else setBlockedLookingFor(prev => prev.filter(v => v !== option.value));
-                                                    }} className="h-3.5 w-3.5 accent-[var(--accent)] shrink-0" />
-                                                    <span className="truncate">{option.label}</span>
-                                                </label>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
+                                         <div className="grid grid-cols-2 gap-2 mt-3">
+                                             {getLookingForOptions(t).map((option) => (
+                                                 <label key={option.value} className="flex items-center gap-2 text-xs cursor-pointer bg-[var(--surface-1)] p-2 rounded-lg border border-[var(--border)] transition hover:border-[var(--accent)]">
+                                                     <input type="checkbox" checked={blockedLookingFor.includes(option.value)} onChange={(e) => {
+                                                         if (e.target.checked) setBlockedLookingFor(prev => [...prev, option.value]);
+                                                         else setBlockedLookingFor(prev => prev.filter(v => v !== option.value));
+                                                     }} className="h-3.5 w-3.5 accent-[var(--accent)] shrink-0" />
+                                                     <span className="truncate">{option.label}</span>
+                                                 </label>
+                                             ))}
+                                         </div>
+                                     </div>
+                                 </div>
 
                                 {/* Age & Distance Limits */}
                                 <div className="flex items-start gap-3 p-4">

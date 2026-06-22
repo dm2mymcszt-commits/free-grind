@@ -1340,18 +1340,42 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 
 	if (variant === "page") {
 		return (
-			<div className="app-screen relative flex h-dvh flex-col w-full !px-0 !pb-0 !pt-0 overflow-x-hidden bg-[var(--bg)]">
-				<div
-					ref={pageWrapRef}
-					className="relative flex h-full flex-col"
-					style={{
-						transform: `translateX(${profileSwipeDelta}px)`,
-						transition: profileSwipeDelta === 0 ? "transform 250ms ease-out" : "none",
-					}}
-				>
-					{renderInlineLayout()}
+			<>
+				<div className="app-screen relative flex h-dvh flex-col w-full !px-0 !pb-0 !pt-0 overflow-x-hidden bg-[var(--bg)]">
+					<div
+						ref={pageWrapRef}
+						className="relative flex h-full flex-col"
+						style={{
+							transform: `translateX(${profileSwipeDelta}px)`,
+							transition: profileSwipeDelta === 0 ? "transform 250ms ease-out" : "none",
+						}}
+					>
+						{renderInlineLayout()}
+					</div>
 				</div>
-			</div>
+				{photoViewerOverlay}
+				<ConfirmDialog
+					isOpen={showBlockConfirm}
+					onCancel={() => setShowBlockConfirm(false)}
+					onConfirm={() => {
+						setShowBlockConfirm(false);
+						if (dontAskAgainChecked && typeof window !== "undefined") {
+							localStorage.setItem(SKIP_BLOCK_CONFIRM_KEY, "true");
+							setSkipBlockConfirm(true);
+						}
+						if (messageProfileId) onBlockProfile?.(String(messageProfileId));
+					}}
+					title={t("profile_details.block")}
+					message={t("profile_details.block_confirm")}
+					confirmLabel={t("profile_details.block")}
+					cancelLabel={t("common.cancel")}
+					confirmTone="danger"
+					isProcessing={isBlockingProfile}
+					dontAskAgainLabel={t("profile_details.dont_ask_again", { defaultValue: "Don't ask again" })}
+					dontAskAgainChecked={dontAskAgainChecked}
+					onDontAskAgainChange={setDontAskAgainChecked}
+				/>
+			</>
 		);
 	}
 

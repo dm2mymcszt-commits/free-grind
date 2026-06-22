@@ -26,13 +26,6 @@ import { FEED_HEADER_OFFSET, FEED_MASK_GRADIENT_STOP } from "../../../config/des
 
 // --- NEW IMPORTS FOR AUTO-BLOCK SCANNER ---
 import { useApiFunctions } from "../../../hooks/useApiFunctions";
-import { 
-    isOutsideAgeLimits, 
-    isOutsideDistanceLimits, 
-    shouldAutoBlock, 
-    isForbiddenLookingFor,
-    notifyAutoBlock 
-} from "../../../utils/autoblock";
 
 // --- MULTI-SELECT IMPORT ---
 import { SelectableItem } from "../../../components/multi-select/SelectableItem";
@@ -116,16 +109,15 @@ function ChatConversationRow({
 		<div
 			ref={ref}
 			onClick={() => onSelectConversation(conversation)}
-			className={`flex cursor-pointer items-center gap-4 py-3 px-4 mx-2 my-1 text-left transition border rounded-xl ${
+			className={`relative flex cursor-pointer items-center gap-4 py-3 px-4 mx-2 my-1 text-left transition border rounded-xl ${
 				isSelected 
-					? "backdrop-blur-md shadow-[0_2px_12px_rgba(255,204,1,0.08)]" 
+					? "bg-white/[0.08] dark:bg-white/[0.05] shadow-[0_4px_20px_rgba(0,0,0,0.15)] border-white/10" 
 					: "bg-transparent border-transparent hover:bg-white/5"
 			} ${revealClass}`}
-			style={isSelected ? { 
-				backgroundColor: "color-mix(in srgb, var(--accent) 12%, transparent)", 
-				borderColor: "color-mix(in srgb, var(--accent) 20%, transparent)" 
-			} : undefined}
 		>
+			{isSelected && (
+				<span className="absolute left-0 top-1/2 -translate-y-1/2 h-8 w-1 rounded-r bg-[var(--accent)] shadow-[0_0_8px_var(--accent)]" />
+			)}
 			<button
 				type="button"
 				title={displayName}
@@ -259,12 +251,7 @@ export function ChatInboxPanel({
         window.addEventListener("fg-ghost-update", triggerUpdate);
         return () => window.removeEventListener("fg-ghost-update", triggerUpdate);
     }, []);
-    
-    // --- BACKGROUND SCANNER SETUP ---
-    const api = useApiFunctions();
-    const scannedProfilesRef = useRef<Set<string>>(new Set());
-    const activeQueueRef = useRef<string[]>([]);
-    const isProcessingQueueRef = useRef(false);
+        const api = useApiFunctions();
 
     // --- NATIVE CONFIRM DIALOG STATE ---
     const [deleteCandidate, setDeleteCandidate] = useState<{ id: string; complete: () => void; revert: () => void } | null>(null);
@@ -279,7 +266,7 @@ export function ChatInboxPanel({
             api.deleteConversation(conversationId).then(() => {
                 toast.success(t("chat.toasts.conversation_deleted", { defaultValue: "Conversation deleted" }));
                 setTimeout(onRefreshInbox, 300); // Give the swoosh animation time to finish before unmounting
-            }).catch((error) => {
+            }).catch((error: any) => {
                 toast.error(
                     error instanceof Error
                         ? error.message
@@ -294,86 +281,7 @@ export function ChatInboxPanel({
         setDeleteCandidate({ id: conversationId, complete: completeSwipe, revert: revertSwipe });
     };
 
-    // Background Profile Scanner Effect
-    useEffect(() => {
-        const isScannerEnabled = window.localStorage.getItem("fg-inbox-scanner-enabled") === "true";
-        if (!isScannerEnabled) return;
-        
-        const toScan = filteredConversations
-            .map((c) => getOtherParticipant(c, userId)?.profileId?.toString())
-            .filter((id): id is string => Boolean(id) && !scannedProfilesRef.current.has(id));
 
-        if (toScan.length === 0) return;
-
-        // Queue all unscanned items and flag them to prevent re-queueing
-        for (const profileId of toScan) {
-            scannedProfilesRef.current.add(profileId);
-            if (!activeQueueRef.current.includes(profileId)) {
-                activeQueueRef.current.push(profileId);
-            }
-        }
-
-        // If the background queue processor is already active, let it run
-        if (isProcessingQueueRef.current) return;
-
-        let isCancelled = false;
-
-        const processQueue = async () => {
-            isProcessingQueueRef.current = true;
-
-            while (activeQueueRef.current.length > 0 && !isCancelled) {
-                const profileId = activeQueueRef.current.shift();
-                if (!profileId) continue;
-
-                try {
-                    const profileDetail = await api.getProfileDetail(profileId);
-                    const p = profileDetail as any;
-
-                    const age = p.age;
-                    const distance = p.distanceMeters ?? p.distance;
-                    const name = p.name || p.displayName || "Unknown";
-                    const bio = p.aboutMe;
-                    const lookingForTags = p.lookingFor || [];
-
-                    let blockReason = "";
-
-                    if (isOutsideAgeLimits(age)) {
-                        blockReason = `Age limit (${age})`;
-                    } else if (isOutsideDistanceLimits(distance)) {
-                        blockReason = "Distance limit";
-                    } else if (isForbiddenLookingFor(lookingForTags)) {
-                        blockReason = "Forbidden 'Looking For' tag";
-                    } else if (shouldAutoBlock(name, "name")) {
-                        blockReason = "Name keyword";
-                    } else if (shouldAutoBlock(bio, "bio")) {
-                        blockReason = "Bio keyword";
-                    }
-
-                    if (blockReason) {
-                        console.log(`[BackgroundScanner] Blocking ${profileId} for ${blockReason}`);
-                        await api.blockProfile(profileId);
-                        notifyAutoBlock(name, `Scanner: ${blockReason}`);
-                        
-                        onRefreshInbox();
-                    }
-                } catch (err) {
-                    // Ignore minor errors
-                }
-
-                // THROTTLE: Wait 1.5 seconds between fetches to prevent Grindr ban hammer!
-                await new Promise((resolve) => setTimeout(resolve, 1500));
-            }
-            isProcessingQueueRef.current = false;
-        };
-
-        void processQueue();
-
-        return () => {
-            isCancelled = true;
-            isProcessingQueueRef.current = false; // Safely release lock on unmount so next render can proceed immediately
-        };
-    }, [filteredConversations, userId, api, onRefreshInbox]);
-    // --------------------------------
 
     const markUserScroll = () => {
         lastScrollAtRef.current = Date.now();

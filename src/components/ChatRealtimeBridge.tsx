@@ -187,6 +187,18 @@ export function ChatRealtimeBridge() {
 		userIdRef.current = userId;
 	}, [userId]);
 
+	const pendingMediaBlocksRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+	useEffect(() => {
+		return () => {
+			if (pendingMediaBlocksRef.current) {
+				for (const timer of pendingMediaBlocksRef.current.values()) {
+					clearTimeout(timer);
+				}
+				pendingMediaBlocksRef.current.clear();
+			}
+		};
+	}, []);
+
 	// Boot the realtime manager whenever the user is authenticated.
 	// getToken is called fresh on every (re)connect so an expired token
 	// never blocks reconnection.
@@ -316,8 +328,54 @@ export function ChatRealtimeBridge() {
 								// Check if we have any prior history with them!
 								const existingLog = await chatLog.readLog(m.conversationId);
 								if (existingLog.messages.length <= 1) { // If it's just this 1 incoming message, it's a bot!
-									isBotMedia = true;
+									const delayEnabled = window.localStorage.getItem("fg-block-media-delay-enabled") === "true";
+									if (delayEnabled) {
+										const cid = m.conversationId;
+										if (!pendingMediaBlocksRef.current.has(cid)) {
+											const delayMin = parseInt(window.localStorage.getItem("fg-block-media-delay-minutes") || "2", 10);
+											const delayMs = Math.max(1, Math.min(5, delayMin)) * 60000;
+											console.log(`[BotEvasion] Scheduled delayed block for ${cid} in ${delayMin} minutes`);
+											const timer = setTimeout(async () => {
+												try {
+													const log = await chatLog.readLog(cid);
+													const hasText = log.messages.some(msg => {
+														const isMsgIncoming = userIdRef.current != null && Number(msg.senderId) !== Number(userIdRef.current);
+														const msgBody: any = msg.body;
+														const text = msgBody && typeof msgBody.text === "string" ? msgBody.text : "";
+														return isMsgIncoming && text && text.trim() !== "";
+													});
+													if (!hasText) {
+														const reason = "First message was media and no follow-up text within delay period (Bot evasion)";
+														notifyAutoBlock(`Spam Intercepted`, reason);
+														if (m.senderId) {
+															await apiFunctions.blockProfile(String(m.senderId)).catch(() => {});
+														}
+													} else {
+														console.log(`[BotEvasion] Delayed block check skipped for ${cid}: user sent follow-up text.`);
+													}
+												} catch (err) {
+													console.error("Delayed block error:", err);
+												} finally {
+													pendingMediaBlocksRef.current.delete(cid);
+												}
+											}, delayMs);
+											pendingMediaBlocksRef.current.set(cid, timer);
+										}
+									} else {
+										isBotMedia = true;
+									}
 								}
+							}
+						}
+
+						// If we have a pending block for this conversation, and we just received a text message from them, cancel it!
+						if (isIncoming && messageText && messageText.trim() !== "") {
+							const cid = m.conversationId;
+							if (pendingMediaBlocksRef.current.has(cid)) {
+								const timer = pendingMediaBlocksRef.current.get(cid);
+								if (timer) clearTimeout(timer);
+								pendingMediaBlocksRef.current.delete(cid);
+								console.log(`[BotEvasion] Real user follow-up text detected. Cancelled pending block for ${cid}.`);
 							}
 						}
 

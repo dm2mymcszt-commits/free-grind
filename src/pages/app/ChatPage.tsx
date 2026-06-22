@@ -1867,6 +1867,16 @@ export function ChatPage() {
 	}, [loadInbox, activeInboxFilters]);
 
 	useEffect(() => {
+		const handleRefreshInboxEvent = () => {
+			void loadInbox({ page: 1, replace: true, silent: true });
+		};
+		window.addEventListener("fg-refresh-inbox", handleRefreshInboxEvent);
+		return () => {
+			window.removeEventListener("fg-refresh-inbox", handleRefreshInboxEvent);
+		};
+	}, [loadInbox]);
+
+	useEffect(() => {
 		if (!isDesktop) {
 			setSelectedDesktopConversationId(null);
 		}
