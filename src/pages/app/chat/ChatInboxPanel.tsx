@@ -109,15 +109,21 @@ function ChatConversationRow({
 		<div
 			ref={ref}
 			onClick={() => onSelectConversation(conversation)}
-			className={`relative flex cursor-pointer items-center gap-4 py-3 px-4 mx-2 my-1 text-left transition border rounded-xl ${
-				isSelected 
-					? "bg-white/[0.08] dark:bg-white/[0.05] shadow-[0_4px_20px_rgba(0,0,0,0.15)] border-white/10" 
-					: "bg-transparent border-transparent hover:bg-white/5"
+			className={`relative flex cursor-pointer items-center gap-4 py-3 px-4 mx-2 my-1 text-left transition-all duration-300 border rounded-xl backdrop-blur-md ${
+				!isSelected ? "bg-transparent border-transparent hover:bg-white/5" : ""
 			} ${revealClass}`}
+			style={{
+				borderColor: isSelected 
+					? "color-mix(in srgb, var(--accent) 35%, transparent)" 
+					: undefined,
+				backgroundImage: isSelected
+					? "linear-gradient(90deg, color-mix(in srgb, var(--accent) 14%, transparent) 0%, color-mix(in srgb, var(--accent) 3%, transparent) 100%)"
+					: undefined,
+				boxShadow: isSelected
+					? "0 8px 24px -4px rgba(0, 0, 0, 0.3), 0 0 12px color-mix(in srgb, var(--accent) 12%, transparent), inset 0 1px 0 0 rgba(255, 255, 255, 0.15)"
+					: undefined
+			}}
 		>
-			{isSelected && (
-				<span className="absolute left-0 top-1/2 -translate-y-1/2 h-8 w-1 rounded-r bg-[var(--accent)] shadow-[0_0_8px_var(--accent)]" />
-			)}
 			<button
 				type="button"
 				title={displayName}
