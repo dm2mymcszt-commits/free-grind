@@ -22,8 +22,6 @@ export function BackgroundViewScanner() {
 					
                     const realViews = rawList.filter((v: any) => v?.profileId && !String(v.profileId).startsWith("preview:"));
 
-                    console.log(`[BackgroundViews] Sweep complete. Found ${rawList.length} total views. ${realViews.length} are real IDs.`);
-
                     if (realViews.length > 0) {
                         const rows = realViews.map((v: any) => ({
                             profileId: String(v.profileId),
@@ -34,8 +32,6 @@ export function BackgroundViewScanner() {
                         }));
 
                         await interestViewsStore.upsertMany(rows);
-                        console.log(`[BackgroundViews] Successfully saved ${rows.length} profiles to the offline database.`);
-						
                         window.localStorage.setItem("fg-view-scanner-last-run", Date.now().toString());
                     }
                 } catch (error) {
@@ -45,7 +41,7 @@ export function BackgroundViewScanner() {
 
             // Schedule the next run using the custom interval from settings
             if (!isCancelled) {
-                const intervalSecs = parseInt(window.localStorage.getItem("fg-view-scanner-interval") || "30", 10);
+                const intervalSecs = parseInt(window.localStorage.getItem("fg-view-scanner-interval") || "120", 10);
                 timeoutRef.current = setTimeout(scanViews, intervalSecs * 1000);
             }
         };

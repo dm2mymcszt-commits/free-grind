@@ -209,8 +209,14 @@ export function MultiSelectOverlay() {
 
             {/* BLOCK MODAL */}
             {activeModal === "block" && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-300">
-                    <div className="bg-[#1A202C] border border-[var(--accent)]/30 rounded-[2rem] w-full max-w-sm shadow-2xl p-6 text-center animate-in zoom-in-95 duration-300">
+                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/55 backdrop-blur-[12px] p-4 animate-in fade-in duration-300">
+                    <div 
+                        className="border border-white/10 dark:border-white/5 rounded-[2rem] w-full max-w-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_0_20px_60px_rgba(0,0,0,0.6)] p-6 text-center animate-in zoom-in-95 duration-300 backdrop-blur-[20px]"
+                        style={{
+                            background: "color-mix(in srgb, var(--surface) 45%, transparent)",
+                            backgroundColor: "rgba(15, 17, 21, 0.45)"
+                        }}
+                    >
                         <Ban className="h-12 w-12 mx-auto mb-4" style={{ color: "var(--accent)" }} />
                         <h2 className="text-xl font-bold text-white mb-2">Block Profiles?</h2>
                         <p className="text-sm text-gray-400 mb-6">
@@ -233,9 +239,15 @@ export function MultiSelectOverlay() {
 
             {/* MESSAGE MODAL */}
             {activeModal === "message" && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-300">
-                    <div className="bg-[#1A202C] border border-[var(--accent)]/30 rounded-[2rem] w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-                        <div className="bg-black/40 p-5 border-b border-white/5 flex justify-between items-center">
+                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/55 backdrop-blur-[12px] p-4 animate-in fade-in duration-300">
+                    <div 
+                        className="border border-white/10 dark:border-white/5 rounded-[2rem] w-full max-w-md shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_0_20px_60px_rgba(0,0,0,0.6)] overflow-hidden animate-in zoom-in-95 duration-300 backdrop-blur-[20px]"
+                        style={{
+                            background: "color-mix(in srgb, var(--surface) 45%, transparent)",
+                            backgroundColor: "rgba(15, 17, 21, 0.45)"
+                        }}
+                    >
+                        <div className="bg-black/20 p-5 border-b border-white/5 flex justify-between items-center">
                             <h2 className="text-sm font-bold uppercase tracking-widest text-white flex items-center gap-2">
                                 <MessageSquare className="h-4 w-4" style={{ color: "var(--accent)" }} /> Bulk Message
                             </h2>
@@ -256,7 +268,7 @@ export function MultiSelectOverlay() {
                                     onChange={(e) => setMessageText(e.target.value)}
                                     placeholder="Type your message here..."
                                     disabled={isProcessing}
-                                    className="w-full h-32 bg-black/40 border border-white/10 rounded-xl p-4 text-sm text-white outline-none focus:border-[var(--accent)] resize-none transition disabled:opacity-50"
+                                    className="w-full h-32 bg-black/30 border border-white/10 rounded-xl p-4 text-sm text-white outline-none focus:border-[var(--accent)] resize-none transition disabled:opacity-50"
                                 ></textarea>
                             </div>
                             <button 
