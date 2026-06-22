@@ -66,12 +66,12 @@ void (async () => {
 								}}
 								toastOptions={{
 									className:
-										"surface-card !bg-[var(--surface)] !text-[var(--text)] !border-[var(--border)] !rounded-[var(--radius-md)] !px-4 !py-3 !shadow-2xl flex items-center gap-3",
+										"!bg-[color-mix(in_srgb,var(--surface)_40%,transparent)] dark:!bg-[color-mix(in_srgb,var(--surface)_30%,transparent)] !text-[var(--text)] border border-white/10 dark:border-white/5 !rounded-full !px-5 !py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)] backdrop-blur-[20px] flex items-center gap-3",
 									duration: 4000,
 									style: {
-										background: "var(--surface)",
+										background: "color-mix(in srgb, var(--surface) 40%, transparent)",
 										color: "var(--text)",
-										border: "1px solid var(--border)",
+										border: "1px solid rgba(255,255,255,0.1)",
 									},
 									success: {
 										icon: <CheckCircle2 className="w-5 h-5 text-green-500" />,

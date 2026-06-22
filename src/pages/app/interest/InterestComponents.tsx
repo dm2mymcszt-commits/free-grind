@@ -6,6 +6,7 @@ import { ProfileImage } from "../../../components/ui/profile-image";
 import { type InterestItem, type InterestTab, formatTimestamp, getTapEmoji, PREVIEW_ID_PREFIX } from "./interestUtils";
 import { cn } from "../../../utils/cn";
 import { useRevealOnScroll } from "../../../hooks/useRevealOnScroll";
+import toast from "react-hot-toast";
 
 export const InterestTabs = memo(function InterestTabs({
 	activeTab,
@@ -178,8 +179,13 @@ export const InterestRow = memo(function InterestRow({
 			{/* Avatar */}
 			<button
 				type="button"
-				onClick={() => !isPrivate && onOpenProfile(item.profileId)}
-				disabled={isPrivate}
+				onClick={() => {
+					if (isPrivate) {
+						toast.error(t("interest_page.locked_profile_toast", { defaultValue: "Cannot see this profile: Viewer details are locked." }));
+					} else {
+						onOpenProfile(item.profileId);
+					}
+				}}
 				className="relative shrink-0"
 			>
 				<div className="h-15 w-15 squircle drop-shadow-sm bg-[var(--surface-2)]">
@@ -202,8 +208,13 @@ export const InterestRow = memo(function InterestRow({
 			<div className="min-w-0 flex-1">
 				<button
 					type="button"
-					onClick={() => !isPrivate && onOpenProfile(item.profileId)}
-					disabled={isPrivate}
+					onClick={() => {
+						if (isPrivate) {
+							toast.error(t("interest_page.locked_profile_toast", { defaultValue: "Cannot see this profile: Viewer details are locked." }));
+						} else {
+							onOpenProfile(item.profileId);
+						}
+					}}
 					className="w-full text-left"
 				>
 					<div className="flex items-center gap-1.5">
