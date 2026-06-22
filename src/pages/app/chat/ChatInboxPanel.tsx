@@ -109,7 +109,7 @@ function ChatConversationRow({
 		<div
 			ref={ref}
 			onClick={() => onSelectConversation(conversation)}
-			className={`relative flex cursor-pointer items-center gap-4 py-3 px-4 text-left transition-all duration-300 border rounded-[inherit] backdrop-blur-md ${
+			className={`relative flex cursor-pointer items-center gap-4 py-3 px-4 h-full text-left transition-all duration-300 border rounded-[inherit] backdrop-blur-md ${
 				!isSelected ? "bg-transparent border-transparent hover:bg-white/5" : ""
 			} ${revealClass}`}
 			style={{
