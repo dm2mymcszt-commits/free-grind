@@ -25,6 +25,7 @@ import { useApi } from "../../hooks/useApi";
 import { usePreferences } from "../../contexts/PreferencesContext";
 import { exportAllLogs } from "../../services/chatLog";
 import { Button } from "../../components/ui/button";
+import { NotificationLimitationsModal } from "../../components/NotificationLimitationsModal";
 
 const PUSH_TOKEN_STORAGE_KEY = "fg-fcm-token";
 const PUSH_TOKEN_SYNCED_STORAGE_KEY = "fg-fcm-token-synced";
@@ -53,6 +54,8 @@ export function SettingsPage() {
 
     // --- States ---
     const [notificationsEnabled, setNotificationsEnabled] = useState(() => window.localStorage.getItem("fg-enable-message-notifications") !== "false");
+    const [isWarningModalOpen, setIsWarningModalOpen] = useState(false);
+    const isIos = /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const [isExporting, setIsExporting] = useState(false);
     const [isSyncingFcm, setIsSyncingFcm] = useState(false);
     const [fcmToken, setFcmToken] = useState<string | null>(() => {
@@ -264,6 +267,9 @@ export function SettingsPage() {
                                     const next = !notificationsEnabled;
                                     setNotificationsEnabled(next);
                                     window.localStorage.setItem("fg-enable-message-notifications", String(next));
+                                    if (next && isIos && window.localStorage.getItem("fg-notification-warning-seen") !== "true") {
+                                        setIsWarningModalOpen(true);
+                                    }
                                 }}
                                 className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${notificationsEnabled ? "bg-[var(--accent)]" : "bg-[var(--surface-2)]"}`}
                             >
@@ -429,6 +435,11 @@ export function SettingsPage() {
                 </div>
 
             </div>
+
+            <NotificationLimitationsModal
+                isOpen={isWarningModalOpen}
+                onClose={() => setIsWarningModalOpen(false)}
+            />
         </section>
     );
 }
