@@ -71,6 +71,9 @@ jobs:
           mkdir -p src-tauri/gen/apple/Externals/x86_64/release
           cp "$LIB_PATH" src-tauri/gen/apple/Externals/x86_64/release/libapp.a
 
+      - name: Patch Geolocation Plugin
+        run: python3 scripts/patch-geolocation.py
+
       - name: Disable Xcode Rust bridge script
         run: |
           PBXPROJ_PATH=$(find src-tauri/gen/apple -maxdepth 3 -name project.pbxproj | head -n 1)

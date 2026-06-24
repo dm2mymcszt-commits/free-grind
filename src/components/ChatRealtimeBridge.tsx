@@ -191,6 +191,8 @@ export function ChatRealtimeBridge() {
 	}, [userId]);
 
 	const pendingMediaBlocksRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+	const locationWatchIdRef = useRef<number | null>(null);
+	const tauriGeoPluginRef = useRef<any>(null);
 	useEffect(() => {
 		return () => {
 			if (pendingMediaBlocksRef.current) {
@@ -500,11 +502,61 @@ export function ChatRealtimeBridge() {
 
 		document.addEventListener("visibilitychange", handleVisibilityChange);
 
+		// Start background geolocation tracking on Tauri (iOS/Android)
+		const startLocationTracking = async () => {
+			if (!isTauriRuntime()) return;
+			try {
+				const tauriGeo = await import("@tauri-apps/plugin-geolocation").catch(() => null);
+				if (tauriGeo) {
+					tauriGeoPluginRef.current = tauriGeo;
+					let perms = await tauriGeo.checkPermissions();
+					if (perms.location !== "granted" && perms.location !== "denied") {
+						perms = await tauriGeo.requestPermissions(["location"]);
+					}
+					if (perms.location === "granted") {
+						// Start watching position with low accuracy for battery efficiency.
+						// This keeps the native CLLocationManager active in the background.
+						const wid = await tauriGeo.watchPosition(
+							{
+								enableHighAccuracy: false,
+								timeout: 30000,
+								maximumAge: 60000,
+							},
+							(pos, err) => {
+								if (err) {
+									appLog.warn("[chat-ws:bridge:geo] watch error:", err);
+								} else {
+									appLog.debug("[chat-ws:bridge:geo] background watch tick");
+								}
+							}
+						);
+						locationWatchIdRef.current = wid;
+						appLog.info("[chat-ws:bridge:geo] Started background location watch", { watchId: wid });
+					} else {
+						appLog.warn("[chat-ws:bridge:geo] Location permission not granted. Background sync may be suspended.");
+					}
+				}
+			} catch (err) {
+				appLog.error("[chat-ws:bridge:geo] Failed to initialize geolocation watch", err);
+			}
+		};
+
+		startLocationTracking();
+
 		return () => {
 			// appLog.debug("[chat-ws:bridge] stopping manager");
 			document.removeEventListener("visibilitychange", handleVisibilityChange);
 			setActiveRealtimeManager(null);
 			manager.stop({ suppressStatus: true });
+
+			const wid = locationWatchIdRef.current;
+			const plugin = tauriGeoPluginRef.current;
+			if (wid != null && plugin) {
+				plugin.clearWatch(wid).catch((err: any) => {
+					appLog.warn("[chat-ws:bridge:geo] failed to clear watch", err);
+				});
+				locationWatchIdRef.current = null;
+			}
 		};
 	}, [userId]);
 
