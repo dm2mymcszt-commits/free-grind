@@ -24,15 +24,18 @@ import * as chatLog from "../services/chatLog";
 import {
 	incrementUnreadCountForProfile,
 	clearUnreadCountForProfile,
+	getLocalNicknamesForProfiles,
 } from "../services/chatContactIndex";
 import { messageSchema, type Message } from "../types/messages";
 import type { RealtimeEnvelope, RealtimeStatus } from "../types/chat-realtime";
 import { appLog } from "../utils/logger";
-import { getOtherParticipant } from "../pages/app/chat/chatUtils";
-import { getConversation } from "../services/conversationDirectory";
+import { getOtherParticipant, getMessagePreviewLabel } from "../pages/app/chat/chatUtils";
+import { getConversation, getDisplayName } from "../services/conversationDirectory";
 import { getMatchedForbiddenWord, notifyAutoBlock } from "../utils/autoblock";
 import { useApiFunctions } from "../hooks/useApiFunctions";
 import { isChatGhosted } from "../utils/privacy";
+import i18n from "../i18n";
+import { notifyMessage } from "../services/desktopNotify";
 
 export const CHAT_REALTIME_EVENT = "fg:chat-realtime-event";
 export const CHAT_REALTIME_STATUS = "fg:chat-realtime-status";
@@ -327,7 +330,22 @@ export function ChatRealtimeBridge() {
 							if (isMedia && (!messageText || messageText.trim() === "")) {
 								// Check if we have any prior history with them!
 								const existingLog = await chatLog.readLog(m.conversationId);
-								if (existingLog.messages.length <= 1) { // If it's just this 1 incoming message, it's a bot!
+								let hasOutgoing = false;
+								let hasIncomingText = false;
+								for (const msg of existingLog.messages) {
+									const msgIsMine = userIdRef.current != null && Number(msg.senderId) === Number(userIdRef.current);
+									if (msgIsMine) {
+										hasOutgoing = true;
+									} else {
+										const msgBody: any = msg.body;
+										const text = msgBody && typeof msgBody.text === "string" ? msgBody.text : "";
+										if (text && text.trim() !== "") {
+											hasIncomingText = true;
+										}
+									}
+								}
+
+								if (!hasOutgoing && !hasIncomingText) {
 									const delayEnabled = window.localStorage.getItem("fg-block-media-delay-enabled") === "true";
 									if (delayEnabled) {
 										const cid = m.conversationId;
@@ -338,20 +356,28 @@ export function ChatRealtimeBridge() {
 											const timer = setTimeout(async () => {
 												try {
 													const log = await chatLog.readLog(cid);
-													const hasText = log.messages.some(msg => {
-														const isMsgIncoming = userIdRef.current != null && Number(msg.senderId) !== Number(userIdRef.current);
-														const msgBody: any = msg.body;
-														const text = msgBody && typeof msgBody.text === "string" ? msgBody.text : "";
-														return isMsgIncoming && text && text.trim() !== "";
-													});
-													if (!hasText) {
+													let hasOutgoingNow = false;
+													let hasIncomingTextNow = false;
+													for (const msg of log.messages) {
+														const msgIsMine = userIdRef.current != null && Number(msg.senderId) === Number(userIdRef.current);
+														if (msgIsMine) {
+															hasOutgoingNow = true;
+														} else {
+															const msgBody: any = msg.body;
+															const text = msgBody && typeof msgBody.text === "string" ? msgBody.text : "";
+															if (text && text.trim() !== "") {
+																hasIncomingTextNow = true;
+															}
+														}
+													}
+													if (!hasOutgoingNow && !hasIncomingTextNow) {
 														const reason = "First message was media and no follow-up text within delay period (Bot evasion)";
 														notifyAutoBlock(`Spam Intercepted`, reason);
 														if (m.senderId) {
 															await apiFunctions.blockProfile(String(m.senderId)).catch(() => {});
 														}
 													} else {
-														console.log(`[BotEvasion] Delayed block check skipped for ${cid}: user sent follow-up text.`);
+														console.log(`[BotEvasion] Delayed block check skipped for ${cid}: user sent follow-up text or we replied.`);
 													}
 												} catch (err) {
 													console.error("Delayed block error:", err);
@@ -408,6 +434,29 @@ export function ChatRealtimeBridge() {
 								).catch((err) => {
 									appLog.warn("[chat-ws:bridge] failed to increment unread", err);
 								});
+
+								// Trigger native notification if enabled
+								if (window.localStorage.getItem("fg-enable-message-notifications") !== "false") {
+									const nicknames = await getLocalNicknamesForProfiles([String(m.senderId)]).catch(() => ({}));
+									const localNickname = nicknames[String(m.senderId)];
+									let displayName = localNickname;
+									if (!displayName) {
+										const conv = getConversation(m.conversationId);
+										if (conv && conv.data.name?.trim()) {
+											displayName = conv.data.name.trim();
+										} else {
+											displayName = i18n.t("chat.unknown", { defaultValue: "Unknown" });
+										}
+									}
+
+									const previewText = getMessagePreviewLabel(m, (key, opts) => i18n.t(key, opts));
+									void notifyMessage({
+										title: displayName,
+										body: previewText,
+									}).catch((err) => {
+										appLog.warn("[chat-ws:bridge] failed to show notification", err);
+									});
+								}
 							}
 						}
 					}

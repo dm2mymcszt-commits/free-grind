@@ -59,6 +59,7 @@ type ChatInboxPanelProps = ChatInboxHeaderProps & {
 	onOpenInbox?: () => void;
 	onOpenAlbums?: () => void;
 	typingConversationIds?: Set<string>;
+	onDeleteConversation?: (conversationId: string, isSwiped?: boolean) => Promise<void>;
 };
 
 type ChatConversationRowProps = {
@@ -243,6 +244,7 @@ export function ChatInboxPanel({
 	onToggleHidePinned,
 	onToggleFavoritesOnly,
 	typingConversationIds,
+	onDeleteConversation,
 }: ChatInboxPanelProps) {
 	const { t } = useTranslation();
 	const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
@@ -269,17 +271,23 @@ export function ChatInboxPanel({
         
         if (skipConfirm) {
             completeSwipe(); // Instantly animate out
-            api.deleteConversation(conversationId).then(() => {
-                toast.success(t("chat.toasts.conversation_deleted", { defaultValue: "Conversation deleted" }));
-                setTimeout(onRefreshInbox, 300); // Give the swoosh animation time to finish before unmounting
-            }).catch((error: any) => {
-                toast.error(
-                    error instanceof Error
-                        ? error.message
-                        : t("chat.errors.delete_conversation", { defaultValue: "Failed to delete conversation" }),
-                );
-                revertSwipe(); // Snap the row back if the API request fails
-            });
+            if (onDeleteConversation) {
+                onDeleteConversation(conversationId, true).catch(() => {
+                    revertSwipe(); // Snap the row back if the API request fails
+                });
+            } else {
+                api.deleteConversation(conversationId).then(() => {
+                    toast.success(t("chat.toasts.conversation_deleted", { defaultValue: "Conversation deleted" }));
+                    setTimeout(onRefreshInbox, 300); // Give the swoosh animation time to finish before unmounting
+                }).catch((error: any) => {
+                    toast.error(
+                        error instanceof Error
+                            ? error.message
+                            : t("chat.errors.delete_conversation", { defaultValue: "Failed to delete conversation" }),
+                    );
+                    revertSwipe(); // Snap the row back if the API request fails
+                });
+            }
             return;
         }
 
@@ -493,11 +501,17 @@ export function ChatInboxPanel({
 					}
 					try {
 						deleteCandidate.complete(); // Animate out
-						await api.deleteConversation(deleteCandidate.id);
-						toast.success(t("chat.toasts.conversation_deleted", { defaultValue: "Conversation deleted" }));
-						setTimeout(onRefreshInbox, 300);
+						if (onDeleteConversation) {
+							await onDeleteConversation(deleteCandidate.id, true);
+						} else {
+							await api.deleteConversation(deleteCandidate.id);
+							toast.success(t("chat.toasts.conversation_deleted", { defaultValue: "Conversation deleted" }));
+							setTimeout(onRefreshInbox, 300);
+						}
 					} catch (error) {
-						toast.error(error instanceof Error ? error.message : t("chat.errors.delete_conversation", { defaultValue: "Failed to delete conversation" }));
+						if (!onDeleteConversation) {
+							toast.error(error instanceof Error ? error.message : t("chat.errors.delete_conversation", { defaultValue: "Failed to delete conversation" }));
+						}
 						deleteCandidate.revert(); // Snap back on error
 					} finally {
 						setIsDeleting(false);

@@ -241,8 +241,8 @@ export function SettingsAutomationPage() {
                                         <Slider
                                             label="Scan Interval"
                                             min={10}
-                                            max={60}
-                                            step={5}
+                                            max={300}
+                                            step={10}
                                             defaultValue={viewIntervalNum}
                                             displayValue={`${viewScannerInterval} seconds`}
                                             onChange={(val) => setViewScannerInterval(String(val))}

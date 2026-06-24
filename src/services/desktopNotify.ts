@@ -2,8 +2,8 @@
  * desktopNotify.ts — fire native OS notifications when a new chat message
  * arrives while the app is in the background or the conversation isn't open.
  *
- * Mobile (iOS/Android) is intentionally excluded; the OS already handles its
- * own notifications via the chat app stack.
+ * Supported across both desktop (macOS/Windows/Linux) and mobile (iOS/Android)
+ * via the Tauri notification plugin API.
  */
 
 import {
@@ -11,47 +11,46 @@ import {
 	requestPermission,
 	sendNotification,
 } from "@tauri-apps/plugin-notification";
-import { platform } from "@tauri-apps/plugin-os";
 import { isTauriRuntime } from "./tauriWebSocket";
 import { appLog } from "../utils/logger";
 
 let permissionPromise: Promise<boolean> | null = null;
-let cachedIsDesktop: boolean | null = null;
-
-function detectDesktop(): boolean {
-	if (cachedIsDesktop != null) return cachedIsDesktop;
-	if (!isTauriRuntime()) {
-		cachedIsDesktop = false;
-		return false;
-	}
-	try {
-		const p = platform();
-		cachedIsDesktop = p === "macos" || p === "windows" || p === "linux";
-	} catch (error) {
-		appLog.warn("[notify] platform() failed", error);
-		cachedIsDesktop = false;
-	}
-	return cachedIsDesktop;
-}
 
 async function ensurePermission(): Promise<boolean> {
-	if (!permissionPromise) {
-		permissionPromise = (async () => {
-			try {
-				const already = await isPermissionGranted();
-				appLog.debug("[notify] isPermissionGranted ->", already);
-				if (already) return true;
-				appLog.debug("[notify] requesting permission");
-				const result = await requestPermission();
-				appLog.debug("[notify] requestPermission ->", result);
-				return result === "granted";
-			} catch (error) {
-				appLog.warn("[notify] permission check failed", error);
-				return false;
-			}
-		})();
+	if (isTauriRuntime()) {
+		if (!permissionPromise) {
+			permissionPromise = (async () => {
+				try {
+					const already = await isPermissionGranted();
+					appLog.debug("[notify] isPermissionGranted ->", already);
+					if (already) return true;
+					appLog.debug("[notify] requesting permission");
+					const result = await requestPermission();
+					appLog.debug("[notify] requestPermission ->", result);
+					return result === "granted";
+				} catch (error) {
+					appLog.warn("[notify] permission check failed", error);
+					return false;
+				}
+			})();
+		}
+		return permissionPromise;
+	} else if (typeof window !== "undefined" && "Notification" in window) {
+		if (window.Notification.permission === "granted") {
+			return true;
+		}
+		if (window.Notification.permission === "denied") {
+			return false;
+		}
+		try {
+			const permission = await window.Notification.requestPermission();
+			return permission === "granted";
+		} catch (error) {
+			appLog.warn("[notify] browser permission check failed", error);
+			return false;
+		}
 	}
-	return permissionPromise;
+	return false;
 }
 
 /**
@@ -59,11 +58,7 @@ async function ensurePermission(): Promise<boolean> {
  * rather than waiting for the first incoming message. Safe to call repeatedly;
  * only prompts once per app session.
  */
-export async function primeDesktopNotifications(): Promise<boolean> {
-	if (!detectDesktop()) {
-		appLog.debug("[notify] prime skipped (not desktop)");
-		return false;
-	}
+export async function primeNotifications(): Promise<boolean> {
 	appLog.debug("[notify] priming permission");
 	return ensurePermission();
 }
@@ -82,9 +77,6 @@ export async function notifyMessage(
 		appLog.debug("[notify] suppressed", options.title);
 		return;
 	}
-	if (!detectDesktop()) {
-		return;
-	}
 	const granted = await ensurePermission();
 	if (!granted) {
 		appLog.debug("[notify] permission not granted, skipping");
@@ -92,8 +84,13 @@ export async function notifyMessage(
 	}
 	try {
 		appLog.debug("[notify] sending", options.title);
-		sendNotification({ title: options.title, body: options.body });
+		if (isTauriRuntime()) {
+			sendNotification({ title: options.title, body: options.body });
+		} else if (typeof window !== "undefined" && "Notification" in window) {
+			new window.Notification(options.title, { body: options.body });
+		}
 	} catch (error) {
 		appLog.warn("[notify] sendNotification failed", error);
 	}
 }
+

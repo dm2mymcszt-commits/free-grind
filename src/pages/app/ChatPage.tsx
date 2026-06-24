@@ -862,7 +862,7 @@ export function ChatPage() {
 						const cid = entry.data.conversationId;
 
 						// If this is the active conversation, it's definitely read.
-						if (cid === selectedConversationIdRef.current) {
+						if (cid === selectedConversationIdRef.current && !isChatGhosted(cid)) {
 							return {
 								...entry,
 								data: { ...entry.data, unreadCount: 0 },
@@ -1698,7 +1698,7 @@ export function ChatPage() {
 					data: {
 						...conversation.data,
 						lastActivityTimestamp: latestMessage.timestamp,
-						unreadCount: (isMine || isActive) ? conversation.data.unreadCount : (conversation.data.unreadCount + 1),
+						unreadCount: (isMine || (isActive && !isChatGhosted(conversation.data.conversationId))) ? conversation.data.unreadCount : (conversation.data.unreadCount + 1),
 						preview: {
 							conversationId: {
 								value: latestMessage.conversationId,
@@ -2391,14 +2391,24 @@ export function ChatPage() {
 	}, [selectedConversation]);
 
 	const deleteConversationFromChat = useCallback(
-		async (conversationId: string) => {
+		async (conversationId: string, isSwiped: boolean = false) => {
 			if (isDeletingConversationId) {
 				return;
 			}
 
 			setIsDeletingConversationId(conversationId);
+			const startTime = Date.now();
 			try {
 				await service.deleteConversation(conversationId);
+
+				if (isSwiped) {
+					const elapsed = Date.now() - startTime;
+					const remaining = Math.max(0, 300 - elapsed);
+					if (remaining > 0) {
+						await new Promise((resolve) => setTimeout(resolve, remaining));
+					}
+				}
+
 				const remainingConversations = conversationsRef.current.filter(
 					(conversation) => conversation.data.conversationId !== conversationId,
 				);
@@ -2431,6 +2441,7 @@ export function ChatPage() {
 						? error.message
 						: t("chat.errors.delete_conversation"),
 				);
+				throw error;
 			} finally {
 				setIsDeletingConversationId(null);
 			}
@@ -3901,6 +3912,7 @@ export function ChatPage() {
 			}}
 			onClearInboxFilters={clearInboxFilters}
 			typingConversationIds={typingConversationIds}
+			onDeleteConversation={deleteConversationFromChat}
 		/>
 	);
 

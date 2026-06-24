@@ -552,92 +552,8 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
     const [phrasesExpanded, setPhrasesExpanded] = useState(false);
     const [newPhraseInput, setNewPhraseInput] = useState("");
 
-    // --- EMOJI & GIF PICKER STATE ---
+    // --- EMOJI PICKER STATE ---
     const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
-    const [isGifPickerOpen, setIsGifPickerOpen] = useState(false);
-    const [gifSearchQuery, setGifSearchQuery] = useState("");
-    const [gifResults, setGifResults] = useState<any[]>([]);
-    const [gifHistory, setGifHistory] = useState<any[]>(() => {
-        try { 
-            const parsed = JSON.parse(window.localStorage.getItem("fg-gif-history") || "[]"); 
-            return Array.isArray(parsed) ? parsed : [];
-        } catch { 
-            return []; 
-        }
-    });
-    const [isGifLoading, setIsGifLoading] = useState(false);
-    const [activeGifTab, setActiveGifTab] = useState<"trending" | "history">("trending");
-    
-    // Personal API Key State
-    const [giphyKey, setGiphyKey] = useState(() => window.localStorage.getItem("fg-giphy-key") || "");
-    const [gifError, setGifError] = useState<string | null>(null);
-
-    // Native GIPHY Fetcher
-    useEffect(() => {
-        if (!isGifPickerOpen) return;
-        if (activeGifTab === "history") return;
-        if (!giphyKey) {
-            setGifError("Missing API Key");
-            return;
-        }
-
-        const fetchGifs = async () => {
-            setIsGifLoading(true);
-            setGifError(null);
-            try {
-                const endpoint = gifSearchQuery.trim()
-                    ? `https://api.giphy.com/v1/gifs/search?api_key=${giphyKey}&q=${encodeURIComponent(gifSearchQuery)}&limit=30`
-                    : `https://api.giphy.com/v1/gifs/trending?api_key=${giphyKey}&limit=30`;
-                const res = await fetch(endpoint);
-                const data = (await res.json()) as any;
-                
-                if (data?.meta?.status === 401) {
-                    setGifError("Invalid API Key (401 Unauthorized)");
-                    setGifResults([]);
-                } else {
-                    setGifResults(Array.isArray(data?.data) ? data.data : []);
-                }
-            } catch (e) {
-                appLog.error("Failed to fetch GIFs", e);
-                setGifError("Network Error");
-            } finally {
-                setIsGifLoading(false);
-            }
-        };
-        const debounce = setTimeout(fetchGifs, 400);
-        return () => clearTimeout(debounce);
-    }, [gifSearchQuery, isGifPickerOpen, activeGifTab, giphyKey]);
-
-    const handleSendGif = async (gif: any) => {
-        setIsGifPickerOpen(false);
-        
-        // Grab the raw animated GIF URL from Giphy
-        const url = gif.images?.original?.url || gif.images?.fixed_height?.url;
-        if (!url) { toast.error("GIF format not supported."); return; }
-        
-        // Save to local history
-        setGifHistory(prev => {
-            const next = [gif, ...prev.filter((g: any) => g.id !== gif.id)].slice(0, 15);
-            window.localStorage.setItem("fg-gif-history", JSON.stringify(next));
-            return next;
-        });
-        
-        const loadingToast = toast.loading("Uploading GIF...");
-        try {
-            const res = await fetch(url);
-            const blob = await res.blob();
-            
-            // Package explicitly as image/gif so the uploader bypasses the Canvas compressor!
-            const file = new File([blob], `giphy-${gif.id}.gif`, { type: "image/gif" });
-            toast.dismiss(loadingToast);
-            
-            // Send directly through your attachment pipeline. It will stay perfectly animated!
-            void confirmAttachmentFile(file, { looping: true, takenOnGrindr: false });
-        } catch (e) {
-            toast.dismiss(loadingToast);
-            toast.error("Failed to process GIF.");
-        }
-    };
 
     // Close popups on outside click — uses a 1-frame delay so the handler
     // doesn't run on the same click that opened the popup (pointerUp fires
@@ -645,7 +561,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
     // immediately closes).
     const micMenuJustOpenedRef = useRef(false);
     useEffect(() => {
-        if (!isEmojiPickerOpen && !isGifPickerOpen && !isMicMenuOpen) return;
+        if (!isEmojiPickerOpen && !isMicMenuOpen) return;
         // Mark that the mic menu was just opened so the first click is ignored
         if (isMicMenuOpen) micMenuJustOpenedRef.current = true;
         const handleClickOutside = (_e: MouseEvent) => {
@@ -654,7 +570,6 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                 return; // skip the click that opened the menu
             }
             setIsEmojiPickerOpen(false);
-            setIsGifPickerOpen(false);
             setIsMicMenuOpen(false);
         };
         // Attach on next frame so the opening click doesn't trigger it
@@ -665,7 +580,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
             cancelAnimationFrame(raf);
             window.removeEventListener('click', handleClickOutside);
         };
-    }, [isEmojiPickerOpen, isGifPickerOpen, isMicMenuOpen]);
+    }, [isEmojiPickerOpen, isMicMenuOpen]);
 
     // --- IMMUTABLE DYNAMIC STATE (Fixes Reactivity Bug!) ---
     const showGhostButton = window.localStorage.getItem("fg-show-ghost-btn") !== "false";
@@ -1960,94 +1875,8 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                             set="native"
                                             previewPosition="none"
                                             skinTonePosition="none"
+                                            color="var(--accent)"
                                         />
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* --- TENOR GIF PICKER LIQUID GLASS POPUP --- */}
-                            {isGifPickerOpen && (
-                                <div 
-                                    className="absolute bottom-[calc(100%+10px)] left-0 z-50 w-[320px] max-w-[90vw] animate-in slide-in-from-bottom-5 fade-in duration-300"
-                                    onClick={e => e.stopPropagation()}
-                                >
-                                    <div className="flex flex-col h-[400px] rounded-[2rem] border border-white/10 dark:border-white/5 bg-[color-mix(in_srgb,var(--surface)_85%,transparent)] shadow-[0_20px_60px_rgba(0,0,0,0.6),_inset_0_1px_0_rgba(255,255,255,0.1)] backdrop-blur-[30px] overflow-hidden">
-                                        
-                                        {/* Header / Tabs */}
-                                        <div className="flex items-center justify-between px-5 pt-4 pb-2 border-b border-white/10">
-                                                    <p className="text-sm font-bold text-white tracking-wide">GIPHY</p>
-                                                    <div className="flex gap-2">
-                                                <button type="button" onClick={() => setActiveGifTab("trending")} className={`text-xs font-bold transition ${activeGifTab === "trending" ? "text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-white"}`}>Trending</button>
-                                                <button type="button" onClick={() => setActiveGifTab("history")} className={`text-xs font-bold transition flex items-center gap-1 ${activeGifTab === "history" ? "text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-white"}`}><Clock className="h-3 w-3"/> History</button>
-                                            </div>
-                                        </div>
-
-                                        {/* Search Bar */}
-                                        {activeGifTab === "trending" && (
-                                            <div className="px-3 pt-3 pb-1">
-                                                <div className="relative flex items-center bg-black/30 border border-white/10 rounded-xl px-3 py-2 focus-within:border-[var(--accent)] transition-colors">
-                                                    <SearchIcon className="h-4 w-4 text-[var(--text-muted)]" />
-                                                    <input 
-                                                        type="text" 
-                                                        placeholder="Search GIFs..." 
-                                                        value={gifSearchQuery}
-                                                        onChange={e => setGifSearchQuery(e.target.value)}
-                                                        className="ml-2 w-full bg-transparent text-sm text-white outline-none placeholder:text-[var(--text-muted)]"
-                                                    />
-                                                </div>
-                                            </div>
-                                        )}
-
-                                            {/* Grid */}
-                                            <div className="flex-1 overflow-y-auto p-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                                                {!giphyKey || gifError === "Invalid API Key (401 Unauthorized)" ? (
-                                                    <div className="h-full flex flex-col items-center justify-center text-center p-4">
-                                                        <p className="text-sm font-bold text-red-400 mb-2">API Key Required</p>
-                                                        <p className="text-[10px] text-[var(--text-muted)] mb-4 leading-relaxed">
-                                                            Please paste your personal Giphy API key below. You can generate one for free at <span className="text-[var(--accent)]">developers.giphy.com</span>
-                                                        </p>
-                                                        <input 
-                                                            type="text" 
-                                                            placeholder="Paste Giphy API Key & hit Enter..." 
-                                                            className="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--accent)] transition-colors"
-                                                            onKeyDown={(e) => {
-                                                                if (e.key === "Enter") {
-                                                                    const val = e.currentTarget.value.trim();
-                                                                    window.localStorage.setItem("fg-giphy-key", val);
-                                                                    setGiphyKey(val);
-                                                                    setGifError(null);
-                                                                }
-                                                            }}
-                                                        />
-                                                    </div>
-                                                ) : isGifLoading ? (
-                                                    <div className="h-full flex items-center justify-center">
-                                                        <Loader2 className="h-6 w-6 animate-spin text-[var(--accent)]" />
-                                                    </div>
-                                            ) : activeGifTab === "history" && gifHistory.length === 0 ? (
-                                                <div className="h-full flex flex-col items-center justify-center text-[var(--text-muted)] opacity-60">
-                                                    <Clock className="h-8 w-8 mb-2" />
-                                                    <p className="text-xs font-medium">No recent GIFs</p>
-                                                </div>
-                                            ) : (
-                                            <div className="columns-2 gap-2 space-y-2">
-                                                {(activeGifTab === "history" ? gifHistory : gifResults).map((gif, idx) => {
-                                                    // Fallback structure for safety
-                                                    const previewUrl = gif?.images?.fixed_height?.url || gif?.images?.original?.url;
-                                                    if (!previewUrl) return null;
-                                                    return (
-                                                        <img 
-                                                            key={idx}
-                                                            src={previewUrl} 
-                                                            alt="GIF" 
-                                                            onClick={() => void handleSendGif(gif)}
-                                                            className="w-full rounded-lg cursor-pointer hover:opacity-80 transition active:scale-95 break-inside-avoid shadow-sm"
-                                                        />
-                                                    );
-                                                })}
-                                            </div>
-                                            )}
-                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -2095,8 +1924,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                         className="w-full min-h-[50px] max-h-[120px] bg-white/5 border border-white/10 shadow-inner rounded-3xl pl-5 pr-[80px] py-3.5 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]/50 focus:bg-white/10 transition-all ease-out duration-300 resize-none disabled:opacity-60 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                                     />
                                     <div className="absolute right-4 bottom-[13px] flex items-center gap-3 z-10 opacity-0 group-hover/input:opacity-100 focus-within:opacity-100 transition-opacity duration-300">
-                                        <button type="button" onClick={(e) => { e.stopPropagation(); setIsEmojiPickerOpen(!isEmojiPickerOpen); setIsGifPickerOpen(false); }} className={`shrink-0 inline-flex items-center justify-center transition-all hover:scale-110 active:scale-95 ${isEmojiPickerOpen ? "text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-white"}`}><Smile className="h-[22px] w-[22px]" strokeWidth={2.5} /></button>
-                                        <button type="button" onClick={(e) => { e.stopPropagation(); setIsGifPickerOpen(!isGifPickerOpen); setIsEmojiPickerOpen(false); }} className={`shrink-0 inline-flex items-center justify-center transition-all hover:scale-110 active:scale-95 ${isGifPickerOpen ? "text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-white"}`}><span className="font-black text-[13px] tracking-tight">GIF</span></button>
+                                        <button type="button" onClick={(e) => { e.stopPropagation(); setIsEmojiPickerOpen(!isEmojiPickerOpen); }} className={`shrink-0 hidden md:inline-flex items-center justify-center transition-all hover:scale-110 active:scale-95 ${isEmojiPickerOpen ? "text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-white"}`}><Smile className="h-[22px] w-[22px]" strokeWidth={2.5} /></button>
                                     </div>
                                 </div>
                             )}

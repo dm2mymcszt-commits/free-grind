@@ -52,6 +52,7 @@ export function SettingsPage() {
     const { developerMode, showDebugInfo, setPreferences } = usePreferences();
 
     // --- States ---
+    const [notificationsEnabled, setNotificationsEnabled] = useState(() => window.localStorage.getItem("fg-enable-message-notifications") !== "false");
     const [isExporting, setIsExporting] = useState(false);
     const [isSyncingFcm, setIsSyncingFcm] = useState(false);
     const [fcmToken, setFcmToken] = useState<string | null>(() => {
@@ -249,6 +250,26 @@ export function SettingsPage() {
                             isExporting ? <span className="text-xs text-[var(--text-muted)]">{t("settings.exporting")}</span> : undefined,
                             isExporting,
                         )}
+                        <div className="flex w-full items-center gap-3 px-4 py-3.5">
+                            <div className="rounded-2xl bg-sky-500/15 p-2.5 shrink-0 text-sky-400">
+                                <Bell className="h-5 w-5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <p className="text-sm font-semibold leading-snug">{t("settings.message_notifications", { defaultValue: "Message Notifications" })}</p>
+                                <p className="text-xs text-[var(--text-muted)] mt-0.5">{t("settings.message_notifications_desc", { defaultValue: "Receive native notifications for incoming messages." })}</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const next = !notificationsEnabled;
+                                    setNotificationsEnabled(next);
+                                    window.localStorage.setItem("fg-enable-message-notifications", String(next));
+                                }}
+                                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${notificationsEnabled ? "bg-[var(--accent)]" : "bg-[var(--surface-2)]"}`}
+                            >
+                                <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ${notificationsEnabled ? "translate-x-5" : "translate-x-0"}`} />
+                            </button>
+                        </div>
                     </div>
                 </div>
 

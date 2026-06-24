@@ -1095,3 +1095,8 @@ body.has-titlebar dialog::backdrop {
     box-shadow: 0 3px 14px rgba(0,0,0,0.5);
   }
 }
+
+em-emoji-picker {
+    --rgb-accent: 255, 204, 1 !important;
+    --em-rgb-color: 255, 204, 1 !important;
+}

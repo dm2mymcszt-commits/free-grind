@@ -20,6 +20,13 @@ pub fn run() {
     #[cfg(target_os = "windows")]
     {
         windows_instance::WindowsInstance::init();
+
+        // Set explicit AppUserModelID so that Windows notifications don't show as coming from PowerShell
+        unsafe {
+            let _ = windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID(
+                windows::core::w!("dev.estopia.free-grind"),
+            );
+        }
     }
 
     // Keyring initialization should not block app startup.

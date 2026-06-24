@@ -73,7 +73,12 @@ export function LeafletLocationPicker({
                 const startCenter = (selectedLocation ? [selectedLocation.lat, selectedLocation.lon] : (initialCenter || [20, 0])) as [number, number];
                 const startZoom = selectedLocation ? defaultZoom : (initialCenter ? 11 : 2);
 
-                const map = L.map(mapContainerRef.current, { zoomControl: true }).setView(startCenter, startZoom);
+                const map = L.map(mapContainerRef.current, {
+                    zoomControl: true,
+                    zoomAnimation: false,
+                    fadeAnimation: false,
+                    markerZoomAnimation: false
+                }).setView(startCenter, startZoom);
 
                 L.tileLayer(TILE_URL, {
                     attribution: TILE_ATTRIBUTION,
@@ -117,8 +122,21 @@ export function LeafletLocationPicker({
         return () => {
             mounted = false;
             if (mapRef.current) {
-                mapRef.current.off();
-                mapRef.current.remove();
+                try {
+                    mapRef.current.stop();
+                } catch (e) {
+                    console.warn("Error calling map.stop():", e);
+                }
+                try {
+                    mapRef.current.off();
+                } catch (e) {
+                    console.warn("Error calling map.off():", e);
+                }
+                try {
+                    mapRef.current.remove();
+                } catch (e) {
+                    console.warn("Error calling map.remove():", e);
+                }
                 mapRef.current = null;
                 markerRef.current = null;
                 polylineLayerRef.current = null;

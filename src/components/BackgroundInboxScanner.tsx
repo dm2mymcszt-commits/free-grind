@@ -14,7 +14,7 @@ export function BackgroundInboxScanner() {
     const api = useApiFunctions();
     const { userId } = useAuth();
     const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const scannedProfilesRef = useRef<Set<string>>(new Set());
+    const scannedProfilesRef = useRef<Map<string, { lastActivityTimestamp: number; unreadCount: number }>>(new Map());
     const isScanningRef = useRef(false);
 
     useEffect(() => {
@@ -40,14 +40,35 @@ export function BackgroundInboxScanner() {
                 const conversations = response?.entries || [];
                 
                 const toScan = conversations
-                    .map((c: any) => getOtherParticipant(c, userId)?.profileId?.toString())
-                    .filter((id: any): id is string => Boolean(id) && !scannedProfilesRef.current.has(id));
+                    .filter((c: any) => {
+                        const otherId = getOtherParticipant(c, userId)?.profileId?.toString();
+                        if (!otherId) return false;
+                        
+                        const unreadCount = c.data?.unreadCount ?? 0;
+                        if (unreadCount <= 0) return false;
+                        
+                        const cached = scannedProfilesRef.current.get(otherId);
+                        if (!cached) return true; // Not scanned yet
+                        
+                        const lastTs = c.data?.lastActivityTimestamp ?? 0;
+                        if (cached.lastActivityTimestamp !== lastTs || cached.unreadCount !== unreadCount) {
+                            return true; // Info changed, need to re-scan
+                        }
+                        
+                        return false;
+                    })
+                    .map((c: any) => ({
+                        profileId: getOtherParticipant(c, userId)!.profileId!.toString(),
+                        unreadCount: c.data?.unreadCount ?? 0,
+                        lastActivityTimestamp: c.data?.lastActivityTimestamp ?? 0
+                    }));
 
                 if (toScan.length > 0) {
-                    console.log(`[BackgroundInboxScanner] Found ${toScan.length} unscanned profiles in inbox:`, toScan);
-                    for (const profileId of toScan) {
+                    console.log(`[BackgroundInboxScanner] Found ${toScan.length} unscanned/updated profiles in inbox:`, toScan);
+                    for (const item of toScan) {
                         if (isCancelled) break;
-                        scannedProfilesRef.current.add(profileId);
+                        const { profileId, unreadCount, lastActivityTimestamp } = item;
+                        scannedProfilesRef.current.set(profileId, { unreadCount, lastActivityTimestamp });
 
                         try {
                             const profileDetail = await api.getProfileDetail(profileId);
@@ -103,6 +124,7 @@ export function BackgroundInboxScanner() {
 
         const handleTriggerScan = () => {
             console.log("[BackgroundInboxScanner] Instant scan triggered by setting change");
+            scannedProfilesRef.current.clear();
             if (timeoutRef.current) clearTimeout(timeoutRef.current);
             void scanInbox();
         };
