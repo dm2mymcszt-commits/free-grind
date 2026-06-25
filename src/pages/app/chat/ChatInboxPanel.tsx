@@ -90,6 +90,8 @@ function ChatConversationRow({
 	const { t } = useTranslation();
 	const { showDebugInfo } = usePreferences();
 	const { ref, revealClass } = useRevealOnScroll();
+	const { isActive, viewType: activeViewType } = useMultiSelect();
+	const isMultiSelectActive = isActive && activeViewType === "inbox";
 
 	const otherParticipant = getOtherParticipant(conversation, userId);
 	const otherProfileId = otherParticipant?.profileId ? String(otherParticipant.profileId) : null;
@@ -184,7 +186,7 @@ function ChatConversationRow({
 							getPreviewText(conversation, t)
 						)}
 					</p>
-					{conversation.data.unreadCount > 0 ? (
+					{conversation.data.unreadCount > 0 && !isMultiSelectActive ? (
 						<span className={`flex min-w-[20px] shrink-0 flex-col items-center justify-center rounded-full bg-[var(--accent)] px-1.5 py-0.5 text-[11px] font-bold text-[var(--accent-contrast)] shadow-sm ${showDebugInfo ? "min-h-[28px]" : ""}`}>
 							<span>{conversation.data.unreadCount}</span>
 							{showDebugInfo && (
