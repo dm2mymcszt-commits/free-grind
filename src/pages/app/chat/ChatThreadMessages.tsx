@@ -352,6 +352,7 @@ export function ChatThreadMessages({
 
 	const handleMobileTouchStart = useCallback(
 		(event: React.TouchEvent<HTMLDivElement>, message: UiMessage) => {
+			if (message.unsent) return;
 			startMessageLongPress(message.messageId);
 			if (isDesktop || event.touches.length !== 1 || isLocalClientMessageId(message.messageId)) {
 				swipeStateRef.current = null;
@@ -426,6 +427,9 @@ export function ChatThreadMessages({
 
 	const scheduleMobileTap = useCallback(
 		(message: UiMessage, action: (() => void) | null) => {
+			if (message.unsent) {
+				return;
+			}
 			if (messageLongPressTriggeredRef.current) {
 				messageLongPressTriggeredRef.current = false;
 				return;
@@ -756,8 +760,8 @@ export function ChatThreadMessages({
                                                 ? "bg-transparent p-0"
                                                 : `px-3 py-2 ${
                                                     mine
-                                                        ? "bg-[var(--accent)] text-[var(--accent-contrast)] rounded-br-[3px]"
-                                                        : "bg-[var(--surface-2)] text-[var(--text)] rounded-bl-[3px]"
+                                                        ? "liquid-glass-bubble-mine rounded-br-[3px] text-[var(--text)]"
+                                                        : "liquid-glass-bubble-other rounded-bl-[3px] text-[var(--text)]"
                                                 }`
                                     } ${isActiveSearchMatch ? "ring-2 ring-[var(--accent)]" : ""} ${localOnly ? "opacity-50" : ""}`}
                                 >
@@ -770,7 +774,11 @@ export function ChatThreadMessages({
 
                                     {(replyText || replyThumbUrl || replyIsAudio || hasReply) ? (
                                         <div className={isMediaOnlyBubble && hasReply
-                                            ? `relative w-full p-3 ${mine ? "bg-[var(--accent)] text-[var(--accent-contrast)]" : "bg-[var(--surface-2)] text-[var(--text)]"}`
+                                            ? `relative w-full p-3 border-b border-white/10 ${
+                                                mine
+                                                    ? "liquid-glass-bubble-mine text-[var(--text)]"
+                                                    : "liquid-glass-bubble-other text-[var(--text)]"
+                                            }`
                                             : "contents"
                                         }>
                                         <div className={`relative flex overflow-hidden text-xs ${
@@ -901,7 +909,8 @@ export function ChatThreadMessages({
                                                                 </span>
                                                                 {isDesktop &&
                                                                 !pending &&
-                                                                !isLocalClientMessageId(message.messageId) ? (
+                                                                !isLocalClientMessageId(message.messageId) &&
+                                                                !message.unsent ? (
                                                                     <button
                                                                         type="button"
                                                                         onClick={(event) => {
@@ -915,7 +924,8 @@ export function ChatThreadMessages({
                                                                 ) : null}
                                                                 {isDesktop &&
                                                                 !pending &&
-                                                                !isLocalClientMessageId(message.messageId) ? (
+                                                                !isLocalClientMessageId(message.messageId) &&
+                                                                !message.unsent ? (
                                                                     <button
                                                                         type="button"
                                                                         onClick={(event) => {
@@ -1466,7 +1476,8 @@ export function ChatThreadMessages({
                                             </span>
                                             {isDesktop &&
                                             !pending &&
-                                            !isLocalClientMessageId(message.messageId) ? (
+                                            !isLocalClientMessageId(message.messageId) &&
+                                            !message.unsent ? (
                                                 <button
                                                     type="button"
                                                     onClick={() => void handleReply(message)}
@@ -1477,7 +1488,8 @@ export function ChatThreadMessages({
                                             ) : null}
                                             {isDesktop &&
                                             !pending &&
-                                            !isLocalClientMessageId(message.messageId) ? (
+                                            !isLocalClientMessageId(message.messageId) &&
+                                            !message.unsent ? (
                                                 <button
                                                     type="button"
                                                     onClick={() =>
@@ -1657,7 +1669,7 @@ export function ChatThreadMessages({
             </div>
             {isPartnerTyping && (
                 <div className="flex items-end gap-2 px-4 py-1">
-                    <div className="flex items-center gap-1 rounded-2xl rounded-bl-sm bg-[var(--surface-2)] px-3 py-2.5">
+                    <div className="flex items-center gap-1 rounded-2xl rounded-bl-sm liquid-glass-bubble-other px-3 py-2.5">
                         <span className="h-2 w-2 animate-bounce rounded-full bg-[var(--text-muted)]" style={{ animationDelay: "0ms" }} />
                         <span className="h-2 w-2 animate-bounce rounded-full bg-[var(--text-muted)]" style={{ animationDelay: "160ms" }} />
                         <span className="h-2 w-2 animate-bounce rounded-full bg-[var(--text-muted)]" style={{ animationDelay: "320ms" }} />

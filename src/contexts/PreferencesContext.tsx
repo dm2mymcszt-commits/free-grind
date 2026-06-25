@@ -245,6 +245,11 @@ function applyTheme(colorScheme: ColorScheme, accentColor: string, accentContras
 	root.style.setProperty("--accent", accentColor);
 	root.style.setProperty("--accent-contrast", accentContrast);
 
+	const rgb = hexToRgb(accentColor);
+	if (rgb) {
+		root.style.setProperty("--rgb-accent", `${rgb.r}, ${rgb.g}, ${rgb.b}`);
+	}
+
 	const strength = revealStrength === "pronounced" ? REVEAL_STRENGTH_PRONOUNCED : REVEAL_STRENGTH_SUBTLE;
 	root.style.setProperty("--reveal-translate-y", strength.translateY);
 	root.style.setProperty("--reveal-scale", strength.scale);

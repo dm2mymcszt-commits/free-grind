@@ -3259,6 +3259,9 @@ export function ChatPage() {
 	const doubleTapTimeoutRef = useRef<Record<string, number>>({});
 	const handleMessageTap = useCallback(
 		(message: UiMessage) => {
+			if (message.unsent) {
+				return;
+			}
 			const messageId = message.messageId;
 			if (doubleTapTimeoutRef.current[messageId]) {
 				window.clearTimeout(doubleTapTimeoutRef.current[messageId]);
@@ -4052,7 +4055,7 @@ export function ChatPage() {
 								{...sharedInboxHeaderProps}
 								isDesktop={true}
 							/>
-							<div className="flex-1 min-h-0 mx-auto w-full max-w-6xl px-3 pb-24 grid grid-cols-[360px_minmax(0,1fr)] gap-3">
+							<div className="flex-1 min-h-0 mx-auto w-full max-w-6xl px-3 pb-32 grid grid-cols-[360px_minmax(0,1fr)] gap-3">
 								<div className="flex flex-col h-full min-h-0">
 									{!chatIsSearchOpen && renderDesktopFilterPills}
 									<div className="flex-1 min-h-0">

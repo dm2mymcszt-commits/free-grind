@@ -238,6 +238,9 @@ export function getPreviewText(conversation: ConversationEntry, t: TranslateFn):
 }
 
 export function getMessagePreviewLabel(message: Message, t: TranslateFn): string {
+	if (message.unsent) {
+		return t("chat.thread.unsent");
+	}
 	const body = message.body as Record<string, unknown> | null;
 	
 	if (body) {
@@ -283,10 +286,10 @@ export function getMessagePreviewLabel(message: Message, t: TranslateFn): string
 }
 
 export function getMessageText(message: UiMessage, t: TranslateFn): string {
+	if (message.unsent) {
+		return t("chat.thread.unsent");
+	}
 	if (!message.body || typeof message.body !== "object") {
-		if (message.unsent) {
-			return t("chat.thread.unsent");
-		}
 		if (message.type === "Image" || message.type === "ExpiringImage") {
 			return t("chat.thread.image_placeholder");
 		}
@@ -379,6 +382,9 @@ export function getMessageText(message: UiMessage, t: TranslateFn): string {
 }
 
 export function getMessageImageUrl(message: UiMessage): string | null {
+	if (message.unsent) {
+		return null;
+	}
 	const imageType = message.chat1Type?.toLowerCase();
 	const isImageMessage =
 		message.type === "Image" ||
@@ -589,6 +595,9 @@ export function extractImageHashFromSignedUrl(url: string): string | null {
 }
 
 export function getMessageAudioUrl(message: UiMessage): string | null {
+	if (message.unsent) {
+		return null;
+	}
 	const isAudioMessage =
 		message.type === "Audio" || message.chat1Type?.toLowerCase() === "audio";
 	if (!isAudioMessage) {
@@ -617,6 +626,9 @@ export function getMessageAudioUrl(message: UiMessage): string | null {
 }
 
 export function getMessageVideoUrl(message: UiMessage): string | null {
+	if (message.unsent) {
+		return null;
+	}
 	const mediaType = message.chat1Type?.toLowerCase();
 	const isVideoMessage = message.type === "Video" || message.type === "PrivateVideo" || message.type === "NonExpiringVideo" || mediaType === "video" ||mediaType === "privatevideo" || mediaType === "nonexpiringvideo";
 	if (!isVideoMessage) {
@@ -675,6 +687,9 @@ export function getMessageVideoUrl(message: UiMessage): string | null {
 export function getMessageLocation(
 	message: UiMessage,
 ): { lat: number; lon: number } | null {
+	if (message.unsent) {
+		return null;
+	}
 	const isLocation =
 		message.type === "Location" || message.chat1Type?.toLowerCase() === "map";
 	if (!isLocation) {
@@ -711,6 +726,9 @@ export function isLocalClientMessageId(messageId: string): boolean {
 }
 
 export function getMessageAlbumId(message: UiMessage): number | null {
+	if (message.unsent) {
+		return null;
+	}
 	if (!message.body || typeof message.body !== "object") {
 		return null;
 	}
@@ -726,6 +744,9 @@ export function getMessageAlbumId(message: UiMessage): number | null {
 }
 
 export function getMessageAlbumCoverUrl(message: UiMessage): string | null {
+	if (message.unsent) {
+		return null;
+	}
 	if (!message.body || typeof message.body !== "object") {
 		return null;
 	}

@@ -487,11 +487,7 @@ export function PhotoViewer({
                 onClick={(e) => { e.stopPropagation(); void handleSave(); }}
                 onTouchEnd={(e) => handleButtonTouchEnd(e, () => void handleSave())}
                 disabled={isSaving}
-                className={`absolute z-[83] inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/30 bg-black/50 text-white disabled:opacity-50 transition hover:bg-black/70 ${
-                    currentMediaInfo?.type === "image" && scannerEnabled
-                        ? "left-16 sm:left-20 top-[calc(env(safe-area-inset-top,0px)+2rem)] sm:top-5"
-                        : "left-3 top-[calc(env(safe-area-inset-top,0px)+2rem)] sm:left-5 sm:top-5"
-                }`}
+                className="absolute z-[83] inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/30 bg-black/50 text-white disabled:opacity-50 transition hover:bg-black/70 right-16 top-[calc(env(safe-area-inset-top,0px)+2rem)] sm:right-20 sm:top-5"
                 aria-label={t("profile_details.save_to_gallery")}
             >
                 <Download className="h-5 w-5" />
@@ -512,7 +508,7 @@ export function PhotoViewer({
                             openExternalTool(`https://lens.google.com/uploadbyurl?url=${encodeURIComponent(currentMediaInfo.url)}`);
                         }
                     })}
-                    className="absolute left-3 top-[calc(env(safe-area-inset-top,0px)+2rem)] z-[83] inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--accent)]/40 bg-black/50 text-[var(--accent)] shadow-[0_0_15px_color-mix(in_srgb,var(--accent)_30%,transparent)] backdrop-blur-md sm:left-5 sm:top-5 transition-all duration-300 hover:scale-105 hover:bg-black/70 active:scale-95"
+                    className="absolute z-[83] inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/30 bg-black/50 text-white transition hover:bg-black/70 right-[116px] top-[calc(env(safe-area-inset-top,0px)+2rem)] sm:right-[140px] sm:top-5"
                     aria-label="Google Lens Search"
                 >
                     <ScanSearch className="h-5 w-5" />

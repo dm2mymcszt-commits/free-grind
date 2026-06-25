@@ -112,8 +112,10 @@ function ChatConversationRow({
 		<div
 			ref={ref}
 			onClick={() => onSelectConversation(conversation)}
-			className={`relative flex cursor-pointer items-center gap-4 py-3 px-4 h-full text-left transition-all duration-300 border rounded-2xl backdrop-blur-md ${
-				!isSelected ? "bg-transparent border-transparent hover:bg-white/5" : ""
+			className={`relative flex cursor-pointer items-center gap-4 py-3 px-4 h-full text-left transition-all duration-300 rounded-2xl ${
+				isSelected 
+					? "border backdrop-blur-md" 
+					: "border border-transparent hover:bg-white/5"
 			} ${revealClass}`}
 			style={{
 				borderColor: isSelected 
@@ -397,7 +399,7 @@ export function ChatInboxPanel({
 							WebkitMaskImage: `linear-gradient(to bottom, transparent, black ${FEED_MASK_GRADIENT_STOP})`,
 						} : undefined}
 					>
-						<div className={!isDesktop ? "pb-[calc(env(safe-area-inset-bottom,0px)+clamp(92px,10vw,114px)+16px)]" : "pb-4"}>
+						<div className={!isDesktop ? "pb-[calc(env(safe-area-inset-bottom,0px)+clamp(92px,10vw,114px)+16px)]" : "pb-12"}>
 							{isLoadingInbox ? (
 								<div className="flex flex-col">
 									{Array.from({ length: 12 }).map((_, i) => (
@@ -446,6 +448,7 @@ export function ChatInboxPanel({
 												key={conversation.data.conversationId}
 												onDelete={(complete, revert) => handleDeleteConversation(conversation.data.conversationId, complete, revert)}
 												isDisabled={isActive}
+												isSelected={conversation.data.conversationId === selectedConversationId}
 											>
 												<SelectableItem
 													id={conversation.data.conversationId}
@@ -538,10 +541,12 @@ function SwipeableRow({
     children,
     onDelete,
     isDisabled,
+    isSelected,
 }: {
     children: React.ReactNode;
     onDelete: (complete: () => void, revert: () => void) => void;
     isDisabled?: boolean;
+    isSelected?: boolean;
 }) {
     const [startX, setStartX] = useState<number | null>(null);
     const [currentX, setCurrentX] = useState(0);
@@ -602,7 +607,9 @@ function SwipeableRow({
 
     return (
         <div
-            className="relative overflow-hidden shrink-0 rounded-2xl border border-white/5 transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] select-none touch-pan-y"
+            className={`relative overflow-hidden shrink-0 rounded-2xl transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] select-none touch-pan-y ${
+                isSelected ? "border border-white/5" : "border border-transparent"
+            }`}
             style={{
                 height: isAnimatingOut ? "0px" : "96px",
                 opacity: isAnimatingOut ? 0 : 1,

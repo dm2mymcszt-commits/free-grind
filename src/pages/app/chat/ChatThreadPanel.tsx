@@ -1136,10 +1136,8 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                                         }
                                                         toast.success(newState ? "Ghost Mode ON for this chat." : "Ghost Mode OFF. They will see read receipts.");
                                                     }}
-                                                    className={`rounded-xl border px-3 py-2 text-xs font-medium transition ${
-                                                        isGhosted
-                                                            ? "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
-                                                            : "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] hover:brightness-110"
+                                                    className={`rounded-xl px-3 py-2 text-xs font-medium transition disabled:opacity-60 ${
+                                                        isGhosted ? "glass-btn-muted" : "glass-btn-accent"
                                                     }`}
                                                     title={isGhosted ? "Ghost Mode ON (Hidden)" : "Ghost Mode OFF (Visible)"}
                                                 >
@@ -1154,10 +1152,8 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                                     void onToggleFavorite(otherParticipant.profileId, isFavorite);
                                                 }}
                                                 disabled={isTogglingFavorite || !otherParticipant || !onToggleFavorite}
-                                                className={`rounded-xl border px-3 py-2 text-xs font-medium transition disabled:opacity-60 ${
-                                                    isFavorite
-                                                        ? "border-pink-500/40 bg-pink-500/10 text-pink-400 hover:bg-pink-500/20"
-                                                        : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--text)]"
+                                                className={`rounded-xl px-3 py-2 text-xs font-medium transition disabled:opacity-60 ${
+                                                    isFavorite ? "glass-btn-pink" : "glass-btn-muted"
                                                 }`}
                                             >
                                                 {isTogglingFavorite ? (
@@ -1171,7 +1167,9 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                                 type="button"
                                                 disabled={isUpdatingConversationState}
                                                 onClick={togglePin}
-                                                className="rounded-xl border border-[var(--border)] px-3 py-2 text-xs font-medium text-[var(--text-muted)] transition hover:border-[var(--accent)] hover:text-[var(--text)] disabled:opacity-60"
+                                                className={`rounded-xl px-3 py-2 text-xs font-medium transition disabled:opacity-60 ${
+                                                    selectedConversation.data.pinned ? "glass-btn-accent" : "glass-btn-muted"
+                                                }`}
                                             >
                                                 <Pin className="mr-1 inline h-3.5 w-3.5" />
                                                 {selectedConversation.data.pinned ? t("chat.unpin") : t("chat.pin")}
@@ -1180,7 +1178,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                                 type="button"
                                                 onClick={requestBlockProfile}
                                                 disabled={isBlockingProfile || !otherParticipant || !onBlockProfile}
-                                                className="rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-300 transition hover:bg-red-500/20 disabled:opacity-60"
+                                                className="rounded-xl px-3 py-2 text-xs font-medium transition glass-btn-red disabled:opacity-60"
                                             >
                                                 {isBlockingProfile ? (
                                                     <Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" />
@@ -1203,14 +1201,14 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                             onClick={() =>
                                                 setIsHeaderActionsMenuOpen((current) => !current)
                                             }
-                                            className="rounded-xl border border-[var(--border)] p-2 text-[var(--text-muted)] transition hover:border-[var(--accent)] hover:text-[var(--text)]"
+                                            className="rounded-xl p-2 transition glass-btn-muted"
                                             aria-label="Open conversation actions"
                                             aria-expanded={isHeaderActionsMenuOpen}
                                         >
                                             <Ellipsis className="h-4 w-4" />
                                         </button>
                                         {isHeaderActionsMenuOpen ? (
-                                            <div className="absolute right-0 top-full z-30 mt-2 flex min-w-[210px] flex-col gap-1 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-2 shadow-lg">
+                                            <div className="absolute right-0 top-full z-30 mt-2 flex min-w-[210px] flex-col gap-1 rounded-xl glass-dropdown-panel p-2 shadow-lg">
                                                 <button
                                                     type="button"
                                                     onClick={() => {
@@ -1222,7 +1220,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                                         navigate(`/profile/${otherParticipant.profileId}?${nextParams.toString()}`, { state: { returnTo } });
                                                     }}
                                                     disabled={!otherParticipant}
-                                                    className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text)] transition hover:bg-[var(--surface-2)] disabled:opacity-60"
+                                                    className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text)] transition hover:bg-white/10 disabled:opacity-60"
                                                 >
                                                     <User className="mr-2 h-4 w-4 opacity-70" />
                                                     {t("chat.view_profile")}
@@ -1238,7 +1236,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                                             toast.success(newState ? "Ghost Mode ON for this chat." : "Ghost Mode OFF.");
                                                         }}
                                                         className={`flex items-center rounded-lg px-2 py-2 text-left text-sm transition ${
-                                                            isGhosted ? "text-[var(--accent)] hover:bg-[var(--accent)]/10" : "text-[var(--text)] hover:bg-[var(--surface-2)]"
+                                                            isGhosted ? "text-[var(--accent)] hover:bg-[var(--accent)]/10" : "text-[var(--text)] hover:bg-white/10"
                                                         }`}
                                                     >
                                                         {isGhosted ? <EyeOff className="mr-2 h-4 w-4 opacity-70" /> : <Eye className="mr-2 h-4 w-4 opacity-70" />}
@@ -1255,7 +1253,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                                         window.localStorage.setItem("fg-forbidden-words", newList);
                                                         toast.success(`Added "${displayName}" to Forbidden Keywords!`);
                                                     }}
-                                                    className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-red-400 transition hover:bg-red-500/10"
+                                                    className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-red-400 transition hover:bg-red-500/20"
                                                 >
                                                     <Ban className="mr-2 h-4 w-4 opacity-70" />
                                                     Ban Name "{displayName}"
@@ -1290,7 +1288,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                                             toast.error("Failed to load bio.");
                                                         }
                                                     }}
-                                                    className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-red-400 transition hover:bg-red-500/10"
+                                                    className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-red-400 transition hover:bg-red-500/20"
                                                 >
                                                     <Ban className="mr-2 h-4 w-4 opacity-70" />
                                                     Ban Bio Phrase
@@ -1304,7 +1302,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                                         void onEditLocalNickname(otherParticipant.profileId, displayName);
                                                     }}
                                                     disabled={!otherParticipant || !onEditLocalNickname}
-                                                    className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text)] transition hover:bg-[var(--surface-2)] disabled:opacity-60"
+                                                    className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text)] transition hover:bg-white/10 disabled:opacity-60"
                                                 >
                                                     <PencilLine className="mr-2 h-4 w-4 opacity-70" />
                                                     {localNickname ? t("chat.nicknames.edit") : t("chat.nicknames.set")}
@@ -1321,7 +1319,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                                             }}
                                                             disabled={isTogglingFavorite || !otherParticipant || !onToggleFavorite}
                                                             className={`flex items-center rounded-lg px-2 py-2 text-left text-sm transition disabled:opacity-60 ${
-                                                                isFavorite ? "text-pink-400 hover:bg-pink-500/10" : "text-[var(--text)] hover:bg-[var(--surface-2)]"
+                                                                isFavorite ? "text-pink-400 hover:bg-pink-500/20" : "text-[var(--text)] hover:bg-white/10"
                                                             }`}
                                                         >
                                                             {isTogglingFavorite ? (
@@ -1338,7 +1336,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                                                 setIsHeaderActionsMenuOpen(false);
                                                                 void togglePin();
                                                             }}
-                                                            className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text)] transition hover:bg-[var(--surface-2)] disabled:opacity-60"
+                                                            className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text)] transition hover:bg-white/10 disabled:opacity-60"
                                                         >
                                                             <Pin className="mr-2 h-4 w-4 opacity-70" />
                                                             {selectedConversation.data.pinned ? t("chat.unpin") : t("chat.pin")}
@@ -1353,7 +1351,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                                         setIsHeaderActionsMenuOpen(false);
                                                         void toggleMute();
                                                     }}
-                                                    className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text)] transition hover:bg-[var(--surface-2)] disabled:opacity-60"
+                                                    className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text)] transition hover:bg-white/10 disabled:opacity-60"
                                                 >
                                                     {selectedConversation.data.muted ? (
                                                         <Volume2 className="mr-2 h-4 w-4 opacity-70" />
@@ -1368,7 +1366,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                                         type="button"
                                                         onClick={requestBlockProfile}
                                                         disabled={isBlockingProfile || !otherParticipant || !onBlockProfile}
-                                                        className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-red-400 transition hover:bg-red-500/10 disabled:opacity-60"
+                                                        className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-red-400 transition hover:bg-red-500/20 disabled:opacity-60"
                                                     >
                                                         <Ban className="mr-2 h-4 w-4 opacity-70" />
                                                         {isBlockingProfile
@@ -1383,7 +1381,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                                         setIsHeaderActionsMenuOpen(false);
                                                         void clearLocalHistory();
                                                     }}
-                                                    className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text)] transition hover:bg-[var(--surface-2)]"
+                                                    className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text)] transition hover:bg-white/10"
                                                 >
                                                     <Trash2 className="mr-2 h-4 w-4 opacity-70" />
                                                     {t("chat.clear_local_history")}
@@ -1392,7 +1390,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                                     type="button"
                                                     onClick={requestDeleteConversation}
                                                     disabled={!onDeleteConversation || isDeletingConversation}
-                                                    className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-red-400 transition hover:bg-red-500/10 disabled:opacity-60"
+                                                    className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-red-400 transition hover:bg-red-500/20 disabled:opacity-60"
                                                 >
                                                     <MessageCircleX className="mr-2 h-4 w-4 opacity-70" />
                                                     {isDeletingConversation
@@ -2448,7 +2446,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
         ) : (
         <div
             className={`flex h-full overflow-hidden items-center justify-center p-6 text-center text-[var(--text-muted)] ${
-                isDesktop ? "surface-card" : ""
+                isDesktop ? "rounded-[18px] liquid-glass-panel" : ""
             }`}
         >
             {t("chat.select_conversation")}

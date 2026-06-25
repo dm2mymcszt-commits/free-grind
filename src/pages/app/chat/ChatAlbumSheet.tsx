@@ -73,18 +73,15 @@ export function ChatAlbumSheet({
 	};
 
 	return (
-		<BottomSheet onClose={onClose} isDesktop={isDesktop} panelClassName="max-h-[85dvh] overflow-hidden rounded-t-[2.5rem] sm:rounded-[2.5rem] border border-white/10 dark:border-white/5 bg-[color-mix(in_srgb,var(--surface)_85%,transparent)] backdrop-blur-[30px] shadow-[0_20px_60px_rgba(0,0,0,0.6),_inset_0_1px_0_rgba(255,255,255,0.1)]">
-            <div className="absolute inset-0 bg-gradient-to-b from-[var(--surface-2)]/30 to-transparent pointer-events-none" />
+		<BottomSheet
+			onClose={onClose}
+			isDesktop={isDesktop}
+			bg="liquid-glass-panel"
+			panelClassName="max-h-[85dvh] overflow-hidden rounded-t-[2.5rem] sm:rounded-[2.5rem]"
+		>
 			{/* Header */}
-			<div className="relative flex items-center justify-between px-6 pt-6 pb-4 border-b border-white/10 dark:border-white/5 shadow-[0_4px_30px_rgba(0,0,0,0.1)]">
+			<div className="relative flex items-center justify-between px-6 pt-6 pb-4">
 				<div className="flex min-w-0 items-center gap-3">
-					<div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--accent)] to-purple-600 shadow-[0_0_20px_var(--accent)]/30 overflow-hidden p-[1px]">
-                        <div className="flex h-full w-full items-center justify-center rounded-[15px] bg-[var(--surface)]/80 backdrop-blur-md">
-                            <span className="text-lg font-black text-white drop-shadow-md">
-                                {viewer ? viewer.content.length : 0}
-                            </span>
-                        </div>
-                    </div>
 					<div className="min-w-0">
 						<div className="flex items-center gap-2">
 							<p className="truncate text-lg font-bold tracking-tight text-[var(--text)] drop-shadow-sm">
