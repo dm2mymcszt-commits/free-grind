@@ -316,8 +316,14 @@ export function ChatRealtimeBridge() {
 						// --- LIVE AUTO BLOCK CHECK ---
 						let messageText = "";
 						const msgBody: any = m.body;
-						if (msgBody && typeof msgBody.text === "string") {
-							messageText = msgBody.text;
+						if (msgBody) {
+							if (typeof msgBody.text === "string") {
+								messageText = msgBody.text;
+							} else if (msgBody.reply && typeof msgBody.reply.text === "string") {
+								messageText = msgBody.reply.text;
+							} else if (typeof msgBody.photoContentReply === "string") {
+								messageText = msgBody.photoContentReply;
+							}
 						}
 
 						const isIncoming = userIdRef.current != null && Number(m.senderId) !== Number(userIdRef.current);

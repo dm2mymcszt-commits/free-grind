@@ -276,7 +276,7 @@ export function getMessagePreviewLabel(message: Message, t: TranslateFn): string
 		case "Location":
 			return t("chat.preview.sent_location");
 		case "ProfilePhotoReply":
-			return "Replied to a photo";
+			return t("chat.preview.replied_profile_photo", { defaultValue: "Replied to a profile photo" });
 		default:
 			return t("chat.preview.sent_message");
 	}

@@ -1382,7 +1382,7 @@ export function ChatThreadMessages({
                                                 <div className={`absolute left-0 top-0 h-full w-[3px] shrink-0 ${mine ? "bg-white/60" : "bg-[var(--accent)]/50"}`} />
                                                 <div className="min-w-0 flex-1 py-[13px] pl-[13px] pr-2.5">
                                                     <p className="mb-0.5 font-semibold opacity-60 truncate">{t("chat.thread.replied_to_photo")}</p>
-                                                    <p className="opacity-60">{t("chat.thread.shared_image")}</p>
+                                                    <p className="opacity-60">{t("browse_page.your_profile_photo", { defaultValue: "Your profile photo" })}</p>
                                                 </div>
                                                 {photoUrl && (
                                                     <img

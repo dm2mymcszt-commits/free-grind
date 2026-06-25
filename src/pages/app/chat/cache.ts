@@ -34,6 +34,12 @@ function getMessageText(message: Message): string {
 	if (typeof body.text === "string") {
 		return body.text;
 	}
+	if (body.reply && typeof (body.reply as any).text === "string") {
+		return (body.reply as any).text;
+	}
+	if (typeof body.photoContentReply === "string") {
+		return body.photoContentReply;
+	}
 
 	if (message.type === "Album") {
 		return "Shared an album";
