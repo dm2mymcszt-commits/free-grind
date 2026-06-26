@@ -198,6 +198,6 @@ export function ConfirmDialog({
                 </div>
             </dialog>
         </>,
-        document.body
+        document.getElementById("app") ?? document.body
     );
 }

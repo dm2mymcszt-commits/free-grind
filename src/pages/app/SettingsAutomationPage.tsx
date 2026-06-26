@@ -158,6 +158,9 @@ export function SettingsAutomationPage() {
         window.localStorage.setItem("fg-block-looking-for-mode", blockedLookingForMode);
         window.localStorage.setItem("fg-block-looking-for", JSON.stringify(blockedLookingFor));
 
+        // Trigger immediate background scan with new rules
+        window.dispatchEvent(new Event("fg-trigger-inbox-scan"));
+
         toast.success(t("settings_automation.block_rules_updated", { defaultValue: "Block Rules Updated!" }));
     };
 
@@ -392,7 +395,7 @@ export function SettingsAutomationPage() {
                                          <label className="flex items-start gap-2 mt-2 cursor-pointer">
                                              <input type="checkbox" checked={blockFirstMedia} onChange={(e) => setBlockFirstMedia(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--accent)] shrink-0" />
                                              <span className="text-xs text-[var(--text-muted)] leading-relaxed">
-                                                 <strong className="text-[var(--text)]">Block if first message is Media.</strong> Catches bots that put spam text inside pictures. (Note: Blocks real people who open with a pic).
+                                                 <strong className="text-[var(--text)]">Block if first message is Media.</strong> Catches bots that open with pictures, videos, or albums without text (even if they send multiple media messages).
                                              </span>
                                          </label>
                                          {blockFirstMedia && (

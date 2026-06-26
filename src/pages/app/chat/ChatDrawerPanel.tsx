@@ -341,7 +341,7 @@ export function ChatDrawerPanel({
 					<>
 						{previewUrl && pendingAddFile.type.startsWith("video/") && (
 							<div className="mb-4 flex justify-center">
-								<div className="overflow-hidden rounded-xl border border-[var(--border)]" style={{ clipPath: "inset(0 round 0.75rem)" }}>
+								<div className="overflow-hidden rounded-xl border border-[var(--border)]" style={{ clipPath: "inset(0px round 0.75rem)" }}>
 									<video src={previewUrl} controls className="block max-h-[50dvh] w-full" style={{ maxWidth: "100%" }} />
 								</div>
 							</div>

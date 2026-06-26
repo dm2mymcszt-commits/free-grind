@@ -3837,7 +3837,7 @@ export function ChatPage() {
 	} as const;
 
 	const renderDesktopFilterPills = (
-		<div className="flex flex-wrap items-center gap-2 pb-3 shrink-0">
+		<div className="flex flex-wrap items-center justify-center gap-2 pb-3 shrink-0">
 			<button
 				type="button"
 				onClick={toggleInboxFavoritesOnly}

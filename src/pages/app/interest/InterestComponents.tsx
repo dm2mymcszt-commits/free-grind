@@ -280,9 +280,6 @@ export const InterestRow = memo(function InterestRow({
 				);
 			})()}
 
-			{isFirst && <div className="absolute top-0 right-0 left-0 h-px bg-[var(--surface-2)]" />}
-			{/* Full-width Divider */}
-			<div className="absolute bottom-0 right-0 left-0 h-px bg-[var(--surface-2)]" />
 		</div>
 	);
 });

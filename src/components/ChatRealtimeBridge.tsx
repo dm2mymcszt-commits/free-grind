@@ -332,7 +332,19 @@ export function ChatRealtimeBridge() {
 						// --- BOT EVASION CHECK (LIVE) ---
 						let isBotMedia = false;
 						if (isIncoming && !matchedWord && window.localStorage.getItem("fg-block-first-media") === "true") {
-							const isMedia = m.type === "Image" || m.type === "ExpiringImage" || m.type?.includes("Album") || m.type === "Video";
+							const typeLower = m.type?.toLowerCase() || "";
+							const chat1Lower = m.chat1Type?.toLowerCase() || "";
+							const isMedia =
+								typeLower === "image" ||
+								typeLower === "expiringimage" ||
+								typeLower === "video" ||
+								typeLower === "nonexpiringvideo" ||
+								typeLower.includes("album") ||
+								chat1Lower === "image" ||
+								chat1Lower === "expiring_image" ||
+								chat1Lower === "video" ||
+								chat1Lower === "private_video" ||
+								chat1Lower === "expiring_video";
 							if (isMedia && (!messageText || messageText.trim() === "")) {
 								// Check if we have any prior history with them!
 								const existingLog = await chatLog.readLog(m.conversationId);

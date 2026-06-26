@@ -1025,7 +1025,15 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                             return (
                             <>
                                 <div
-                                    className={`mb-3 flex items-center justify-between gap-3 pb-3 z-40 ${!isDesktop ? "fixed inset-x-0 top-0 py-3 px-[var(--app-px)] bg-zinc-950/70 dark:bg-black/75 backdrop-blur-3xl border-b border-white/5" : "sticky top-0 pt-0 bg-transparent border-none shadow-none"}`}
+                                    className={`mb-3 flex items-center justify-between gap-3 pb-3 z-40 ${
+                                        !isDesktop
+                                            ? `fixed inset-x-0 top-0 py-3 px-[var(--app-px)] border-b border-white/5 transition-all duration-300 ${
+                                                    isHeaderActionsMenuOpen
+                                                        ? "bg-zinc-950/95 dark:bg-black/98"
+                                                        : "bg-zinc-950/70 dark:bg-black/75 backdrop-blur-3xl"
+                                              }`
+                                            : "sticky top-0 pt-0 bg-transparent border-none shadow-none"
+                                    }`}
                                 style={
                                     !isDesktop
                                         ? {
@@ -1498,7 +1506,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 
                         <form
                             onSubmit={onFormSubmit}
-                            className={`border-t border-white/5 ${!isDesktop ? "fixed bottom-0 left-0 right-0 z-30 px-[var(--app-px)] py-3 bg-zinc-950/70 dark:bg-black/75 backdrop-blur-3xl" : "mt-3 pt-3 bg-transparent"}`}
+                            className={`border-t border-white/10 ${!isDesktop ? "fixed bottom-0 left-0 right-0 z-30 px-[var(--app-px)] py-3 bg-[color-mix(in_srgb,var(--surface)_25%,transparent)] backdrop-blur-3xl shadow-[0_-8px_32px_rgba(0,0,0,0.35)]" : "mt-3 pt-3 bg-transparent"}`}
                             style={
                                 !isDesktop
                                     ? {
@@ -1602,8 +1610,8 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                                 onClick={() => handleUsePhrase(phrase)}
                                                 className={`shrink-0 whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs font-medium transition active:scale-95 ${
                                                     isExact
-                                                        ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)]"
-                                                        : "bg-[var(--surface-2)] border-[var(--border)] text-[var(--text)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                                                        ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] shadow-md"
+                                                        : "bg-[color-mix(in_srgb,var(--surface-2)_30%,transparent)] border-white/10 text-[var(--text)] hover:bg-white/10 hover:border-white/20 backdrop-blur-md"
                                                 }`}
                                             >
                                                 {phrase}
@@ -2201,14 +2209,16 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                         );
                                     })()}
 
-                                    <button
-                                        type="button"
-                                        onClick={() => void handleReply(selectedActionMessage)}
-                                        disabled={isMutatingMessageId === selectedActionMessage.messageId}
-                                        className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-3 text-left text-sm font-medium text-[var(--text)] transition-all duration-300 hover:scale-[1.02] hover:border-[var(--accent)] hover:bg-[var(--accent)] hover:text-white hover:shadow-[0_0_20px_color-mix(in_srgb,var(--accent)_30%,transparent)] active:scale-95 disabled:opacity-60"
-                                    >
-                                        {t("chat.actions.reply", { defaultValue: "Reply" })}
-                                    </button>
+                                    {!selectedActionMessage.unsent ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => void handleReply(selectedActionMessage)}
+                                            disabled={isMutatingMessageId === selectedActionMessage.messageId}
+                                            className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-3 text-left text-sm font-medium text-[var(--text)] transition-all duration-300 hover:scale-[1.02] hover:border-[var(--accent)] hover:bg-[var(--accent)] hover:text-white hover:shadow-[0_0_20px_color-mix(in_srgb,var(--accent)_30%,transparent)] active:scale-95 disabled:opacity-60"
+                                        >
+                                            {t("chat.actions.reply", { defaultValue: "Reply" })}
+                                        </button>
+                                    ) : null}
                                     {selectedActionMessageMine && !selectedActionMessage.unsent ? (
                                         <button
                                             type="button"

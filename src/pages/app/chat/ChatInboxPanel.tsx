@@ -403,7 +403,7 @@ export function ChatInboxPanel({
 							{isLoadingInbox ? (
 								<div className="flex flex-col">
 									{Array.from({ length: 12 }).map((_, i) => (
-										<div key={i} className="flex items-center gap-4 border-b border-[var(--surface-2)] py-3 px-4">
+										<div key={i} className="flex items-center gap-4 border-b border-[var(--surface-2)] py-3 px-[var(--app-px)]">
 											<div className="h-14 w-14 shrink-0 animate-pulse rounded-2xl bg-[var(--surface-2)]" />
 											<div className="flex flex-1 flex-col gap-2">
 												<div className="flex items-center justify-between gap-3">
@@ -436,7 +436,7 @@ export function ChatInboxPanel({
 									</p>
 								</div>
 							) : (
-								<div className="flex flex-col pt-3 gap-3 px-3">
+								<div className="flex flex-col pt-3 gap-3 px-[var(--app-px)]">
 									{filteredConversations.map((conversation) => {
 										const otherParticipant = getOtherParticipant(conversation, userId);
 										const otherProfileId = otherParticipant?.profileId ? String(otherParticipant.profileId) : null;

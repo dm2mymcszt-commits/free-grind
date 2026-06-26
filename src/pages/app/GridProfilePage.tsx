@@ -928,7 +928,7 @@ export function GridProfilePage() {
                         </div>
                     </div>
                 </div>,
-                document.body
+                document.getElementById("app") ?? document.body
             )}
 
             <ConfirmDialog

@@ -352,8 +352,8 @@ export function ChatThreadMessages({
 
 	const handleMobileTouchStart = useCallback(
 		(event: React.TouchEvent<HTMLDivElement>, message: UiMessage) => {
-			if (message.unsent) return;
 			startMessageLongPress(message.messageId);
+			if (message.unsent) return;
 			if (isDesktop || event.touches.length !== 1 || isLocalClientMessageId(message.messageId)) {
 				swipeStateRef.current = null;
 				return;
@@ -924,8 +924,7 @@ export function ChatThreadMessages({
                                                                 ) : null}
                                                                 {isDesktop &&
                                                                 !pending &&
-                                                                !isLocalClientMessageId(message.messageId) &&
-                                                                !message.unsent ? (
+                                                                !isLocalClientMessageId(message.messageId) ? (
                                                                     <button
                                                                         type="button"
                                                                         onClick={(event) => {
@@ -1009,7 +1008,7 @@ export function ChatThreadMessages({
                                                         {senderLabel}
                                                     </p>
                                                 </div>
-                                                <div className="absolute inset-x-0 bottom-0 flex flex-col bg-gradient-to-t from-black/80 via-black/40 to-transparent px-3 py-2 text-white">
+                                                <div className="absolute inset-x-0 bottom-0 z-20 flex flex-col bg-gradient-to-t from-black/80 via-black/40 to-transparent px-3 py-2 text-white">
                                                     {!isLocked && isExpiringMedia && (expiresAt > Date.now() || isOnce) && (
                                                         <AlbumExpirationCountdown
                                                             expiresAt={expiresAt}
@@ -1026,7 +1025,7 @@ export function ChatThreadMessages({
                                                             <span>
                                                                 {formatMessageTime(message.timestamp, nowTimestamp, t)}
                                                             </span>
-                                                            {isDesktop &&
+                                                            {(isDesktop || isLocked) &&
                                                             !pending &&
                                                             !isLocalClientMessageId(message.messageId) ? (
                                                                 <button
@@ -1064,8 +1063,28 @@ export function ChatThreadMessages({
                                                     <span className="text-xs font-medium">{t("chat.thread.image_expired")}</span>
                                                 </div>
                                                 {isImageOnlyBubble && (
-                                                    <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-3 py-2 text-[10px] text-white">
-                                                        <span>{formatMessageTime(message.timestamp, nowTimestamp, t)}</span>
+                                                    <div className="absolute inset-x-0 bottom-0 z-20 flex items-center justify-between gap-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-3 py-2 text-[10px] text-white">
+                                                        <div className="flex items-center gap-2">
+                                                            {pending ? <span>{t("chat.sending")}</span> : null}
+                                                            {failed ? <span>{t("chat.thread.failed")}</span> : null}
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span>{formatMessageTime(message.timestamp, nowTimestamp, t)}</span>
+                                                            {!pending && !isLocalClientMessageId(message.messageId) ? (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(event) => {
+                                                                        event.stopPropagation();
+                                                                        setOpenMessageActionId((current) =>
+                                                                            current === message.messageId ? null : message.messageId,
+                                                                        );
+                                                                    }}
+                                                                    className="rounded-md p-1 hover:bg-white/10"
+                                                                >
+                                                                    <Ellipsis className="h-3.5 w-3.5" />
+                                                                </button>
+                                                            ) : null}
+                                                        </div>
                                                     </div>
                                                 )}
                                             </div>
@@ -1078,8 +1097,28 @@ export function ChatThreadMessages({
                                                     <span className="text-xs font-medium">{t("chat.thread.video_expired")}</span>
                                                 </div>
                                                 {isVideoOnlyBubble && (
-                                                    <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-3 py-2 text-[10px] text-white">
-                                                        <span>{formatMessageTime(message.timestamp, nowTimestamp, t)}</span>
+                                                    <div className="absolute inset-x-0 bottom-0 z-20 flex items-center justify-between gap-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-3 py-2 text-[10px] text-white">
+                                                        <div className="flex items-center gap-2">
+                                                            {pending ? <span>{t("chat.sending")}</span> : null}
+                                                            {failed ? <span>{t("chat.thread.failed")}</span> : null}
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span>{formatMessageTime(message.timestamp, nowTimestamp, t)}</span>
+                                                            {!pending && !isLocalClientMessageId(message.messageId) ? (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(event) => {
+                                                                        event.stopPropagation();
+                                                                        setOpenMessageActionId((current) =>
+                                                                            current === message.messageId ? null : message.messageId,
+                                                                        );
+                                                                    }}
+                                                                    className="rounded-md p-1 hover:bg-white/10"
+                                                                >
+                                                                    <Ellipsis className="h-3.5 w-3.5" />
+                                                                </button>
+                                                            ) : null}
+                                                        </div>
                                                     </div>
                                                 )}
                                             </div>
@@ -1486,10 +1525,9 @@ export function ChatThreadMessages({
                                                     <Reply className="h-3.5 w-3.5" />
                                                 </button>
                                             ) : null}
-                                            {isDesktop &&
-                                            !pending &&
+                                            {!pending &&
                                             !isLocalClientMessageId(message.messageId) &&
-                                            !message.unsent ? (
+                                            (isDesktop || message.unsent) ? (
                                                 <button
                                                     type="button"
                                                     onClick={() =>

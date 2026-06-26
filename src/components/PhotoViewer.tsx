@@ -467,7 +467,7 @@ export function PhotoViewer({
         <div
             className={`fixed inset-0 z-[300] m-0 h-full w-full max-w-none border-none bg-transparent p-0 overflow-hidden ${typeof window !== "undefined" && "__TAURI_INTERNALS__" in window ? "rounded-[20px]" : ""}`}
         >
-            <div className="fixed inset-0 bg-black" onClick={() => {
+            <div className="absolute inset-0 bg-black" onClick={() => {
                 if (!gestureMovedRef.current) onClose();
             }}>
 			
@@ -630,6 +630,6 @@ export function PhotoViewer({
 
             </div>
         </div>,
-        document.body,
+        document.getElementById("app") ?? document.body,
     );
 }

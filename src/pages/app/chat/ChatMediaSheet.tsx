@@ -286,7 +286,7 @@ export function ChatMediaSheet({
 				photos={images.filter((i) => i.url).map((i) => i.url!)}
 				initialIndex={viewerIndex}
 			/>,
-			document.body,
+			document.getElementById("app") ?? document.body,
 		)}
 		</>
 	);

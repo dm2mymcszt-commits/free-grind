@@ -931,14 +931,14 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 		<>
 			{/* Floating header — transparent over carousel, opaque after scrolling */}
 			<div
-				className="pointer-events-none absolute inset-x-0 top-0 z-40 px-4 sm:px-5"
+				className={`pointer-events-none absolute inset-x-0 top-0 z-40 px-4 sm:px-5 ${variant !== "page" ? "rounded-t-2xl" : ""}`}
 				style={{
 					paddingTop: variant === "page" ? "calc(env(safe-area-inset-top,0px) + 10px)" : "0.75rem",
 					paddingBottom: "0.75rem",
 				}}
 			>
 				<div
-					className={`absolute inset-0 ${variant === "page" ? "bg-[var(--bg)]" : "bg-transparent"} backdrop-blur-xl${inlineScrolled ? " border-b border-white/10" : ""}`}
+					className={`absolute inset-0 ${variant === "page" ? "bg-[var(--bg)]" : "bg-transparent rounded-t-2xl"} backdrop-blur-xl${inlineScrolled ? " border-b border-white/10" : ""}`}
 					style={{
 						opacity: headerOpacity,
 						transition: `opacity ${headerFadeDuration}ms ease-out`,
@@ -1085,7 +1085,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 			</div>
 
 			{/* Scrollable content — carousel first, profile details below */}
-			<div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain" data-lenis-prevent>
+			<div ref={scrollContainerRef} className={`min-h-0 flex-1 overflow-y-auto overscroll-contain ${variant !== "page" ? "rounded-t-2xl" : ""}`} data-lenis-prevent>
 				{!isLoadingActiveProfile && !activeProfileError && activeProfile && (
 					<div
 						ref={mobileCarouselRef}
@@ -1239,7 +1239,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 			{/* Floating footer with gradient */}
 			{messageProfileId && !isOwnProfile && (
 				<div
-					className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-4"
+					className={`pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-4 ${variant !== "page" ? "rounded-b-2xl" : ""}`}
 					style={{
 						paddingTop: "5rem",
 						paddingBottom: variant === "page" ? "calc(env(safe-area-inset-bottom,0px) + 0.75rem)" : "1.5rem",
@@ -1404,30 +1404,40 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 					</div>
 				) : (
 					<>
+					<div
+						className={`relative flex flex-col min-h-0 w-full max-w-4xl pointer-events-auto overflow-hidden rounded-2xl opacity-100 ${isClosing ? "animate-modal-out" : "animate-modal-in"}`}
+						style={{ 
+							backgroundColor: isModalSplit ? "rgba(15, 17, 21, 0.98)" : "rgba(15, 17, 21, 0.60)",
+							background: isModalSplit 
+								? "color-mix(in srgb, var(--surface) 98%, transparent)" 
+								: "color-mix(in srgb, var(--surface) 60%, transparent)",
+							boxShadow: 'inset 0 0 0 1px var(--border), inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2), 0 24px 48px rgba(0,0,0,0.45)',
+							maxHeight: isModalSplit ? "calc(100% - 8rem)" : "calc(100% - 1.5rem)",
+							height: isModalSplit ? "calc(100% - 8rem)" : "calc(100% - 1.5rem)",
+							transform: "translateZ(0)",
+							isolation: "isolate",
+							borderRadius: "1rem",
+						}}
+					>
 						<div
-							className={`relative flex flex-col min-h-0 w-full max-w-4xl pointer-events-auto overflow-hidden rounded-2xl border border-white/10 dark:border-white/5 opacity-100 ${isClosing ? "animate-modal-out" : "animate-modal-in"}`}
-							style={{ 
-								backgroundColor: isModalSplit ? "rgba(15, 17, 21, 0.98)" : "rgba(15, 17, 21, 0.60)",
-								background: isModalSplit 
-									? "color-mix(in srgb, var(--surface) 98%, transparent)" 
-									: "color-mix(in srgb, var(--surface) 60%, transparent)",
-								boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2), 0 24px 48px rgba(0,0,0,0.45)',
+							className="absolute inset-0 flex min-h-0 w-full h-full"
+							style={{
 								flexDirection: isModalSplit ? "row" : "column",
-								maxHeight: isModalSplit ? "calc(100% - 8rem)" : "calc(100% - 1.5rem)",
-								height: isModalSplit ? "calc(100% - 8rem)" : "calc(100% - 1.5rem)",
+								borderRadius: "1rem",
+								clipPath: "inset(0 round 1rem)",
+								WebkitClipPath: "inset(0 round 1rem)",
 							}}
 						>
 							{/* Left panel: full-height photo carousel (split mode only) */}
 							{isModalSplit && !isLoadingActiveProfile && !activeProfileError && activeProfile && (
 								<div
-									className="relative shrink-0 overflow-hidden rounded-l-2xl"
+									className="relative shrink-0 overflow-hidden"
 									style={{ 
 										width: "55%",
 										marginRight: "-13%",
-										WebkitMaskImage: "linear-gradient(to right, black 76.4%, transparent)",
-										maskImage: "linear-gradient(to right, black 76.4%, transparent)",
 										transform: "translateZ(0)",
-										isolation: "isolate"
+										isolation: "isolate",
+										borderRadius: "1rem 0 0 1rem",
 									}}
 									onWheel={(e) => {
 										e.preventDefault();
@@ -1435,88 +1445,103 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 										else if (e.deltaY < 0) setMobileCarouselPhotoIndex((i) => Math.max(i - 1, 0));
 									}}
 								>
-									{activeProfilePhotoHashes.length === 0 && (
-										<ProfileImage
-											alt={t("profile_details.default_profile")}
-											className="h-full w-full object-cover brightness-50"
-										/>
-									)}
-									{activeProfilePhotoHashes.map((hash, index) => (
-										<div
-											key={hash}
-											className={`absolute inset-0 ${index === mobileCarouselPhotoIndex ? "pointer-events-auto" : "pointer-events-none"}`}
-											style={{
-												transform: `translateY(${(index - mobileCarouselPhotoIndex) * 100}%)`,
-												transition: "transform 300ms ease-out",
-											}}
-										>
-											<button
-												type="button"
-												onClick={() => openPhotoViewer(index)}
-												onTouchStart={(e) => {
-													const touch = e.touches[0];
-													touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
-												}}
-												onTouchEnd={(e) => {
-													const touch = e.changedTouches[0];
-													const dx = touch.clientX - touchStartPosRef.current.x;
-													const dy = touch.clientY - touchStartPosRef.current.y;
-													const dist = Math.sqrt(dx * dx + dy * dy);
-													if (dist < 10) {
-														openPhotoViewer(index);
-														e.preventDefault();
-													}
-												}}
-												className="w-full h-full p-0 border-0 bg-transparent block cursor-pointer"
+									{/* Masked wrapper to prevent mask-image from breaking parent rounded-l-2xl border-radius */}
+									<div 
+										className="absolute inset-0 overflow-hidden"
+										style={{
+											WebkitMaskImage: "linear-gradient(to right, black 76.4%, transparent)",
+											maskImage: "linear-gradient(to right, black 76.4%, transparent)",
+											borderRadius: "1rem 0 0 1rem",
+										}}
+									>
+										{activeProfilePhotoHashes.length === 0 && (
+											<ProfileImage
+												alt={t("profile_details.default_profile")}
+												className="h-full w-full object-cover brightness-50 rounded-l-2xl"
+											/>
+										)}
+										{activeProfilePhotoHashes.map((hash, index) => (
+											<div
+												key={hash}
+												className={`absolute inset-0 rounded-l-2xl ${index === mobileCarouselPhotoIndex ? "pointer-events-auto" : "pointer-events-none"}`}
 												style={{
-													WebkitTouchCallout: "default",
+													transform: `translateY(${(index - mobileCarouselPhotoIndex) * 100}%)`,
+													transition: "transform 300ms ease-out",
 												}}
-												aria-label={t("profile_details.open_photo", { index: index + 1 })}
 											>
-												<img
-													src={getProfileImageUrl(hash, "1024x1024")}
-													alt={t("profile_details.photo_alt", { name: activeProfileName })}
-													className="h-full w-full object-cover pointer-events-auto"
+												<button
+													type="button"
+													onClick={() => openPhotoViewer(index)}
+													onTouchStart={(e) => {
+														const touch = e.touches[0];
+														touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
+													}}
+													onTouchEnd={(e) => {
+														const touch = e.changedTouches[0];
+														const dx = touch.clientX - touchStartPosRef.current.x;
+														const dy = touch.clientY - touchStartPosRef.current.y;
+														const dist = Math.sqrt(dx * dx + dy * dy);
+														if (dist < 10) {
+															openPhotoViewer(index);
+															e.preventDefault();
+														}
+													}}
+													className="w-full h-full p-0 border-0 bg-transparent block cursor-pointer rounded-l-2xl overflow-hidden"
 													style={{
 														WebkitTouchCallout: "default",
 													}}
-												/>
-											</button>
-										</div>
-									))}
-									{activeProfile.lastReceivedTapTimestamp != null && (
-										<div className="pointer-events-none absolute bottom-3 left-3 z-20">
-											<div className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
-												<Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" />
-												<span className="text-xs font-medium text-white">
-													{formatRelativeTime(activeProfile.lastReceivedTapTimestamp)}
-												</span>
-											</div>
-										</div>
-									)}
-									{activeProfilePhotoHashes.length > 1 && (
-										<div 
-											className="pointer-events-none absolute inset-y-0 z-20 flex flex-col items-center justify-center"
-											style={{ right: "calc(13% + 1rem)" }}
-										>
-											<div className="flex flex-col items-center gap-2 rounded-full bg-black/30 px-[7px] py-[14px] backdrop-blur-sm">
-												{activeProfilePhotoHashes.map((hash, index) => (
-													<span
-														key={`${hash}-dot`}
-														className={`w-2 rounded-full transition-[height,background-color] duration-300 ease-out ${
-															index === mobileCarouselPhotoIndex ? "h-4 bg-white" : "h-2 bg-white/40"
-														}`}
-														aria-hidden="true"
+													aria-label={t("profile_details.open_photo", { index: index + 1 })}
+												>
+													<img
+														src={getProfileImageUrl(hash, "1024x1024")}
+														alt={t("profile_details.photo_alt", { name: activeProfileName })}
+														className="h-full w-full object-cover pointer-events-auto rounded-l-2xl"
+														style={{
+															WebkitTouchCallout: "default",
+														}}
 													/>
-												))}
+												</button>
 											</div>
-										</div>
-									)}
+										))}
+										{activeProfile.lastReceivedTapTimestamp != null && (
+											<div className="pointer-events-none absolute bottom-3 left-3 z-20">
+												<div className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
+													<Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" />
+													<span className="text-xs font-medium text-white">
+														{formatRelativeTime(activeProfile.lastReceivedTapTimestamp)}
+													</span>
+												</div>
+											</div>
+										)}
+										{activeProfilePhotoHashes.length > 1 && (
+											<div 
+												className="pointer-events-none absolute inset-y-0 z-20 flex flex-col items-center justify-center"
+												style={{ right: "calc(13% + 1rem)" }}
+											>
+												<div className="flex flex-col items-center gap-2 rounded-full bg-black/30 px-[7px] py-[14px] backdrop-blur-sm">
+													{activeProfilePhotoHashes.map((hash, index) => (
+														<span
+															key={`${hash}-dot`}
+															className={`w-2 rounded-full transition-[height,background-color] duration-300 ease-out ${
+																index === mobileCarouselPhotoIndex ? "h-4 bg-white" : "h-2 bg-white/40"
+															}`}
+															aria-hidden="true"
+														/>
+													))}
+												</div>
+											</div>
+										)}
+									</div>
 								</div>
 							)}
 
 							{/* Right column (or full width on non-split): header + content + footer */}
-							<div className={`flex min-w-0 flex-1 flex-col overflow-hidden relative ${isModalSplit ? "rounded-r-2xl" : "rounded-2xl"}`}>
+							<div 
+								className="flex min-w-0 flex-1 flex-col overflow-hidden relative"
+								style={{
+									borderRadius: isModalSplit ? "0 1rem 1rem 0" : "1rem",
+								}}
+							>
 								{!isModalSplit ? renderInlineLayout() : (
 									<>
 										{/* Solid split-mode header with glass details */}
@@ -1800,6 +1825,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 								)}
 							</div>
 						</div>
+					</div>
 					</>
 				)}
 			</div>
@@ -1864,6 +1890,6 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 				onDontAskAgainChange={setDontAskAgainChecked}
 			/>
 		</>,
-		document.body
+		document.getElementById("app") ?? document.body
 	);
 }

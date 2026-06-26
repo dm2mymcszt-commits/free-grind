@@ -100,7 +100,7 @@ export function ChatInboxHeader({
 
 					{/* Row 2: filter pills */}
 					{!isSearchOpen && !isDesktop && (
-						<div className="flex flex-wrap items-center gap-2 pb-4">
+						<div className="flex flex-wrap items-center justify-center gap-2 pb-4">
 							<button
 								type="button"
 								onClick={onToggleFavoritesOnly}
