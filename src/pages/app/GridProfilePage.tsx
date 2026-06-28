@@ -194,6 +194,8 @@ export function GridProfilePage() {
 
 		let cancelled = false;
 
+		void apiFunctions.recordProfileView(profileId);
+
 		const loadProfileDetails = async () => {
 			const cachedProfile = getCachedProfileDetail(profileId);
 

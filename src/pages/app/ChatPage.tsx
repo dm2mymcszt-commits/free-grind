@@ -89,7 +89,7 @@ import type { ChatContactIndexRecord } from "../../types/chat-contact-index";
 import { markInboxSeen, getInboxLastSeen } from "../../services/seenStore";
 import { SCROLL_RESTORATION_TIMEOUT_MS } from "../../config/ui-constants";
 import { shouldAutoBlock, isOutsideAgeLimits } from "../../utils/autoblock";
-import { isChatGhosted } from "../../utils/privacy";
+import { isReadReceiptsHidden } from "../../utils/privacy";
 import freegrindLogo from "../../images/freegrind-logo.webp";
 import { getCachedOwnProfilePhotoHash, removeProfileFromBrowseCache, setCachedOwnProfilePhotoHash } from "./gridpage/cache";
 import { getThumbImageUrl, validateMediaHash } from "../../utils/media";
@@ -1340,9 +1340,9 @@ export function ChatPage() {
 							.markRead(conversationId, newest.messageId)
 							.then(() => {
 								syncConversation((conversation) => {
- 								// --- GHOST CHECK ---
- 								if (isChatGhosted(conversationId)) return conversation; 
- 								// -------------------
+ 								// --- READ RECEIPTS CHECK ---
+ 								if (isReadReceiptsHidden(conversationId)) return conversation;
+ 								// ---------------------------
  								const other = getOtherParticipant(conversation, userId);
  								if (other?.profileId) {
  									const pid = String(other.profileId);
@@ -1583,8 +1583,8 @@ export function ChatPage() {
  					.markRead(conversation.data.conversationId, latestMessage.messageId)
  					.catch(() => {});
  				
- 				// --- GHOST CHECK ---
- 				if (!isChatGhosted(conversation.data.conversationId)) {
+ 				// --- READ RECEIPTS CHECK ---
+ 				if (!isReadReceiptsHidden(conversation.data.conversationId)) {
  					const other = getOtherParticipant(conversation, userId);
  					if (other?.profileId) {
  						const pid = String(other.profileId);
@@ -1843,7 +1843,7 @@ export function ChatPage() {
 	const selectedConversationIdForTyping = selectedConversation?.data.conversationId ?? null;
 	useEffect(() => {
 		if (!selectedConversationIdForTyping) return;
-		if (isChatGhosted(selectedConversationIdForTyping)) return;
+		if (isReadReceiptsHidden(selectedConversationIdForTyping)) return;
 		const cid = selectedConversationIdForTyping;
 
 		if (typingDebounceTimer.current) {

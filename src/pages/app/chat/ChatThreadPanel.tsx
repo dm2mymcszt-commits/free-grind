@@ -1,10 +1,10 @@
 import {
 	Album,
 	Ban,
+	Check,
+	CheckCheck,
 	ChevronLeft,
 	Ellipsis,
-    Eye,
-    EyeOff,
 	Heart,
 	Hourglass,
 	ImagePlus,
@@ -73,7 +73,7 @@ import { ChatThreadMessages } from "./ChatThreadMessages";
 import { AudioMessagePlayer } from "./AudioMessagePlayer";
 import { ConfirmDialog } from "../../../components/ui/confirm-dialog";
 import { useApiFunctions } from "../../../hooks/useApiFunctions";
-import { isChatGhosted, toggleChatGhost } from "../../../utils/privacy";
+import { SHOW_READ_RECEIPT_TOGGLE_KEY, isReadReceiptsHidden, toggleReadReceiptsHidden } from "../../../utils/privacy";
 import { ToggleRow } from "../../../components/ui/toggle-row";
 import { BottomDrawer } from "../../../components/ui/bottom-drawer";
 import { BottomSheet, SheetClose } from "../../../components/ui/bottom-sheet";
@@ -681,12 +681,12 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 		return ids;
 	}, [threadMessages]);
 
-    const [showGhostButton] = useState(() => window.localStorage.getItem("fg-show-ghost-btn") !== "false");
-    const [isGhosted, setIsGhosted] = useState(true);
+    const [showReadReceiptToggle] = useState(() => window.localStorage.getItem(SHOW_READ_RECEIPT_TOGGLE_KEY) !== "false");
+    const [readReceiptsHidden, setReadReceiptsHidden] = useState(true);
 
     useEffect(() => {
         if (selectedConversation) {
-            setIsGhosted(isChatGhosted(selectedConversation.data.conversationId));
+            setReadReceiptsHidden(isReadReceiptsHidden(selectedConversation.data.conversationId));
         }
     }, [selectedConversation]);
 
@@ -976,14 +976,14 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 							<div className="flex items-center gap-2">
             {isDesktop && (
                 <>
-                    {showGhostButton && selectedConversation && (
+                    {showReadReceiptToggle && selectedConversation && (
                         <button
                             type="button"
                             onClick={() => {
- 												const newState = toggleChatGhost(selectedConversation.data.conversationId);
- 												setIsGhosted(newState);
- 												
- 												// If turning Ghost Mode OFF, instantly mark the last message as read!
+ 												const newState = toggleReadReceiptsHidden(selectedConversation.data.conversationId);
+ 												setReadReceiptsHidden(newState);
+
+ 												// If read receipts are now enabled (not hidden), instantly mark the last message as read!
  												if (!newState) {
  													const lastMsg = threadMessages[threadMessages.length - 1];
  													if (lastMsg) {
@@ -993,17 +993,17 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
  														loadThread({ conversationId: selectedConversation.data.conversationId, older: false });
  													}
  												}
- 												toast.success(newState ? "Ghost Mode ON for this chat." : "Ghost Mode OFF. They will see read receipts.");
+ 												toast.success(newState ? "Read receipts turned off for this chat." : "Read receipts turned on. They will see when you've read their messages.");
  											}}
                             className={`rounded-xl border px-3 py-2 text-xs font-medium transition ${
-                                isGhosted
+                                readReceiptsHidden
                                     ? "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
                                     : "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] hover:brightness-110"
                             }`}
-                            title={isGhosted ? "Ghost Mode ON (Hidden)" : "Ghost Mode OFF (Visible)"}
+                            title={readReceiptsHidden ? "Read Receipts Off (Hidden)" : "Read Receipts On (Visible)"}
                         >
-                            {isGhosted ? <EyeOff className="mr-1 inline h-3.5 w-3.5" /> : <Eye className="mr-1 inline h-3.5 w-3.5" />}
-                            {isGhosted ? "Ghosting" : "Reading"}
+                            {readReceiptsHidden ? <Check className="mr-1 inline h-3.5 w-3.5" /> : <CheckCheck className="mr-1 inline h-3.5 w-3.5" />}
+                            {readReceiptsHidden ? "Hidden" : "Sending"}
                         </button>
                     )}
                     <button
@@ -1112,22 +1112,22 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 												</button>
 											)}
 
-                                            {/* --- MOBILE GHOST TOGGLE --- */}
-											{!isDesktop && showGhostButton && selectedConversation && (
+                                            {/* --- MOBILE READ RECEIPTS TOGGLE --- */}
+											{!isDesktop && showReadReceiptToggle && selectedConversation && (
 												<button
 													type="button"
 													onClick={() => {
 														setIsHeaderActionsMenuOpen(false);
-														const newState = toggleChatGhost(selectedConversation.data.conversationId);
-														setIsGhosted(newState);
-														toast.success(newState ? "Ghost Mode ON for this chat." : "Ghost Mode OFF.");
+														const newState = toggleReadReceiptsHidden(selectedConversation.data.conversationId);
+														setReadReceiptsHidden(newState);
+														toast.success(newState ? "Read receipts turned off for this chat." : "Read receipts turned on for this chat.");
 													}}
 													className={`flex items-center rounded-lg px-2 py-2 text-left text-sm transition ${
-														isGhosted ? "text-[var(--accent)] hover:bg-[var(--accent)]/10" : "text-[var(--text)] hover:bg-[var(--surface-2)]"
+														readReceiptsHidden ? "text-[var(--accent)] hover:bg-[var(--accent)]/10" : "text-[var(--text)] hover:bg-[var(--surface-2)]"
 													}`}
 												>
-													{isGhosted ? <EyeOff className="mr-2 h-4 w-4 opacity-70" /> : <Eye className="mr-2 h-4 w-4 opacity-70" />}
-													{isGhosted ? "Ghosting (Hidden)" : "Reading (Visible)"}
+													{readReceiptsHidden ? <Check className="mr-2 h-4 w-4 opacity-70" /> : <CheckCheck className="mr-2 h-4 w-4 opacity-70" />}
+													{readReceiptsHidden ? "Read Receipts Off (Hidden)" : "Read Receipts On (Visible)"}
 												</button>
 											)}
 											{/* --------------------------- */}

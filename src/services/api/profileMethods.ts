@@ -15,6 +15,8 @@ import type { RestFetcher } from "../../types/chat-service";
 import type { VisitingMode } from "../../types/visiting";
 import { isVisitingMode } from "../../types/visiting";
 import { ApiFunctionError, assertSuccess, parseJsonSafe } from "../apiHelpers";
+import { isRecordProfileViewsEnabled } from "../../utils/privacy";
+import { appLog } from "../../utils/logger";
 
 export function createProfileMethods(fetchRest: RestFetcher, t: (key: string) => string) {
 	return {
@@ -252,6 +254,23 @@ export function createProfileMethods(fetchRest: RestFetcher, t: (key: string) =>
 			const response = await fetchRest(`/v7/profiles/${profileId}`);
 			await assertSuccess(response, t("api.errors.load_profile"));
 			return parseJsonSafe(response);
+		},
+
+		async recordProfileView(profileId: number | string): Promise<void> {
+			if (!isRecordProfileViewsEnabled()) {
+				return;
+			}
+
+			try {
+				const response = await fetchRest(`/v4/views/${encodeURIComponent(String(profileId))}`, {
+					method: "POST",
+				});
+				if (response.status < 200 || response.status >= 300) {
+					appLog.warn(`Failed to record profile view: ${response.status}`);
+				}
+			} catch (error) {
+				appLog.error("Profile view recording error:", error);
+			}
 		},
 
 		/**
