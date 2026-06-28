@@ -19,6 +19,7 @@ import {
 	BookMarked,
 	MessageCircleOff,
 	MessageCircleX,
+	MessageSquareQuote,
 	PencilLine,
 	Pin,
 	Reply,
@@ -1456,13 +1457,13 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 											key={idx}
 											type="button"
 											onClick={() => handleUsePhrase(phrase)}
-											className={`shrink-0 whitespace-nowrap rounded-2xl rounded-br-[3px] border px-3 py-1.5 text-xs font-medium transition active:scale-95 ${
+											className={`max-w-[200px] shrink-0 rounded-2xl rounded-br-[3px] border px-3 py-1.5 text-xs font-medium transition active:scale-95 ${
 												isExact
 													? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)]"
 													: "border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
 											}`}
 										>
-											{phrase}
+											<span className="block truncate">{phrase}</span>
 										</button>
 									);
 								})}
@@ -2020,7 +2021,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 								<div className="border-t border-[var(--border)]" />
 
 								{/* Phrases list */}
-								<div data-lenis-prevent className="overflow-y-auto" style={{ maxHeight: phrasesExpanded ? "72dvh" : "40dvh", transition: "max-height 0.25s ease" }}>
+								<div data-lenis-prevent className="overflow-y-auto overflow-x-hidden" style={{ maxHeight: phrasesExpanded ? "72dvh" : "40dvh", transition: "max-height 0.25s ease" }}>
 									{savedPhrases.length === 0 ? (
 										<div className="flex flex-col items-center justify-center gap-2.5 text-center text-[var(--text-muted)]" style={{ minHeight: "40dvh" }}>
 											<div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--surface-2)]">
@@ -2034,25 +2035,26 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 											</p>
 										</div>
 									) : (
-										<div>
+										<div className="divide-y divide-[var(--border)]">
 											{savedPhrases.map((phrase, originalIndex) => (
-												<div key={originalIndex} className="group flex items-center px-4">
-													<div className="flex flex-1 items-center gap-1 py-3">
-														<SheetClose
-															onClick={() => handleUsePhrase(phrase)}
-															className="min-w-0 flex-1 text-left text-sm text-[var(--text)] transition hover:text-[var(--accent)]"
-														>
-															{phrase}
-														</SheetClose>
-														<button
-															type="button"
-															onClick={() => handleDeletePhrase(originalIndex)}
-															className="shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:text-red-400"
-															aria-label={t("settings_saved_phrases.delete", { defaultValue: "Delete phrase" })}
-														>
-															<Trash2 className="h-3.5 w-3.5" />
-														</button>
+												<div key={originalIndex} className="group flex items-start gap-3 px-4 py-3">
+													<div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[var(--surface-2)] text-[var(--accent)]">
+														<MessageSquareQuote className="h-3.5 w-3.5" />
 													</div>
+													<SheetClose
+														onClick={() => handleUsePhrase(phrase)}
+														className="min-w-0 flex-1 break-words text-left text-sm leading-relaxed text-[var(--text)] transition hover:text-[var(--accent)]"
+													>
+														<span className="block break-words">{phrase}</span>
+													</SheetClose>
+													<button
+														type="button"
+														onClick={() => handleDeletePhrase(originalIndex)}
+														className="mt-0.5 shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-red-500/10 hover:text-red-400"
+														aria-label={t("settings_saved_phrases.delete", { defaultValue: "Delete phrase" })}
+													>
+														<Trash2 className="h-3.5 w-3.5" />
+													</button>
 												</div>
 											))}
 										</div>
