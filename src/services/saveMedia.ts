@@ -211,12 +211,32 @@ function downloadFile(url: string): void {
 /**
  * Saves a single media item natively where possible: iOS -> photo library
  * album, Android/desktop -> Downloads/FreeGrind folder. Falls back to a
- * plain browser download outside of Tauri (web preview).
+ * plain browser download/open outside of Tauri (web preview), and also if
+ * the native save itself throws (e.g. missing plugin/permission).
  */
 export async function saveMediaToDevice(url: string, type: "image" | "video"): Promise<boolean> {
 	if (isIos()) return saveMediaToGallery(url, type);
-	if (isAndroid()) return saveMediaToGalleryAndroid(url, type);
-	if (isDesktopTauri()) return saveMediaToFolderDesktop(url, type);
+
+	if (isAndroid()) {
+		try {
+			return await saveMediaToGalleryAndroid(url, type);
+		} catch (error) {
+			appLog.error("[saveMedia] Android save failed, falling back to browser", error);
+			downloadFile(url);
+			return true;
+		}
+	}
+
+	if (isDesktopTauri()) {
+		try {
+			return await saveMediaToFolderDesktop(url, type);
+		} catch (error) {
+			appLog.error("[saveMedia] Desktop save failed, falling back to browser", error);
+			downloadFile(url);
+			return true;
+		}
+	}
+
 	downloadFile(url);
 	return true;
 }
