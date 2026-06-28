@@ -615,7 +615,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 	}, [pendingAttachmentFile, attachmentCompletedCrop, confirmAttachmentFile]);
 
 	const handleUsePhrase = (phrase: string) => {
-		setDraft(draft ? `${draft} ${phrase}` : phrase);
+		setDraft(phrase);
 	};
 
 	const handleAddPhrase = () => {
