@@ -161,6 +161,9 @@ pub fn run() {
         #[cfg(target_os = "ios")]
         let builder = builder.plugin(tauri_plugin_ios_photos::init());
 
+        #[cfg(target_os = "android")]
+        let builder = builder.plugin(tauri_plugin_android_fs::init());
+
         builder
             .manage(AppState { client })
             .manage(Arc::new(WsState::new()))

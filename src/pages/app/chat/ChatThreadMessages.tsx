@@ -7,7 +7,7 @@ import React, { Fragment, useEffect, useState, useMemo, useCallback, useRef } fr
 import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
 import { appLog } from "../../../utils/logger";
-import { isIos, saveMediaToGallery } from "../../../services/saveMedia";
+import { saveMediaToDevice } from "../../../services/saveMedia";
 import type { ConversationEntry, Message } from "../../../types/messages";
 import type { UiMessage } from "../../../types/chat-page";
 import { ProfileImage } from "../../../components/ui/profile-image";
@@ -1553,10 +1553,10 @@ export function ChatThreadMessages({
 																				setOpenMessageActionId(null);
 																				const mediaUrl = imageUrl || videoUrl;
 
-																				if (mediaUrl && isIos()) {
+																				if (mediaUrl) {
 																					void (async () => {
 																						try {
-																							const saved = await saveMediaToGallery(
+																							const saved = await saveMediaToDevice(
 																								mediaUrl,
 																								videoUrl ? "video" : "image",
 																							);
@@ -1573,10 +1573,9 @@ export function ChatThreadMessages({
 																					return;
 																				}
 
-																				const url = mediaUrl || audioUrl;
-																				if (url) {
+																				if (audioUrl) {
 																					const a = document.createElement("a");
-																					a.href = url;
+																					a.href = audioUrl;
 																					a.download = `media-${Date.now()}`;
 																					a.target = "_blank";
 																					document.body.appendChild(a);

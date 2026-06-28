@@ -42,7 +42,7 @@ import "react-image-crop/dist/ReactCrop.css";
 import type { NavigateFunction } from "react-router-dom";
 import toast from "react-hot-toast";
 import { appLog } from "../../../utils/logger";
-import { isIos } from "../../../services/saveMedia";
+import { isIos, isAndroid, saveMediaToDevice } from "../../../services/saveMedia";
 import {
 	useModalClose,
 } from "../../../hooks/useModalClose";
@@ -2124,7 +2124,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 
 										if (!mediaUrl && !audioUrl) return null;
 
-										if (mediaUrl && isIos()) {
+										if (mediaUrl && (isIos() || isAndroid())) {
 											return (
 												<button
 													type="button"
@@ -2148,10 +2148,25 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 													event.preventDefault();
 													event.stopPropagation();
 													setOpenMessageActionId(null);
-													const url = mediaUrl || audioUrl;
-													if (url) {
+													if (mediaUrl) {
+														void (async () => {
+															try {
+																const saved = await saveMediaToDevice(mediaUrl, videoUrl ? "video" : "image");
+																if (saved) {
+																	toast.success(t("profile_details.save_to_gallery_success"));
+																} else {
+																	toast.error(t("profile_details.save_to_gallery_unsupported"));
+																}
+															} catch (e) {
+																appLog.error("Failed to save media to gallery", e);
+																toast.error(t("profile_details.save_to_gallery_error"));
+															}
+														})();
+														return;
+													}
+													if (audioUrl) {
 														const a = document.createElement("a");
-														a.href = url;
+														a.href = audioUrl;
 														a.download = `media-${Date.now()}`;
 														a.target = "_blank";
 														document.body.appendChild(a);

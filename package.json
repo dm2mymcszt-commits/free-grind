@@ -56,6 +56,7 @@
         "react-image-crop": "^11.0.10",
         "react-router-dom": "^7",
         "tailwindcss": "^4.2.2",
+        "tauri-plugin-android-fs-api": "28.2.2",
         "tauri-plugin-hotswap-api": "^0.0.4",
         "zod": "^4.3.6"
     },
