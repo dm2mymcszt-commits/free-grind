@@ -1,5 +1,5 @@
 import { Album, Ellipsis, Eye, Hourglass, Lock, MessageCircleQuestion, Mic, Play, Repeat2, Reply, VideoOff, ImageOff } from "lucide-react";
-import { LeafletLocationPreview } from "../gridpage/components/LeafletLocationPreview";
+import { MapLocationPreview } from "../gridpage/components/MapLocationPreview";
 import { AudioMessagePlayer } from "./AudioMessagePlayer";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import React, { Fragment, useEffect, useState, useMemo, useCallback, useRef } from "react";
@@ -1280,7 +1280,7 @@ export function ChatThreadMessages({
                                             className={`block overflow-hidden ${isLocationOnlyBubble && hasReply ? "" : `rounded-2xl ${tailCorner}`} text-left transition hover:brightness-110`}
                                         >
                                             <div className="relative">
-                                                <LeafletLocationPreview lat={location.lat} lon={location.lon} className="h-48 w-48 pointer-events-none" />
+                                                <MapLocationPreview lat={location.lat} lon={location.lon} className="h-48 w-48 pointer-events-none" />
                                                 {localOnly && (
                                                     <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
                                                         {t("chat.thread.from_local_history")}

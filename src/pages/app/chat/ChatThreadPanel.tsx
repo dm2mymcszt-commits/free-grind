@@ -51,7 +51,7 @@ import type { ConversationEntry, Message } from "../../../types/messages";
 import type { DrawerMedia } from "./ChatDrawerPanel";
 import { ChatDrawerPanel } from "./ChatDrawerPanel";
 import { decodeGeohash } from "../../../utils/geohash";
-import { LeafletLocationPicker } from "../gridpage/components/LeafletLocationPicker";
+import { MapLocationPicker } from "../gridpage/components/MapLocationPicker";
 import freegrindLogo from "../../../images/freegrind-logo.webp";
 import { usePreferences } from "../../../contexts/PreferencesContext";
 import {
@@ -1933,7 +1933,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 						>
 							<div className="px-3 pb-3">
 								<div className="overflow-hidden rounded-xl border border-[var(--border)]" style={{ height: "40dvh" }}>
-									<LeafletLocationPicker
+									<MapLocationPicker
 										selectedLocation={pendingLocationShare}
 										onPick={(lat, lon) => setPendingLocationShare({ lat, lon })}
 										onError={(msg) => toast.error(msg)}
