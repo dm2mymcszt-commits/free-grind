@@ -2064,11 +2064,15 @@ export function ChatPage() {
 	}, [replyTargetMessageId, threadMessages]);
 
 	const filteredConversations = useMemo(() => {
-		if (hidePinned) {
-			return conversations.filter((c) => !c.data.pinned);
+		let result = conversations;
+		if (activeInboxFilters.favoritesOnly) {
+			result = result.filter((c) => c.data.favorite);
 		}
-		return conversations;
-	}, [conversations, hidePinned]);
+		if (hidePinned) {
+			result = result.filter((c) => !c.data.pinned);
+		}
+		return result;
+	}, [conversations, hidePinned, activeInboxFilters.favoritesOnly]);
 
 	// Scroll memory: save position on scroll (re-attaches when list mounts/unmounts)
 	useEffect(() => {
@@ -2234,10 +2238,19 @@ export function ChatPage() {
 			} else {
 				await service.pinConversation(selectedConversation.data.conversationId);
 			}
-			syncConversation((conversation) => ({
-				...conversation,
-				data: { ...conversation.data, pinned: !isPinned },
-			}));
+			setConversations((previous) => {
+				const updated = previous.map((conversation) =>
+					conversation.data.conversationId === selectedConversation.data.conversationId
+						? { ...conversation, data: { ...conversation.data, pinned: !isPinned } }
+						: conversation,
+				);
+				// Re-sort so the pin change is reflected in list order immediately.
+				return [...updated].sort((a, b) => {
+					if (a.data.pinned && !b.data.pinned) return -1;
+					if (b.data.pinned && !a.data.pinned) return 1;
+					return (b.data.lastActivityTimestamp ?? 0) - (a.data.lastActivityTimestamp ?? 0);
+				});
+			});
 		} catch (error) {
 			toast.error(
 				error instanceof Error ? error.message : t("chat.errors.update_pin_state"),
