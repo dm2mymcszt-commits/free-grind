@@ -311,6 +311,18 @@ export function createProfileMethods(fetchRest: RestFetcher, t: (key: string) =>
 			return { ok: true };
 		},
 
+		// PATCH /v4/me/profile silently ignores explicit `null` values meant to
+		// clear a field (e.g. resetting bodyType/ethnicity to "not set"). Doing a
+		// full replace avoids that partial-merge behavior.
+		async replaceMyProfile(payload: unknown): Promise<{ ok: true }> {
+			const response = await fetchRest("/v3.1/me/profile", {
+				method: "PUT",
+				body: payload,
+			});
+			await assertSuccess(response, t("api.errors.save_profile"));
+			return { ok: true };
+		},
+
 		async updateMyProfileImages(payload: {
 			primaryImageHash: string | null;
 			secondaryImageHashes: string[];
