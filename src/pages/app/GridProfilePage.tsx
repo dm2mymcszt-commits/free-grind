@@ -19,6 +19,7 @@ import {
 	getCachedGenderOptions,
 	getCachedProfileDetail,
 	getCachedPronounOptions,
+	removeProfileFromBrowseCache,
 	setCachedGenderOptions,
 	setCachedProfileDetail,
 	setCachedPronounOptions,
@@ -277,6 +278,7 @@ export function GridProfilePage() {
 	const performBlockProfile = async (targetProfileId: string) => {
 		try {
 			await blockProfileMutation(targetProfileId);
+			removeProfileFromBrowseCache(targetProfileId);
 			toast.success(t("profile_details.block_success"));
 			navigate(safeReturnTo, { replace: true });
 		} catch (error) {

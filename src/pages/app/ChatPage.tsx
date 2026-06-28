@@ -91,7 +91,7 @@ import { SCROLL_RESTORATION_TIMEOUT_MS } from "../../config/ui-constants";
 import { shouldAutoBlock, isOutsideAgeLimits } from "../../utils/autoblock";
 import { isChatGhosted } from "../../utils/privacy";
 import freegrindLogo from "../../images/freegrind-logo.webp";
-import { getCachedOwnProfilePhotoHash, setCachedOwnProfilePhotoHash } from "./gridpage/cache";
+import { getCachedOwnProfilePhotoHash, removeProfileFromBrowseCache, setCachedOwnProfilePhotoHash } from "./gridpage/cache";
 import { getThumbImageUrl, validateMediaHash } from "../../utils/media";
 
 /**
@@ -1177,6 +1177,7 @@ export function ChatPage() {
 					
 					if (blockId) {
 						blockProfileMutation(String(blockId)).catch(() => {});
+						removeProfileFromBrowseCache(String(blockId));
 					}
 
 					setThreadMessages([]);
@@ -1201,7 +1202,8 @@ export function ChatPage() {
 							appLog.info(`[AutoBlock] Sweeping conversation due to: ${reason}`);
 							
 							blockProfileMutation(String(blockId)).catch(() => {});
-							
+							removeProfileFromBrowseCache(String(blockId));
+
 							setThreadMessages([]);
 							setThreadConversationId(null);
 							if (isDesktop) {
@@ -2366,6 +2368,7 @@ export function ChatPage() {
 
 			try {
 				await blockProfileMutation(targetProfileId);
+				removeProfileFromBrowseCache(targetProfileId);
 				setConversations((previous) =>
 					previous.filter(
 						(conversation) =>
