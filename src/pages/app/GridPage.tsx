@@ -1268,17 +1268,21 @@ export function GridPage() {
 											</p>
 										</div>
 									</button>
+									<div className="mx-1 h-6 w-px bg-[var(--border)] opacity-40" />
 									<button
 										type="button"
 										onClick={(e) => { e.stopPropagation(); void handleToggleDistance(); }}
 										disabled={isTogglingDistance}
 										title={showDistance ? t("browse_page.distance_visible", { defaultValue: "Distance visible to others" }) : t("browse_page.distance_hidden", { defaultValue: "Distance hidden from others" })}
-										className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition active:scale-90 disabled:opacity-50 mr-1"
+										className="flex h-12 shrink-0 flex-col items-center justify-center gap-[3px] pl-3 pr-4 transition active:scale-90 disabled:opacity-50"
 									>
 										{showDistance
-											? <Eye className="h-4 w-4 text-[var(--accent)]" />
-											: <EyeOff className="h-4 w-4 text-[var(--text-muted)]" />
+											? <Eye className="h-3.5 w-3.5 text-[var(--accent)]" />
+											: <EyeOff className="h-3.5 w-3.5 text-[var(--text-muted)]" />
 										}
+										<span className={`block text-center text-[7px] font-bold uppercase leading-none ${showDistance ? "text-[var(--accent)]" : "text-[var(--text-muted)]"}`}>
+											dist
+										</span>
 									</button>
 								</div>
 							</div>
@@ -1462,6 +1466,22 @@ export function GridPage() {
 											{locationName || t("browse_page.location")}
 										</span>
 									</button>
+									<button
+										type="button"
+										onClick={() => void handleToggleDistance()}
+										disabled={isTogglingDistance}
+										title={showDistance ? t("browse_page.distance_visible", { defaultValue: "Distance visible to others" }) : t("browse_page.distance_hidden", { defaultValue: "Distance hidden from others" })}
+										className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition disabled:opacity-50 ${showDistance ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)]" : "border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--text)]"}`}
+									>
+										{showDistance
+											? <Eye className="h-3.5 w-3.5 shrink-0" />
+											: <EyeOff className="h-3.5 w-3.5 shrink-0" />
+										}
+										<span className="hidden lg:inline">
+											{t("browse_page.distance_short", { defaultValue: "Distance" })}
+										</span>
+									</button>
+
 									<button
 										type="button"
 										onClick={() => setIsFiltersOpen(true)}

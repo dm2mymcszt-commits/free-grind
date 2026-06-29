@@ -25,10 +25,13 @@ import {
 	incrementUnreadCountForProfile,
 	clearUnreadCountForProfile,
 } from "../services/chatContactIndex";
+import { toggleArchiveOnConversationDelete } from "../services/conversationArchive";
 import { messageSchema, type Message } from "../types/messages";
 import type { RealtimeEnvelope, RealtimeStatus } from "../types/chat-realtime";
 import { appLog } from "../utils/logger";
-import { getOtherParticipant } from "../pages/app/chat/chatUtils";
+import { getMediaCaptureTarget, getOtherParticipant } from "../pages/app/chat/chatUtils";
+import { fetchAndStoreMedia } from "../services/mediaStore";
+import { captureAlbumsForMessages } from "../services/albumStore";
 import { getConversation } from "../services/conversationDirectory";
 import { shouldAutoBlock, getMatchedForbiddenWord, notifyAutoBlock } from "../utils/autoblock";
 import { useApiFunctions } from "../hooks/useApiFunctions";
@@ -39,6 +42,7 @@ export const CHAT_REALTIME_STATUS = "fg:chat-realtime-status";
 export const TAP_RECEIVED_EVENT = "fg:tap-received";
 export const VIEW_RECEIVED_EVENT = "fg:view-received";
 export const TYPING_STATUS_EVENT = "fg:typing-status";
+export const CHAT_SYSTEM_MESSAGE_EVENT = "fg:chat-system-message";
 
 export type TypingStatusDetail = {
 	conversationId: string;
@@ -294,6 +298,35 @@ export function ChatRealtimeBridge() {
 					}
 				}
 
+				// chat.v1.conversation.delete — fires both when we're blocked/deleted
+				// and on unblock, with nothing in the payload to tell which. Toggle
+				// based on current archived state instead: never delete, and never
+				// archive an already-archived conversation again. Runs before the
+				// forwarded CustomEvent below so any mounted ChatPage listener sees
+				// DB-consistent state.
+				if (
+					envelope.type === "chat.v1.conversation.delete" &&
+					envelope.payload &&
+					typeof envelope.payload === "object"
+				) {
+					const record = envelope.payload as Record<string, unknown>;
+					const ids = Array.isArray(record.conversationIds)
+						? (record.conversationIds as unknown[]).filter(
+								(id): id is string => typeof id === "string",
+							)
+						: [];
+					if (ids.length > 0) {
+						const { systemMessages } = await toggleArchiveOnConversationDelete(ids);
+						if (systemMessages.length > 0) {
+							window.dispatchEvent(
+								new CustomEvent<Message[]>(CHAT_SYSTEM_MESSAGE_EVENT, {
+									detail: systemMessages,
+								}),
+							);
+						}
+					}
+				}
+
 				const messages = extractMessages(envelope);
 				if (messages.length > 0) {
 					const byConv = new Map<string, Message[]>();
@@ -342,6 +375,19 @@ export function ChatRealtimeBridge() {
 					
 					for (const [cid, msgs] of byConv) {
 						await chatLog.appendMessages(cid, msgs);
+						for (const msg of msgs) {
+							const target = getMediaCaptureTarget(msg);
+							if (!target) continue;
+							void fetchAndStoreMedia({
+								mediaKey: target.mediaKey,
+								kind: target.kind,
+								url: target.url,
+								conversationId: cid,
+								messageId: msg.messageId,
+								viewOnce: target.viewOnce,
+							});
+						}
+						captureAlbumsForMessages(msgs, cid, (id) => apiFunctions.getAlbum(id));
 					}
 				}
 

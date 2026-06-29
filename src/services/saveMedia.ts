@@ -15,6 +15,7 @@ import {
 } from "@gbyte/tauri-plugin-ios-photos";
 import { AndroidFs, AndroidPublicGeneralPurposeDir } from "tauri-plugin-android-fs-api";
 import { isTauriRuntime } from "./tauriWebSocket";
+import { toDataUri } from "./mediaStore";
 import { appLog } from "../utils/logger";
 
 const ALBUM_NAME = "Free Grind";
@@ -239,6 +240,194 @@ export async function saveMediaToDevice(url: string, type: "image" | "video"): P
 
 	downloadFile(url);
 	return true;
+}
+
+function base64ToBytes(base64: string): Uint8Array {
+	const binary = atob(base64);
+	const bytes = new Uint8Array(binary.length);
+	for (let i = 0; i < binary.length; i++) {
+		bytes[i] = binary.charCodeAt(i);
+	}
+	return bytes;
+}
+
+function extensionFromMimeType(mimeType: string | null, type: "image" | "video"): string {
+	const subtype = mimeType?.split("/")[1]?.split(";")[0]?.trim();
+	if (subtype === "jpeg") return "jpg";
+	if (subtype === "quicktime") return "mov";
+	if (subtype) return subtype;
+	return type === "video" ? "mp4" : "jpg";
+}
+
+async function saveMediaBytesToGallery(
+	bytes: Uint8Array,
+	mimeType: string | null,
+	type: "image" | "video",
+): Promise<boolean> {
+	if (!isIos()) return false;
+
+	const authorized = await ensurePhotosAuthorized();
+	if (!authorized) {
+		appLog.warn("[saveMedia] Photos permission not granted");
+		return false;
+	}
+
+	const cache = await appCacheDir();
+	try {
+		await mkdir(SAVE_DIR, { baseDir: BaseDirectory.AppCache, recursive: true });
+	} catch (error) {
+		appLog.error("[saveMedia] mkdir failed", error);
+		throw error;
+	}
+
+	const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${extensionFromMimeType(mimeType, type)}`;
+	const relativePath = `${SAVE_DIR}/${fileName}`;
+	const absolutePath = await join(cache, relativePath);
+
+	try {
+		await writeFile(relativePath, bytes, { baseDir: BaseDirectory.AppCache });
+	} catch (error) {
+		appLog.error("[saveMedia] writeFile failed", error);
+		throw error;
+	}
+
+	try {
+		const albumId = await ensureAlbumId();
+		const created = type === "video"
+			? await createVideos({ album: albumId, files: [absolutePath] })
+			: await createPhotos({ album: albumId, files: [absolutePath] });
+		if (!created || created.length === 0) {
+			throw new Error("Photos library did not return a created asset");
+		}
+		return true;
+	} catch (error) {
+		appLog.error("[saveMedia] createPhotos/createVideos failed", error);
+		throw error;
+	} finally {
+		await remove(relativePath, { baseDir: BaseDirectory.AppCache }).catch((error) => {
+			appLog.warn("[saveMedia] Failed to clean up temp file", error);
+		});
+	}
+}
+
+async function saveMediaBytesToGalleryAndroid(
+	bytes: Uint8Array,
+	mimeTypeIn: string | null,
+	type: "image" | "video",
+): Promise<boolean> {
+	const extension = extensionFromMimeType(mimeTypeIn, type);
+	const mimeType = mimeTypeIn || mimeTypeFor(type, extension, null);
+	const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`;
+	const relativePath = `${FOLDER_NAME}/${fileName}`;
+
+	const uri = type === "video"
+		? await AndroidFs.createNewPublicVideoFile(AndroidPublicGeneralPurposeDir.Download, relativePath, mimeType, { isPending: true })
+		: await AndroidFs.createNewPublicImageFile(AndroidPublicGeneralPurposeDir.Download, relativePath, mimeType, { isPending: true });
+
+	try {
+		await AndroidFs.writeFile(uri, bytes);
+		await AndroidFs.setPublicFilePending(uri, false);
+		await AndroidFs.scanPublicFile(uri);
+		return true;
+	} catch (error) {
+		appLog.error("[saveMedia] Android writeFile/scan failed", error);
+		await AndroidFs.removeFile(uri).catch(() => {});
+		throw error;
+	}
+}
+
+async function saveMediaBytesToFolderDesktop(
+	bytes: Uint8Array,
+	mimeType: string | null,
+	type: "image" | "video",
+): Promise<boolean> {
+	const extension = extensionFromMimeType(mimeType, type);
+	const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`;
+	const baseDir = BaseDirectory.Download;
+
+	await mkdir(FOLDER_NAME, { baseDir, recursive: true });
+	await writeFile(`${FOLDER_NAME}/${fileName}`, bytes, { baseDir });
+	return true;
+}
+
+function downloadDataUri(dataUri: string): void {
+	const a = document.createElement("a");
+	a.href = dataUri;
+	a.download = `media-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+	a.target = "_blank";
+	document.body.appendChild(a);
+	a.click();
+	document.body.removeChild(a);
+}
+
+/**
+ * Like saveMediaToDevice, but for media we already have the bytes for
+ * locally (base64, from chatDb) rather than a live URL — needed for chat
+ * media that may no longer have a working remote URL at all (expired,
+ * archived conversation) but is still cached and viewable.
+ */
+export async function saveMediaBytesToDevice(
+	base64: string,
+	mimeType: string | null,
+	type: "image" | "video",
+): Promise<boolean> {
+	const bytes = base64ToBytes(base64);
+
+	if (isIos()) return saveMediaBytesToGallery(bytes, mimeType, type);
+
+	if (isAndroid()) {
+		try {
+			return await saveMediaBytesToGalleryAndroid(bytes, mimeType, type);
+		} catch (error) {
+			appLog.error("[saveMedia] Android save failed, falling back to browser", error);
+			downloadDataUri(toDataUri(mimeType, base64));
+			return true;
+		}
+	}
+
+	if (isDesktopTauri()) {
+		try {
+			return await saveMediaBytesToFolderDesktop(bytes, mimeType, type);
+		} catch (error) {
+			appLog.error("[saveMedia] Desktop save failed, falling back to browser", error);
+			downloadDataUri(toDataUri(mimeType, base64));
+			return true;
+		}
+	}
+
+	downloadDataUri(toDataUri(mimeType, base64));
+	return true;
+}
+
+export type SaveMediaBytesBatchItem = { base64: string; mimeType: string | null; type: "image" | "video" };
+
+/** Bytes-based counterpart to saveMediaBatch, for locally-cached media. */
+export async function saveMediaBytesBatch(
+	items: SaveMediaBytesBatchItem[],
+	onProgress?: (done: number, total: number) => void,
+): Promise<SaveMediaBatchResult> {
+	let succeeded = 0;
+	let failed = 0;
+
+	for (let i = 0; i < items.length; i++) {
+		const { base64, mimeType, type } = items[i];
+		try {
+			const saved = await saveMediaBytesToDevice(base64, mimeType, type);
+			if (saved) succeeded++;
+			else failed++;
+		} catch (error) {
+			appLog.error("[saveMedia] Failed to save item in batch", error);
+			failed++;
+		}
+
+		onProgress?.(i + 1, items.length);
+
+		if (i < items.length - 1) {
+			await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
+		}
+	}
+
+	return { total: items.length, succeeded, failed };
 }
 
 /**

@@ -1,5 +1,6 @@
 import {
 	Album,
+	Archive,
 	Ban,
 	Check,
 	CheckCheck,
@@ -78,6 +79,9 @@ import { ToggleRow } from "../../../components/ui/toggle-row";
 import { BottomDrawer } from "../../../components/ui/bottom-drawer";
 import { BottomSheet, SheetClose } from "../../../components/ui/bottom-sheet";
 import { GiphyPickerSheet } from "./GiphyPickerSheet";
+import type { ArchivedReason } from "../../../types/chat-db";
+import { useAvatarCache } from "../../../hooks/useAvatarCache";
+import { resolveAvatarSrc } from "../../../services/avatarStore";
 
 async function fixWebmDuration(blob: Blob, durationMs: number): Promise<Blob> {
 	if (!blob.type.includes("webm")) return blob;
@@ -218,6 +222,8 @@ type ChatThreadPanelProps = {
 	isAlbumSheetOpen: boolean;
 	onOpenMediaSheet?: () => void;
 	isPartnerTyping?: boolean;
+	isArchived?: boolean;
+	archivedReason?: ArchivedReason | null;
 };
 
 const SKIP_BLOCK_CONFIRM_KEY = "profile_skip_block_confirm";
@@ -235,6 +241,7 @@ function AudioPreviewPlayer({ blob, durationMs, recordedBars, recordedFraction }
 
 export function ChatThreadPanel(props: ChatThreadPanelProps) {
 	const { t } = useTranslation();
+	useAvatarCache();
     const apiFunctions = useApiFunctions();
 	const { unitsPreset, geohash } = usePreferences();
 	const [selectedExpirationType, setSelectedExpirationType] = useState("INDEFINITE");
@@ -431,6 +438,8 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 		isBlockingProfile = false,
 		onToggleFavorite,
 		isFavorite = false,
+		isArchived = false,
+		archivedReason = null,
 		isTogglingFavorite = false,
 		localNickname = null,
 		onEditLocalNickname,
@@ -937,7 +946,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 											{ state: { returnTo } },
 										);
 									}}
-									disabled={!otherParticipant}
+									disabled={!otherParticipant || isArchived}
 									aria-label="Open profile"
 									title={otherParticipantOnlineMeta.label}
 									className={`h-10 w-10 shrink-0 overflow-hidden rounded-full border-2 bg-[var(--surface-2)] transition disabled:cursor-default disabled:opacity-80 ${
@@ -947,7 +956,10 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 									}`}
 								>
 									<ProfileImage
-										src={getParticipantAvatarUrl(otherParticipant?.primaryMediaHash)}
+										src={resolveAvatarSrc(
+											otherParticipant?.primaryMediaHash,
+											getParticipantAvatarUrl(otherParticipant?.primaryMediaHash),
+										)}
 										alt={displayName}
 									/>
 								</button>
@@ -974,7 +986,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 								</div>
 							</div>
 							<div className="flex items-center gap-2">
-            {isDesktop && (
+            {isDesktop && !isArchived && (
                 <>
                     {showReadReceiptToggle && selectedConversation && (
                         <button
@@ -1053,7 +1065,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 									</>
 								)}
 
-								{isDesktop && onOpenMediaSheet && (
+								{isDesktop && !isArchived && onOpenMediaSheet && (
 									<button
 										type="button"
 										onClick={onOpenMediaSheet}
@@ -1081,7 +1093,9 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 									</button>
 									{isHeaderActionsMenuOpen ? (
 										<div className="absolute right-0 top-full z-30 mt-2 flex min-w-[210px] flex-col gap-1 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-2 shadow-lg">
-                                            <button
+                                            {!isArchived && (
+											<>
+											<button
 												type="button"
 												onClick={() => {
 													setIsHeaderActionsMenuOpen(false);
@@ -1131,7 +1145,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 												</button>
 											)}
 											{/* --------------------------- */}
-                                            
+
                                             {/* --- BAN PROFILE NAME --- */}
 											<button
 												type="button"
@@ -1155,12 +1169,12 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 												onClick={async () => {
 													setIsHeaderActionsMenuOpen(false);
 													if (!otherParticipant) return;
-													
+
 													const loadToast = toast.loading("Loading bio...");
 													try {
 														const profile = await apiFunctions.getProfileDetail(String(otherParticipant.profileId));
 														toast.dismiss(loadToast);
-														
+
 														const bio = profile.aboutMe || "";
 														if (!bio.trim()) {
 															toast.error("This user has no bio!");
@@ -1185,6 +1199,8 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 												Ban Bio Phrase
 											</button>
 											{/* ----------------------- */}
+											</>
+											)}
 
 											<button
 												type="button"
@@ -1200,7 +1216,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 												{localNickname ? t("chat.nicknames.edit") : t("chat.nicknames.set")}
 											</button>
 
-											{!isDesktop && (
+											{!isDesktop && !isArchived && (
 												<>
 													<button
 														type="button"
@@ -1236,6 +1252,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 												</>
 											)}
 
+											{!isArchived && (
 											<button
 												type="button"
 												disabled={isUpdatingConversationState}
@@ -1252,8 +1269,9 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 												)}
 												{selectedConversation.data.muted ? t("chat.unmute") : t("chat.mute")}
 											</button>
+											)}
 
-											{!isDesktop && (
+											{!isDesktop && !isArchived && (
 												<button
 													type="button"
 													onClick={requestBlockProfile}
@@ -1410,6 +1428,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 						handleStopAlbumShare={handleStopAlbumShare}
 						threadBottomRef={threadBottomRef}
 						isPartnerTyping={isPartnerTyping}
+						isArchived={isArchived}
 				/>
 				)
 			) : (
@@ -1424,6 +1443,36 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 				</div>
 			)}
 
+					{isArchived ? (
+						<div
+							className={`${!isDesktop ? "fixed bottom-0 left-0 right-0 z-30 px-[var(--app-px)] py-3" : "mt-3 pt-3 -mx-3 sm:-mx-4 px-3 sm:px-4"} bg-[var(--surface)]`}
+							style={
+								!isDesktop
+									? { paddingBottom: "max(12px, env(safe-area-inset-bottom))" }
+									: undefined
+							}
+						>
+							<div className="flex items-start gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] p-3">
+								<div className="shrink-0 rounded-xl bg-[var(--surface)] p-2.5">
+									<Archive className="h-4 w-4 text-[var(--text-muted)]" />
+								</div>
+								<div className="grid gap-0.5 pt-0.5">
+									<p className="text-sm font-semibold text-[var(--text)]">
+										{t("chat.archived.title", { defaultValue: "Conversation archived" })}
+									</p>
+									<p className="text-xs text-[var(--text-muted)]">
+										{archivedReason === "not_found"
+											? t("chat.archived.not_found", {
+													defaultValue: "This conversation is no longer available. You can still read the history.",
+												})
+											: t("chat.archived.blocked_or_deleted", {
+													defaultValue: "This conversation is archived. You can still read the history, but can no longer send messages or view this person's profile.",
+												})}
+									</p>
+								</div>
+							</div>
+						</div>
+					) : (
 					<form
 						onSubmit={onFormSubmit}
 						className={`${!isDesktop ? "fixed bottom-0 left-0 right-0 z-30 px-[var(--app-px)] py-3" : "mt-3 pt-3 -mx-3 sm:-mx-4 px-3 sm:px-4"} border-t border-[var(--border)] bg-[var(--surface)]`}
@@ -1610,7 +1659,11 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 									}}
 									rows={1}
 									maxLength={1000}
-									placeholder={selectedConversation ? t("chat.write_message") : t("chat.new_conversation.write_first_message")}
+									placeholder={
+										selectedConversation
+											? t("chat.write_message")
+											: t("chat.new_conversation.write_first_message")
+									}
 									className="flex-1 bg-transparent py-1 text-sm text-[var(--text)] placeholder-[var(--text-muted)] outline-none resize-none disabled:opacity-60"
 									style={{ fieldSizing: "content", maxHeight: "115px" } as React.CSSProperties}
 								/>
@@ -1697,7 +1750,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 									setIsGiphyPickerOpen((prev) => !prev);
 									if (isDrawerOpen) toggleDrawer();
 								}}
-								className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-[var(--text-muted)] transition hover:text-[var(--text)]"
+								className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-[var(--text-muted)] transition hover:text-[var(--text)] disabled:opacity-60"
 								aria-label={t("chat.giphy.button_label")}
 								title={t("chat.giphy.button_label")}
 							>
@@ -1724,7 +1777,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 									toggleDrawer();
 									if (pendingLocationShare) handleLocationShareRequest();
 								}}
-								className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-[var(--text-muted)] transition hover:border-[var(--accent)] hover:text-[var(--text)]"
+								className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-[var(--text-muted)] transition hover:border-[var(--accent)] hover:text-[var(--text)] disabled:opacity-60"
 								aria-label={t("chat.drawer_label")}
 								title={t("chat.drawer_label")}
 							>
@@ -1736,7 +1789,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 									handleLocationShareRequest();
 									if (isDrawerOpen) toggleDrawer();
 								}}
-								className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-[var(--text-muted)] transition hover:text-[var(--text)]"
+								className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-[var(--text-muted)] transition hover:text-[var(--text)] disabled:opacity-60"
 								aria-label={t("chat.share_location_label", { defaultValue: "Share Location" })}
 								title={t("chat.share_location_label", { defaultValue: "Share Location" })}
 							>
@@ -1745,7 +1798,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 							<button
 								type="button"
 								onClick={() => setIsSavedPhrasesOpen((prev) => !prev)}
-								className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-[var(--text-muted)] transition hover:text-[var(--text)]"
+								className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-[var(--text-muted)] transition hover:text-[var(--text)] disabled:opacity-60"
 								aria-label={t("chat.saved_phrases_label", { defaultValue: "Saved Phrases" })}
 								title={t("chat.saved_phrases_label", { defaultValue: "Saved Phrases" })}
 							>
@@ -1763,6 +1816,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 
 
 					</form>
+					)}
 
 					{pendingAttachmentFile ? (
 						<BottomDrawer
