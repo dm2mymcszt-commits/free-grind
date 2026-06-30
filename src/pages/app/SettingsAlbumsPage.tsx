@@ -271,28 +271,43 @@ export function SettingsAlbumsPage() {
 		void loadAlbumsAndLimits();
 	}, [loadAlbumsAndLimits]);
 
-	// Poll album details every 3 s while the open album has processing items.
-	const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+	// Persist open album across navigation
 	useEffect(() => {
-		if (pollingRef.current) {
-			clearInterval(pollingRef.current);
-			pollingRef.current = null;
+		if (openAlbumId) {
+			sessionStorage.setItem("settings-albums-open", openAlbumId);
+		} else {
+			sessionStorage.removeItem("settings-albums-open");
 		}
-		if (!openAlbumId) return;
-		const detail = albumDetails[openAlbumId];
-		const hasProcessing = detail?.content.some((item) => item.processing);
-		if (!hasProcessing) return;
+	}, [openAlbumId]);
 
-		pollingRef.current = setInterval(() => {
-			void apiFunctions.getOwnAlbumDetails(openAlbumId).then((updated) => {
-				setAlbumDetails((prev) => ({ ...prev, [openAlbumId]: updated }));
-			}).catch(() => { /* silently skip */ });
-		}, 3000);
+	// Poll album details every 3 s while the open album has processing items.
+	// albumDetails kept in a ref so the interval doesn't restart on every poll response.
+	const albumDetailsRef = useRef(albumDetails);
+	albumDetailsRef.current = albumDetails;
+	useEffect(() => {
+		if (!openAlbumId) return;
+		let cancelled = false;
+
+		const tick = async () => {
+			const detail = albumDetailsRef.current[openAlbumId];
+			if (!detail?.content.some((item) => item.processing)) return;
+			try {
+				const updated = await apiFunctions.getOwnAlbumDetails(openAlbumId);
+				if (!cancelled) {
+					setAlbumDetails((prev) => ({ ...prev, [openAlbumId]: updated }));
+				}
+			} catch {
+				// silently skip failed poll
+			}
+		};
+
+		const id = setInterval(() => { void tick(); }, 3000);
 
 		return () => {
-			if (pollingRef.current) clearInterval(pollingRef.current);
+			cancelled = true;
+			clearInterval(id);
 		};
-	}, [openAlbumId, albumDetails, apiFunctions]);
+	}, [openAlbumId, apiFunctions]);
 
 	const canCreateAlbum = useMemo(() => albums.length < maxAlbums, [albums.length, maxAlbums]);
 
@@ -413,7 +428,7 @@ export function SettingsAlbumsPage() {
 							const displayName =
 								typeof nameRaw === "string" && nameRaw.trim().length > 0
 									? nameRaw.trim()
-									: t("profile_details.profile_fallback", { id: String(profileId) });
+									: t("settings_albums.share_name_fallback", { defaultValue: "Someone" });
 							const hashRaw = (p as { profileImageMediaHash?: unknown }).profileImageMediaHash;
 							const avatarUrl =
 								typeof hashRaw === "string" && validateMediaHash(hashRaw)
@@ -454,6 +469,18 @@ export function SettingsAlbumsPage() {
 			setLoadingSharesAlbumId((prev) => prev === albumId ? null : prev);
 		}
 	}, [albumShareProfiles, apiFunctions, t]);
+
+	// Restore open album after initial load (placed after loadAlbumDetails/loadAlbumShares declarations)
+	const restoredRef = useRef(false);
+	useEffect(() => {
+		if (isLoading || albums.length === 0 || restoredRef.current) return;
+		restoredRef.current = true;
+		const savedId = sessionStorage.getItem("settings-albums-open");
+		if (!savedId || !albums.some((a) => a.albumId === savedId)) return;
+		setOpenAlbumId(savedId);
+		void loadAlbumDetails(savedId);
+		void loadAlbumShares(savedId);
+	}, [isLoading, albums, loadAlbumDetails, loadAlbumShares]);
 
 	const unshareAlbumFromProfile = async (albumId: string, profileId: number) => {
 		const key = `${albumId}:${profileId}`;
@@ -1081,11 +1108,11 @@ export function SettingsAlbumsPage() {
 																	})}
 																</div>
 															</div>
-															<button
+														<button
 																type="button"
 																onClick={() => setConfirmUnshareAllAlbumId(album.albumId)}
 																disabled={unsharingAllAlbumId === album.albumId}
-																className="mt-3 inline-flex items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-400 transition hover:bg-red-500/20 disabled:opacity-50"
+																className="mt-3 w-full inline-flex items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-semibold text-red-400 transition hover:bg-red-500/20 disabled:opacity-50"
 															>
 																{unsharingAllAlbumId === album.albumId
 																	? t("settings_albums.unsharing_all", { defaultValue: "Removing…" })
