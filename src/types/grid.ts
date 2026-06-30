@@ -197,6 +197,9 @@ export type SelectedLocation = {
 	lat: number;
 	lon: number;
 	label: string;
+	// Best-guess city name, used to default the "save as" name field — null
+	// while still resolving or if the lookup couldn't find one.
+	city?: string | null;
 };
 
 export type ManagedOption = {

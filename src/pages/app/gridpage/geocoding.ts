@@ -12,7 +12,7 @@
 import { decodeGeohash } from "../../../utils/geohash";
 import { appLog } from "../../../utils/logger";
 
-const cache = new Map<string, Promise<string | null>>();
+const cache = new Map<string, Promise<{ label: string | null; city: string | null }>>();
 
 export type NominatimAddress = {
 	road?: string;
@@ -34,6 +34,11 @@ type NominatimReverseResponse = {
 	display_name?: string;
 };
 
+/** city/town/village/municipality, whichever Nominatim populated — shared by the label formatter and the "save as" default name. */
+export function getCityFromAddress(address: NominatimAddress): string | null {
+	return address.city ?? address.town ?? address.village ?? address.municipality ?? null;
+}
+
 /**
  * "Street Housenumber, City, District" — street+number leads (most specific,
  * and the two read naturally together), then city, then district last.
@@ -45,7 +50,7 @@ export function formatNominatimAddress(address: NominatimAddress, fallback: stri
 	const street = address.road
 		? (address.house_number ? `${address.road} ${address.house_number}` : address.road)
 		: null;
-	const cityName = address.city ?? address.town ?? address.village ?? address.municipality ?? null;
+	const cityName = getCityFromAddress(address);
 	const district = address.neighbourhood ?? address.suburb ?? address.borough ?? address.city_district ?? null;
 
 	const parts = [street, cityName, district].filter(
@@ -57,7 +62,10 @@ export function formatNominatimAddress(address: NominatimAddress, fallback: stri
 	return address.country ?? fallback;
 }
 
-async function fetchReverseGeocode(lat: number, lon: number): Promise<string | null> {
+async function fetchReverseGeocode(
+	lat: number,
+	lon: number,
+): Promise<{ label: string | null; city: string | null }> {
 	try {
 		// zoom=18 (building/street level) — anything coarser collapses picks
 		// that are a few streets apart into the same neighbourhood/suburb
@@ -69,21 +77,23 @@ async function fetchReverseGeocode(lat: number, lon: number): Promise<string | n
 			{ headers: { "User-Agent": "Mozilla/5.0 (compatible)" } },
 		);
 		if (!response.ok) {
-			return null;
+			return { label: null, city: null };
 		}
 		const data = (await response.json()) as NominatimReverseResponse;
 		if (!data.address) {
-			return data.display_name ?? null;
+			return { label: data.display_name ?? null, city: null };
 		}
-		return formatNominatimAddress(data.address, data.display_name ?? null);
+		return {
+			label: formatNominatimAddress(data.address, data.display_name ?? null),
+			city: getCityFromAddress(data.address),
+		};
 	} catch (error) {
 		appLog.warn("[geocoding] reverse lookup failed", error);
-		return null;
+		return { label: null, city: null };
 	}
 }
 
-/** Resolves a geohash to a "City, Country"-style label, or null if it can't be resolved. Cached per geohash for the session. */
-export function reverseGeocodeGeohash(geohash: string): Promise<string | null> {
+function resolveGeohash(geohash: string): Promise<{ label: string | null; city: string | null }> {
 	const cached = cache.get(geohash);
 	if (cached) {
 		return cached;
@@ -97,10 +107,22 @@ export function reverseGeocodeGeohash(geohash: string): Promise<string | null> {
 			return await fetchReverseGeocode(lat, lon);
 		} catch (error) {
 			appLog.warn(`[geocoding] failed to decode geohash ${geohash}`, error);
-			return null;
+			return { label: null, city: null };
 		}
 	})();
 
 	cache.set(geohash, run);
 	return run;
+}
+
+/** Resolves a geohash to a "City, Country"-style label, or null if it can't be resolved. Cached per geohash for the session. */
+export async function reverseGeocodeGeohash(geohash: string): Promise<string | null> {
+	const { label } = await resolveGeohash(geohash);
+	return label;
+}
+
+/** Resolves a geohash to just its city name, or null if it can't be resolved. Shares the reverse-geocode cache, so this is free if the label was already resolved for the same geohash. */
+export async function reverseGeocodeCityForGeohash(geohash: string): Promise<string | null> {
+	const { city } = await resolveGeohash(geohash);
+	return city;
 }

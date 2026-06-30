@@ -400,7 +400,11 @@ export async function setActiveChatDbUser(profileId: number | null): Promise<voi
 	if (dbPromise) {
 		try {
 			const db = await dbPromise;
-			await db.close();
+			// Must pass db.path — close() with no argument closes every open
+			// sql plugin pool, not just this one, which was killing the
+			// unrelated chat-index connection out from under chatContactIndex.ts
+			// on every account switch ("acquire a connection on a closed pool").
+			await db.close(db.path);
 		} catch (error) {
 			appLog.warn("[chat-db] failed to close previous connection", error);
 		}

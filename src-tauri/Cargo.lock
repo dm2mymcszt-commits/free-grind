@@ -1514,6 +1514,8 @@ dependencies = [
  "url",
  "uuid",
  "webkit2gtk",
+ "webview2-com",
+ "windows",
  "windows-native-keyring-store",
  "wreq",
 ]

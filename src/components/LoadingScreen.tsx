@@ -10,8 +10,8 @@ export function LoadingScreen() {
 			}}
 		>
 			<div className="relative flex h-24 w-24 items-center justify-center">
-				<div className="absolute inset-0 rounded-3xl bg-[var(--accent)]/20 blur-2xl" />
-				<div className="absolute inset-0 animate-spin rounded-3xl border-2 border-transparent border-t-[var(--accent)] border-r-[var(--accent)]/40" />
+				<div className="absolute inset-0 rounded-full bg-[var(--surface-2)] shadow-inner" />
+				<div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-[var(--accent)] border-r-[var(--accent)]/40" />
 				<img
 					src={logo}
 					alt="Free Grind"

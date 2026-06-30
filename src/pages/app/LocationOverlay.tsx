@@ -9,7 +9,12 @@ import { getCurrentLocation } from "../../services/currentLocation";
 import { decodeGeohash, encodeGeohash } from "../../utils/geohash";
 import { type GeocodeResult, type SelectedLocation, geocodeResultSchema } from "./GridPage.types";
 import { MapLocationPicker } from "./gridpage/components/MapLocationPicker";
-import { formatNominatimAddress, reverseGeocodeGeohash } from "./gridpage/geocoding";
+import {
+	formatNominatimAddress,
+	getCityFromAddress,
+	reverseGeocodeCityForGeohash,
+	reverseGeocodeGeohash,
+} from "./gridpage/geocoding";
 import {
 	addSavedLocation,
 	deleteSavedLocation,
@@ -259,16 +264,26 @@ export function LocationOverlay({ onClose }: LocationOverlayProps) {
 
 	const clearSearch = () => { setLocationQuery(""); setLocationResults([]); setLastSearchedQuery(""); searchInputRef.current?.focus(); };
 	const isSearching = locationQuery.trim().length > 0;
-	const isManualLocationActive = !useAutoLocation && !!locationName && selectedLocation?.label === locationName;
+	// Whether the current map pin already matches the saved/active location —
+	// regardless of whether that location came from a manual pick or GPS, so
+	// the "confirm new pick" footer doesn't flash for a location that was
+	// just auto-saved via "use current location".
+	const isActiveLocationSelected = !!locationName && selectedLocation?.label === locationName;
 
 	const handleMapPick = (lat: number, lon: number) => {
 		const fallbackLabel = t("browse_location.lat_lon_label", { lat: lat.toFixed(4), lon: lon.toFixed(4) });
-		setSelectedLocation({ lat, lon, label: t("browse_location.resolving_location") });
-		void reverseGeocodeGeohash(encodeGeohash(lat, lon)).then((label) => {
+		setSelectedLocation({ lat, lon, label: t("browse_location.resolving_location"), city: null });
+		const geohashForPick = encodeGeohash(lat, lon);
+		void reverseGeocodeGeohash(geohashForPick).then((label) => {
 			setSelectedLocation((current) =>
 				current && current.lat === lat && current.lon === lon
 					? { ...current, label: label ?? fallbackLabel }
 					: current,
+			);
+		});
+		void reverseGeocodeCityForGeohash(geohashForPick).then((city) => {
+			setSelectedLocation((current) =>
+				current && current.lat === lat && current.lon === lon ? { ...current, city } : current,
 			);
 		});
 	};
@@ -281,16 +296,26 @@ export function LocationOverlay({ onClose }: LocationOverlayProps) {
 		// reverse-geocode call below still refines it afterwards in case
 		// that lookup resolves a more precise/different address.
 		const initialLabel = (result.address && formatNominatimAddress(result.address, result.display_name)) ?? result.display_name;
-		setSelectedLocation({ lat, lon, label: initialLabel });
+		const initialCity = result.address ? getCityFromAddress(result.address) : null;
+		setSelectedLocation({ lat, lon, label: initialLabel, city: initialCity });
 		setLocationQuery("");
 		setLocationResults([]);
 		setLastSearchedQuery("");
-		void reverseGeocodeGeohash(encodeGeohash(lat, lon)).then((label) => {
+		const geohashForResult = encodeGeohash(lat, lon);
+		void reverseGeocodeGeohash(geohashForResult).then((label) => {
 			if (!label) return;
 			setSelectedLocation((current) =>
 				current && current.lat === lat && current.lon === lon ? { ...current, label } : current,
 			);
 		});
+		if (!initialCity) {
+			void reverseGeocodeCityForGeohash(geohashForResult).then((city) => {
+				if (!city) return;
+				setSelectedLocation((current) =>
+					current && current.lat === lat && current.lon === lon ? { ...current, city } : current,
+				);
+			});
+		}
 	};
 
 	const handleApplySavedLocation = (location: SavedLocation) => {
@@ -499,7 +524,7 @@ export function LocationOverlay({ onClose }: LocationOverlayProps) {
 								    that differs from your active location — nothing to confirm
 								    (and no extra section) if it just matches what's already
 								    active, since that's already reflected above. */}
-								{selectedLocation && !isManualLocationActive && (
+								{selectedLocation && !isActiveLocationSelected && (
 									<div className="border-t border-[var(--border)] bg-[var(--surface-2)] p-4">
 										<div className="flex items-center gap-3">
 											<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--accent)] text-white">
@@ -513,7 +538,15 @@ export function LocationOverlay({ onClose }: LocationOverlayProps) {
 											</div>
 											<button
 												type="button"
-												onClick={() => setIsNamingLocation((v) => !v)}
+												onClick={() => {
+													setIsNamingLocation((v) => {
+														const next = !v;
+														if (next && !newLocationName.trim() && selectedLocation.city) {
+															setNewLocationName(selectedLocation.city);
+														}
+														return next;
+													});
+												}}
 												aria-label={t("browse_location.save_as")}
 												className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition ${
 													isNamingLocation
