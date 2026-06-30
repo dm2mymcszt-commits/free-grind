@@ -490,7 +490,9 @@ export function LocationOverlay({ onClose }: LocationOverlayProps) {
 							) : null}
 						</div>
 
-						{/* Map — always visible so picking a new spot is one tap away */}
+						{/* Map + current selection — one container, so the map and its
+						    confirmation/save details read as a single unit instead of
+						    two separate cards. */}
 						{!isSearching && (
 							<div className="overflow-hidden rounded-2xl border border-[var(--border)]">
 								{mapPickerError ? (
@@ -504,76 +506,76 @@ export function LocationOverlay({ onClose }: LocationOverlayProps) {
 										initialCenter={initialCenter}
 									/>
 								)}
-							</div>
-						)}
 
-						{/* New pick: only appears once you've tapped a new spot on the map
-						    above that differs from your active location — nothing to
-						    confirm (and no card to show) if it just matches what's
-						    already active, since that's already reflected above. */}
-						{!isSearching && selectedLocation && !isManualLocationActive && (
-							<div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] p-4">
-								<div className="flex items-center gap-3">
-									<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--accent)] text-white">
-										<MapPin className="h-4 w-4" />
-									</div>
-									<div className="min-w-0 flex-1">
-										<p className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
-											{t("browse_location.new_pick_heading")}
-										</p>
-										<p className="mt-0.5 truncate text-sm font-semibold text-[var(--text)]">{selectedLocation.label}</p>
-									</div>
-									<button
-										type="button"
-										onClick={() => setIsNamingLocation((v) => !v)}
-										aria-label={t("browse_location.save_as")}
-										className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition ${
-											isNamingLocation
-												? "border-[var(--accent)] bg-[var(--accent)] text-white"
-												: "border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]"
-										}`}
-									>
-										<Bookmark className="h-4 w-4" />
-									</button>
-								</div>
+								{/* Only appears once you've tapped a new spot on the map above
+								    that differs from your active location — nothing to confirm
+								    (and no extra section) if it just matches what's already
+								    active, since that's already reflected above. */}
+								{selectedLocation && !isManualLocationActive && (
+									<div className="border-t border-[var(--border)] bg-[var(--surface-2)] p-4">
+										<div className="flex items-center gap-3">
+											<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--accent)] text-white">
+												<MapPin className="h-4 w-4" />
+											</div>
+											<div className="min-w-0 flex-1">
+												<p className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
+													{t("browse_location.new_pick_heading")}
+												</p>
+												<p className="mt-0.5 truncate text-sm font-semibold text-[var(--text)]">{selectedLocation.label}</p>
+											</div>
+											<button
+												type="button"
+												onClick={() => setIsNamingLocation((v) => !v)}
+												aria-label={t("browse_location.save_as")}
+												className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition ${
+													isNamingLocation
+														? "border-[var(--accent)] bg-[var(--accent)] text-white"
+														: "border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]"
+												}`}
+											>
+												<Bookmark className="h-4 w-4" />
+											</button>
+										</div>
 
-								{isNamingLocation && (
-									<div className="mt-3 flex gap-2">
-										<input
-											type="text"
-											autoFocus
-											value={newLocationName}
-											onChange={(e) => setNewLocationName(e.target.value)}
-											onKeyDown={(e) => { if (e.key === "Enter") handleSaveCurrentAsNamedLocation(); }}
-											placeholder={t("browse_location.save_as_placeholder")}
-											className="h-11 min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--text)] outline-none transition focus:border-[var(--accent)]"
-										/>
+										{isNamingLocation && (
+											<div className="mt-3 flex gap-2">
+												<input
+													type="text"
+													autoFocus
+													value={newLocationName}
+													onChange={(e) => setNewLocationName(e.target.value)}
+													onKeyDown={(e) => { if (e.key === "Enter") handleSaveCurrentAsNamedLocation(); }}
+													placeholder={t("browse_location.save_as_placeholder")}
+													className="h-11 min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--text)] outline-none transition focus:border-[var(--accent)]"
+												/>
+												<button
+													type="button"
+													disabled={!newLocationName.trim()}
+													onClick={handleSaveCurrentAsNamedLocation}
+													className="shrink-0 rounded-xl bg-[var(--accent)] px-4 text-sm font-bold text-white transition hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
+												>
+													{t("travel_plans.save")}
+												</button>
+											</div>
+										)}
+
 										<button
 											type="button"
-											disabled={!newLocationName.trim()}
-											onClick={handleSaveCurrentAsNamedLocation}
-											className="shrink-0 rounded-xl bg-[var(--accent)] px-4 text-sm font-bold text-white transition hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
+											disabled={isSaving}
+											onClick={() => void saveAndClose(selectedLocation.lat, selectedLocation.lon, selectedLocation.label)}
+											className="relative mt-3 flex h-11 w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-[var(--accent)] text-sm font-bold text-white shadow-md shadow-[var(--accent)]/30 transition hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
 										>
-											{t("travel_plans.save")}
+											{isSaving ? (
+												<Loader2 className="h-4 w-4 animate-spin" />
+											) : (
+												<>
+													<Check className="h-4 w-4" />
+													{t("browse_location.use_selected_location")}
+												</>
+											)}
 										</button>
 									</div>
 								)}
-
-								<button
-									type="button"
-									disabled={isSaving}
-									onClick={() => void saveAndClose(selectedLocation.lat, selectedLocation.lon, selectedLocation.label)}
-									className="relative mt-3 flex h-11 w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-[var(--accent)] text-sm font-bold text-white shadow-md shadow-[var(--accent)]/30 transition hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
-								>
-									{isSaving ? (
-										<Loader2 className="h-4 w-4 animate-spin" />
-									) : (
-										<>
-											<Check className="h-4 w-4" />
-											{t("browse_location.use_selected_location")}
-										</>
-									)}
-								</button>
 							</div>
 						)}
 						</div>
