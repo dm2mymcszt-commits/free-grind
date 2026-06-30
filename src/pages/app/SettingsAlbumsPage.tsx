@@ -1,10 +1,11 @@
 import {
-	ArrowDown,
-	ArrowUp,
+	AlertTriangle,
 	Check,
 	ChevronDown,
+	Clock,
 	Film,
 	FolderPlus,
+	GripVertical,
 	HardDrive,
 	Images,
 	Pencil,
@@ -14,6 +15,7 @@ import {
 	Share2,
 	Trash2,
 	Upload,
+	UserMinus,
 	X,
 } from "lucide-react";
 import { BackToSettings } from "../../components/BackToSettings";
@@ -21,6 +23,7 @@ import {
 	useCallback,
 	useEffect,
 	useMemo,
+	useRef,
 	useState,
 	type ChangeEvent,
 } from "react";
@@ -47,6 +50,24 @@ import {
 	getVideodimensions,
 	getVideoDurationMs,
 } from "./settings-albums/settingsAlbumsUtils";
+import {
+	DndContext,
+	PointerSensor,
+	TouchSensor,
+	useSensor,
+	useSensors,
+	type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+	SortableContext,
+	arrayMove,
+	rectSortingStrategy,
+	useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { ProfileImage } from "../../components/ui/profile-image";
+import { getThumbImageUrl, validateMediaHash } from "../../utils/media";
+import { useNavigate, useLocation } from "react-router-dom";
 
 function LimitRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
 	return (
@@ -68,10 +89,114 @@ function formatMs(ms: number): string {
 	return seconds === 0 ? `${minutes} min` : `${minutes}:${String(seconds).padStart(2, "0")} min`;
 }
 
+type SortableAlbumMediaItemProps = {
+	item: AlbumMedia;
+	index: number;
+	isReordering: boolean;
+	isDeleting: boolean;
+	onDeleteClick: () => void;
+};
+
+function SortableAlbumMediaItem({
+	item,
+	index,
+	isReordering,
+	isDeleting,
+	onDeleteClick,
+}: SortableAlbumMediaItemProps) {
+	const { t } = useTranslation();
+	const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+		useSortable({ id: item.contentId });
+
+	const style: React.CSSProperties = {
+		transform: CSS.Transform.toString(transform),
+		transition,
+	};
+
+	const imageUrl = item.thumbUrl || item.url || item.coverUrl || "";
+	const isVideo = item.contentType?.startsWith("video/");
+	const isProcessing = item.processing;
+	const isRejected = item.rejectionId != null;
+
+	return (
+		<div
+			ref={setNodeRef}
+			style={style}
+			className={`relative overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-2)] ${isDragging ? "z-10 opacity-40" : ""}`}
+		>
+			{imageUrl ? (
+				<img
+					src={imageUrl}
+					alt={t("settings_albums.media_alt", { index: index + 1 })}
+					className={`aspect-square w-full object-cover ${isRejected ? "opacity-40 grayscale" : ""}`}
+				/>
+			) : (
+				<div className="aspect-square w-full bg-[var(--surface)]" />
+			)}
+
+			{isVideo && (
+				<div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+					<div className="flex h-8 w-8 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm">
+						<Play className="h-4 w-4 fill-white text-white" />
+					</div>
+				</div>
+			)}
+
+			{(isProcessing || isRejected) && (
+				<div className="absolute left-1.5 top-1.5">
+					<span
+						className={[
+							"inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-white shadow-sm",
+							isRejected ? "bg-red-500/90" : "bg-amber-500/90",
+						].join(" ")}
+					>
+						{isRejected ? (
+							<AlertTriangle className="h-2.5 w-2.5" />
+						) : (
+							<Clock className="h-2.5 w-2.5" />
+						)}
+						{isRejected
+							? t("settings_albums.rejected", { defaultValue: "Rejected" })
+							: t("settings_albums.processing", { defaultValue: "Processing" })}
+					</span>
+				</div>
+			)}
+
+			{!isReordering && (
+				<div
+					{...attributes}
+					{...listeners}
+					className="absolute right-1.5 top-1.5 cursor-grab touch-none rounded-lg bg-black/40 p-1.5 text-white backdrop-blur-sm active:cursor-grabbing"
+				>
+					<GripVertical className="h-3 w-3" />
+				</div>
+			)}
+
+			<button
+				type="button"
+				onClick={onDeleteClick}
+				disabled={isDeleting || isReordering}
+				className="absolute bottom-1.5 right-1.5 inline-flex h-6 w-6 items-center justify-center rounded-md bg-black/50 text-white backdrop-blur-sm disabled:opacity-30"
+				title={t("settings_albums.delete")}
+			>
+				<Trash2 className="h-3 w-3" />
+			</button>
+		</div>
+	);
+}
+
+type ShareProfileListItem = {
+	profileId: number;
+	displayName: string;
+	avatarUrl: string | null;
+};
+
 export function SettingsAlbumsPage() {
 	const { t } = useTranslation();
 	const isDesktop = useDesktopBreakpoint();
 	const apiFunctions = useApiFunctions();
+	const navigate = useNavigate();
+	const location = useLocation();
 	const [albums, setAlbums] = useState<Album[]>([]);
 	const [limits, setLimits] = useState<AlbumLimits | null>(null);
 	const [limitsExpanded, setLimitsExpanded] = useState(false);
@@ -99,6 +224,19 @@ export function SettingsAlbumsPage() {
 	const [confirmDeleteAlbumId, setConfirmDeleteAlbumId] = useState<string | null>(null);
 	const [confirmDeleteContentKey, setConfirmDeleteContentKey] = useState<string | null>(null);
 	const [editOpenedAlbumId, setEditOpenedAlbumId] = useState<string | null>(null);
+
+	// Shares state
+	const [albumShareProfiles, setAlbumShareProfiles] = useState<Record<string, ShareProfileListItem[]>>({});
+	const [loadingSharesAlbumId, setLoadingSharesAlbumId] = useState<string | null>(null);
+	const [unsharingKey, setUnsharingKey] = useState<string | null>(null);
+	const [unsharingAllAlbumId, setUnsharingAllAlbumId] = useState<string | null>(null);
+	const [confirmUnshareAllAlbumId, setConfirmUnshareAllAlbumId] = useState<string | null>(null);
+
+	// DnD sensors
+	const sensors = useSensors(
+		useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+		useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
+	);
 
 	const loadAlbumsAndLimits = useCallback(async () => {
 		setIsLoading(true);
@@ -133,8 +271,30 @@ export function SettingsAlbumsPage() {
 		void loadAlbumsAndLimits();
 	}, [loadAlbumsAndLimits]);
 
-	const canCreateAlbum = useMemo(() => albums.length < maxAlbums, [albums.length, maxAlbums]);
+	// Poll album details every 3 s while the open album has processing items.
+	const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+	useEffect(() => {
+		if (pollingRef.current) {
+			clearInterval(pollingRef.current);
+			pollingRef.current = null;
+		}
+		if (!openAlbumId) return;
+		const detail = albumDetails[openAlbumId];
+		const hasProcessing = detail?.content.some((item) => item.processing);
+		if (!hasProcessing) return;
 
+		pollingRef.current = setInterval(() => {
+			void apiFunctions.getOwnAlbumDetails(openAlbumId).then((updated) => {
+				setAlbumDetails((prev) => ({ ...prev, [openAlbumId]: updated }));
+			}).catch(() => { /* silently skip */ });
+		}, 3000);
+
+		return () => {
+			if (pollingRef.current) clearInterval(pollingRef.current);
+		};
+	}, [openAlbumId, albumDetails, apiFunctions]);
+
+	const canCreateAlbum = useMemo(() => albums.length < maxAlbums, [albums.length, maxAlbums]);
 
 	const handleCreateAlbum = async () => {
 		if (!canCreateAlbum || isCreating) return;
@@ -217,6 +377,121 @@ export function SettingsAlbumsPage() {
 		}
 	}, [albumDetails, apiFunctions]);
 
+	const loadAlbumShares = useCallback(async (albumId: string, forceRefresh = false) => {
+		if (!forceRefresh && albumShareProfiles[albumId]) return;
+		setLoadingSharesAlbumId(albumId);
+		try {
+			const profileIds = await apiFunctions.getAlbumShares({ albumId });
+			if (profileIds.length === 0) {
+				setAlbumShareProfiles((prev) => ({ ...prev, [albumId]: [] }));
+				return;
+			}
+
+			// Batch-fetch profile details in chunks of 50
+			const CHUNK_SIZE = 50;
+			const detailsById = new Map<number, { displayName: string; avatarUrl: string | null }>();
+			const chunks: number[][] = [];
+			for (let i = 0; i < profileIds.length; i += CHUNK_SIZE) {
+				chunks.push(profileIds.slice(i, i + CHUNK_SIZE));
+			}
+
+			await Promise.all(
+				chunks.map(async (chunk) => {
+					try {
+						const raw = await apiFunctions.getProfilesByIds(chunk);
+						const profiles =
+							raw && typeof raw === "object" && Array.isArray((raw as { profiles?: unknown }).profiles)
+								? (raw as { profiles: unknown[] }).profiles
+								: [];
+						for (const p of profiles) {
+							if (!p || typeof p !== "object") continue;
+							const idRaw = (p as { profileId?: unknown }).profileId;
+							if (idRaw == null) continue;
+							const profileId = Number(idRaw);
+							if (Number.isNaN(profileId)) continue;
+							const nameRaw = (p as { displayName?: unknown }).displayName;
+							const displayName =
+								typeof nameRaw === "string" && nameRaw.trim().length > 0
+									? nameRaw.trim()
+									: t("profile_details.profile_fallback", { id: String(profileId) });
+							const hashRaw = (p as { profileImageMediaHash?: unknown }).profileImageMediaHash;
+							const avatarUrl =
+								typeof hashRaw === "string" && validateMediaHash(hashRaw)
+									? getThumbImageUrl(hashRaw, "75x75")
+									: null;
+							detailsById.set(profileId, { displayName, avatarUrl });
+						}
+					} catch {
+						// chunk failed — ids fall back to id-only
+					}
+				}),
+			);
+
+			const notFoundIds = profileIds.filter((id) => !detailsById.has(id));
+			if (notFoundIds.length > 0) {
+				void apiFunctions.unshareAlbum({
+					albumId,
+					profiles: notFoundIds.map((profileId) => ({ profileId, shareId: 0 })),
+				}).catch(() => { /* silently skip */ });
+			}
+
+			setAlbumShareProfiles((prev) => ({
+				...prev,
+				[albumId]: profileIds
+					.filter((profileId) => detailsById.has(profileId))
+					.map((profileId) => {
+						const meta = detailsById.get(profileId)!;
+						return {
+							profileId,
+							displayName: meta.displayName,
+							avatarUrl: meta.avatarUrl,
+						};
+					}),
+			}));
+		} catch (loadError) {
+			toast.error(loadError instanceof Error ? loadError.message : t("settings_albums.error_load_shares", { defaultValue: "Failed to load album shares." }));
+		} finally {
+			setLoadingSharesAlbumId((prev) => prev === albumId ? null : prev);
+		}
+	}, [albumShareProfiles, apiFunctions, t]);
+
+	const unshareAlbumFromProfile = async (albumId: string, profileId: number) => {
+		const key = `${albumId}:${profileId}`;
+		if (unsharingKey === key) return;
+		setUnsharingKey(key);
+		try {
+			await apiFunctions.unshareAlbum({ albumId, profiles: [{ profileId, shareId: 0 }] });
+			setAlbumShareProfiles((prev) => ({
+				...prev,
+				[albumId]: (prev[albumId] ?? []).filter((p) => p.profileId !== profileId),
+			}));
+			toast.success(t("settings_albums.toast_unshared", { defaultValue: "Album share removed." }));
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : t("settings_albums.error_unshare", { defaultValue: "Failed to remove share." }));
+		} finally {
+			setUnsharingKey(null);
+		}
+	};
+
+	const unshareAllFromAlbum = async (albumId: string) => {
+		const profiles = albumShareProfiles[albumId] ?? [];
+		if (!profiles.length || unsharingAllAlbumId === albumId) return;
+		setUnsharingAllAlbumId(albumId);
+		try {
+			await apiFunctions.unshareAlbum({
+				albumId,
+				profiles: profiles.map((p) => ({ profileId: p.profileId, shareId: 0 })),
+			});
+			setAlbumShareProfiles((prev) => ({ ...prev, [albumId]: [] }));
+			toast.success(t("settings_albums.toast_unshared_all", { defaultValue: "All shares removed." }));
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : t("settings_albums.error_unshare", { defaultValue: "Failed to remove share." }));
+		} finally {
+			setUnsharingAllAlbumId(null);
+			setConfirmUnshareAllAlbumId(null);
+		}
+	};
+
 	const toggleAlbumOpen = (albumId: string) => {
 		if (openAlbumId === albumId) {
 			setOpenAlbumId(null);
@@ -224,12 +499,12 @@ export function SettingsAlbumsPage() {
 		}
 		setOpenAlbumId(albumId);
 		void loadAlbumDetails(albumId);
+		void loadAlbumShares(albumId);
 	};
 
 	const uploadPictures = async (albumId: string, files: File[]) => {
 		if (!files.length || uploadingAlbumId) return;
 
-		// Pre-flight validation against plan limits
 		const detail = albumDetails[albumId];
 		const currentTotal = detail?.content.length ?? 0;
 		const currentVideos = detail?.content.filter(
@@ -238,7 +513,6 @@ export function SettingsAlbumsPage() {
 
 		let candidates = [...files];
 
-		// Album item count
 		if (limits?.maxContentItemsPerAlbum != null) {
 			const remaining = limits.maxContentItemsPerAlbum - currentTotal;
 			if (remaining <= 0) {
@@ -257,7 +531,6 @@ export function SettingsAlbumsPage() {
 			}
 		}
 
-		// Per-file checks (size + video duration/count)
 		const valid: File[] = [];
 		let videoSlotsLeft = limits?.maxVideosPerAlbum != null
 			? limits.maxVideosPerAlbum - currentVideos
@@ -266,7 +539,6 @@ export function SettingsAlbumsPage() {
 		for (const file of candidates) {
 			const isVideo = file.type.startsWith("video/");
 
-			// File size
 			if (limits?.maxContentSize != null && file.size > limits.maxContentSize) {
 				toast.error(t("settings_albums.error_file_too_large", {
 					defaultValue: "\"{{name}}\" is too large (max {{max}}).",
@@ -276,7 +548,6 @@ export function SettingsAlbumsPage() {
 				continue;
 			}
 
-			// Video slot count
 			if (isVideo) {
 				if (videoSlotsLeft <= 0) {
 					toast.error(t("settings_albums.error_video_limit", {
@@ -288,7 +559,6 @@ export function SettingsAlbumsPage() {
 				}
 				videoSlotsLeft -= 1;
 
-				// Video duration
 				if (limits?.maxVideoLength != null || limits?.minVideoLength != null) {
 					const durationMs = await getVideoDurationMs(file);
 					if (durationMs != null) {
@@ -344,29 +614,43 @@ export function SettingsAlbumsPage() {
 		if (reorderingAlbumId || fromIndex < 0 || toIndex < 0) return;
 		if (toIndex >= content.length || fromIndex >= content.length) return;
 
-		const reordered = [...content];
-		const [movedItem] = reordered.splice(fromIndex, 1);
-		reordered.splice(toIndex, 0, movedItem);
-
+		const reordered = arrayMove(content, fromIndex, toIndex);
 		const contentIds = reordered.map((item) => Number.parseInt(item.contentId, 10));
 		if (contentIds.some((value) => Number.isNaN(value))) {
 			toast.error(t("settings_albums.error_reorder_unsupported"));
 			return;
 		}
 
+		setAlbumDetails((previous) => {
+			const detail = previous[albumId];
+			if (!detail) return previous;
+			return { ...previous, [albumId]: { ...detail, content: reordered } };
+		});
+
 		setReorderingAlbumId(albumId);
 		try {
 			await apiFunctions.reorderOwnAlbumContent({ albumId, contentIds });
+			toast.success(t("settings_albums.toast_reordered", { defaultValue: "Order saved." }));
+		} catch (reorderError) {
+			// Revert on failure
 			setAlbumDetails((previous) => {
 				const detail = previous[albumId];
 				if (!detail) return previous;
-				return { ...previous, [albumId]: { ...detail, content: reordered } };
+				return { ...previous, [albumId]: { ...detail, content: content } };
 			});
-		} catch (reorderError) {
 			toast.error(reorderError instanceof Error ? reorderError.message : t("settings_albums.error_reorder_fallback"));
 		} finally {
 			setReorderingAlbumId(null);
 		}
+	};
+
+	const handleAlbumMediaDragEnd = (albumId: string, content: AlbumMedia[]) => (event: DragEndEvent) => {
+		const { active, over } = event;
+		if (!over || active.id === over.id) return;
+		const from = content.findIndex((item) => item.contentId === String(active.id));
+		const to = content.findIndex((item) => item.contentId === String(over.id));
+		if (from === -1 || to === -1) return;
+		void reorderAlbumContent(albumId, content, from, to);
 	};
 
 	const deleteAlbumPicture = async (albumId: string, contentId: string) => {
@@ -400,7 +684,6 @@ export function SettingsAlbumsPage() {
 
 				{/* Combined plan summary + create album */}
 				<div className="surface-card overflow-hidden">
-					{/* Plan limits header — only when data is loaded */}
 					{limits && (
 						<>
 							<button
@@ -448,7 +731,6 @@ export function SettingsAlbumsPage() {
 								/>
 							</button>
 
-							{/* Expanded limit detail rows */}
 							{limitsExpanded && (
 								<div className="divide-y divide-[var(--border)]">
 									{limits.maxContentItemsPerAlbum != null && (
@@ -485,7 +767,7 @@ export function SettingsAlbumsPage() {
 						</>
 					)}
 
-					{/* Create album — always visible */}
+					{/* Create album */}
 					<div className="flex items-start gap-3 p-4">
 						<div className="shrink-0 rounded-2xl bg-pink-500/15 p-2.5 text-pink-400">
 							<FolderPlus className="h-5 w-5" />
@@ -555,6 +837,8 @@ export function SettingsAlbumsPage() {
 								const uploadInputId = `album-upload-${album.albumId}`;
 								const mediaCounts = countAlbumMedia(detail);
 								const coverUrl = detail?.content[0]?.thumbUrl || detail?.content[0]?.url || detail?.content[0]?.coverUrl;
+								const shareProfiles = albumShareProfiles[album.albumId];
+								const isLoadingShares = loadingSharesAlbumId === album.albumId;
 
 								return (
 									<div key={album.albumId} className="surface-card overflow-hidden">
@@ -595,6 +879,9 @@ export function SettingsAlbumsPage() {
 																limits?.maxVideosPerAlbum != null
 																	? `${mediaCounts.videos} / ${limits.maxVideosPerAlbum} ${t("settings_albums.media_videos", { defaultValue: "videos" })}`
 																	: mediaCounts.videos > 0 ? `${mediaCounts.videos} ${t("settings_albums.media_videos", { defaultValue: "videos" })}` : null,
+																shareProfiles?.length
+																	? `${shareProfiles.length} ${t("settings_albums.shared_count", { defaultValue: "shared" })}`
+																	: null,
 															].filter(Boolean).join(" · ") || `#${album.albumId}`
 															: `#${album.albumId}`}
 													</p>
@@ -654,12 +941,10 @@ export function SettingsAlbumsPage() {
 										{/* Expanded content */}
 										{isOpen && (
 											<div className="border-t border-[var(--border)] p-4">
+												{/* Media toolbar */}
 												<div className="mb-3 flex items-center justify-between gap-2">
-													<p className="text-xs text-[var(--text-muted)]">
-														{[
-															mediaCounts.images > 0 && `${mediaCounts.images} ${t("settings_albums.media_photos", { defaultValue: "photos" })}`,
-															mediaCounts.videos > 0 && `${mediaCounts.videos} ${t("settings_albums.media_videos", { defaultValue: "videos" })}`,
-														].filter(Boolean).join(" · ") || t("settings_albums.no_media")}
+													<p className="text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+														{t("settings_albums.section_content", { defaultValue: "Content" })}
 													</p>
 													<div className="flex items-center gap-1.5">
 														<input
@@ -679,7 +964,10 @@ export function SettingsAlbumsPage() {
 														</label>
 														<button
 															type="button"
-															onClick={() => void loadAlbumDetails(album.albumId, true)}
+															onClick={() => {
+																void loadAlbumDetails(album.albumId, true);
+																void loadAlbumShares(album.albumId, true);
+															}}
 															className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-[var(--border)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
 															title={t("settings_albums.refresh")}
 														>
@@ -688,73 +976,124 @@ export function SettingsAlbumsPage() {
 													</div>
 												</div>
 
+												{/* Media grid with DnD */}
 												{isLoadingDetails ? (
 													<p className="text-sm text-[var(--text-muted)]">{t("settings_albums.loading_media")}</p>
 												) : !detail || detail.content.length === 0 ? (
 													<p className="text-sm text-[var(--text-muted)]">{t("settings_albums.no_media")}</p>
 												) : (
-													<div className={`grid gap-2 ${isDesktop ? "grid-cols-6" : "grid-cols-3"}`}>
-														{detail.content.map((item, index) => {
-															const imageUrl = item.thumbUrl || item.url || item.coverUrl || "";
-															const canMoveUp = index > 0;
-															const canMoveDown = index < detail.content.length - 1;
-															const deleteKey = `${album.albumId}:${item.contentId}`;
-
-															return (
-																<div
-																	key={`${album.albumId}-${item.contentId}`}
-																	className="relative overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-2)]"
-																>
-																	{imageUrl ? (
-																		<img
-																			src={imageUrl}
-																			alt={t("settings_albums.media_alt", { index: index + 1 })}
-																			className="aspect-square w-full object-cover"
+													<DndContext
+														sensors={sensors}
+														onDragEnd={handleAlbumMediaDragEnd(album.albumId, detail.content)}
+													>
+														<SortableContext
+															items={detail.content.map((item) => item.contentId)}
+															strategy={rectSortingStrategy}
+														>
+															<div className={`grid gap-2 ${isDesktop ? "grid-cols-6" : "grid-cols-3"}`}>
+																{detail.content.map((item, index) => {
+																	const deleteKey = `${album.albumId}:${item.contentId}`;
+																	return (
+																		<SortableAlbumMediaItem
+																			key={`${album.albumId}-${item.contentId}`}
+																			item={item}
+																			index={index}
+																			isReordering={reorderingAlbumId === album.albumId}
+																			isDeleting={deletingContentKey === deleteKey}
+																			onDeleteClick={() => setConfirmDeleteContentKey(deleteKey)}
 																		/>
-																	) : (
-																		<div className="aspect-square w-full bg-[var(--surface)]" />
-																	)}
-																	{item.contentType?.startsWith("video/") && (
-																		<div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-																			<div className="flex h-8 w-8 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm">
-																				<Play className="h-4 w-4 fill-white text-white" />
-																			</div>
-																		</div>
-																	)}
-																	<div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-gradient-to-t from-black/70 to-transparent p-1.5">
-																		<div className="flex gap-1">
-																			<button
-																				type="button"
-																				onClick={() => void reorderAlbumContent(album.albumId, detail.content, index, index - 1)}
-																				disabled={!canMoveUp || reorderingAlbumId === album.albumId}
-																				className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-black/50 text-white backdrop-blur-sm disabled:opacity-30"
-																			>
-																				<ArrowUp className="h-3 w-3" />
-																			</button>
-																			<button
-																				type="button"
-																				onClick={() => void reorderAlbumContent(album.albumId, detail.content, index, index + 1)}
-																				disabled={!canMoveDown || reorderingAlbumId === album.albumId}
-																				className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-black/50 text-white backdrop-blur-sm disabled:opacity-30"
-																			>
-																				<ArrowDown className="h-3 w-3" />
-																			</button>
-																		</div>
-																		<button
-																			type="button"
-																			onClick={() => setConfirmDeleteContentKey(deleteKey)}
-																			disabled={deletingContentKey === deleteKey}
-																			className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-black/50 text-white backdrop-blur-sm disabled:opacity-30"
-																			title={t("settings_albums.delete")}
-																		>
-																			<Trash2 className="h-3 w-3" />
-																		</button>
-																	</div>
-																</div>
-															);
-														})}
-													</div>
+																	);
+																})}
+															</div>
+														</SortableContext>
+													</DndContext>
 												)}
+
+												{/* Shared with section */}
+												<div className="mt-4">
+													{/* Section header */}
+													<p className="mb-2 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+														{t("settings_albums.shared_with", { defaultValue: "Shared With" })}
+														{shareProfiles && shareProfiles.length > 0 && (
+															<span className="ml-2 rounded-full bg-[var(--surface-2)] px-2 py-0.5 text-[10px] font-bold tabular-nums normal-case tracking-normal">
+																{shareProfiles.length}
+															</span>
+														)}
+													</p>
+
+													{isLoadingShares ? (
+														<div className="space-y-2">
+															{[0, 1].map((i) => (
+																<div key={i} className="flex items-center gap-3 py-1">
+																	<div className="h-9 w-9 shrink-0 animate-pulse rounded-full bg-[var(--surface-2)]" />
+																	<div className="min-w-0 flex-1 space-y-1.5">
+																		<div className="h-3.5 w-28 animate-pulse rounded-full bg-[var(--surface-2)]" />
+																		<div className="h-3 w-16 animate-pulse rounded-full bg-[var(--surface-2)]" />
+																	</div>
+																	<div className="h-7 w-20 animate-pulse rounded-xl bg-[var(--surface-2)]" />
+																</div>
+															))}
+														</div>
+													) : !shareProfiles || shareProfiles.length === 0 ? (
+														<p className="text-sm text-[var(--text-muted)]">
+															{t("settings_albums.not_shared", { defaultValue: "Not shared with anyone." })}
+														</p>
+													) : (
+														<>
+															<div className="max-h-[260px] overflow-y-auto overflow-x-hidden">
+																<div className="divide-y divide-[var(--border)]">
+																	{shareProfiles.map((profile) => {
+																		const uKey = `${album.albumId}:${profile.profileId}`;
+																		const isUnsharing = unsharingKey === uKey;
+																		return (
+																			<div key={profile.profileId} className="flex items-center gap-3 py-2.5">
+																				<button
+																					type="button"
+																					onClick={() => navigate(`/profile/${profile.profileId}`, { state: { returnTo: location.pathname } })}
+																					className="flex min-w-0 flex-1 items-center gap-3 text-left transition-opacity hover:opacity-70"
+																				>
+																					<div className="h-9 w-9 shrink-0 overflow-hidden rounded-full">
+																						<ProfileImage
+																							src={profile.avatarUrl}
+																							alt={profile.displayName}
+																						/>
+																					</div>
+																					<div className="min-w-0 flex-1">
+																						<p className="truncate text-sm font-semibold">{profile.displayName}</p>
+																						<p className="text-xs text-[var(--text-muted)]">
+																							{t("settings_blocked.profile_id", { id: profile.profileId })}
+																						</p>
+																					</div>
+																				</button>
+																				<button
+																					type="button"
+																					onClick={() => void unshareAlbumFromProfile(album.albumId, profile.profileId)}
+																					disabled={isUnsharing}
+																					className="shrink-0 inline-flex items-center gap-1.5 rounded-xl border border-[var(--border)] px-2.5 py-1.5 text-xs font-semibold text-[var(--text-muted)] transition hover:border-red-400/60 hover:bg-red-500/5 hover:text-red-400 disabled:opacity-50"
+																				>
+																					<UserMinus className="h-3.5 w-3.5" />
+																					{isUnsharing
+																						? t("settings_albums.unsharing", { defaultValue: "Removing…" })
+																						: t("settings_albums.unshare", { defaultValue: "Remove" })}
+																				</button>
+																			</div>
+																		);
+																	})}
+																</div>
+															</div>
+															<button
+																type="button"
+																onClick={() => setConfirmUnshareAllAlbumId(album.albumId)}
+																disabled={unsharingAllAlbumId === album.albumId}
+																className="mt-3 inline-flex items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-400 transition hover:bg-red-500/20 disabled:opacity-50"
+															>
+																{unsharingAllAlbumId === album.albumId
+																	? t("settings_albums.unsharing_all", { defaultValue: "Removing…" })
+																	: t("settings_albums.unshare_all", { defaultValue: "Remove All" })}
+															</button>
+														</>
+													)}
+												</div>
 											</div>
 										)}
 									</div>
@@ -790,6 +1129,18 @@ export function SettingsAlbumsPage() {
 				}}
 				onCancel={() => setConfirmDeleteContentKey(null)}
 				isProcessing={deletingContentKey !== null}
+				confirmTone="danger"
+			/>
+
+			<ConfirmDialog
+				isOpen={confirmUnshareAllAlbumId !== null}
+				title={t("settings_albums.unshare_all_title", { defaultValue: "Remove All Shares" })}
+				message={t("settings_albums.unshare_all_message", { defaultValue: "This will remove access for everyone this album is shared with." })}
+				confirmLabel={unsharingAllAlbumId ? t("settings_albums.unsharing_all", { defaultValue: "Removing…" }) : t("settings_albums.unshare_all", { defaultValue: "Remove All" })}
+				cancelLabel={t("settings_albums.cancel")}
+				onConfirm={() => confirmUnshareAllAlbumId ? void unshareAllFromAlbum(confirmUnshareAllAlbumId) : undefined}
+				onCancel={() => setConfirmUnshareAllAlbumId(null)}
+				isProcessing={unsharingAllAlbumId !== null}
 				confirmTone="danger"
 			/>
 		</section>

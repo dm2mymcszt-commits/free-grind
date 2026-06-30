@@ -48,6 +48,12 @@ export const albumMediaSchema = z.object({
 	coverUrl: z.string().nullable().optional(),
 	processing: z.boolean().optional(),
 	remainingViews: z.coerce.number().int().optional(),
+	statusId: z.number().int().nullable().optional(),
+	rejectionId: z.number().int().nullable().optional(),
+});
+
+export const albumSharesResponseSchema = z.object({
+	profileIds: z.array(z.number().int()).optional().default([]),
 });
 
 export const albumDetailSchema = z.object({
@@ -156,3 +162,4 @@ export type SharedAlbum = z.infer<typeof sharedAlbumSchema>;
 export type SharedAlbumsResponse = z.infer<typeof sharedAlbumsResponseSchema>;
 export type AlbumExpirationType = z.infer<typeof albumExpirationTypeSchema>;
 export type SharedAlbumView = z.infer<typeof sharedAlbumViewSchema>;
+export type AlbumSharesResponse = z.infer<typeof albumSharesResponseSchema>;

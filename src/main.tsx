@@ -40,7 +40,7 @@ void (async () => {
 	if (!renderManager) {
 		// Only enable Hotswap OTA updates for child app mode in production.
 		// Manager mode should stay on the local manager UI bundle.
-		if (false && import.meta.env.PROD) {
+		if (import.meta.env.PROD) {
 			void markHotswapStartupReady().then(() => autoCheckAndInstallUpdate());
 		}
 
