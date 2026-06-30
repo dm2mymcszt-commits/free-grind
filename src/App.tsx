@@ -33,6 +33,7 @@ import { SettingsChatDataPage } from "./pages/app/SettingsChatDataPage.tsx";
 import { SettingsPrivacyPage } from "./pages/app/SettingsPrivacyPage.tsx";
 import { SettingsSavedPhrasesPage } from "./pages/app/SettingsSavedPhrasesPage.tsx";
 import { AnalyticsConsentPrompt } from "./components/AnalyticsConsentPrompt";
+import { PermissionsOnboarding } from "./components/PermissionsOnboarding";
 import { OutdatedVersionPrompt } from "./components/OutdatedVersionPrompt";
 import { PushNotificationBridge } from "./components/PushNotificationBridge";
 import { ChatRealtimeBridge } from "./components/ChatRealtimeBridge";
@@ -42,6 +43,7 @@ import { SmoothScroll } from "./components/SmoothScroll";
 import { usePreferences } from "./contexts/PreferencesContext";
 import ManagerApp from "./ManagerApp";
 import { getRuntimeContext } from "./services/runtimeContext";
+import { hasCompletedOnboarding } from "./utils/onboardingStorage";
 
 function ErrorPage() {
 	const { t } = useTranslation();
@@ -129,10 +131,15 @@ function ManagerRoutePage() {
 }
 
 export default function App() {
+	const [showOnboarding, setShowOnboarding] = useState(() => !hasCompletedOnboarding());
+
 	return (
 		<AuthProvider>
 			<PreferencesProvider>
 				<SmoothScroll>
+					{showOnboarding && (
+						<PermissionsOnboarding onComplete={() => setShowOnboarding(false)} />
+					)}
 					<ManagerModeRedirect />
 					<PushNotificationBridge />
 					<ChatRealtimeBridge />
