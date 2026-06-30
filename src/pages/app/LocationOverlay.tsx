@@ -8,7 +8,7 @@ import { appLog } from "../../utils/logger";
 import { decodeGeohash, encodeGeohash } from "../../utils/geohash";
 import { type GeocodeResult, type SelectedLocation, geocodeResultSchema } from "./GridPage.types";
 import { MapLocationPicker } from "./gridpage/components/MapLocationPicker";
-import { reverseGeocodeGeohash } from "./gridpage/geocoding";
+import { formatNominatimAddress, reverseGeocodeGeohash } from "./gridpage/geocoding";
 import {
 	addSavedLocation,
 	deleteSavedLocation,
@@ -246,7 +246,7 @@ export function LocationOverlay({ onClose }: LocationOverlayProps) {
 		setIsSearchingLocation(true);
 		try {
 			const res = await fetch(
-				`https://nominatim.openstreetmap.org/search?format=json&limit=6&q=${encodeURIComponent(query)}`,
+				`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&q=${encodeURIComponent(query)}`,
 				{ signal, headers: { "User-Agent": "Mozilla/5.0 (compatible)" } },
 			);
 			if (!res.ok) throw new Error("search failed");
@@ -288,11 +288,12 @@ export function LocationOverlay({ onClose }: LocationOverlayProps) {
 	const handleSelectSearchResult = (result: GeocodeResult) => {
 		const lat = Number(result.lat);
 		const lon = Number(result.lon);
-		// Nominatim's search results only carry display_name, formatted as
-		// "housenumber, road, district, city" — show that immediately for
-		// instant feedback, then swap in our own reverse-geocoded label
-		// (street+number, city, district) so it matches every other path.
-		setSelectedLocation({ lat, lon, label: result.display_name });
+		// Search results carry an address breakdown (addressdetails=1), so
+		// format it the same way as everywhere else right away; the
+		// reverse-geocode call below still refines it afterwards in case
+		// that lookup resolves a more precise/different address.
+		const initialLabel = (result.address && formatNominatimAddress(result.address, result.display_name)) ?? result.display_name;
+		setSelectedLocation({ lat, lon, label: initialLabel });
 		setLocationQuery("");
 		setLocationResults([]);
 		setLastSearchedQuery("");
@@ -475,7 +476,9 @@ export function LocationOverlay({ onClose }: LocationOverlayProps) {
 												<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--surface)] text-[var(--text-muted)]">
 													<MapPin className="h-3.5 w-3.5" />
 												</div>
-												<span className="text-sm text-[var(--text)] line-clamp-2">{result.display_name}</span>
+												<span className="text-sm text-[var(--text)] line-clamp-2">
+													{(result.address && formatNominatimAddress(result.address, result.display_name)) ?? result.display_name}
+												</span>
 											</button>
 										))}
 									</div>
