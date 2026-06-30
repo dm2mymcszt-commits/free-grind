@@ -20,6 +20,7 @@
  */
 
 import Database from "@tauri-apps/plugin-sql";
+import { BaseDirectory, exists, rename } from "@tauri-apps/plugin-fs";
 import type { ConversationEntry, Message } from "../types/messages";
 import type {
 	AlbumMediaUpsertInput,
@@ -37,9 +38,15 @@ import type {
 } from "../types/chat-db";
 import { appLog } from "../utils/logger";
 
-const CHAT_DB = "sqlite:chat.sqlite3";
+// Pre-multi-account file. Once a user is known, the active db switches to a
+// per-account file (see setActiveChatDbUser) — this name only stays in play
+// before login, and as the migration source for existing installs.
+const LEGACY_CHAT_DB_FILENAME = "chat.sqlite3";
+const LEGACY_CHAT_DB = `sqlite:${LEGACY_CHAT_DB_FILENAME}`;
 const SQLITE_BUSY_TIMEOUT_MS = 5_000;
 const SQLITE_LOCK_RETRY_DELAYS_MS = [30, 80, 180, 350] as const;
+
+let activeChatDbName = LEGACY_CHAT_DB;
 
 type ConversationRow = {
 	conversation_id: string;
@@ -134,7 +141,7 @@ let writeQueue: Promise<void> = Promise.resolve();
 async function getDb(): Promise<Database> {
 	if (!dbPromise) {
 		dbPromise = (async () => {
-			const db = await Database.load(CHAT_DB);
+			const db = await Database.load(activeChatDbName);
 			try {
 				await db.execute("PRAGMA journal_mode = WAL");
 				await db.execute("PRAGMA synchronous = NORMAL");
@@ -350,6 +357,63 @@ async function executeWithLockRetry(
 
 export async function initChatDb(): Promise<void> {
 	await getDb();
+}
+
+/**
+ * On the very first switch to a given account, if that account doesn't have
+ * its own db file yet but the pre-multi-account shared file does, rename it
+ * into place instead of starting that account fresh — preserves existing
+ * installs' chat history instead of silently losing it. Guarded by the
+ * target file's existence so it only ever runs once per account.
+ */
+async function migrateLegacyDbIfNeeded(profileId: number): Promise<void> {
+	const targetFilename = `chat-${profileId}.sqlite3`;
+	try {
+		const [targetExists, legacyExists] = await Promise.all([
+			exists(targetFilename, { baseDir: BaseDirectory.AppData }),
+			exists(LEGACY_CHAT_DB_FILENAME, { baseDir: BaseDirectory.AppData }),
+		]);
+		if (!targetExists && legacyExists) {
+			await rename(LEGACY_CHAT_DB_FILENAME, targetFilename, {
+				oldPathBaseDir: BaseDirectory.AppData,
+				newPathBaseDir: BaseDirectory.AppData,
+			});
+			appLog.info(`[chat-db] migrated legacy chat db -> ${targetFilename}`);
+		}
+	} catch (error) {
+		appLog.warn("[chat-db] legacy db migration check failed", error);
+	}
+}
+
+/**
+ * Points the chat db at the given account's own file, closing the previous
+ * connection first — each account's conversations/messages/media live in a
+ * fully separate sqlite file, so switching accounts can never show stale
+ * data from a previous one, and switching back needs no refetch.
+ */
+export async function setActiveChatDbUser(profileId: number | null): Promise<void> {
+	const nextDbName = profileId != null ? `sqlite:chat-${profileId}.sqlite3` : LEGACY_CHAT_DB;
+	if (nextDbName === activeChatDbName && dbPromise) {
+		return;
+	}
+
+	if (dbPromise) {
+		try {
+			const db = await dbPromise;
+			await db.close();
+		} catch (error) {
+			appLog.warn("[chat-db] failed to close previous connection", error);
+		}
+	}
+
+	dbPromise = null;
+	writeQueue = Promise.resolve();
+	activeChatDbName = nextDbName;
+
+	if (profileId != null) {
+		await migrateLegacyDbIfNeeded(profileId);
+		await getDb();
+	}
 }
 
 // ---------------------------------------------------------------------------

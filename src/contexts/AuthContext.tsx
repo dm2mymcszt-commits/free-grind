@@ -1,8 +1,11 @@
 import {
 	useReducer,
 	useEffect,
+	useRef,
+	useState,
 	ReactNode,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useApi } from "../hooks/useApi";
 import { useApiFunctions } from "../hooks/useApiFunctions";
 import toast from "react-hot-toast";
@@ -10,8 +13,11 @@ import {
 	AuthContext,
 	type AuthContextType,
 	type AuthState,
+	type SavedAccountMeta,
 } from "./auth-context";
 import { appLog } from "../utils/logger";
+import { setActiveChatDbUser } from "../services/chatDb";
+import { clearAllCaches } from "../pages/app/gridpage/cache";
 
 const AUTH_USER_ID_STORAGE_KEY = "fg-user-id";
 const PUSH_TOKEN_STORAGE_KEY = "fg-fcm-token";
@@ -47,6 +53,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 	const { callMethod, asAppError } = useApi();
 	const apiFunctions = useApiFunctions();
+	const queryClient = useQueryClient();
+	const [savedAccounts, setSavedAccounts] = useState<SavedAccountMeta[]>([]);
+	// undefined = not yet resolved once; distinguishes "app boot" (nothing to
+	// clear, just point the chat db at whatever account is already logged
+	// in) from an actual account change (switch/logout) afterwards.
+	const previousUserIdRef = useRef<number | null | undefined>(undefined);
+
+	const refreshSavedAccounts = async () => {
+		try {
+			const accounts = await callMethod("list_saved_accounts");
+			setSavedAccounts(accounts);
+		} catch (error) {
+			appLog.warn("[Auth] refreshSavedAccounts failed", asAppError(error) ?? error);
+		}
+	};
 
 	const checkAuth = async () => {
 		try {
@@ -56,6 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			if (result !== null) {
 				appLog.info("[Auth] checkAuth: active session found");
 				dispatch({ type: "SET_USER", payload: result });
+				void refreshSavedAccounts();
 			} else {
 				appLog.info("[Auth] checkAuth: no active session");
 				dispatch({ type: "CLEAR_USER" });
@@ -86,6 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			const result = await callMethod("login", { email, password });
 			appLog.info("[Auth] login: succeeded");
 			dispatch({ type: "SET_USER", payload: result.profileId });
+			void refreshSavedAccounts();
 			toast.success("Login successful");
 		} catch (error) {
 			const appError = asAppError(error);
@@ -108,6 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			const result = await callMethod("login_with_jwt", { token });
 			appLog.info("[Auth] loginWithJwt: succeeded");
 			dispatch({ type: "SET_USER", payload: result.profileId });
+			void refreshSavedAccounts();
 			toast.success("Token login successful");
 		} catch (error) {
 			const appError = asAppError(error);
@@ -137,10 +161,75 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		}
 	};
 
+	// Makes a previously saved account active without re-entering a
+	// password — the account-change effect above (watching state.userId)
+	// handles pointing the chat db and clearing caches once this resolves.
+	const switchAccount = async (profileId: string) => {
+		try {
+			appLog.info("[Auth] switchAccount: attempting", { profileId });
+			dispatch({ type: "SET_LOADING", payload: true });
+			dispatch({ type: "SET_ERROR", payload: null });
+
+			const result = await callMethod("switch_account", { profileId });
+			appLog.info("[Auth] switchAccount: succeeded");
+			dispatch({ type: "SET_USER", payload: result.profileId });
+			void refreshSavedAccounts();
+			toast.success("Switched account");
+		} catch (error) {
+			const appError = asAppError(error);
+			const message = appError?.prettyMessage || "Failed to switch account";
+			appLog.error("[Auth] switchAccount failed", { kind: appError?.kind, message });
+			dispatch({ type: "SET_ERROR", payload: message });
+			toast.error(message);
+			throw error;
+		} finally {
+			dispatch({ type: "SET_LOADING", payload: false });
+		}
+	};
+
+	const removeSavedAccount = async (profileId: string) => {
+		try {
+			await callMethod("remove_saved_account", { profileId });
+			setSavedAccounts((accounts) => accounts.filter((account) => account.profileId !== profileId));
+		} catch (error) {
+			const appError = asAppError(error);
+			const message = appError?.prettyMessage || "Failed to remove saved account";
+			appLog.error("[Auth] removeSavedAccount failed", { kind: appError?.kind, message });
+			toast.error(message);
+			throw error;
+		}
+	};
+
 	// Check auth on mount
 	useEffect(() => {
 		checkAuth();
 	}, []);
+
+	// Points the chat db at the active account's own file, and on an actual
+	// account change (not the initial boot resolution) clears every other
+	// account-scoped cache — otherwise the previous account's chats/profile
+	// data/blocked list would still show through until something happened
+	// to overwrite them.
+	useEffect(() => {
+		if (state.isLoading) {
+			return;
+		}
+
+		const previousUserId = previousUserIdRef.current;
+		previousUserIdRef.current = state.userId;
+
+		if (previousUserId === state.userId) {
+			return;
+		}
+
+		const isActualAccountChange = previousUserId !== undefined && previousUserId != null;
+		if (isActualAccountChange) {
+			clearAllCaches();
+			queryClient.clear();
+		}
+
+		void setActiveChatDbUser(state.userId);
+	}, [state.userId, state.isLoading, queryClient]);
 
 	// Register presence with Free Grind backend when a logged-in session is active.
 	// This must not depend only on `state.userId`, because consent/discovery settings can
@@ -270,6 +359,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		loginWithJwt,
 		logout,
 		checkAuth,
+		savedAccounts,
+		switchAccount,
+		removeSavedAccount,
 	};
 
 	return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

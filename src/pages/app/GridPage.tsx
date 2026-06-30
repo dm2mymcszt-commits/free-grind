@@ -32,6 +32,7 @@ import {
 	setCachedOwnShowDistance,
 } from "./gridpage/cache";
 import { isCurrentlyOnline } from "./gridpage/utils";
+import { setSavedAccountDisplayName, setSavedAccountPhotoHash } from "../../services/savedAccountProfiles";
 import { Avatar } from "../../components/ui/avatar";
 import {
 	type BrowseSortOption,
@@ -288,6 +289,7 @@ export function GridPage() {
 					const nextHash = firstHash ?? null;
 					setProfileImageHash(nextHash);
 					setCachedOwnProfilePhotoHash(nextHash);
+					setSavedAccountPhotoHash(String(userId), nextHash);
 				}
 			} catch {
 				if (!cancelled) setProfileImageHash(null);
@@ -314,6 +316,7 @@ export function GridPage() {
 					const name = typeof profile?.displayName === "string" ? profile.displayName : null;
 					setOwnDisplayName(name);
 					setCachedOwnDisplayName(name);
+					setSavedAccountDisplayName(String(userId), name);
 				}
 			} catch {
 				// non-critical
