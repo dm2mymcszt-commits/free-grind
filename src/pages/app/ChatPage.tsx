@@ -201,6 +201,7 @@ export function ChatPage() {
 	const messageElementRefs = useRef(new Map<string, HTMLDivElement>());
 	const selectedConversationIdRef = useRef<string | null>(null);
 	const conversationsRef = useRef<ConversationEntry[]>([]);
+	const threadMessagesRef = useRef<UiMessage[]>([]);
 	const messagePageKeyRef = useRef<string | null>(null);
 	const isLoadingOlderMessagesRef = useRef(false);
 	const preserveThreadScrollRef = useRef(false);
@@ -735,6 +736,10 @@ export function ChatPage() {
 		setConversationDirectory(conversations);
 	}, [conversations]);
 
+	useEffect(() => {
+		threadMessagesRef.current = threadMessages;
+	}, [threadMessages]);
+
 	// Shared by every archive trigger (ws-delete, 404-on-open): records the
 	// reason plus a displayable entry, sourced from whatever's already loaded
 	// and falling back to chatDb for anything not currently in memory.
@@ -1007,6 +1012,26 @@ export function ChatPage() {
 				if (reappearedArchivedIds.length > 0) {
 					for (const cid of reappearedArchivedIds) {
 						void unarchiveConversation(cid);
+					}
+					// Insert "SystemUnblocked" for conversations that were archived
+					// due to a block (ws_delete / offline-403). Conversations that
+					// disappeared due to a 404 ("not_found") are not block-related
+					// and don't get this marker.
+					const blockArchivedIds = reappearedArchivedIds.filter(
+						(cid) => archivedConversationsRef.current.get(cid)?.reason === "ws_delete",
+					);
+					if (blockArchivedIds.length > 0) {
+						const inserted = await Promise.all(
+							blockArchivedIds.map((cid) =>
+								chatDb.insertSystemMessage(cid, "SystemUnblocked").catch(() => null),
+							),
+						);
+						const valid = inserted.filter((m): m is Message => m !== null);
+						if (valid.length > 0) {
+							window.dispatchEvent(
+								new CustomEvent<Message[]>(CHAT_SYSTEM_MESSAGE_EVENT, { detail: valid }),
+							);
+						}
 					}
 					setArchivedConversations((previous) => {
 						const next = new Map(previous);
@@ -1886,14 +1911,23 @@ export function ChatPage() {
 					void archiveConversation(conversationId, "not_found");
 					archiveConversationsLocally([conversationId], "not_found");
 				}
-				if (apiError?.status === 404 || archivedConversationsRef.current.has(conversationId)) {
-					// Recover the same way whether the request literally 404d, or it
-					// failed for some other reason (e.g. 403) because a block's
-					// chat.v1.conversation.delete WS event raced ahead and archived
-					// this conversation while a poll/open was already in flight —
-					// show cached history instead of an error state either way (this
-					// conversation will keep failing forever now, so it isn't a
-					// transient failure; surfacing "failed to load" would be wrong).
+				if (apiError?.status === 403 && !archivedConversationsRef.current.has(conversationId)) {
+					// 403 means we were blocked while the app was offline — the
+					// conversation is permanently inaccessible but the local history
+					// is still valid. Archive it the same way a WS delete would,
+					// persist to chatDb so the next launch starts it as archived,
+					// and leave a local system message marking when it was detected.
+					void archiveConversation(conversationId, "ws_delete");
+					archiveConversationsLocally([conversationId], "ws_delete");
+					await chatDb.insertSystemMessage(conversationId, "SystemBlocked").catch(() => {});
+				}
+				if (apiError?.status === 404 || apiError?.status === 403 || archivedConversationsRef.current.has(conversationId)) {
+					// Recover the same way whether the request literally 404d/403d,
+					// or it failed because a block's chat.v1.conversation.delete WS
+					// event raced ahead and archived the conversation while a
+					// poll/open was already in flight — show cached history instead
+					// of an error state (this will keep failing forever, so
+					// surfacing "failed to load" would be wrong).
 					if (!older && selectedConversationIdRef.current === conversationId) {
 						const localData = await chatLog.readLog(conversationId);
 						setThreadMessages(localData.messages);
@@ -2561,6 +2595,28 @@ export function ChatPage() {
 			window.clearInterval(intervalId);
 		};
 	}, [loadThread, selectedConversationId, archivedConversations, threadMessages, userId]);
+
+	// Periodically re-check album share status for messages in the open thread
+	// so a revoked share triggers the "no longer shared" badge without the user
+	// having to reload the thread. Uses refs so the interval itself is stable
+	// and doesn't restart on every message change.
+	useEffect(() => {
+		if (!selectedConversationId) return;
+
+		const intervalId = window.setInterval(() => {
+			const cid = selectedConversationIdRef.current;
+			if (!cid) return;
+			const albumMessages = threadMessagesRef.current.filter(
+				(m) => m.type === "Album" || m.type === "ExpiringAlbum" || m.type === "ExpiringAlbumV2",
+			);
+			if (albumMessages.length === 0) return;
+			captureAlbumsForMessages(albumMessages, cid, (id) => service.getAlbum(id));
+		}, document.hidden ? 60_000 : 30_000);
+
+		return () => {
+			window.clearInterval(intervalId);
+		};
+	}, [selectedConversationId, service]);
 
 	useEffect(() => {
 		if (!selectedConversationId) {

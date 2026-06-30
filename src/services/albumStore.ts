@@ -19,6 +19,30 @@ import type { AlbumContentItem } from "../types/chat-page";
 import type { AlbumDetailsResponse } from "../types/chat-service";
 import type { StoredAlbumMedia } from "../types/chat-db";
 import { appLog } from "../utils/logger";
+import { isAutoDownloadMediaEnabled } from "../utils/mediaSettings";
+
+/**
+ * Mirrors newly-downloaded album content into the device's Downloads
+ * folder, if the user has opted in. Dynamically imported to avoid a
+ * circular dependency — saveMedia.ts imports toDataUri from mediaStore.ts,
+ * which this module also depends on.
+ */
+async function maybeAutoDownloadToDevice(
+	base64: string,
+	mimeType: string | null,
+	contentType: string | null,
+): Promise<void> {
+	if (!isAutoDownloadMediaEnabled()) {
+		return;
+	}
+	const isVideo = (contentType ?? mimeType ?? "").toLowerCase().startsWith("video/");
+	try {
+		const { saveMediaBytesToDeviceSilent } = await import("./saveMedia");
+		await saveMediaBytesToDeviceSilent(base64, mimeType ?? contentType, isVideo ? "video" : "image");
+	} catch (error) {
+		appLog.warn("[album-store] auto-download to device failed", error);
+	}
+}
 
 // Once a background refresh attempt confirms the server doesn't have this
 // album/share anymore (404 once truly gone, 403 once the share is stopped —
@@ -102,6 +126,16 @@ function updateAlbumCacheState(albumId: number, media: StoredAlbumMedia[]): void
 /** Synchronous read: is this album fully captured locally right now? */
 export function isAlbumCachedLocally(albumId: number): boolean {
 	return capturedAlbumIds.has(albumId);
+}
+
+/**
+ * Synchronous read: did a live API refresh for this album return 403/404
+ * this session, meaning the share is revoked/gone server-side?
+ * Used to immediately show a "no longer shared" badge in chat without
+ * waiting for the next thread-messages poll to update isViewable.
+ */
+export function isAlbumKnownRevoked(albumId: number): boolean {
+	return knownGoneAlbumIds.has(albumId);
 }
 
 /** Synchronous read of the cached cover image, or null if not cached (yet). */
@@ -238,6 +272,10 @@ async function captureAlbumContent(
 			remainingViews,
 			isViewable,
 		});
+
+		if (main?.base64) {
+			void maybeAutoDownloadToDevice(main.base64, main.mimeType, item.contentType);
+		}
 	} catch (error) {
 		appLog.warn(`[album-store] failed to capture album content ${compositeId}`, error);
 	}

@@ -20,6 +20,7 @@ import {
     ensureAlbumCacheChecked,
     getCachedAlbumCoverUri,
     isAlbumCachedLocally,
+    isAlbumKnownRevoked,
 } from "../../../services/albumStore";
 import { useAvatarCache } from "../../../hooks/useAvatarCache";
 import { resolveAvatarSrc } from "../../../services/avatarStore";
@@ -335,6 +336,21 @@ export function ChatThreadMessages({
 			if (m.type !== "Album" && m.type !== "ExpiringAlbum" && m.type !== "ExpiringAlbumV2") continue;
 			const aid = getMessageAlbumId(m);
 			if (aid) map.set(aid, m.messageId);
+		}
+		return map;
+	}, [threadMessages]);
+
+	// Whether the most recent share of each album is currently viewable —
+	// once an album is shared again, older messages for the same album
+	// shouldn't keep showing a "cached, no longer shared" badge.
+	const albumActivelyShared = useMemo(() => {
+		const map = new Map<number, boolean>();
+		for (const m of threadMessages) {
+			if (m.type !== "Album" && m.type !== "ExpiringAlbum" && m.type !== "ExpiringAlbumV2") continue;
+			const aid = getMessageAlbumId(m);
+			if (!aid) continue;
+			const body = m.body as Record<string, unknown> | null | undefined;
+			map.set(aid, body?.isViewable === true);
 		}
 		return map;
 	}, [threadMessages]);
@@ -807,6 +823,29 @@ export function ChatThreadMessages({
                         isAlbumMessage &&
                         !isAlbumCachedForMessage &&
                         (!isLatestShare || !msgBody?.isViewable);
+                    // Same expiry signal as isLocked, but for the case where it's
+                    // only avoided because we have a durable local copy — flag
+                    // that so it's clear the live share is actually gone. Suppressed
+                    // once the album has been shared again (its latest share is
+                    // viewable), even for older messages referencing the same album.
+                    //
+                    // isAlbumKnownRevoked is checked first: it comes from a
+                    // session-scoped in-memory set populated the moment a 403/404
+                    // is returned by the album API, which happens well before the
+                    // next thread-messages poll can update isViewable in the
+                    // message body. albumActivelyShared is skipped if the revoked
+                    // flag is already set, so the badge appears immediately on
+                    // revocation rather than only after the next poll.
+                    const isAlbumLiveAgain =
+                        albumId != null &&
+                        !isAlbumKnownRevoked(albumId) &&
+                        albumActivelyShared.get(albumId) === true;
+                    const isCachedExpiredAlbum =
+                        isAlbumMessage &&
+                        isAlbumCachedForMessage &&
+                        !isArchived &&
+                        !isAlbumLiveAgain &&
+                        (!isLatestShare || !msgBody?.isViewable);
 
                     return (
                     /* Use Fragment to allow rendering the separator and the message as a single map item */
@@ -870,7 +909,7 @@ export function ChatThreadMessages({
                                                         ? "bg-[var(--accent)] text-[var(--accent-contrast)] rounded-br-[3px]"
                                                         : "bg-[var(--surface-2)] text-[var(--text)] rounded-bl-[3px]"
                                                 }`
-                                    } ${isActiveSearchMatch ? "ring-2 ring-[var(--accent)]" : ""} ${localOnly ? "opacity-50" : ""}`}
+                                    } ${isActiveSearchMatch ? "ring-2 ring-[var(--accent)]" : ""} ${(localOnly || isCachedExpiredAlbum) ? "opacity-50" : ""}`}
                                 >
                                     <div className={isMediaOnlyBubble && hasReply ? `overflow-hidden rounded-2xl ${mine ? "rounded-br-[3px]" : "rounded-bl-[3px]"}` : "contents"}>
                                     {localOnly && !hasVisualMedia ? (
@@ -1075,7 +1114,7 @@ export function ChatThreadMessages({
                                                 <div className="absolute inset-0 flex items-center justify-center text-[var(--text-muted)]">
                                                     <Album className="h-8 w-8" />
                                                 </div>
-                                                {localOnly && (
+                                                {(localOnly || isCachedExpiredAlbum) && (
                                                     <span className="absolute left-2 top-2 z-10 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
                                                         {t("chat.thread.from_local_history")}
                                                     </span>
@@ -1083,12 +1122,10 @@ export function ChatThreadMessages({
                                                 {albumCover ? (
                                                     <>
                                                         <img
+                                                            key={albumCover}
                                                             src={albumCover}
                                                             alt={t("chat.thread.album_cover")}
                                                             className={`h-full w-full scale-110 object-cover ${isLocked ? "blur-sm opacity-50" : ""}`}
-                                                            onError={(event) => {
-                                                                event.currentTarget.style.display = "none";
-                                                            }}
                                                         />
                                                         {!isLocked && <div className="absolute inset-0 bg-black/25" />}
                                                     </>
@@ -1444,7 +1481,12 @@ export function ChatThreadMessages({
                                     ) : null}
 
                                     {isAlbumMessage && !isAlbumOnlyBubble ? (
-                                        <div className={`mb-2 rounded-xl border border-black/10 p-2 ${isLocked ? "bg-[var(--surface-2)] opacity-60" : "bg-[color-mix(in_srgb,var(--surface)_76%,transparent)]"}`}>
+                                        <div className={`relative mb-2 rounded-xl border border-black/10 p-2 ${isLocked ? "bg-[var(--surface-2)] opacity-60" : "bg-[color-mix(in_srgb,var(--surface)_76%,transparent)]"} ${(localOnly || isCachedExpiredAlbum) ? "opacity-50" : ""}`}>
+                                            {(localOnly || isCachedExpiredAlbum) && (
+                                                <span className="absolute right-2 top-2 z-10 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
+                                                    {t("chat.thread.from_local_history")}
+                                                </span>
+                                            )}
                                             {albumCover ? (
                                                 <img
                                                     src={albumCover}

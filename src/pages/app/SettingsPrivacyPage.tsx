@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { BarChart3, CheckCheck, Eye, ImageOff, ToggleRight } from "lucide-react";
+import { BarChart3, CheckCheck, Download, Eye, ImageOff, ToggleRight } from "lucide-react";
 import { BackToSettings } from "../../components/BackToSettings";
 import { ToggleRow } from "../../components/ui/toggle-row";
 import { usePreferences } from "../../contexts/PreferencesContext";
@@ -10,6 +10,10 @@ import {
 	SHOW_READ_RECEIPT_TOGGLE_KEY,
 	isRecordProfileViewsEnabled,
 } from "../../utils/privacy";
+import {
+	AUTO_DOWNLOAD_MEDIA_KEY,
+	isAutoDownloadMediaEnabled,
+} from "../../utils/mediaSettings";
 import {
 	readAnalyticsConsentChoice,
 	writeAnalyticsConsentChoice,
@@ -24,6 +28,7 @@ export function SettingsPrivacyPage() {
 	const [showReadReceiptToggle, setShowReadReceiptToggle] = useState(() => window.localStorage.getItem(SHOW_READ_RECEIPT_TOGGLE_KEY) !== "false");
 	const [recordProfileViews, setRecordProfileViews] = useState(() => isRecordProfileViewsEnabled());
 	const [analyticsConsent, setAnalyticsConsent] = useState<AnalyticsConsentChoice | null>(() => readAnalyticsConsentChoice());
+	const [autoDownloadMedia, setAutoDownloadMedia] = useState(() => isAutoDownloadMediaEnabled());
 
 	return (
 		<section className="app-screen">
@@ -93,6 +98,26 @@ export function SettingsPrivacyPage() {
 							description={t("customizability.blur_incoming_media_description")}
 							checked={blurIncomingMedia}
 							onChange={(checked) => void setPreferences({ blurIncomingMedia: checked })}
+						/>
+					</div>
+				</div>
+
+				{/* Media Storage */}
+				<div>
+					<p className="mb-2 px-1 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+						{t("privacy.media_storage", { defaultValue: "Media Storage" })}
+					</p>
+					<div className="surface-card overflow-hidden">
+						<ToggleRow
+							icon={<Download className="h-5 w-5" />}
+							iconClass="bg-emerald-500/15 text-emerald-400"
+							label={t("privacy.auto_download_media", { defaultValue: "Auto-download media" })}
+							description={t("privacy.auto_download_media_desc", { defaultValue: "Also save every cached photo and video to your device's Downloads folder, in addition to the app's local database." })}
+							checked={autoDownloadMedia}
+							onChange={(checked) => {
+								setAutoDownloadMedia(checked);
+								window.localStorage.setItem(AUTO_DOWNLOAD_MEDIA_KEY, String(checked));
+							}}
 						/>
 					</div>
 				</div>

@@ -14,6 +14,7 @@ import { fetch } from "@tauri-apps/plugin-http";
 import * as chatDb from "./chatDb";
 import type { MediaKind } from "../types/chat-db";
 import { appLog } from "../utils/logger";
+import { isAutoDownloadMediaEnabled } from "../utils/mediaSettings";
 
 // De-dupe concurrent fetches for the same key (e.g. multiple hydration passes
 // racing for the same image).
@@ -132,6 +133,31 @@ async function downloadAndStore(params: FetchAndStoreMediaParams): Promise<void>
 		fetchStatus: "ok",
 	});
 	setCachedMediaUri(mediaKey, toDataUri(fetched.mimeType, fetched.base64));
+
+	if (kind === "image" || kind === "video") {
+		void maybeAutoDownloadToDevice(fetched.base64, fetched.mimeType, kind);
+	}
+}
+
+/**
+ * Mirrors newly-cached media into the device's Downloads folder, if the user
+ * has opted in. Dynamically imported to avoid a circular dependency —
+ * saveMedia.ts itself imports toDataUri from this module.
+ */
+async function maybeAutoDownloadToDevice(
+	base64: string,
+	mimeType: string | null,
+	kind: "image" | "video",
+): Promise<void> {
+	if (!isAutoDownloadMediaEnabled()) {
+		return;
+	}
+	try {
+		const { saveMediaBytesToDeviceSilent } = await import("./saveMedia");
+		await saveMediaBytesToDeviceSilent(base64, mimeType, kind);
+	} catch (error) {
+		appLog.warn("[media-store] auto-download to device failed", error);
+	}
 }
 
 /**
