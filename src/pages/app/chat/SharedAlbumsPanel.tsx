@@ -15,7 +15,7 @@ import { resolveAvatarSrc } from "../../../services/avatarStore";
 import { AlbumViewerPanel } from "../shared-albums/AlbumViewerPanel";
 import { PhotoViewer, type PhotoViewerMedia } from "../../../components/PhotoViewer";
 import { getAllAlbums, getConversation } from "../../../services/chatDb";
-import { cacheAlbumFromSharedPage, getCachedAlbumCoverUri, getLocalAlbum } from "../../../services/albumStore";
+import { cacheAlbumFromSharedPage, captureAlbum, getCachedAlbumCoverUri, getLocalAlbum } from "../../../services/albumStore";
 import { toDataUri } from "../../../services/mediaStore";
 
 function getCounterparty(
@@ -254,6 +254,19 @@ export function SharedAlbumsPanel({ isDesktop }: Props) {
 						profileId: item.profileId,
 						profileName: item.profileName,
 						content: details.content,
+					});
+
+					// Fully cache every content item's bytes, same as albums
+					// shared in a chat thread — so it survives the share expiring.
+					void captureAlbum({
+						albumId: details.albumId,
+						albumName: details.albumName,
+						content: details.content,
+						ownerProfileId: String(item.profileId),
+						conversationId: item.conversationId,
+						sharedViaMessageId: null,
+						remainingViews: null,
+						isViewable: true,
 					});
 				}
 				setViewerIndex(0);

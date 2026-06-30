@@ -25,6 +25,8 @@ import type {
 	AlbumMediaUpsertInput,
 	AlbumUpsertInput,
 	ArchivedReason,
+	DownloadedMediaEntry,
+	FullDbExport,
 	MediaFileUpsertInput,
 	StoredAlbum,
 	StoredAlbumMedia,
@@ -114,6 +116,16 @@ type AvatarRow = {
 	data_base64: string;
 	mime_type: string | null;
 	fetched_at: number;
+};
+
+type DownloadedMediaRow = {
+	identifier: string;
+	platform: string;
+	album_id: string | null;
+	byte_size: number;
+	mime_type: string | null;
+	kind: string | null;
+	saved_at: number;
 };
 
 let dbPromise: Promise<Database> | null = null;
@@ -258,6 +270,18 @@ async function getDb(): Promise<Database> {
 						data_base64 TEXT NOT NULL,
 						mime_type TEXT,
 						fetched_at INTEGER NOT NULL
+					)
+				`);
+
+				await db.execute(`
+					CREATE TABLE IF NOT EXISTS downloaded_media (
+						identifier TEXT PRIMARY KEY,
+						platform TEXT NOT NULL,
+						album_id TEXT,
+						byte_size INTEGER NOT NULL,
+						mime_type TEXT,
+						kind TEXT,
+						saved_at INTEGER NOT NULL
 					)
 				`);
 			});
@@ -1106,4 +1130,235 @@ export async function getAvatar(mediaHash: string): Promise<StoredAvatar | null>
 				fetchedAt: row.fetched_at,
 			}
 		: null;
+}
+
+// ---------------------------------------------------------------------------
+// Downloaded media manifest (device-local bookkeeping for saved files —
+// never part of the portable chat-data export/import below, since asset
+// ids/content URIs/paths are meaningless on a different install/device)
+// ---------------------------------------------------------------------------
+
+function rowToDownloadedMediaEntry(row: DownloadedMediaRow): DownloadedMediaEntry {
+	return {
+		identifier: row.identifier,
+		platform: row.platform as DownloadedMediaEntry["platform"],
+		albumId: row.album_id,
+		byteSize: row.byte_size,
+		mimeType: row.mime_type,
+		kind: row.kind as DownloadedMediaEntry["kind"],
+		savedAt: row.saved_at,
+	};
+}
+
+export async function insertDownloadedMediaEntry(
+	entry: DownloadedMediaEntry,
+): Promise<void> {
+	const db = await getDb();
+
+	await executeWithLockRetry(db, "insert-downloaded-media", async () => {
+		await db.execute(
+			`
+			INSERT INTO downloaded_media (
+				identifier, platform, album_id, byte_size, mime_type, kind, saved_at
+			) VALUES ($1, $2, $3, $4, $5, $6, $7)
+			ON CONFLICT(identifier) DO UPDATE SET
+				platform = excluded.platform,
+				album_id = excluded.album_id,
+				byte_size = excluded.byte_size,
+				mime_type = excluded.mime_type,
+				kind = excluded.kind,
+				saved_at = excluded.saved_at
+			`,
+			[
+				entry.identifier,
+				entry.platform,
+				entry.albumId,
+				entry.byteSize,
+				entry.mimeType,
+				entry.kind,
+				entry.savedAt,
+			],
+		);
+	});
+}
+
+export async function getDownloadedMediaEntries(): Promise<DownloadedMediaEntry[]> {
+	const db = await getDb();
+	const rows = await db.select<DownloadedMediaRow[]>(
+		"SELECT * FROM downloaded_media ORDER BY saved_at DESC",
+	);
+	return rows.map(rowToDownloadedMediaEntry);
+}
+
+export async function getDownloadedMediaUsage(): Promise<{ count: number; totalBytes: number }> {
+	const db = await getDb();
+	const rows = await db.select<{ count: number; total_bytes: number | null }[]>(
+		"SELECT COUNT(*) as count, SUM(byte_size) as total_bytes FROM downloaded_media",
+	);
+	return {
+		count: rows[0]?.count ?? 0,
+		totalBytes: rows[0]?.total_bytes ?? 0,
+	};
+}
+
+export async function deleteDownloadedMediaEntries(identifiers: string[]): Promise<void> {
+	if (identifiers.length === 0) {
+		return;
+	}
+	const db = await getDb();
+
+	await executeWithLockRetry(db, "delete-downloaded-media", async () => {
+		const placeholders = identifiers.map((_, i) => `$${i + 1}`).join(", ");
+		await db.execute(
+			`DELETE FROM downloaded_media WHERE identifier IN (${placeholders})`,
+			identifiers,
+		);
+	});
+}
+
+// ---------------------------------------------------------------------------
+// Full database export/import (portable chat data — conversations, messages,
+// media bytes, albums, avatars. Excludes downloaded_media, which is local
+// device bookkeeping with no meaning on another install.)
+// ---------------------------------------------------------------------------
+
+const FULL_EXPORT_TABLES: {
+	name: keyof FullDbExport["tables"];
+	primaryKey: string;
+	columns: string[];
+}[] = [
+	{
+		name: "conversations",
+		primaryKey: "conversation_id",
+		columns: [
+			"conversation_id", "other_profile_id", "name", "participants_json",
+			"last_activity_timestamp", "unread_count", "pinned", "muted", "favorite",
+			"preview_json", "archived", "archived_reason", "archived_at",
+			"last_seen_in_inbox_at", "created_at", "updated_at",
+		],
+	},
+	{
+		name: "conversation_meta",
+		primaryKey: "conversation_id",
+		columns: ["conversation_id", "last_read_timestamp"],
+	},
+	{
+		name: "messages",
+		primaryKey: "message_id",
+		columns: [
+			"message_id", "conversation_id", "sender_id", "timestamp", "type",
+			"chat1_type", "body_json", "unsent", "local_history",
+			"reply_to_message_id", "reply_preview_json", "reactions_json",
+			"created_at", "updated_at",
+		],
+	},
+	{
+		name: "media_files",
+		primaryKey: "media_key",
+		columns: [
+			"media_key", "conversation_id", "message_id", "kind", "mime_type",
+			"data_base64", "view_once", "size_bytes", "fetch_status", "fetched_at",
+		],
+	},
+	{
+		name: "albums",
+		primaryKey: "album_id",
+		columns: [
+			"album_id", "owner_profile_id", "album_name", "conversation_id",
+			"shared_via_message_id", "preview_cover_base64", "preview_cover_mime_type",
+			"created_at", "updated_at",
+		],
+	},
+	{
+		name: "album_media",
+		primaryKey: "content_id",
+		columns: [
+			"content_id", "album_id", "content_type", "data_base64",
+			"thumb_data_base64", "remaining_views", "is_viewable", "fetched_at",
+		],
+	},
+	{
+		name: "avatars",
+		primaryKey: "media_hash",
+		columns: ["media_hash", "data_base64", "mime_type", "fetched_at"],
+	},
+];
+
+/**
+ * Dumps every portable chat-data table as raw rows, plus the exporting
+ * user's id so a later import can refuse to load another account's data.
+ */
+export async function exportFullDatabase(ownerUserId: number): Promise<FullDbExport> {
+	const db = await getDb();
+	const tables = {} as FullDbExport["tables"];
+
+	for (const table of FULL_EXPORT_TABLES) {
+		const rows = await db.select<Record<string, unknown>[]>(`SELECT * FROM ${table.name}`);
+		tables[table.name] = rows;
+	}
+
+	return {
+		version: 1,
+		exportedAt: Date.now(),
+		ownerUserId,
+		tables,
+	};
+}
+
+export type ImportFullDatabaseResult =
+	| { ok: true; rowsImported: number }
+	| { ok: false; error: "wrong_owner" | "invalid_format" };
+
+/**
+ * Merge-imports a previously exported database: every row is upserted
+ * (existing local rows are overwritten by the imported version on conflict,
+ * nothing not present in the import is touched or removed). Only column
+ * names from our own known schema are ever interpolated into SQL — unknown
+ * keys on an imported row are ignored rather than trusted, since the import
+ * file is arbitrary user-supplied JSON.
+ */
+export async function importFullDatabase(
+	data: FullDbExport,
+	currentUserId: number,
+): Promise<ImportFullDatabaseResult> {
+	if (!data || data.version !== 1 || typeof data.ownerUserId !== "number" || !data.tables) {
+		return { ok: false, error: "invalid_format" };
+	}
+	if (data.ownerUserId !== currentUserId) {
+		return { ok: false, error: "wrong_owner" };
+	}
+
+	const db = await getDb();
+	let rowsImported = 0;
+
+	await executeWithLockRetry(db, "import-full-database", async () => {
+		for (const table of FULL_EXPORT_TABLES) {
+			const rows = data.tables[table.name];
+			if (!Array.isArray(rows)) {
+				continue;
+			}
+
+			const placeholders = table.columns.map((_, i) => `$${i + 1}`).join(", ");
+			const updates = table.columns
+				.filter((c) => c !== table.primaryKey)
+				.map((c) => `${c} = excluded.${c}`)
+				.join(", ");
+			const sql = `
+				INSERT INTO ${table.name} (${table.columns.join(", ")})
+				VALUES (${placeholders})
+				ON CONFLICT(${table.primaryKey}) DO UPDATE SET ${updates}
+			`;
+
+			for (const row of rows) {
+				if (!row || typeof row !== "object" || (row as Record<string, unknown>)[table.primaryKey] == null) {
+					continue;
+				}
+				const values = table.columns.map((c) => (row as Record<string, unknown>)[c] ?? null);
+				await db.execute(sql, values);
+				rowsImported += 1;
+			}
+		}
+	});
+
+	return { ok: true, rowsImported };
 }

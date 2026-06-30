@@ -93,3 +93,37 @@ export type StoredAvatar = {
 	mimeType: string | null;
 	fetchedAt: number;
 };
+
+export type DownloadedMediaPlatform = "ios" | "android" | "desktop";
+
+/**
+ * One entry per file this app has saved to the device (Photos album asset
+ * id on iOS, MediaStore content URI on Android, relative path on desktop) —
+ * the manifest used to report total storage used and to delete precisely
+ * what we saved, nothing else. Device-local bookkeeping only — never part
+ * of the portable chat-data export/import.
+ */
+export type DownloadedMediaEntry = {
+	identifier: string;
+	platform: DownloadedMediaPlatform;
+	albumId: string | null;
+	byteSize: number;
+	mimeType: string | null;
+	kind: "image" | "video" | null;
+	savedAt: number;
+};
+
+export type FullDbExport = {
+	version: 1;
+	exportedAt: number;
+	ownerUserId: number;
+	tables: {
+		conversations: Record<string, unknown>[];
+		conversation_meta: Record<string, unknown>[];
+		messages: Record<string, unknown>[];
+		media_files: Record<string, unknown>[];
+		albums: Record<string, unknown>[];
+		album_media: Record<string, unknown>[];
+		avatars: Record<string, unknown>[];
+	};
+};

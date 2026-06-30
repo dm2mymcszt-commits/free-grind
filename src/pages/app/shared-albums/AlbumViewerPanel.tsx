@@ -125,7 +125,9 @@ export function AlbumViewerPanel({
 									<span className="h-1 w-1 shrink-0 rounded-full bg-[var(--border)]" />
 									<span className="text-xs text-[var(--text-muted)]">
 										{t("shared_albums.items_count", { count: viewer.content.length })}
-										{selectedViewerItem ? ` · ${viewerIndex + 1}/${viewer.content.length}` : ""}
+										{fullScreenIndex !== null && selectedViewerItem
+											? ` · ${viewerIndex + 1}/${viewer.content.length}`
+											: ""}
 									</span>
 								</div>
 							</div>
@@ -154,31 +156,6 @@ export function AlbumViewerPanel({
 							</button>
 						</div>
 					</div>
-
-					{!hideProfileActions && (
-						<div className="mt-4 flex gap-2">
-							<Button
-								type="button"
-								variant="secondary"
-								size="sm"
-								onClick={() => onMessageProfile(viewer.profileId)}
-								className="gap-1.5"
-							>
-								<MessageCircle className="h-4 w-4" />
-								{t("profile_details.message")}
-							</Button>
-							<Button
-								type="button"
-								variant="secondary"
-								size="sm"
-								onClick={() => onViewProfile(viewer.profileId)}
-								className="gap-1.5"
-							>
-								<UserRound className="h-4 w-4" />
-								{t("chat.view_profile")}
-							</Button>
-						</div>
-					)}
 				</header>
 
 				<div className="shrink-0 border-t border-[var(--border)]" />
@@ -242,6 +219,32 @@ export function AlbumViewerPanel({
 								);
 							})}
 						</div>
+					</div>
+				)}
+
+				{!hideProfileActions && (
+					<div
+						className="relative z-10 shrink-0 border-t border-[var(--border)] px-[var(--app-px)] pt-3 flex gap-2"
+						style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
+					>
+						<Button
+							type="button"
+							variant="secondary"
+							onClick={() => onMessageProfile(viewer.profileId)}
+							className="flex-1 gap-1.5"
+						>
+							<MessageCircle className="h-4 w-4" />
+							{t("profile_details.message")}
+						</Button>
+						<Button
+							type="button"
+							variant="secondary"
+							onClick={() => onViewProfile(viewer.profileId)}
+							className="flex-1 gap-1.5"
+						>
+							<UserRound className="h-4 w-4" />
+							{t("chat.view_profile")}
+						</Button>
 					</div>
 				)}
 			</div>

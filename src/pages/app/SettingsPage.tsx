@@ -27,7 +27,6 @@ import { appLog } from "../../utils/logger";
 import { useAuth } from "../../contexts/useAuth";
 import { useApi } from "../../hooks/useApi";
 import { usePreferences } from "../../contexts/PreferencesContext";
-import { exportAllLogs } from "../../services/chatLog";
 import {
 	checkForHotswapUpdate,
 	getCurrentHotswapChannel,
@@ -70,7 +69,6 @@ export function SettingsPage() {
 	const navigate = useNavigate();
 	const { callMethod, asAppError } = useApi();
 	const { developerMode, showDebugInfo, setPreferences } = usePreferences();
-	const [isExporting, setIsExporting] = useState(false);
 	const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
 	const [isSwitchingChannel, setIsSwitchingChannel] = useState(false);
 	const [isSyncingFcm, setIsSyncingFcm] = useState(false);
@@ -146,29 +144,6 @@ export function SettingsPage() {
 		} catch (error) {
 			const message = getErrorMessage(error, "Failed to log out.");
 			toast.error(message);
-		}
-	};
-
-	const handleExport = async () => {
-		setIsExporting(true);
-		try {
-			const data = await exportAllLogs();
-			const json = JSON.stringify(data, null, 2);
-			const blob = new Blob([json], { type: "application/json" });
-			const url = URL.createObjectURL(blob);
-			const a = document.createElement("a");
-			a.href = url;
-			a.download = `free-grind-export-${new Date().toISOString().slice(0, 10)}.json`;
-			document.body.appendChild(a);
-			a.click();
-			document.body.removeChild(a);
-			URL.revokeObjectURL(url);
-			toast.success("Chat export downloaded.");
-		} catch (error) {
-			const message = getErrorMessage(error, "Failed to export chat data.");
-			toast.error(message);
-		} finally {
-			setIsExporting(false);
 		}
 	};
 
@@ -415,13 +390,11 @@ export function SettingsPage() {
 							t("settings.saved_phrases_desc", { defaultValue: "Manage chat quick replies and import/export .txt" }),
 						)}
 						{navRow(
-							isExporting ? null : () => void handleExport(),
+							() => navigate("/settings/chat-data"),
 							<Download className="h-5 w-5" />,
 							"bg-teal-500/15 text-teal-400",
-							t("settings.export_chat"),
-							t("settings.export_chat_desc"),
-							isExporting ? <span className="text-xs text-[var(--text-muted)]">{t("settings.exporting")}</span> : undefined,
-							isExporting,
+							t("settings.chat_data", { defaultValue: "Chat Data" }),
+							t("settings.chat_data_desc", { defaultValue: "Downloaded media storage, and backup/restore your chat history" }),
 						)}
 					</div>
 				</div>

@@ -1186,14 +1186,12 @@ export function ChatPage() {
 				setNextPage(response.nextPage ?? null);
 				if (replace && response.entries.length > 0) {
 					setSelectedDesktopConversationId((previous) =>
-						previous &&
-						response.entries.some(
-							(conversation) => conversation.data.conversationId === previous,
-						)
-							? previous
-							: targetProfileId
-								? null
-								: (response.entries[0]?.data.conversationId ?? null),
+						// A selection already made (e.g. via the targetProfileId lookup,
+						// which can resolve through the local DB for a conversation
+						// that isn't on this inbox page) must never be clobbered just
+						// because it's absent from *this* page's entries — only default
+						// to the first conversation when nothing is selected yet.
+						previous ?? (targetProfileId ? null : (response.entries[0]?.data.conversationId ?? null)),
 					);
 				}
 			} catch (error) {
