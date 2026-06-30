@@ -2,12 +2,16 @@ import {
 	ArrowDown,
 	ArrowUp,
 	Check,
+	ChevronDown,
+	Film,
 	FolderPlus,
+	HardDrive,
 	Images,
 	Pencil,
 	Play,
 	Plus,
 	RefreshCcw,
+	Share2,
 	Trash2,
 	Upload,
 	X,
@@ -34,21 +38,50 @@ import { ApiFunctionError } from "../../services/apiFunctions";
 import {
 	type Album,
 	type AlbumDetail,
+	type AlbumLimits,
 	type AlbumMedia,
 } from "../../types/albums";
 import {
 	buildMultipartBody,
 	countAlbumMedia,
 	getVideodimensions,
+	getVideoDurationMs,
 } from "./settings-albums/settingsAlbumsUtils";
+
+function LimitRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+	return (
+		<div className="flex items-center gap-3 px-4 py-3">
+			<span className="shrink-0 text-[var(--text-muted)]">{icon}</span>
+			<p className="min-w-0 flex-1 text-sm text-[var(--text-muted)]">{label}</p>
+			<span className="shrink-0 rounded-lg bg-[var(--surface-2)] px-2.5 py-1 text-xs font-semibold tabular-nums">
+				{value}
+			</span>
+		</div>
+	);
+}
+
+function formatMs(ms: number): string {
+	const totalSeconds = Math.floor(ms / 1000);
+	if (totalSeconds < 60) return `${totalSeconds}s`;
+	const minutes = Math.floor(totalSeconds / 60);
+	const seconds = totalSeconds % 60;
+	return seconds === 0 ? `${minutes} min` : `${minutes}:${String(seconds).padStart(2, "0")} min`;
+}
 
 export function SettingsAlbumsPage() {
 	const { t } = useTranslation();
 	const isDesktop = useDesktopBreakpoint();
 	const apiFunctions = useApiFunctions();
 	const [albums, setAlbums] = useState<Album[]>([]);
-	const [maxAlbums, setMaxAlbums] = useState<number>(1);
-	const [subscriptionType, setSubscriptionType] = useState<string | null>(null);
+	const [limits, setLimits] = useState<AlbumLimits | null>(null);
+	const [limitsExpanded, setLimitsExpanded] = useState(false);
+	const maxAlbums = limits?.maxAlbums ?? 1;
+	const subscriptionType = limits?.subscriptionType ?? null;
+
+	const planLabel = useMemo(() => {
+		if (!subscriptionType) return null;
+		return subscriptionType.replace(/Albums$/i, "").trim() || subscriptionType;
+	}, [subscriptionType]);
 	const [isLoading, setIsLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [createName, setCreateName] = useState("");
@@ -76,8 +109,7 @@ export function SettingsAlbumsPage() {
 				apiFunctions.getOwnAlbumStorage(),
 			]);
 			setAlbums(ownAlbums);
-			setMaxAlbums(ownStorage.maxAlbums ?? 1);
-			setSubscriptionType(ownStorage.subscriptionType ?? null);
+			setLimits(ownStorage);
 
 			// Load covers in background without blocking
 			void Promise.all(
@@ -103,11 +135,6 @@ export function SettingsAlbumsPage() {
 
 	const canCreateAlbum = useMemo(() => albums.length < maxAlbums, [albums.length, maxAlbums]);
 
-	const freePlanHint = useMemo(() => {
-		const lowered = subscriptionType?.toLowerCase() ?? "";
-		const isFreeLikePlan = lowered.includes("free") || maxAlbums <= 1;
-		return isFreeLikePlan ? t("settings_albums.subtitle_free") : t("settings_albums.subtitle_paid");
-	}, [maxAlbums, subscriptionType, t]);
 
 	const handleCreateAlbum = async () => {
 		if (!canCreateAlbum || isCreating) return;
@@ -201,15 +228,104 @@ export function SettingsAlbumsPage() {
 
 	const uploadPictures = async (albumId: string, files: File[]) => {
 		if (!files.length || uploadingAlbumId) return;
+
+		// Pre-flight validation against plan limits
+		const detail = albumDetails[albumId];
+		const currentTotal = detail?.content.length ?? 0;
+		const currentVideos = detail?.content.filter(
+			(item) => item.contentType?.startsWith("video/"),
+		).length ?? 0;
+
+		let candidates = [...files];
+
+		// Album item count
+		if (limits?.maxContentItemsPerAlbum != null) {
+			const remaining = limits.maxContentItemsPerAlbum - currentTotal;
+			if (remaining <= 0) {
+				toast.error(t("settings_albums.error_album_full", {
+					defaultValue: "Album is full (max {{max}} items).",
+					max: limits.maxContentItemsPerAlbum,
+				}));
+				return;
+			}
+			if (candidates.length > remaining) {
+				toast(t("settings_albums.warning_truncated", {
+					defaultValue: "Only {{remaining}} slot(s) left — uploading the first {{remaining}} file(s).",
+					remaining,
+				}));
+				candidates = candidates.slice(0, remaining);
+			}
+		}
+
+		// Per-file checks (size + video duration/count)
+		const valid: File[] = [];
+		let videoSlotsLeft = limits?.maxVideosPerAlbum != null
+			? limits.maxVideosPerAlbum - currentVideos
+			: Infinity;
+
+		for (const file of candidates) {
+			const isVideo = file.type.startsWith("video/");
+
+			// File size
+			if (limits?.maxContentSize != null && file.size > limits.maxContentSize) {
+				toast.error(t("settings_albums.error_file_too_large", {
+					defaultValue: "\"{{name}}\" is too large (max {{max}}).",
+					name: file.name,
+					max: limits.maxContentSizeHumanReadable ?? `${Math.round(limits.maxContentSize / 1_048_576)} MiB`,
+				}));
+				continue;
+			}
+
+			// Video slot count
+			if (isVideo) {
+				if (videoSlotsLeft <= 0) {
+					toast.error(t("settings_albums.error_video_limit", {
+						defaultValue: "\"{{name}}\" skipped — album video limit reached (max {{max}}).",
+						name: file.name,
+						max: limits?.maxVideosPerAlbum,
+					}));
+					continue;
+				}
+				videoSlotsLeft -= 1;
+
+				// Video duration
+				if (limits?.maxVideoLength != null || limits?.minVideoLength != null) {
+					const durationMs = await getVideoDurationMs(file);
+					if (durationMs != null) {
+						if (limits.maxVideoLength != null && durationMs > limits.maxVideoLength) {
+							toast.error(t("settings_albums.error_video_too_long", {
+								defaultValue: "\"{{name}}\" is too long (max {{max}}).",
+								name: file.name,
+								max: formatMs(limits.maxVideoLength),
+							}));
+							continue;
+						}
+						if (limits.minVideoLength != null && durationMs < limits.minVideoLength) {
+							toast.error(t("settings_albums.error_video_too_short", {
+								defaultValue: "\"{{name}}\" is too short (min {{min}}).",
+								name: file.name,
+								min: formatMs(limits.minVideoLength),
+							}));
+							continue;
+						}
+					}
+				}
+			}
+
+			valid.push(file);
+		}
+
+		if (valid.length === 0) return;
+
 		setUploadingAlbumId(albumId);
 		try {
-			for (const file of files) {
+			for (const file of valid) {
 				const multipart = await buildMultipartBody(file);
 				const isVideo = file.type.startsWith("video/");
 				const dims = isVideo ? await getVideodimensions(file) : undefined;
 				await apiFunctions.uploadOwnAlbumContent({ albumId, multipart, ...dims });
 			}
-			toast.success(t("settings_albums.toast_picture_added", { count: files.length }));
+			toast.success(t("settings_albums.toast_picture_added", { count: valid.length }));
 			await loadAlbumDetails(albumId, true);
 		} catch (uploadError) {
 			toast.error(uploadError instanceof Error ? uploadError.message : t("settings_albums.error_upload_fallback"));
@@ -279,11 +395,97 @@ export function SettingsAlbumsPage() {
 				<header className="mb-1">
 					<BackToSettings />
 					<h1 className="app-title mb-1">{t("settings_albums.title")}</h1>
-					<p className="app-subtitle">{freePlanHint}</p>
+					<p className="app-subtitle">{t("settings_albums.subtitle", { defaultValue: "Manage your private albums." })}</p>
 				</header>
 
-				{/* Create album */}
+				{/* Combined plan summary + create album */}
 				<div className="surface-card overflow-hidden">
+					{/* Plan limits header — only when data is loaded */}
+					{limits && (
+						<>
+							<button
+								type="button"
+								onClick={() => setLimitsExpanded((p) => !p)}
+								className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-[var(--surface-2)]"
+							>
+								<div className="shrink-0 rounded-2xl bg-amber-500/15 p-2.5 text-amber-400">
+									<HardDrive className="h-5 w-5" />
+								</div>
+								<div className="min-w-0 flex-1">
+									<div className="flex items-center gap-2">
+										<p className="text-sm font-semibold leading-snug">
+											{t("settings_albums.limits_title", { defaultValue: "Plan Limits" })}
+										</p>
+										{planLabel && (
+											<span className="rounded-full bg-[var(--accent)]/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--accent-contrast)]">
+												{planLabel}
+											</span>
+										)}
+									</div>
+									<div className="mt-2 space-y-1.5">
+										<div className="h-2 w-full overflow-hidden rounded-full bg-[var(--surface-2)]">
+											<div
+												className="h-full rounded-full bg-[var(--accent)] transition-all duration-300"
+												style={{ width: `${Math.min(100, (albums.length / maxAlbums) * 100)}%` }}
+											/>
+										</div>
+										<div className="flex items-center justify-between gap-3">
+											<p className="min-w-0 truncate text-xs text-[var(--text-muted)]">
+												{[
+													limits.maxContentItemsPerAlbum != null && t("settings_albums.limits_items_short", { defaultValue: "{{n}} items/album", n: limits.maxContentItemsPerAlbum }),
+													limits.maxContentSizeHumanReadable != null && limits.maxContentSizeHumanReadable,
+													limits.maxVideosPerAlbum != null && t("settings_albums.limits_videos_short", { defaultValue: "{{n}} videos/album", n: limits.maxVideosPerAlbum }),
+												].filter(Boolean).join(" · ")}
+											</p>
+											<span className="shrink-0 text-xs tabular-nums text-[var(--text-muted)]">
+												{albums.length} / {maxAlbums} {t("settings_albums.limits_albums", { defaultValue: "albums" })}
+											</span>
+										</div>
+									</div>
+								</div>
+								<ChevronDown
+									className={`h-4 w-4 shrink-0 text-[var(--text-muted)] transition-transform duration-200 ${limitsExpanded ? "rotate-180" : ""}`}
+								/>
+							</button>
+
+							{/* Expanded limit detail rows */}
+							{limitsExpanded && (
+								<div className="divide-y divide-[var(--border)]">
+									{limits.maxContentItemsPerAlbum != null && (
+										<LimitRow icon={<Images className="h-4 w-4" />} label={t("settings_albums.limits_items_per_album", { defaultValue: "Items per Album" })} value={String(limits.maxContentItemsPerAlbum)} />
+									)}
+									{limits.maxVideosPerAlbum != null && (
+										<LimitRow icon={<Film className="h-4 w-4" />} label={t("settings_albums.limits_videos_per_album", { defaultValue: "Videos per Album" })} value={String(limits.maxVideosPerAlbum)} />
+									)}
+									{limits.maxVideoLength != null && (
+										<LimitRow icon={<Film className="h-4 w-4" />} label={t("settings_albums.limits_max_video_length", { defaultValue: "Max Video Length" })} value={formatMs(limits.maxVideoLength)} />
+									)}
+									{limits.minVideoLength != null && (
+										<LimitRow icon={<Film className="h-4 w-4" />} label={t("settings_albums.limits_min_video_length", { defaultValue: "Min Video Length" })} value={formatMs(limits.minVideoLength)} />
+									)}
+									{limits.maxContentSizeHumanReadable != null && (
+										<LimitRow icon={<HardDrive className="h-4 w-4" />} label={t("settings_albums.limits_storage", { defaultValue: "Max File Size" })} value={limits.maxContentSizeHumanReadable} />
+									)}
+									{limits.maxShares != null && (
+										<LimitRow icon={<Share2 className="h-4 w-4" />} label={t("settings_albums.limits_shares", { defaultValue: "Shares" })} value={String(limits.maxShares)} />
+									)}
+									{limits.maxShareableAlbums != null && (
+										<LimitRow icon={<Share2 className="h-4 w-4" />} label={t("settings_albums.limits_shareable_albums", { defaultValue: "Shareable Albums" })} value={String(limits.maxShareableAlbums)} />
+									)}
+									{limits.maxViewableAlbums != null && (
+										<LimitRow icon={<Images className="h-4 w-4" />} label={t("settings_albums.limits_viewable_albums", { defaultValue: "Viewable Albums (others)" })} value={String(limits.maxViewableAlbums)} />
+									)}
+									{limits.maxViewableVideos != null && (
+										<LimitRow icon={<Film className="h-4 w-4" />} label={t("settings_albums.limits_viewable_videos", { defaultValue: "Viewable Videos (others)" })} value={String(limits.maxViewableVideos)} />
+									)}
+								</div>
+							)}
+
+							<div className="border-t border-[var(--border)]" />
+						</>
+					)}
+
+					{/* Create album — always visible */}
 					<div className="flex items-start gap-3 p-4">
 						<div className="shrink-0 rounded-2xl bg-pink-500/15 p-2.5 text-pink-400">
 							<FolderPlus className="h-5 w-5" />
@@ -386,7 +588,14 @@ export function SettingsAlbumsPage() {
 												{!isEditing && (
 													<p className="text-xs text-[var(--text-muted)]">
 														{detail
-															? `${detail.content.length} ${t("settings_albums.media_title").toLowerCase()}`
+															? [
+																limits?.maxContentItemsPerAlbum != null
+																	? `${mediaCounts.total} / ${limits.maxContentItemsPerAlbum} ${t("settings_albums.media_items", { defaultValue: "items" })}`
+																	: mediaCounts.total > 0 ? `${mediaCounts.total} ${t("settings_albums.media_items", { defaultValue: "items" })}` : null,
+																limits?.maxVideosPerAlbum != null
+																	? `${mediaCounts.videos} / ${limits.maxVideosPerAlbum} ${t("settings_albums.media_videos", { defaultValue: "videos" })}`
+																	: mediaCounts.videos > 0 ? `${mediaCounts.videos} ${t("settings_albums.media_videos", { defaultValue: "videos" })}` : null,
+															].filter(Boolean).join(" · ") || `#${album.albumId}`
 															: `#${album.albumId}`}
 													</p>
 												)}
@@ -447,8 +656,10 @@ export function SettingsAlbumsPage() {
 											<div className="border-t border-[var(--border)] p-4">
 												<div className="mb-3 flex items-center justify-between gap-2">
 													<p className="text-xs text-[var(--text-muted)]">
-														{t("settings_albums.media_counts_images", { count: mediaCounts.images })}
-														{mediaCounts.nonImages > 0 ? t("settings_albums.media_counts_total", { count: mediaCounts.total }) : ""}
+														{[
+															mediaCounts.images > 0 && `${mediaCounts.images} ${t("settings_albums.media_photos", { defaultValue: "photos" })}`,
+															mediaCounts.videos > 0 && `${mediaCounts.videos} ${t("settings_albums.media_videos", { defaultValue: "videos" })}`,
+														].filter(Boolean).join(" · ") || t("settings_albums.no_media")}
 													</p>
 													<div className="flex items-center gap-1.5">
 														<input

@@ -8,7 +8,7 @@ import { ToggleRow } from "../../components/ui/toggle-row";
 import { useAuth } from "../../contexts/useAuth";
 import * as chatDb from "../../services/chatDb";
 import { deleteAllDownloadedMedia, getDownloadedMediaUsage } from "../../services/saveMedia";
-import { AUTO_DOWNLOAD_MEDIA_KEY, isAutoDownloadMediaEnabled } from "../../utils/mediaSettings";
+import { isAutoDownloadMediaEnabled, setAutoDownloadMediaEnabled } from "../../utils/mediaSettings";
 import { appLog } from "../../utils/logger";
 import type { FullDbExport } from "../../types/chat-db";
 
@@ -163,7 +163,7 @@ export function SettingsChatDataPage() {
 							checked={autoDownloadMedia}
 							onChange={(checked) => {
 								setAutoDownloadMedia(checked);
-								window.localStorage.setItem(AUTO_DOWNLOAD_MEDIA_KEY, String(checked));
+								void setAutoDownloadMediaEnabled(checked);
 							}}
 						/>
 

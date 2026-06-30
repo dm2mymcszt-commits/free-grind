@@ -1,8 +1,7 @@
 /**
  * ChatRealtimeBridge — runs the chat WebSocket app-wide while the user is
- * authenticated, so incoming messages always trigger an in-app toast (and a
- * desktop notification on supported platforms) regardless of the current
- * route.
+ * authenticated, so incoming messages always trigger an in-app toast
+ * regardless of the current route.
  *
  * Architecture:
  * - Owns the singleton ChatRealtimeManager (previously owned by ChatPage).
@@ -12,10 +11,19 @@
  * - Persists incoming messages to chatLog and shows a toast — suppressed
  *   when the user is already viewing the conversation in the foreground or
  *   when the message was sent by the current user.
+ * - Foreground system notifications: since this WebSocket delivers events
+ *   instantly while FCM always carries relay delay, incoming messages/taps
+ *   trigger an OS notification right here (only while the document is
+ *   visible — backgrounded delivery stays on FCM). Desktop/iOS go through
+ *   `notifyLocal()`; Android goes through the native `FreeGrindBridge`, whose
+ *   `NotificationPoster` dedupes against the later FCM push for the same
+ *   message/tap so it never shows twice.
  */
 
 import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { platform } from "@tauri-apps/plugin-os";
 import { useAuth } from "../contexts/useAuth";
 import { useApi } from "../hooks/useApi";
 import { ChatRealtimeManager, setActiveRealtimeManager } from "../services/chatRealtime";
@@ -29,13 +37,37 @@ import { toggleArchiveOnConversationDelete } from "../services/conversationArchi
 import { messageSchema, type Message } from "../types/messages";
 import type { RealtimeEnvelope, RealtimeStatus } from "../types/chat-realtime";
 import { appLog } from "../utils/logger";
-import { getMediaCaptureTarget, getOtherParticipant } from "../pages/app/chat/chatUtils";
+import {
+	getMediaCaptureTarget,
+	getOtherParticipant,
+	getMessagePreviewLabel,
+} from "../pages/app/chat/chatUtils";
 import { fetchAndStoreMedia } from "../services/mediaStore";
 import { captureAlbumsForMessages } from "../services/albumStore";
 import { getConversation } from "../services/conversationDirectory";
 import { shouldAutoBlock, getMatchedForbiddenWord, notifyAutoBlock } from "../utils/autoblock";
 import { useApiFunctions } from "../hooks/useApiFunctions";
 import { isReadReceiptsHidden } from "../utils/privacy";
+import { notifyLocal } from "../services/localNotify";
+
+let cachedIsAndroid: boolean | null = null;
+function isAndroidRuntime(): boolean {
+	if (cachedIsAndroid != null) return cachedIsAndroid;
+	if (!isTauriRuntime()) {
+		cachedIsAndroid = false;
+		return false;
+	}
+	try {
+		cachedIsAndroid = platform() === "android";
+	} catch {
+		cachedIsAndroid = false;
+	}
+	return cachedIsAndroid;
+}
+
+function isAppForeground(): boolean {
+	return typeof document === "undefined" || document.visibilityState === "visible";
+}
 
 export const CHAT_REALTIME_EVENT = "fg:chat-realtime-event";
 export const CHAT_REALTIME_STATUS = "fg:chat-realtime-status";
@@ -175,11 +207,17 @@ export function ChatRealtimeBridge() {
 	const { callMethod } = useApi();
     const apiFunctions = useApiFunctions();
 	const location = useLocation();
+	const { t } = useTranslation();
 
 	const callMethodRef = useRef(callMethod);
 	useEffect(() => {
 		callMethodRef.current = callMethod;
 	}, [callMethod]);
+
+	const tRef = useRef(t);
+	useEffect(() => {
+		tRef.current = t;
+	}, [t]);
 
 	const pathRef = useRef(location.pathname);
 	useEffect(() => {
@@ -207,6 +245,84 @@ export function ChatRealtimeBridge() {
 			transport: isTauriRuntime() ? "tauri" : "browser",
 		});
 		*/
+
+		// Foreground-only: fires the OS notification straight from the
+		// WebSocket event so it shows up instantly, before FCM's delayed
+		// push would otherwise be the only source. Android routes through
+		// the native bridge (which dedupes against that later FCM push);
+		// desktop/iOS have no competing push channel, so they go straight
+		// to notifyLocal().
+		const triggerIncomingMessageNotification = (m: Message) => {
+			if (!isAppForeground()) return;
+
+			const conv = getConversation(m.conversationId);
+			const other = conv ? getOtherParticipant(conv, userIdRef.current) : null;
+			const senderName = conv?.data.name?.trim() || "Someone";
+			const bodyText = getMessagePreviewLabel(m, tRef.current);
+
+			if (isAndroidRuntime()) {
+				const payload = {
+					event: "received",
+					source: "realtime",
+					receivedAt: Date.now(),
+					senderName,
+					bodyText,
+					isTap: false,
+					action: `chat:${m.conversationId}`,
+					conversationId: m.conversationId,
+					senderId: String(m.senderId),
+					messageType: m.type,
+					rawData: {
+						senderProfileImageMediaHash: other?.primaryMediaHash ?? null,
+					},
+				};
+				try {
+					window.FreeGrindBridge?.postLocalNotification?.(JSON.stringify(payload));
+				} catch (error) {
+					appLog.warn("[chat-ws:bridge] postLocalNotification failed", error);
+				}
+				return;
+			}
+
+			void notifyLocal({ title: senderName, body: bodyText, group: m.conversationId });
+		};
+
+		const triggerTapNotification = (tap: TapReceivedDetail) => {
+			if (!isAppForeground()) return;
+
+			const senderName = tap.displayName || "Someone";
+			const bodyText = tap.isMutual ? "Tapped you back" : "Tapped you";
+
+			if (isAndroidRuntime()) {
+				const payload = {
+					event: "received",
+					source: "realtime",
+					receivedAt: Date.now(),
+					senderName,
+					bodyText,
+					isTap: true,
+					action: "taps",
+					conversationId: null,
+					senderId: tap.profileId,
+					messageType: null,
+					rawData: {
+						senderProfileId: tap.profileId,
+						senderProfileImageMediaHash: tap.imageHash ?? null,
+					},
+				};
+				try {
+					window.FreeGrindBridge?.postLocalNotification?.(JSON.stringify(payload));
+				} catch (error) {
+					appLog.warn("[chat-ws:bridge] postLocalNotification failed (tap)", error);
+				}
+				return;
+			}
+
+			const onTapsRoute =
+				pathRef.current === "/interest" || pathRef.current.startsWith("/interest/");
+			if (onTapsRoute) return;
+			void notifyLocal({ title: senderName, body: bodyText, group: "taps" });
+		};
 
 		const manager = new ChatRealtimeManager({
 			url: "wss://grindr.mobi/v1/ws",
@@ -244,6 +360,7 @@ export function ChatRealtimeBridge() {
 								detail: tap,
 							}),
 						);
+						triggerTapNotification(tap);
 					}
 				}
 
@@ -369,6 +486,7 @@ export function ChatRealtimeBridge() {
 								).catch((err) => {
 									appLog.warn("[chat-ws:bridge] failed to increment unread", err);
 								});
+								triggerIncomingMessageNotification(m);
 							}
 						}
 					}

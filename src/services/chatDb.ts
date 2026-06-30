@@ -291,6 +291,31 @@ async function getDb(): Promise<Database> {
 						saved_at INTEGER NOT NULL
 					)
 				`);
+
+				await db.execute(`
+					CREATE TABLE IF NOT EXISTS settings (
+						key TEXT PRIMARY KEY,
+						value TEXT NOT NULL
+					)
+				`);
+
+				await db.execute(`
+					CREATE TABLE IF NOT EXISTS saved_phrases (
+						phrase TEXT PRIMARY KEY,
+						created_at INTEGER NOT NULL
+					)
+				`);
+
+				await db.execute(`
+					CREATE TABLE IF NOT EXISTS saved_locations (
+						id TEXT PRIMARY KEY,
+						name TEXT NOT NULL,
+						geohash TEXT NOT NULL,
+						lat REAL NOT NULL,
+						lon REAL NOT NULL,
+						created_at INTEGER NOT NULL
+					)
+				`);
 			});
 
 			return db;
@@ -1429,4 +1454,277 @@ export async function importFullDatabase(
 	});
 
 	return { ok: true, rowsImported };
+}
+
+// ---------------------------------------------------------------------------
+// Settings (generic per-profile key/value store — JSON-encoded values)
+// ---------------------------------------------------------------------------
+
+export async function getSetting<T>(key: string): Promise<T | null> {
+	const db = await getDb();
+	const rows = await db.select<{ value: string }[]>(
+		"SELECT value FROM settings WHERE key = $1",
+		[key],
+	);
+	if (!rows[0]) {
+		return null;
+	}
+	try {
+		return JSON.parse(rows[0].value) as T;
+	} catch (error) {
+		appLog.error("[chat-db] failed to parse setting", { key, error });
+		return null;
+	}
+}
+
+export async function setSetting(key: string, value: unknown): Promise<void> {
+	const db = await getDb();
+
+	await executeWithLockRetry(db, "set-setting", async () => {
+		await db.execute(
+			`
+			INSERT INTO settings (key, value) VALUES ($1, $2)
+			ON CONFLICT(key) DO UPDATE SET value = excluded.value
+			`,
+			[key, JSON.stringify(value)],
+		);
+	});
+}
+
+// ---------------------------------------------------------------------------
+// Saved phrases
+// ---------------------------------------------------------------------------
+
+export async function getAllSavedPhrases(): Promise<string[]> {
+	const db = await getDb();
+	const rows = await db.select<{ phrase: string }[]>(
+		"SELECT phrase FROM saved_phrases ORDER BY created_at ASC",
+	);
+	return rows.map((row) => row.phrase);
+}
+
+/** Replace-all: mirrors the old localStorage-backed saveSavedPhrases semantics. */
+export async function setSavedPhrases(phrases: string[]): Promise<string[]> {
+	const db = await getDb();
+	const now = Date.now();
+
+	await executeWithLockRetry(db, "set-saved-phrases", async () => {
+		await db.execute("DELETE FROM saved_phrases");
+		for (const phrase of phrases) {
+			await db.execute(
+				"INSERT INTO saved_phrases (phrase, created_at) VALUES ($1, $2) ON CONFLICT(phrase) DO NOTHING",
+				[phrase, now],
+			);
+		}
+	});
+
+	return getAllSavedPhrases();
+}
+
+// ---------------------------------------------------------------------------
+// Generic per-profile settings consumed only inside a single component
+// (no synchronous hot-path access needed) just reuse getSetting/setSetting
+// directly with a dedicated key — see PreferencesContext's sibling, the
+// chat-page "hide pinned" toggle, browse filters, recent gifs, and seen
+// timestamps below.
+// ---------------------------------------------------------------------------
+
+export async function getRecentGifs<T>(): Promise<T[]> {
+	const stored = await getSetting<T[]>("recentGifs");
+	return Array.isArray(stored) ? stored : [];
+}
+
+export async function setRecentGifs<T>(gifs: T[]): Promise<T[]> {
+	await setSetting("recentGifs", gifs);
+	return gifs;
+}
+
+// ---------------------------------------------------------------------------
+// Saved locations
+// ---------------------------------------------------------------------------
+
+export interface StoredSavedLocation {
+	id: string;
+	name: string;
+	geohash: string;
+	lat: number;
+	lon: number;
+}
+
+type SavedLocationRow = StoredSavedLocation & { created_at: number };
+
+export async function getAllSavedLocations(): Promise<StoredSavedLocation[]> {
+	const db = await getDb();
+	const rows = await db.select<SavedLocationRow[]>(
+		"SELECT id, name, geohash, lat, lon FROM saved_locations ORDER BY created_at ASC",
+	);
+	return rows.map(({ id, name, geohash, lat, lon }) => ({ id, name, geohash, lat, lon }));
+}
+
+export async function insertSavedLocation(
+	input: StoredSavedLocation,
+): Promise<StoredSavedLocation[]> {
+	const db = await getDb();
+
+	await executeWithLockRetry(db, "insert-saved-location", async () => {
+		await db.execute(
+			`
+			INSERT INTO saved_locations (id, name, geohash, lat, lon, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			`,
+			[input.id, input.name, input.geohash, input.lat, input.lon, Date.now()],
+		);
+	});
+
+	return getAllSavedLocations();
+}
+
+export async function deleteSavedLocationRow(id: string): Promise<StoredSavedLocation[]> {
+	const db = await getDb();
+
+	await executeWithLockRetry(db, "delete-saved-location", async () => {
+		await db.execute("DELETE FROM saved_locations WHERE id = $1", [id]);
+	});
+
+	return getAllSavedLocations();
+}
+
+// ---------------------------------------------------------------------------
+// One-time migration of legacy global localStorage settings into the
+// profile that's active the moment this code first ships — every other
+// profile is meant to start with defaults, so this must run exactly once
+// across the whole app's lifetime (not once per profile db), guarded by a
+// flag outside any per-profile file.
+// ---------------------------------------------------------------------------
+
+const LEGACY_SETTINGS_MIGRATED_FLAG = "fg-settings-migrated-to-db";
+
+function readLegacyJson<T>(key: string): T | null {
+	const raw = window.localStorage.getItem(key);
+	if (!raw) {
+		return null;
+	}
+	try {
+		return JSON.parse(raw) as T;
+	} catch {
+		return null;
+	}
+}
+
+export async function migrateLegacySettingsIfNeeded(userId: number): Promise<void> {
+	if (window.localStorage.getItem(LEGACY_SETTINGS_MIGRATED_FLAG) === "true") {
+		return;
+	}
+
+	try {
+		// Theme/UI preferences (app_preferences) intentionally stay in
+		// localStorage — they apply to the whole app, not per profile.
+
+		const legacyPhrases = readLegacyJson<unknown>("fg-saved-phrases");
+		if (Array.isArray(legacyPhrases)) {
+			const phrases = legacyPhrases.filter((p): p is string => typeof p === "string");
+			if (phrases.length > 0) {
+				await setSavedPhrases(phrases);
+			}
+		}
+
+		const legacyLocations = readLegacyJson<unknown>("fg-saved-locations");
+		if (Array.isArray(legacyLocations)) {
+			for (const entry of legacyLocations) {
+				if (
+					entry &&
+					typeof entry === "object" &&
+					typeof (entry as Record<string, unknown>).id === "string" &&
+					typeof (entry as Record<string, unknown>).name === "string" &&
+					typeof (entry as Record<string, unknown>).geohash === "string" &&
+					typeof (entry as Record<string, unknown>).lat === "number" &&
+					typeof (entry as Record<string, unknown>).lon === "number"
+				) {
+					await insertSavedLocation(entry as StoredSavedLocation);
+				}
+			}
+		}
+
+		const legacyAutomation = {
+			blockOnChat: window.localStorage.getItem("fg-block-chat") === "true",
+			blockGrid: window.localStorage.getItem("fg-block-grid") === "true",
+			forbiddenWords: window.localStorage.getItem("fg-forbidden-words") ?? "",
+			minAge: window.localStorage.getItem("fg-block-min-age") ?? "18",
+			maxAge: window.localStorage.getItem("fg-block-max-age") ?? "99",
+			refreshEnabled: window.localStorage.getItem("fg-auto-refresh-enabled") === "true",
+			refreshInterval: window.localStorage.getItem("fg-auto-refresh-interval") ?? "5",
+		};
+		const hadLegacyAutomation = [
+			"fg-block-chat",
+			"fg-block-grid",
+			"fg-forbidden-words",
+			"fg-block-min-age",
+			"fg-block-max-age",
+			"fg-auto-refresh-enabled",
+			"fg-auto-refresh-interval",
+		].some((key) => window.localStorage.getItem(key) != null);
+		if (hadLegacyAutomation) {
+			await setSetting("automation", legacyAutomation);
+		}
+
+		const legacyRecentGifs = readLegacyJson<unknown>("fg-recent-gifs");
+		if (Array.isArray(legacyRecentGifs) && legacyRecentGifs.length > 0) {
+			await setSetting("recentGifs", legacyRecentGifs);
+		}
+
+		const legacyHidePinned = window.localStorage.getItem("chat_hide_pinned");
+		if (legacyHidePinned != null) {
+			await setSetting("chatHidePinned", legacyHidePinned === "true");
+		}
+
+		const legacyAutoDownload = window.localStorage.getItem("fg-auto-download-media");
+		if (legacyAutoDownload != null) {
+			await setSetting("autoDownloadMedia", legacyAutoDownload === "true");
+		}
+
+		const legacyPrivacyKeys = [
+			"fg-hide-read-receipts",
+			"fg-show-read-receipt-toggle",
+			"fg-read-receipts-exceptions",
+			"fg-record-profile-views",
+		];
+		const hadLegacyPrivacy = legacyPrivacyKeys.some((key) => window.localStorage.getItem(key) != null);
+		if (hadLegacyPrivacy) {
+			await setSetting("privacy", {
+				hideReadReceiptsGlobal: window.localStorage.getItem("fg-hide-read-receipts") === "true",
+				showReadReceiptToggle: window.localStorage.getItem("fg-show-read-receipt-toggle") !== "false",
+				recordProfileViews: window.localStorage.getItem("fg-record-profile-views") !== "false",
+				readReceiptsExceptions: readLegacyJson<Record<string, boolean>>("fg-read-receipts-exceptions") ?? {},
+			});
+		}
+
+		const legacyBrowseFilters = readLegacyJson<Record<string, unknown>>("open-grind:browse-filters");
+		if (legacyBrowseFilters) {
+			await setSetting("browseFilters", legacyBrowseFilters);
+		}
+
+		const legacySeenKeys: Record<string, string> = {
+			interest: "fg-interest-last-seen",
+			interestViews: "fg-interest-views-last-seen",
+			interestTaps: "fg-interest-taps-last-seen",
+			inbox: "fg-inbox-last-seen",
+			rightNow: "fg-rightnow-last-seen",
+		};
+		const hadLegacySeen = Object.values(legacySeenKeys).some((key) => window.localStorage.getItem(key) != null);
+		if (hadLegacySeen) {
+			const seenTimestamps: Record<string, number> = {};
+			for (const [field, key] of Object.entries(legacySeenKeys)) {
+				const raw = window.localStorage.getItem(key);
+				const value = raw ? Number(raw) : 0;
+				seenTimestamps[field] = Number.isFinite(value) ? value : 0;
+			}
+			await setSetting("seenTimestamps", seenTimestamps);
+		}
+
+		appLog.info("[chat-db] migrated legacy localStorage settings into profile db", { userId });
+	} catch (error) {
+		appLog.error("[chat-db] legacy settings migration failed", error);
+	} finally {
+		window.localStorage.setItem(LEGACY_SETTINGS_MIGRATED_FLAG, "true");
+	}
 }

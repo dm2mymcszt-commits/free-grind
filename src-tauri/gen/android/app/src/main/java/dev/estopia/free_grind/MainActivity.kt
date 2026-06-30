@@ -175,6 +175,25 @@ class MainActivity : TauriActivity() {
       Log.d("FCM", "JsBridge.setActiveRoute=$route foreground=$inForeground")
     }
 
+    /**
+     * Posts a notification straight from the chat WebSocket while it's
+     * connected in the foreground, instead of waiting for the FCM push for
+     * the same message/tap to arrive. Runs off the JS-interface thread since
+     * NotificationPoster fetches the sender's avatar over the network.
+     * NotificationPoster dedupes against the later FCM-triggered post for
+     * the same conversation/tap, so it never shows twice.
+     */
+    @JavascriptInterface
+    fun postLocalNotification(payloadJson: String) {
+      Thread {
+        try {
+          NotificationPoster.postNotification(this@MainActivity, JSONObject(payloadJson))
+        } catch (e: Exception) {
+          Log.e("FCM", "Failed to post local notification", e)
+        }
+      }.start()
+    }
+
     @JavascriptInterface
     fun vibrate(durationMs: Long) {
       try {

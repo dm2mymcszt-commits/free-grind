@@ -242,10 +242,14 @@ export function ChatPage() {
 	const [selectedDesktopConversationId, setSelectedDesktopConversationId] =
 		useState<string | null>(null);
 
-	const [hidePinned, setHidePinned] = useState(() => {
-		return localStorage.getItem("chat_hide_pinned") === "true";
-	});
+	const [hidePinned, setHidePinned] = useState(false);
 	const [showArchivedOnly, setShowArchivedOnly] = useState(false);
+
+	useEffect(() => {
+		void chatDb.getSetting<boolean>("chatHidePinned").then((value) => {
+			if (value != null) setHidePinned(value);
+		});
+	}, []);
 
 	// Header state (shared between ChatInboxHeader on desktop and ChatInboxPanel on mobile)
 	const [chatIsSearchOpen, setChatIsSearchOpen] = useState(false);
@@ -254,8 +258,15 @@ export function ChatPage() {
 	const [chatIsFiltersOpen, setChatIsFiltersOpen] = useState(false);
 	const [chatFiltersDraft, setChatFiltersDraft] = useState<ChatFiltersDraft>(() => buildChatFiltersDraft({}));
 
+	const hidePinnedLoadedRef = useRef(false);
 	useEffect(() => {
-		localStorage.setItem("chat_hide_pinned", String(hidePinned));
+		if (!hidePinnedLoadedRef.current) {
+			// Skip the very first run (mount with the default `false`) so it
+			// can't race the async load above and overwrite a stored `true`.
+			hidePinnedLoadedRef.current = true;
+			return;
+		}
+		void chatDb.setSetting("chatHidePinned", hidePinned);
 	}, [hidePinned]);
 
 	useEffect(() => {

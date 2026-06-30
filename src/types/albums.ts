@@ -27,7 +27,17 @@ export const albumsResponseSchema = z.object({
 
 export const albumLimitsSchema = z.object({
 	subscriptionType: z.string().optional(),
-	maxAlbums: z.number().int().positive().optional(),
+	maxAlbums: z.number().int().optional(),
+	maxContentItemsPerAlbum: z.number().int().optional(),
+	maxShares: z.number().int().optional(),
+	maxViewableAlbums: z.number().int().optional(),
+	maxViewableVideos: z.number().int().optional(),
+	maxContentSize: z.number().optional(),
+	maxContentSizeHumanReadable: z.string().optional(),
+	maxVideoLength: z.number().optional(),
+	minVideoLength: z.number().optional(),
+	maxShareableAlbums: z.number().int().optional(),
+	maxVideosPerAlbum: z.number().int().optional(),
 });
 
 export const albumMediaSchema = z.object({

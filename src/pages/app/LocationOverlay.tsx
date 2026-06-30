@@ -105,7 +105,11 @@ export function LocationOverlay({ onClose }: LocationOverlayProps) {
 	const [selectedLocation, setSelectedLocation] = useState<SelectedLocation | null>(null);
 	const [locationError, setLocationError] = useState<string | null>(null);
 	const [isSaving, setIsSaving] = useState(false);
-	const [savedLocations, setSavedLocations] = useState<SavedLocation[]>(() => loadSavedLocations());
+	const [savedLocations, setSavedLocations] = useState<SavedLocation[]>([]);
+
+	useEffect(() => {
+		void loadSavedLocations().then(setSavedLocations);
+	}, []);
 	const [isNamingLocation, setIsNamingLocation] = useState(false);
 	const [newLocationName, setNewLocationName] = useState("");
 	const searchInputRef = useRef<HTMLInputElement>(null);
@@ -323,20 +327,18 @@ export function LocationOverlay({ onClose }: LocationOverlayProps) {
 	};
 
 	const handleDeleteSavedLocation = (id: string) => {
-		setSavedLocations(deleteSavedLocation(id));
+		void deleteSavedLocation(id).then(setSavedLocations);
 	};
 
 	const handleSaveCurrentAsNamedLocation = () => {
 		const name = newLocationName.trim();
 		if (!name || !selectedLocation) return;
-		setSavedLocations(
-			addSavedLocation({
-				name,
-				geohash: encodeGeohash(selectedLocation.lat, selectedLocation.lon),
-				lat: selectedLocation.lat,
-				lon: selectedLocation.lon,
-			}),
-		);
+		void addSavedLocation({
+			name,
+			geohash: encodeGeohash(selectedLocation.lat, selectedLocation.lon),
+			lat: selectedLocation.lat,
+			lon: selectedLocation.lon,
+		}).then(setSavedLocations);
 		setNewLocationName("");
 		setIsNamingLocation(false);
 	};

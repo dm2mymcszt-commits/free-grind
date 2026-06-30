@@ -34,9 +34,7 @@ import { findConversationByProfileId, insertSystemMessage } from "../../services
 import { unarchiveConversation } from "../../services/conversationArchive";
 import { appLog } from "../../utils/logger";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
-
-const SKIP_BLOCK_CONFIRM_KEY = "profile_skip_block_confirm";
-const SKIP_UNBLOCK_CONFIRM_KEY = "profile_skip_unblock_confirm";
+import { SKIP_BLOCK_CONFIRM_KEY, SKIP_UNBLOCK_CONFIRM_KEY } from "../../utils/blockConfirm";
 
 const profileRouteParamsSchema = z.object({
 	profileId: z.string().min(1),

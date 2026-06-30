@@ -1,8 +1,11 @@
 import { appLog } from "../utils/logger";
 import { geohashSchema } from "../utils/geohash";
 import z from "zod";
-
-export const SAVED_LOCATIONS_STORAGE_KEY = "fg-saved-locations";
+import {
+	deleteSavedLocationRow,
+	getAllSavedLocations,
+	insertSavedLocation,
+} from "./chatDb";
 
 const savedLocationSchema = z.object({
 	id: z.string(),
@@ -14,23 +17,12 @@ const savedLocationSchema = z.object({
 
 export type SavedLocation = z.infer<typeof savedLocationSchema>;
 
-export function loadSavedLocations(): SavedLocation[] {
-	if (typeof window === "undefined") {
-		return [];
-	}
-
+export async function loadSavedLocations(): Promise<SavedLocation[]> {
 	try {
-		const stored = window.localStorage.getItem(SAVED_LOCATIONS_STORAGE_KEY);
-		if (!stored) {
-			return [];
-		}
-		const parsed = JSON.parse(stored);
-		if (!Array.isArray(parsed)) {
-			return [];
-		}
+		const rows = await getAllSavedLocations();
 		const result: SavedLocation[] = [];
-		for (const item of parsed) {
-			const parsedItem = savedLocationSchema.safeParse(item);
+		for (const row of rows) {
+			const parsedItem = savedLocationSchema.safeParse(row);
 			if (parsedItem.success) {
 				result.push(parsedItem.data);
 			}
@@ -42,17 +34,12 @@ export function loadSavedLocations(): SavedLocation[] {
 	}
 }
 
-function persist(locations: SavedLocation[]): void {
-	window.localStorage.setItem(SAVED_LOCATIONS_STORAGE_KEY, JSON.stringify(locations));
-}
-
-export function addSavedLocation(input: {
+export async function addSavedLocation(input: {
 	name: string;
 	geohash: string;
 	lat: number;
 	lon: number;
-}): SavedLocation[] {
-	const existing = loadSavedLocations();
+}): Promise<SavedLocation[]> {
 	const entry: SavedLocation = {
 		id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
 		name: input.name.trim(),
@@ -60,13 +47,11 @@ export function addSavedLocation(input: {
 		lat: input.lat,
 		lon: input.lon,
 	};
-	const next = [...existing, entry];
-	persist(next);
-	return next;
+	const rows = await insertSavedLocation(entry);
+	return rows;
 }
 
-export function deleteSavedLocation(id: string): SavedLocation[] {
-	const next = loadSavedLocations().filter((location) => location.id !== id);
-	persist(next);
-	return next;
+export async function deleteSavedLocation(id: string): Promise<SavedLocation[]> {
+	const rows = await deleteSavedLocationRow(id);
+	return rows;
 }

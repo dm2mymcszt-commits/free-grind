@@ -16,8 +16,12 @@ import {
 	type SavedAccountMeta,
 } from "./auth-context";
 import { appLog } from "../utils/logger";
-import { setActiveChatDbUser } from "../services/chatDb";
+import { setActiveChatDbUser, migrateLegacySettingsIfNeeded } from "../services/chatDb";
 import { clearAllCaches } from "../pages/app/gridpage/cache";
+import { loadAutomationCache } from "../utils/autoblock";
+import { loadMediaSettingsCache } from "../utils/mediaSettings";
+import { loadPrivacyCache } from "../utils/privacy";
+import { loadSeenCache } from "../services/seenStore";
 
 const AUTH_USER_ID_STORAGE_KEY = "fg-user-id";
 const PUSH_TOKEN_STORAGE_KEY = "fg-fcm-token";
@@ -27,7 +31,8 @@ type AuthAction =
 	| { type: "SET_USER"; payload: number }
 	| { type: "CLEAR_USER" }
 	| { type: "SET_LOADING"; payload: boolean }
-	| { type: "SET_ERROR"; payload: string | null };
+	| { type: "SET_ERROR"; payload: string | null }
+	| { type: "SET_SETTINGS_READY"; payload: boolean };
 
 function authReducer(state: AuthState, action: AuthAction): AuthState {
 	switch (action.type) {
@@ -39,6 +44,8 @@ function authReducer(state: AuthState, action: AuthAction): AuthState {
 			return { ...state, isLoading: action.payload };
 		case "SET_ERROR":
 			return { ...state, error: action.payload };
+		case "SET_SETTINGS_READY":
+			return { ...state, settingsReady: action.payload };
 		default:
 			return state;
 	}
@@ -49,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		userId: null,
 		isLoading: true,
 		error: null,
+		settingsReady: false,
 	});
 
 	const { callMethod, asAppError } = useApi();
@@ -228,7 +236,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			queryClient.clear();
 		}
 
-		void setActiveChatDbUser(state.userId);
+		dispatch({ type: "SET_SETTINGS_READY", payload: false });
+
+		void (async () => {
+			await setActiveChatDbUser(state.userId);
+			if (state.userId != null) {
+				await migrateLegacySettingsIfNeeded(state.userId);
+			}
+			await Promise.all([
+				loadAutomationCache(),
+				loadMediaSettingsCache(),
+				loadPrivacyCache(),
+				loadSeenCache(),
+			]);
+			dispatch({ type: "SET_SETTINGS_READY", payload: true });
+		})();
 	}, [state.userId, state.isLoading, queryClient]);
 
 	// Register presence with Free Grind backend when a logged-in session is active.

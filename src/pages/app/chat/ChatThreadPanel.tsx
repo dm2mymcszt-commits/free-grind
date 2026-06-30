@@ -74,7 +74,7 @@ import { ChatThreadMessages } from "./ChatThreadMessages";
 import { AudioMessagePlayer } from "./AudioMessagePlayer";
 import { ConfirmDialog } from "../../../components/ui/confirm-dialog";
 import { useApiFunctions } from "../../../hooks/useApiFunctions";
-import { SHOW_READ_RECEIPT_TOGGLE_KEY, isReadReceiptsHidden, toggleReadReceiptsHidden } from "../../../utils/privacy";
+import { getShowReadReceiptToggle, isReadReceiptsHidden, toggleReadReceiptsHidden } from "../../../utils/privacy";
 import { ToggleRow } from "../../../components/ui/toggle-row";
 import { BottomDrawer } from "../../../components/ui/bottom-drawer";
 import { BottomSheet, SheetClose } from "../../../components/ui/bottom-sheet";
@@ -82,6 +82,8 @@ import { GiphyPickerSheet } from "./GiphyPickerSheet";
 import type { ArchivedReason } from "../../../types/chat-db";
 import { useAvatarCache } from "../../../hooks/useAvatarCache";
 import { resolveAvatarSrc } from "../../../services/avatarStore";
+import { getForbiddenWords, setForbiddenWords } from "../../../utils/autoblock";
+import { SKIP_BLOCK_CONFIRM_KEY } from "../../../utils/blockConfirm";
 
 async function fixWebmDuration(blob: Blob, durationMs: number): Promise<Blob> {
 	if (!blob.type.includes("webm")) return blob;
@@ -226,7 +228,6 @@ type ChatThreadPanelProps = {
 	archivedReason?: ArchivedReason | null;
 };
 
-const SKIP_BLOCK_CONFIRM_KEY = "profile_skip_block_confirm";
 
 function AudioPreviewPlayer({ blob, durationMs, recordedBars, recordedFraction }: { blob: Blob; durationMs: number; recordedBars: number[]; recordedFraction: number }) {
 	const [url, setUrl] = useState<string | null>(null);
@@ -528,7 +529,11 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 		onSendGiphy,
 	} = props;
 
-    const [savedPhrases, setSavedPhrases] = useState<string[]>(() => loadSavedPhrases());
+    const [savedPhrases, setSavedPhrases] = useState<string[]>([]);
+
+	useEffect(() => {
+		void loadSavedPhrases().then(setSavedPhrases);
+	}, []);
 
 	useEffect(() => {
 		if (!pendingAttachmentFile) {
@@ -628,16 +633,16 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 		setDraft(phrase);
 	};
 
-	const handleAddPhrase = () => {
+	const handleAddPhrase = async () => {
 		const trimmed = newPhraseInput.trim();
 		if (!trimmed) return;
-		const updated = saveSavedPhrases([...savedPhrases, trimmed]);
+		const updated = await saveSavedPhrases([...savedPhrases, trimmed]);
 		setSavedPhrases(updated);
 		setNewPhraseInput("");
 	};
 
-	const handleDeletePhrase = (index: number) => {
-		const updated = saveSavedPhrases(savedPhrases.filter((_, i) => i !== index));
+	const handleDeletePhrase = async (index: number) => {
+		const updated = await saveSavedPhrases(savedPhrases.filter((_, i) => i !== index));
 		setSavedPhrases(updated);
 	};
 
@@ -649,15 +654,13 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 				setSavedPhrases(detail);
 				return;
 			}
-			setSavedPhrases(loadSavedPhrases());
+			void loadSavedPhrases().then(setSavedPhrases);
 		};
 
 		window.addEventListener(SAVED_PHRASES_UPDATED_EVENT, syncSavedPhrases as EventListener);
-		window.addEventListener("storage", syncSavedPhrases);
 
 		return () => {
 			window.removeEventListener(SAVED_PHRASES_UPDATED_EVENT, syncSavedPhrases as EventListener);
-			window.removeEventListener("storage", syncSavedPhrases);
 		};
 	}, []);
     
@@ -690,7 +693,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 		return ids;
 	}, [threadMessages]);
 
-    const [showReadReceiptToggle] = useState(() => window.localStorage.getItem(SHOW_READ_RECEIPT_TOGGLE_KEY) !== "false");
+    const [showReadReceiptToggle] = useState(() => getShowReadReceiptToggle());
     const [readReceiptsHidden, setReadReceiptsHidden] = useState(true);
 
     useEffect(() => {
@@ -1151,9 +1154,9 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 												type="button"
 												onClick={() => {
 													setIsHeaderActionsMenuOpen(false);
-													const currentList = window.localStorage.getItem("fg-forbidden-words") || "";
+													const currentList = getForbiddenWords();
 													const newList = currentList ? `${currentList}, ${displayName}` : displayName;
-													window.localStorage.setItem("fg-forbidden-words", newList);
+													void setForbiddenWords(newList);
 													toast.success(`Added "${displayName}" to Forbidden Keywords!`);
 												}}
 												className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-red-400 transition hover:bg-red-500/10"
@@ -1183,9 +1186,9 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 
 														const wordToBan = window.prompt("Trim this bio down to the exact phrase you want to ban:", bio);
 														if (wordToBan && wordToBan.trim()) {
-															const currentList = window.localStorage.getItem("fg-forbidden-words") || "";
+															const currentList = getForbiddenWords();
 															const newList = currentList ? `${currentList}, ${wordToBan.trim()}` : wordToBan.trim();
-															window.localStorage.setItem("fg-forbidden-words", newList);
+															void setForbiddenWords(newList);
 															toast.success(`Added "${wordToBan.trim()}" to Forbidden Keywords!`);
 														}
 													} catch (e) {
@@ -2153,9 +2156,9 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                         const body = selectedActionMessage.body as any;
                         const wordToBan = window.prompt("Trim this message down to the specific keyword you want to ban:", body?.text || "");
                         if (wordToBan && wordToBan.trim()) {
-                            const currentList = window.localStorage.getItem("fg-forbidden-words") || "";
+                            const currentList = getForbiddenWords();
                             const newList = currentList ? `${currentList}, ${wordToBan.trim()}` : wordToBan.trim();
-                            window.localStorage.setItem("fg-forbidden-words", newList);
+                            void setForbiddenWords(newList);
                             toast.success(`Added "${wordToBan.trim()}" to Forbidden Keywords!`);
                             setOpenMessageActionId(null);
                         }

@@ -42,7 +42,7 @@ rmp-serde = "1.3.1"
 serde_bytes = "0.11"
 tauri-plugin-geolocation = "2"
 tauri-plugin-os = "2"
-tauri-plugin-notification = "2"
+tauri-plugin-notification = { path = "notification-patched" }
 tauri-plugin-http = "2"
 futures-util = "0.3"
 http = "1"

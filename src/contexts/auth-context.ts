@@ -4,6 +4,14 @@ export interface AuthState {
 	userId: number | null;
 	isLoading: boolean;
 	error: string | null;
+	/**
+	 * True once the per-profile db (chatDb) is pointed at the active user's
+	 * own file and the one-time legacy-settings migration has been checked.
+	 * Anything reading profile-scoped settings (preferences, automation,
+	 * saved phrases/locations) must wait for this before loading — otherwise
+	 * it risks reading the previous profile's connection during the switch.
+	 */
+	settingsReady: boolean;
 }
 
 export interface SavedAccountMeta {

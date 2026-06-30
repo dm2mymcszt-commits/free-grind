@@ -1,5 +1,5 @@
 import { BookMarked, Download, Loader2, MessageSquarePlus, MessageSquareQuote, Plus, Trash2, Upload } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { useTranslation } from "react-i18next";
 import { BackToSettings } from "../../components/BackToSettings";
@@ -12,20 +12,24 @@ import {
 
 export function SettingsSavedPhrasesPage() {
 	const { t } = useTranslation();
-	const [savedPhrases, setSavedPhrases] = useState<string[]>(() => loadSavedPhrases());
+	const [savedPhrases, setSavedPhrases] = useState<string[]>([]);
 	const [newPhrase, setNewPhrase] = useState("");
 	const [isImporting, setIsImporting] = useState(false);
 	const importInputRef = useRef<HTMLInputElement | null>(null);
 
-	const handleAddPhrase = () => {
+	useEffect(() => {
+		void loadSavedPhrases().then(setSavedPhrases);
+	}, []);
+
+	const handleAddPhrase = async () => {
 		if (!newPhrase.trim()) return;
-		const updated = saveSavedPhrases([...savedPhrases, newPhrase]);
+		const updated = await saveSavedPhrases([...savedPhrases, newPhrase]);
 		setSavedPhrases(updated);
 		setNewPhrase("");
 	};
 
-	const handleDeletePhrase = (index: number) => {
-		const updated = saveSavedPhrases(savedPhrases.filter((_, i) => i !== index));
+	const handleDeletePhrase = async (index: number) => {
+		const updated = await saveSavedPhrases(savedPhrases.filter((_, i) => i !== index));
 		setSavedPhrases(updated);
 	};
 
@@ -60,7 +64,7 @@ export function SettingsSavedPhrasesPage() {
 				toast.error(t("settings_saved_phrases.import_empty", { defaultValue: "No valid phrases found in that file." }));
 				return;
 			}
-			const updated = saveSavedPhrases(imported);
+			const updated = await saveSavedPhrases(imported);
 			setSavedPhrases(updated);
 			toast.success(t("settings_saved_phrases.import_success", { defaultValue: "Saved phrases imported." }));
 		} catch {

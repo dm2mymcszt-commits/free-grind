@@ -48,6 +48,7 @@ import { FingerprintCheckButton } from "../../components/FingerprintCheckButton"
 import { Avatar } from "../../components/ui/avatar";
 import { getThumbImageUrl } from "../../utils/media";
 import { getSavedAccountProfile, removeSavedAccountProfile } from "../../services/savedAccountProfiles";
+import { getAutomationSettings } from "../../utils/autoblock";
 
 const PUSH_TOKEN_STORAGE_KEY = "fg-fcm-token";
 const PUSH_TOKEN_SYNCED_STORAGE_KEY = "fg-fcm-token-synced";
@@ -91,9 +92,9 @@ export function SettingsPage() {
 	const [fcmSyncedToken, setFcmSyncedToken] = useState<string | null>(() => window.localStorage.getItem(PUSH_TOKEN_SYNCED_STORAGE_KEY));
 	const [fcmEventLog, setFcmEventLog] = useState<{ time: string; token: string }[]>([]);
 	const [manualToken, setManualToken] = useState("");
-    const [forbiddenWords, setForbiddenWords] = useState(() => window.localStorage.getItem("fg-forbidden-words") || "");
-    const [blockOnGrid, setBlockOnGrid] = useState(() => window.localStorage.getItem("fg-block-grid") === "true");
-	const [blockOnChat, setBlockOnChat] = useState(() => window.localStorage.getItem("fg-block-chat") !== "false"); // Default to true
+    const [forbiddenWords, setForbiddenWords] = useState(() => getAutomationSettings().forbiddenWords);
+    const [blockOnGrid, setBlockOnGrid] = useState(() => getAutomationSettings().blockGrid);
+	const [blockOnChat, setBlockOnChat] = useState(() => getAutomationSettings().blockOnChat);
 	const fcmLogRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {

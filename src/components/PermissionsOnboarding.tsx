@@ -80,8 +80,8 @@ function PermissionRow({
 				)}
 			</div>
 			{isRequesting ? (
-				<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)]">
-					<Loader2 className="h-4 w-4 animate-spin text-[var(--accent-contrast)]" />
+				<div className="flex h-9 w-9 shrink-0 items-center justify-center">
+					<Loader2 className="h-5 w-5 animate-spin text-[var(--accent)]" />
 				</div>
 			) : status === "granted" ? (
 				<div className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-green-500 px-3 text-sm font-semibold text-white">

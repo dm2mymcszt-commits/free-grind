@@ -25,6 +25,7 @@ import {
 import { useAvatarCache } from "../../../hooks/useAvatarCache";
 import { resolveAvatarSrc } from "../../../services/avatarStore";
 import { getThumbImageUrl, validateMediaHash } from "../../../utils/media";
+import { getForbiddenWords, setForbiddenWords } from "../../../utils/autoblock";
 import {
 	formatDateHeader,
 	formatDateTime24,
@@ -1678,9 +1679,9 @@ export function ChatThreadMessages({
                                                                         hasText ? body.text : "",
                                                                     );
                                                                     if (wordToBan && wordToBan.trim()) {
-                                                                        const currentList = window.localStorage.getItem("fg-forbidden-words") || "";
+                                                                        const currentList = getForbiddenWords();
                                                                         const newList = currentList ? `${currentList}, ${wordToBan.trim()}` : wordToBan.trim();
-                                                                        window.localStorage.setItem("fg-forbidden-words", newList);
+                                                                        void setForbiddenWords(newList);
                                                                         toast.success(
                                                                             t("chat.actions.ban_word_added", {
                                                                                 defaultValue:
