@@ -8,6 +8,7 @@ import {
 	useModalClose,
 } from "../../../../hooks/useModalClose";
 import { usePresenceCheck } from "../../../../hooks/usePresenceCheck";
+import { useTravelPlans } from "../../../../hooks/queries/useProfileQueries";
 import { useApiFunctions } from "../../../../hooks/useApiFunctions";
 import { useAuth } from "../../../../contexts/useAuth";
 import { profileResponseSchema } from "../../profile-editor/profileEditorUtils";
@@ -191,6 +192,7 @@ export function ProfileDetailsModal({
 		: "offline";
 	const estimatedCreatedAt = formatEstimatedAccountCreation(activeProfile?.profileId, t);
 	const messageProfileId = activeProfile?.profileId ?? selectedBrowseCard?.profileId ?? null;
+	const { data: travelPlans } = useTravelPlans(activeProfile?.profileId);
 	const isOwnProfile = userId != null && messageProfileId != null && String(userId) === String(messageProfileId);
 	const usesFreegrind = usePresenceCheck(messageProfileId);
 	const visualStateValue = typeof tapVisualState === "string" ? tapVisualState : tapVisualState.state;
@@ -1064,6 +1066,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 							openPhotoViewer={openPhotoViewer}
 							activeProfileName={activeProfileName}
 							estimatedCreatedAt={estimatedCreatedAt}
+							travelPlans={travelPlans}
 							profileStatusLabel={profileStatusLabel}
 							profileStatusLevel={profileStatusLevel}
 							ownTags={ownTags}
@@ -1451,6 +1454,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 											openPhotoViewer={openPhotoViewer}
 											activeProfileName={activeProfileName}
 											estimatedCreatedAt={estimatedCreatedAt}
+											travelPlans={travelPlans}
 											profileStatusLabel={profileStatusLabel}
 											profileStatusLevel={profileStatusLevel}
 											ownTags={ownTags}
