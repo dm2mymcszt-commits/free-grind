@@ -97,7 +97,9 @@ export function isForbiddenLookingFor(profileLookingFor: number[] | null | undef
 // --------------------------------------------------------
 
 export function isOutsideAgeLimits(age: number | null | undefined): boolean {
-    if (age == null) return false; 
+    if (age == null) {
+        return window.localStorage.getItem("fg-block-no-age") === "true";
+    }
 
     const rawMin = window.localStorage.getItem("fg-block-min-age");
     const rawMax = window.localStorage.getItem("fg-block-max-age");

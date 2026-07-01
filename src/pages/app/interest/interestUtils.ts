@@ -248,7 +248,9 @@ export function normalizeViews(
 
 	// First, all items from cache (history)
 	for (const item of previouslyCached) {
-		mergedMap.set(item.profileId, item);
+		if (!item.profileId.startsWith(PREVIEW_ID_PREFIX)) {
+			mergedMap.set(item.profileId, item);
+		}
 	}
 
 	// Then fresh profiles/previews from server (overwrite old items with new timestamps)

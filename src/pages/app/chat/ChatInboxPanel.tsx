@@ -388,107 +388,109 @@ export function ChatInboxPanel({
 					className="relative flex-1 min-h-0"
 					style={!isDesktop ? { marginTop: `-${FEED_HEADER_OFFSET}` } : undefined}
 				>
-					<div
-						ref={inboxListRef}
-						onScroll={markUserScroll}
-						data-lenis-prevent
-						className="h-full overflow-y-auto"
-						style={!isDesktop ? {
-							paddingTop: FEED_HEADER_OFFSET,
-							maskImage: `linear-gradient(to bottom, transparent, black ${FEED_MASK_GRADIENT_STOP})`,
-							WebkitMaskImage: `linear-gradient(to bottom, transparent, black ${FEED_MASK_GRADIENT_STOP})`,
-						} : undefined}
-					>
-						<div className={!isDesktop ? "pb-[calc(env(safe-area-inset-bottom,0px)+clamp(92px,10vw,114px)+16px)]" : "pb-12"}>
-							{isLoadingInbox ? (
-								<div className="flex flex-col">
-									{Array.from({ length: 12 }).map((_, i) => (
-										<div key={i} className="flex items-center gap-4 border-b border-[var(--surface-2)] py-3 px-[var(--app-px)]">
-											<div className="h-14 w-14 shrink-0 animate-pulse rounded-2xl bg-[var(--surface-2)]" />
-											<div className="flex flex-1 flex-col gap-2">
-												<div className="flex items-center justify-between gap-3">
-													<div className="h-3 w-28 animate-pulse rounded-full bg-[var(--surface-2)]" />
-													<div className="h-2.5 w-10 animate-pulse rounded-full bg-[var(--border)]" />
-												</div>
-												<div className="h-2.5 w-40 animate-pulse rounded-full bg-[var(--border)]" />
-											</div>
-										</div>
-									))}
-								</div>
-							) : inboxError ? (
-								<div className="flex flex-col items-center justify-center gap-3 p-6 text-center">
-									<p className="text-sm text-[var(--text-muted)]">{inboxError}</p>
-									<button
-										type="button"
-										onClick={onRefreshInbox}
-										className="btn-accent px-4 py-2 text-sm"
-									>
-										{t("chat.retry")}
-									</button>
-								</div>
-							) : filteredConversations.length === 0 ? (
-								<div className="flex flex-col items-center justify-center gap-3 p-6 text-center text-[var(--text-muted)]">
-									<MessageCircle className="h-8 w-8" />
-									<p className="text-sm">
-										{hasActiveInboxFilters
-											? t("chat.no_conversations_match")
-											: t("chat.no_conversations")}
-									</p>
-								</div>
-							) : (
-								<div className="flex flex-col pt-3 gap-3 px-[var(--app-px)]">
-									{filteredConversations.map((conversation) => {
-										const otherParticipant = getOtherParticipant(conversation, userId);
-										const otherProfileId = otherParticipant?.profileId ? String(otherParticipant.profileId) : null;
-										const localNickname = otherProfileId ? localNicknamesByProfileId[otherProfileId] : null;
-										const displayName = localNickname || conversation.data.name || t("chat.unknown");
-
-										return (
-											<SwipeableRow
-												key={conversation.data.conversationId}
-												onDelete={(complete, revert) => handleDeleteConversation(conversation.data.conversationId, complete, revert)}
-												isDisabled={isActive}
-												isSelected={conversation.data.conversationId === selectedConversationId}
-											>
-												<SelectableItem
-													id={conversation.data.conversationId}
-													profileId={otherProfileId ?? undefined}
-													name={displayName}
-													viewType="inbox"
-													onNormalClick={() => onSelectConversation(conversation)}
-													roundedClassName="rounded-2xl"
-												>
-													<ChatConversationRow
-														conversation={conversation}
-														userId={userId}
-														localNicknamesByProfileId={localNicknamesByProfileId}
-														chatContactIndexByProfileId={chatContactIndexByProfileId}
-														nowTimestamp={nowTimestamp}
-														presenceResults={presenceResults}
-														isSelected={conversation.data.conversationId === selectedConversationId}
-														isTyping={typingConversationIds?.has(conversation.data.conversationId) ?? false}
-														onSelectConversation={isActive ? () => {} : onSelectConversation}
-														onViewProfile={onViewProfile}
-													/>
-												</SelectableItem>
-											</SwipeableRow>
-										);
-									})}
-
-									{nextPage ? (
-										<div className="px-3 py-2">
-											<div ref={loadMoreSentinelRef} className="h-8 w-full" aria-hidden="true" />
-											{isLoadingMoreInbox ? (
-												<p className="text-center text-xs text-[var(--text-muted)]">
-													{t("chat.loading")}
-												</p>
-											) : null}
-										</div>
-									) : null}
-								</div>
-							)}
+					{!isLoadingInbox && !inboxError && filteredConversations.length === 0 ? (
+						<div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center text-[var(--text-muted)]">
+							<MessageCircle className="h-8 w-8" />
+							<p className="text-sm">
+								{hasActiveInboxFilters
+									? t("chat.no_conversations_match")
+									: t("chat.no_conversations")}
+							</p>
 						</div>
-					</div>
+					) : (
+						<div
+							ref={inboxListRef}
+							onScroll={markUserScroll}
+							data-lenis-prevent
+							className="h-full overflow-y-auto"
+							style={!isDesktop ? {
+								paddingTop: FEED_HEADER_OFFSET,
+								maskImage: `linear-gradient(to bottom, transparent, black ${FEED_MASK_GRADIENT_STOP})`,
+								WebkitMaskImage: `linear-gradient(to bottom, transparent, black ${FEED_MASK_GRADIENT_STOP})`,
+							} : undefined}
+						>
+							<div className={!isDesktop ? "pb-[calc(env(safe-area-inset-bottom,0px)+clamp(92px,10vw,114px)+16px)]" : "pb-12"}>
+								{isLoadingInbox ? (
+									<div className="flex flex-col">
+										{Array.from({ length: 12 }).map((_, i) => (
+											<div key={i} className="flex items-center gap-4 border-b border-[var(--surface-2)] py-3 px-[var(--app-px)]">
+												<div className="h-14 w-14 shrink-0 animate-pulse rounded-2xl bg-[var(--surface-2)]" />
+												<div className="flex flex-1 flex-col gap-2">
+													<div className="flex items-center justify-between gap-3">
+														<div className="h-3 w-28 animate-pulse rounded-full bg-[var(--surface-2)]" />
+														<div className="h-2.5 w-10 animate-pulse rounded-full bg-[var(--border)]" />
+													</div>
+													<div className="h-2.5 w-40 animate-pulse rounded-full bg-[var(--border)]" />
+												</div>
+											</div>
+										))}
+									</div>
+								) : inboxError ? (
+									<div className="flex flex-col items-center justify-center gap-3 p-6 text-center">
+										<p className="text-sm text-[var(--text-muted)]">{inboxError}</p>
+										<button
+											type="button"
+											onClick={onRefreshInbox}
+											className="btn-accent px-4 py-2 text-sm"
+										>
+											{t("chat.retry")}
+										</button>
+									</div>
+								) : (
+									<div className="flex flex-col pt-3 gap-3 px-[var(--app-px)]">
+										{filteredConversations.map((conversation) => {
+											const otherParticipant = getOtherParticipant(conversation, userId);
+											const otherProfileId = otherParticipant?.profileId ? String(otherParticipant.profileId) : null;
+											const localNickname = otherProfileId ? localNicknamesByProfileId[otherProfileId] : null;
+											const displayName = localNickname || conversation.data.name || t("chat.unknown");
+
+											return (
+												<SwipeableRow
+													key={conversation.data.conversationId}
+													onDelete={(complete, revert) => handleDeleteConversation(conversation.data.conversationId, complete, revert)}
+													isDisabled={isActive}
+													isSelected={conversation.data.conversationId === selectedConversationId}
+												>
+													<SelectableItem
+														id={conversation.data.conversationId}
+														profileId={otherProfileId ?? undefined}
+														name={displayName}
+														viewType="inbox"
+														onNormalClick={() => onSelectConversation(conversation)}
+														roundedClassName="rounded-2xl"
+													>
+														<ChatConversationRow
+															conversation={conversation}
+															userId={userId}
+															localNicknamesByProfileId={localNicknamesByProfileId}
+															chatContactIndexByProfileId={chatContactIndexByProfileId}
+															nowTimestamp={nowTimestamp}
+															presenceResults={presenceResults}
+															isSelected={conversation.data.conversationId === selectedConversationId}
+															isTyping={typingConversationIds?.has(conversation.data.conversationId) ?? false}
+															onSelectConversation={isActive ? () => {} : onSelectConversation}
+															onViewProfile={onViewProfile}
+														/>
+													</SelectableItem>
+												</SwipeableRow>
+											);
+										})}
+
+										{nextPage ? (
+											<div className="px-3 py-2">
+												<div ref={loadMoreSentinelRef} className="h-8 w-full" aria-hidden="true" />
+												{isLoadingMoreInbox ? (
+													<p className="text-center text-xs text-[var(--text-muted)]">
+														{t("chat.loading")}
+													</p>
+												) : null}
+											</div>
+										) : null}
+									</div>
+								)}
+							</div>
+						</div>
+					)}
 				</div>
 			)}
 

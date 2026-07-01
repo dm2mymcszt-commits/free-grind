@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useApiFunctions } from "../hooks/useApiFunctions";
 import { interestViewsStore } from "../services/interestViewsStore";
+import { normalizeViews, fromStoredView, toStoredView, PREVIEW_ID_PREFIX } from "../pages/app/interest/interestUtils";
 
 export function BackgroundViewScanner() {
     const api = useApiFunctions();
@@ -18,22 +19,27 @@ export function BackgroundViewScanner() {
             if (window.localStorage.getItem("fg-view-scanner") !== "false") {
                 try {
                     const response = await api.getViews();
-                    const rawList = (response as any).items || (response as any).profiles || (response as any).views || [];
-					
-                    const realViews = rawList.filter((v: any) => v?.profileId && !String(v.profileId).startsWith("preview:"));
+                    const cachedRows = await interestViewsStore.getAll();
+                    const cachedViews = cachedRows.map(fromStoredView);
+                    const normalizedViews = normalizeViews(response, cachedViews, (key: string) => key);
 
-                    if (realViews.length > 0) {
-                        const rows = realViews.map((v: any) => ({
-                            profileId: String(v.profileId),
-                            displayName: v.displayName || "", 
-                            imageHash: v.profileImageMediaHash || v.imageHash || null,
-                            timestamp: v.timestamp || v.lastViewed || Date.now(),
-                            viewCount: v.viewCount ?? null,
-                        }));
+                    // 1. Save all active views (both profiles and active previews)
+                    await interestViewsStore.upsertMany(normalizedViews.map(toStoredView));
 
-                        await interestViewsStore.upsertMany(rows);
-                        window.localStorage.setItem("fg-view-scanner-last-run", Date.now().toString());
+                    // 2. Find and delete stale previews
+                    const activePreviewIds = new Set(
+                        normalizedViews
+                            .filter((item) => item.profileId.startsWith(PREVIEW_ID_PREFIX))
+                            .map((item) => item.profileId)
+                    );
+                    const stalePreviewIds = cachedRows
+                        .map((r) => r.profileId)
+                        .filter((id) => id.startsWith(PREVIEW_ID_PREFIX) && !activePreviewIds.has(id));
+
+                    if (stalePreviewIds.length > 0) {
+                        await interestViewsStore.deleteMany(stalePreviewIds);
                     }
+                    window.localStorage.setItem("fg-view-scanner-last-run", Date.now().toString());
                 } catch (error) {
                     console.error("[BackgroundViews] Sweep failed:", error);
                 }

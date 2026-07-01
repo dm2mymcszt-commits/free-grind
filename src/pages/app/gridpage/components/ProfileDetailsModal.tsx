@@ -1,4 +1,4 @@
-import { Ban, Check, ChevronLeft, Ellipsis, Flame, Loader2, MessageCircle, Pencil, Phone, StickyNote, Star, Trash2, Triangle, X } from "lucide-react";
+import { Ban, Check, ChevronLeft, Ellipsis, Flame, Loader2, MessageCircle, Pencil, Phone, StickyNote, Star, Trash2, Triangle, X, Eye } from "lucide-react";
 import toast from "react-hot-toast";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -11,6 +11,7 @@ import {
 import { usePresenceCheck } from "../../../../hooks/usePresenceCheck";
 import { useApiFunctions } from "../../../../hooks/useApiFunctions";
 import { useAuth } from "../../../../contexts/useAuth";
+import { interestViewsStore } from "../../../../services/interestViewsStore";
 import { profileResponseSchema } from "../../profile-editor/profileEditorUtils";
 import type {
 	BrowseCard,
@@ -402,6 +403,7 @@ export function ProfileDetailsModal({
 	const [noteDraft, setNoteDraft] = useState("");
 	const [phoneNumberDraft, setPhoneNumberDraft] = useState("");
 	const [isSavingNote, setIsSavingNote] = useState(false);
+	const [viewCount, setViewCount] = useState<number | null>(null);
 
 	useEffect(() => {
 		if (!messageProfileId || isOwnProfile || !isFavorite) {
@@ -431,6 +433,20 @@ export function ProfileDetailsModal({
 
 		return () => { cancelled = true; };
 	}, [messageProfileId, isOwnProfile, isFavorite]); // eslint-disable-line react-hooks/exhaustive-deps
+
+	useEffect(() => {
+		if (!messageProfileId) {
+			setViewCount(null);
+			return;
+		}
+
+		interestViewsStore.getAll().then((rows) => {
+			const match = rows.find((r) => String(r.profileId) === String(messageProfileId));
+			setViewCount(match ? (match.viewCount ?? 1) : null);
+		}).catch(() => {
+			setViewCount(null);
+		});
+	}, [messageProfileId]);
 
 	const handleSaveNote = async () => {
 		if (!messageProfileId) return;
@@ -994,7 +1010,11 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 							{onToggleFavoriteProfile && (
 								<button
 									type="button"
-									onClick={() => onToggleFavoriteProfile(String(messageProfileId), isFavorite)}
+									onClick={(e) => {
+										e.stopPropagation();
+										e.preventDefault();
+										onToggleFavoriteProfile(String(messageProfileId), isFavorite);
+									}}
 									disabled={isTogglingFavorite}
 									className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-200 disabled:opacity-60 ${
 										isFavorite
@@ -1014,7 +1034,9 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 							{(onBlockProfile || onUnblockProfile) && (
 								<button
 									type="button"
-									onClick={() => {
+									onClick={(e) => {
+										e.stopPropagation();
+										e.preventDefault();
 										if (isBlocked) {
 											onUnblockProfile?.(String(messageProfileId));
 										} else if (skipBlockConfirm) {
@@ -1143,14 +1165,35 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 								</button>
 							</div>
 						))}
-						{activeProfile.lastReceivedTapTimestamp != null && (
-							<div className="pointer-events-none absolute bottom-3 left-3 z-20">
-								<div className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
-									<Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" />
-									<span className="text-xs font-medium text-white">{formatRelativeTime(activeProfile.lastReceivedTapTimestamp)}</span>
+						<div 
+							className={`pointer-events-none absolute bottom-3 left-3 z-20 transition-all duration-300 ease-out origin-bottom-left ${
+								activeProfile.lastReceivedTapTimestamp != null || viewCount !== null
+									? "opacity-100 scale-100 translate-y-0"
+									: "opacity-0 scale-90 translate-y-2 pointer-events-none"
+							}`}
+						>
+							<div className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
+								{activeProfile.lastReceivedTapTimestamp != null && (
+									<>
+										<Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" />
+										<span className="text-xs font-medium text-white">{formatRelativeTime(activeProfile.lastReceivedTapTimestamp)}</span>
+									</>
+								)}
+								<div 
+									className={`flex items-center transition-all duration-500 ease-out origin-left ${
+										viewCount !== null 
+											? "opacity-100 max-w-[100px] gap-1.5 scale-100" 
+											: "opacity-0 max-w-0 gap-0 scale-90 overflow-hidden"
+									}`}
+								>
+									{activeProfile.lastReceivedTapTimestamp != null && (
+										<span className="h-3 w-[1px] bg-white/20 mx-0.5 shrink-0" />
+									)}
+									<Eye className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
+									<span className="text-xs font-medium text-white shrink-0">{viewCount}</span>
 								</div>
 							</div>
-						)}
+						</div>
 						{activeProfilePhotoHashes.length > 1 && (
 							<div className="pointer-events-none absolute inset-y-0 right-3 z-20 flex flex-col items-center justify-center">
 								<div className="flex flex-col items-center gap-1.5 rounded-full bg-black/30 px-[5px] py-[10px] backdrop-blur-sm">
@@ -1503,16 +1546,35 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 												</button>
 											</div>
 										))}
-										{activeProfile.lastReceivedTapTimestamp != null && (
-											<div className="pointer-events-none absolute bottom-3 left-3 z-20">
-												<div className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
-													<Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" />
-													<span className="text-xs font-medium text-white">
-														{formatRelativeTime(activeProfile.lastReceivedTapTimestamp)}
-													</span>
+										<div 
+											className={`pointer-events-none absolute bottom-3 left-3 z-20 transition-all duration-300 ease-out origin-bottom-left ${
+												activeProfile.lastReceivedTapTimestamp != null || viewCount !== null
+													? "opacity-100 scale-100 translate-y-0"
+													: "opacity-0 scale-90 translate-y-2 pointer-events-none"
+											}`}
+										>
+											<div className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
+												{activeProfile.lastReceivedTapTimestamp != null && (
+													<>
+														<Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" />
+														<span className="text-xs font-medium text-white">{formatRelativeTime(activeProfile.lastReceivedTapTimestamp)}</span>
+													</>
+												)}
+												<div 
+													className={`flex items-center transition-all duration-500 ease-out origin-left ${
+														viewCount !== null 
+															? "opacity-100 max-w-[100px] gap-1.5 scale-100" 
+															: "opacity-0 max-w-0 gap-0 scale-90 overflow-hidden"
+													}`}
+												>
+													{activeProfile.lastReceivedTapTimestamp != null && (
+														<span className="h-3 w-[1px] bg-white/20 mx-0.5 shrink-0" />
+													)}
+													<Eye className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
+													<span className="text-xs font-medium text-white shrink-0">{viewCount}</span>
 												</div>
 											</div>
-										)}
+										</div>
 										{activeProfilePhotoHashes.length > 1 && (
 											<div 
 												className="pointer-events-none absolute inset-y-0 z-20 flex flex-col items-center justify-center"
@@ -1584,7 +1646,11 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 														{onToggleFavoriteProfile && (
 															<button
 																type="button"
-																onClick={() => onToggleFavoriteProfile(String(messageProfileId), isFavorite)}
+																onClick={(e) => {
+																	e.stopPropagation();
+																	e.preventDefault();
+																	onToggleFavoriteProfile(String(messageProfileId), isFavorite);
+																}}
 																disabled={isTogglingFavorite}
 																className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-200 disabled:opacity-60 ${isFavorite ? "border-[var(--accent)]/60 bg-[var(--accent)] text-[var(--accent-contrast)] shadow-[0_0_12px_rgba(255,204,1,0.25)]" : "border-white/15 text-[var(--text-muted)] hover:text-[var(--text)] hover:border-white/25"}`}
 																style={!isFavorite ? { background: 'color-mix(in srgb, var(--surface) 40%, transparent)', backdropFilter: 'blur(8px)' } : undefined}
@@ -1596,7 +1662,9 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 														{(onBlockProfile || onUnblockProfile) && (
 															<button
 																type="button"
-																onClick={() => {
+																onClick={(e) => {
+																	e.stopPropagation();
+																	e.preventDefault();
 																	if (isBlocked) {
 																		onUnblockProfile?.(String(messageProfileId));
 																	} else if (skipBlockConfirm) {

@@ -198,7 +198,7 @@ export function createChatService(
                     const profileId = data.participants?.[0]?.profileId;
                     if (profileId) {
                         let reason = "Keyword match";
-                        if (isOutsideAgeLimits(profileAge)) reason = `Age Limit (${profileAge})`;
+                        if (isOutsideAgeLimits(profileAge)) reason = profileAge == null ? "No Age Set" : `Age Limit (${profileAge})`;
                         else if (isOutsideDistanceLimits(distance)) reason = `Distance Limit (${Math.round(distance/1000)}km)`;
 						
                         notifyAutoBlock(displayName || profileId, reason);

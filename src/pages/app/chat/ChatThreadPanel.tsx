@@ -2456,7 +2456,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
         ) : (
         <div
             className={`flex h-full overflow-hidden items-center justify-center p-6 text-center text-[var(--text-muted)] ${
-                isDesktop ? "rounded-[18px] liquid-glass-panel" : ""
+                isDesktop ? "bg-black/10 backdrop-blur-xl border border-white/5 rounded-[18px] shadow-[0_16px_34px_rgba(0,0,0,0.17)]" : ""
             }`}
         >
             {t("chat.select_conversation")}

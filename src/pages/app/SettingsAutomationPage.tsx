@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { 
     Ban, Clock, Download, RefreshCw, Save, Tag, Upload, Users, 
     Wand2, Trash2, Eye, HardDrive, ShieldAlert, Crosshair, Image as ImageIcon
@@ -36,6 +37,7 @@ function useIsDesktop() {
 export function SettingsAutomationPage() {
     const { t } = useTranslation();
     const isDesktop = useIsDesktop();
+    const queryClient = useQueryClient();
 
     // --- AUTO REFRESH STATE ---
     const [refreshEnabled, setRefreshEnabled] = useState(() => window.localStorage.getItem("fg-auto-refresh-enabled") === "true");
@@ -46,8 +48,10 @@ export function SettingsAutomationPage() {
     const [forbiddenWords, setForbiddenWords] = useState(() => window.localStorage.getItem("fg-forbidden-words") || "");
     const [minAge, setMinAge] = useState(() => window.localStorage.getItem("fg-block-min-age") ?? "18");
     const [maxAge, setMaxAge] = useState(() => window.localStorage.getItem("fg-block-max-age") ?? "99");
+    const [blockNoAge, setBlockNoAge] = useState(() => window.localStorage.getItem("fg-block-no-age") === "true");
     const [maxDistance, setMaxDistance] = useState(() => window.localStorage.getItem("fg-block-max-distance") ?? "50");
     const [isClearKeywordsConfirmOpen, setIsClearKeywordsConfirmOpen] = useState(false);
+    const [isClearViewsConfirmOpen, setIsClearViewsConfirmOpen] = useState(false);
 
     // Keyword Targets
     const [blockName, setBlockName] = useState(() => window.localStorage.getItem("fg-block-name") !== "false");
@@ -75,6 +79,7 @@ export function SettingsAutomationPage() {
     const [viewScannerEnabled, setViewScannerEnabled] = useState(() => window.localStorage.getItem("fg-view-scanner") !== "false");
     const [viewScannerInterval, setViewScannerInterval] = useState(() => window.localStorage.getItem("fg-view-scanner-interval") || "30");
     const [unlockedViewsCount, setUnlockedViewsCount] = useState<number | null>(null);
+    const [lockedViewsCount, setLockedViewsCount] = useState<number | null>(null);
     const [lastViewScanTime, setLastViewScanTime] = useState(() => window.localStorage.getItem("fg-view-scanner-last-run"));
 
     // --- AUTO-DOWNLOAD STATE ---
@@ -84,7 +89,12 @@ export function SettingsAutomationPage() {
     // Live update the Views Recovery Stats every 5 seconds
     useEffect(() => {
         const fetchStats = () => {
-            void interestViewsStore.getAll().then(rows => setUnlockedViewsCount(rows.length));
+            void interestViewsStore.getAll().then(rows => {
+                const unlocked = rows.filter(r => r.profileId && !r.profileId.startsWith("preview:"));
+                const locked = rows.filter(r => r.profileId && r.profileId.startsWith("preview:"));
+                setUnlockedViewsCount(unlocked.length);
+                setLockedViewsCount(locked.length);
+            });
             setLastViewScanTime(window.localStorage.getItem("fg-view-scanner-last-run"));
         };
         fetchStats();
@@ -96,6 +106,17 @@ export function SettingsAutomationPage() {
         setForbiddenWords("");
         setIsClearKeywordsConfirmOpen(false);
         toast.success("All keywords cleared! (Click Save to apply)");
+    };
+
+    const handleClearViewsCache = () => {
+        void interestViewsStore.clear().then(() => {
+            queryClient.invalidateQueries({ queryKey: ["interest", "list"] });
+            queryClient.removeQueries({ queryKey: ["interest", "list"] });
+            setUnlockedViewsCount(0);
+            setLockedViewsCount(0);
+            setIsClearViewsConfirmOpen(false);
+            toast.success("Unlocked views cache has been cleared!");
+        });
     };
 
     // --- TOGGLE HANDLERS ---
@@ -154,6 +175,7 @@ export function SettingsAutomationPage() {
         window.localStorage.setItem("fg-forbidden-words", finalWordsString); 
         window.localStorage.setItem("fg-block-min-age", minAge);
         window.localStorage.setItem("fg-block-max-age", maxAge);
+        window.localStorage.setItem("fg-block-no-age", String(blockNoAge));
         window.localStorage.setItem("fg-block-max-distance", maxDistance);
         window.localStorage.setItem("fg-block-looking-for-mode", blockedLookingForMode);
         window.localStorage.setItem("fg-block-looking-for", JSON.stringify(blockedLookingFor));
@@ -224,16 +246,32 @@ export function SettingsAutomationPage() {
 
                         {viewScannerEnabled && (
                             <div className="p-4 grid gap-4">
-                                <div className="grid grid-cols-2 gap-3">
+                                <div className="grid grid-cols-3 gap-3">
                                     <div className="rounded-lg bg-[var(--surface-1)] border border-[var(--border)] p-3">
-                                        <p className="text-[10px] uppercase font-semibold text-[var(--text-muted)] mb-1">Unlocked Cache</p>
-                                        <p className="text-xl font-bold text-[var(--accent)]">
-                                            {unlockedViewsCount !== null ? unlockedViewsCount : "..."} <span className="text-sm font-medium text-[var(--text-muted)]">profiles</span>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <p className="text-[10px] uppercase font-semibold text-[var(--text-muted)]">Unlocked</p>
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsClearViewsConfirmOpen(true)}
+                                                className="text-red-400/80 hover:text-red-400 transition"
+                                                title="Reset Cache"
+                                            >
+                                                <Trash2 className="h-3.5 w-3.5" />
+                                            </button>
+                                        </div>
+                                        <p className="text-lg font-bold text-[var(--accent)]">
+                                            {unlockedViewsCount !== null ? unlockedViewsCount : "..."} <span className="text-[10px] font-medium text-[var(--text-muted)] block">profiles</span>
+                                        </p>
+                                    </div>
+                                    <div className="rounded-lg bg-[var(--surface-1)] border border-[var(--border)] p-3">
+                                        <p className="text-[10px] uppercase font-semibold text-[var(--text-muted)] mb-1">Locked</p>
+                                        <p className="text-lg font-bold text-[var(--text-muted)] mt-1">
+                                            {lockedViewsCount !== null ? lockedViewsCount : "..."} <span className="text-[10px] font-medium block">profiles</span>
                                         </p>
                                     </div>
                                     <div className="rounded-lg bg-[var(--surface-1)] border border-[var(--border)] p-3">
                                         <p className="text-[10px] uppercase font-semibold text-[var(--text-muted)] mb-1">Last Sweep</p>
-                                        <p className="text-sm font-semibold text-[var(--text)] mt-1">
+                                        <p className="text-lg font-bold text-[var(--text)] mt-1">
                                             {lastViewScanTime ? new Date(parseInt(lastViewScanTime)).toLocaleTimeString() : "Waiting..."}
                                         </p>
                                     </div>
@@ -516,6 +554,13 @@ export function SettingsAutomationPage() {
                                                     setMaxAge(String(max));
                                                 }}
                                             />
+                                            
+                                            <label className="flex items-start gap-2 -mt-2 cursor-pointer">
+                                                <input type="checkbox" checked={blockNoAge} onChange={(e) => setBlockNoAge(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--accent)] shrink-0" />
+                                                <span className="text-xs text-[var(--text-muted)] leading-relaxed">
+                                                    <strong className="text-[var(--text)]">Block profiles with no age set.</strong> Prevents profiles that hide their age from bypassing the age limit rules.
+                                                </span>
+                                            </label>
 											
                                             <Slider
                                                 label="Max Distance (Kilometers)"
@@ -624,6 +669,17 @@ export function SettingsAutomationPage() {
                 cancelLabel="Cancel"
                 onConfirm={handleClearKeywords}
                 onCancel={() => setIsClearKeywordsConfirmOpen(false)}
+                confirmTone="danger"
+            />
+
+            <ConfirmDialog
+                isOpen={isClearViewsConfirmOpen}
+                title="Reset Unlocked Views Cache"
+                message="Are you sure you want to clear your unlocked cache profiles? This will delete all saved profiles from the Background Views Recovery database. This cannot be undone."
+                confirmLabel="Reset Cache"
+                cancelLabel="Cancel"
+                onConfirm={handleClearViewsCache}
+                onCancel={() => setIsClearViewsConfirmOpen(false)}
                 confirmTone="danger"
             />
         </section>

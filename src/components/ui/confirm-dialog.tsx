@@ -33,6 +33,18 @@ export function ConfirmDialog({
     const dialogRef = useRef<HTMLDialogElement | null>(null);
     const [isClosing, setIsClosing] = useState(false);
 
+    const [cachedTitle, setCachedTitle] = useState(title);
+    const [cachedMessage, setCachedMessage] = useState(message);
+    const [cachedConfirmLabel, setCachedConfirmLabel] = useState(confirmLabel);
+
+    useEffect(() => {
+        if (isOpen) {
+            setCachedTitle(title);
+            setCachedMessage(message);
+            setCachedConfirmLabel(confirmLabel);
+        }
+    }, [isOpen, title, message, confirmLabel]);
+
     // Intercept isOpen changes to play exit animations before closing
     useEffect(() => {
         const dialog = dialogRef.current;
@@ -153,8 +165,8 @@ export function ConfirmDialog({
                 style={{ zIndex: 9995 }}
             >
                 <div className="p-5 sm:p-6">
-                    <p className="text-lg font-bold text-[var(--text)] drop-shadow-sm">{title}</p>
-                    <p className="mt-2 text-sm leading-relaxed text-[var(--text-muted)]">{message}</p>
+                    <p className="text-lg font-bold text-[var(--text)] drop-shadow-sm">{cachedTitle}</p>
+                    <p className="mt-2 text-sm leading-relaxed text-[var(--text-muted)]">{cachedMessage}</p>
 
                     {dontAskAgainLabel && onDontAskAgainChange ? (
                         <label className="mt-5 flex cursor-pointer items-center gap-3 text-sm font-medium text-[var(--text-muted)] transition hover:text-[var(--text)]">
@@ -170,6 +182,7 @@ export function ConfirmDialog({
                                 <Check 
                                     className="pointer-events-none absolute h-3.5 w-3.5 text-white opacity-0 transition-opacity duration-300 peer-checked:opacity-100" 
                                     strokeWidth={3.5} 
+                                
                                 />
                             </div>
                             <span className="select-none">{dontAskAgainLabel}</span>
@@ -179,7 +192,11 @@ export function ConfirmDialog({
                     <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                         <button
                             type="button"
-                            onClick={onCancel}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                onCancel();
+                            }}
                             disabled={isProcessing}
                             className="inline-flex h-11 items-center justify-center rounded-xl bg-transparent px-4 text-sm font-semibold text-[var(--text-muted)] transition-all duration-300 hover:text-[var(--text)] active:scale-95 disabled:opacity-60"
                         >
@@ -187,12 +204,16 @@ export function ConfirmDialog({
                         </button>
                         <button
                             type="button"
-                            onClick={() => void onConfirm()}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                void onConfirm();
+                            }}
                             disabled={isProcessing}
                             className={confirmButtonClassName}
                         >
                             {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                            <span>{confirmLabel}</span>
+                            <span>{cachedConfirmLabel}</span>
                         </button>
                     </div>
                 </div>

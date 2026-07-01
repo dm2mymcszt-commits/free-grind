@@ -105,7 +105,7 @@ export function BackgroundInboxScanner() {
 
                             if (isScannerEnabled) {
                                 if (isOutsideAgeLimits(age)) {
-                                    blockReason = `Age limit (${age})`;
+                                    blockReason = age == null ? "No Age Set" : `Age limit (${age})`;
                                 } else if (isOutsideDistanceLimits(distance)) {
                                     blockReason = "Distance limit";
                                 } else if (isForbiddenLookingFor(lookingForTags)) {

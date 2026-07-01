@@ -5,6 +5,8 @@ import {
 } from "react";
 import { useApi } from "../hooks/useApi";
 import { useApiFunctions } from "../hooks/useApiFunctions";
+import { useQueryClient } from "@tanstack/react-query";
+import { interestViewsStore } from "../services/interestViewsStore";
 import toast from "react-hot-toast";
 import {
 	AuthContext,
@@ -47,6 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 	const { callMethod, asAppError } = useApi();
 	const apiFunctions = useApiFunctions();
+	const queryClient = useQueryClient();
 
 	const checkAuth = async () => {
 		try {
@@ -125,6 +128,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		try {
 			dispatch({ type: "SET_LOADING", payload: true });
 			await callMethod("logout");
+			queryClient.clear();
+			await interestViewsStore.clear();
 			dispatch({ type: "CLEAR_USER" });
 			toast.success("Logged out");
 		} catch (error) {

@@ -3,7 +3,7 @@ import { useApiFunctions } from "../useApiFunctions";
 import { useEffect } from "react";
 import { TAP_RECEIVED_EVENT, VIEW_RECEIVED_EVENT } from "../../components/ChatRealtimeBridge";
 import { interestViewsStore } from "../../services/interestViewsStore";
-import { fromStoredView, toStoredView, normalizeViews, normalizeTaps } from "../../pages/app/interest/interestUtils";
+import { fromStoredView, toStoredView, normalizeViews, normalizeTaps, PREVIEW_ID_PREFIX } from "../../pages/app/interest/interestUtils";
 import { useTranslation } from "react-i18next";
 import { DEFAULT_STALE_TIME_MS } from "../../config/ui-constants";
 
@@ -33,6 +33,20 @@ export function useInterestData() {
 			await interestViewsStore.upsertMany(
 				normalizedViews.map((item) => toStoredView(item))
 			);
+
+			// Clean up stale previews from IndexedDB (those starting with PREVIEW_ID_PREFIX but not in current response)
+			const activePreviewIds = new Set(
+				normalizedViews
+					.filter((item) => item.profileId.startsWith(PREVIEW_ID_PREFIX))
+					.map((item) => item.profileId)
+			);
+			const stalePreviewIds = cachedRows
+				.map((r) => r.profileId)
+				.filter((id) => id.startsWith(PREVIEW_ID_PREFIX) && !activePreviewIds.has(id));
+
+			if (stalePreviewIds.length > 0) {
+				await interestViewsStore.deleteMany(stalePreviewIds);
+			}
 
 			return {
 				taps: normalizedTaps,

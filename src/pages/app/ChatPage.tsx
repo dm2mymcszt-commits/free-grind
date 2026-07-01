@@ -1290,7 +1290,7 @@ export function ChatPage() {
 						const isBadAge = isOutsideAgeLimits(profile.age);
 
 						if (matchedBioWord || isBadAge) {
-							const reason = isBadAge ? `Age limit (${profile.age})` : `Keyword in Bio`;
+							const reason = isBadAge ? (profile.age == null ? "No Age Set" : `Age limit (${profile.age})`) : `Keyword in Bio`;
 							appLog.info(`[AutoBlock] Sweeping conversation due to: ${reason}`);
 							
 							blockProfileMutation(String(blockId)).catch(() => {});
