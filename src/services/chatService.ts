@@ -182,11 +182,18 @@ export function createChatService(
                 const data: any = entry.data;
 				
                 const displayName = data.name || (data.participants && data.participants[0]?.displayName) || "";
+                const aboutMe = data.participants?.[0]?.aboutMe || "";
                 const lastMessageText = data.previewText || (data.lastMessage?.body?.text) || "";
+				
+                const profileAge = data.participants?.[0]?.age;
+                const distance = data.participants?.[0]?.distanceMetres || data.participants?.[0]?.distanceMeters;
 
                 let shouldBlock = 
                     shouldAutoBlock(displayName, "name") || 
-                    shouldAutoBlock(lastMessageText, "message");
+                    shouldAutoBlock(aboutMe, "bio") || 
+                    shouldAutoBlock(lastMessageText, "message") ||
+                    (profileAge !== undefined && isOutsideAgeLimits(profileAge)) ||
+                    (distance !== undefined && isOutsideDistanceLimits(distance));
 
                 if (shouldBlock && window.localStorage.getItem("fg-autoblock-skip-after-two") === "true" && data.conversationId) {
                     try {
@@ -206,7 +213,11 @@ export function createChatService(
                 if (shouldBlock) {
                     const profileId = data.participants?.[0]?.profileId;
                     if (profileId) {
-                        notifyAutoBlock(displayName || profileId, "Keyword match");
+                        let reason = "Keyword match";
+                        if (profileAge !== undefined && isOutsideAgeLimits(profileAge)) reason = profileAge == null ? "No Age Set" : `Age Limit (${profileAge})`;
+                        else if (distance !== undefined && isOutsideDistanceLimits(distance)) reason = `Distance Limit (${Math.round(distance/1000)}km)`;
+						
+                        notifyAutoBlock(displayName || profileId, reason);
                         fetchRest(`/v3/me/blocks/${encodeURIComponent(profileId)}`, { method: "POST" }).catch(() => {});
                     }
                     continue; // Do NOT show them in the inbox!
