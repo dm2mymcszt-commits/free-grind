@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type InputHTMLAttributes, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/useAuth";
 import { AuthShell } from "../../components/ui/auth-shell";
@@ -7,7 +7,81 @@ import { BugReportButton } from "../../components/ui/BugReportButton";
 import type { SignInMethod } from "../../types/auth";
 import { useTranslation } from "react-i18next";
 import { Mail, Lock, KeyRound } from "lucide-react";
+import { cn } from "../../utils/cn";
 
+function AuthMethodTab({
+	active,
+	icon,
+	label,
+	onClick,
+}: {
+	active: boolean;
+	icon: ReactNode;
+	label: string;
+	onClick: () => void;
+}) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			className={cn(
+				"flex flex-1 items-center justify-center gap-1.5 rounded-[10px] py-2 text-sm font-medium transition-all duration-200 active:scale-[0.97]",
+				active
+					? "bg-[var(--accent)] text-[var(--accent-contrast)] shadow-md shadow-[var(--accent)]/25"
+					: "text-[var(--text-muted)] hover:text-[var(--text)]",
+			)}
+		>
+			{icon}
+			{label}
+		</button>
+	);
+}
+
+function IconInput({
+	icon,
+	className,
+	...inputProps
+}: { icon: ReactNode } & InputHTMLAttributes<HTMLInputElement>) {
+	return (
+		<div className="relative">
+			<span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]">
+				{icon}
+			</span>
+			<input {...inputProps} className={cn("input-field pl-9", className)} />
+		</div>
+	);
+}
+
+function AuthSubmitSection({
+	error,
+	loading,
+	disabled,
+	loadingLabel,
+	label,
+}: {
+	error: string | null;
+	loading: boolean;
+	disabled: boolean;
+	loadingLabel: string;
+	label: string;
+}) {
+	return (
+		<>
+			{error ? <p className="text-sm text-[var(--text-muted)]">{error}</p> : null}
+			<div className="pt-1">
+				<Button
+					type="submit"
+					variant="primary"
+					loading={loading}
+					disabled={disabled}
+					className="w-full"
+				>
+					{loading ? loadingLabel : label}
+				</Button>
+			</div>
+		</>
+	);
+}
 
 export function SignInPage() {
 	const { t } = useTranslation();
@@ -22,6 +96,9 @@ export function SignInPage() {
 
 	const { login, loginWithJwt, error } = useAuth();
 	const navigate = useNavigate();
+
+	const isPasswordFormValid = email.trim().length > 0 && password.trim().length > 0;
+	const isTokenFormValid = jwtToken.trim().length > 0;
 
 	const handlePasswordSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -66,84 +143,59 @@ export function SignInPage() {
 			}
 		>
 			{/* Method selector */}
-			<div className="mb-5 flex gap-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-2)] p-1">
-				<button
-					type="button"
+			<div className="mb-6 flex gap-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-2)] p-1 shadow-sm">
+				<AuthMethodTab
+					active={method === "password"}
+					icon={<Lock className="h-3.5 w-3.5" />}
+					label={t("auth.sign_in.method_password")}
 					onClick={() => setMethod("password")}
-					className={`flex-1 rounded-[10px] py-2 text-sm font-medium transition-colors ${
-						method === "password"
-							? "bg-[var(--accent)] text-[var(--accent-contrast)]"
-							: "text-[var(--text-muted)] hover:text-[var(--text)]"
-					}`}
-				>
-					{t("auth.sign_in.method_password")}
-				</button>
-				<button
-					type="button"
+				/>
+				<AuthMethodTab
+					active={method === "token"}
+					icon={<KeyRound className="h-3.5 w-3.5" />}
+					label={t("auth.sign_in.method_token")}
 					onClick={() => setMethod("token")}
-					className={`flex-1 rounded-[10px] py-2 text-sm font-medium transition-colors ${
-						method === "token"
-							? "bg-[var(--accent)] text-[var(--accent-contrast)]"
-							: "text-[var(--text-muted)] hover:text-[var(--text)]"
-					}`}
-				>
-					{t("auth.sign_in.method_token")}
-				</button>
+				/>
 			</div>
 
 			{method === "password" ? (
-				<form onSubmit={handlePasswordSubmit} className="space-y-3">
-					<div className="relative">
-						<Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" />
-						<input
-							type="email"
-							value={email}
-							onChange={(e) => setEmail(e.target.value)}
-							required
-							className="input-field pl-9"
-							placeholder={t("auth.common.email")}
-						/>
-					</div>
-					<div className="relative">
-						<Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" />
-						<input
-							type="password"
-							value={password}
-							onChange={(e) => setPassword(e.target.value)}
-							required
-							className="input-field pl-9"
-							placeholder={t("auth.common.password")}
-						/>
-					</div>
-					{error ? <p className="text-sm text-[var(--text-muted)]">{error}</p> : null}
-					<div className="pt-1">
-						<Button
-							type="submit"
-							variant="primary"
-							loading={isPasswordLoading}
-							className="w-full"
-						>
-							{isPasswordLoading
-								? t("auth.sign_in.signing_in")
-								: t("auth.sign_in.submit")}
-						</Button>
-					</div>
+				<form key="password" onSubmit={handlePasswordSubmit} className="animate-fade-in space-y-3">
+					<IconInput
+						icon={<Mail className="h-4 w-4" />}
+						type="email"
+						value={email}
+						onChange={(e) => setEmail(e.target.value)}
+						required
+						placeholder={t("auth.common.email")}
+					/>
+					<IconInput
+						icon={<Lock className="h-4 w-4" />}
+						type="password"
+						value={password}
+						onChange={(e) => setPassword(e.target.value)}
+						required
+						placeholder={t("auth.common.password")}
+					/>
+					<AuthSubmitSection
+						error={error}
+						loading={isPasswordLoading}
+						disabled={!isPasswordFormValid}
+						loadingLabel={t("auth.sign_in.signing_in")}
+						label={t("auth.sign_in.submit")}
+					/>
 				</form>
 			) : (
-				<form onSubmit={handleTokenSubmit} className="space-y-3">
+				<form key="token" onSubmit={handleTokenSubmit} className="animate-fade-in space-y-3">
 					<div>
-						<div className="relative">
-							<KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" />
-							<input
-								type="text"
-								value={jwtToken}
-								onChange={(e) => setJwtToken(e.target.value)}
-								required
-								className="input-field pl-9"
-								placeholder="eyJhbGciOi..."
-								autoComplete="off"
-							/>
-						</div>
+						<IconInput
+							icon={<KeyRound className="h-4 w-4" />}
+							type="text"
+							value={jwtToken}
+							onChange={(e) => setJwtToken(e.target.value)}
+							required
+							placeholder="eyJhbGciOi..."
+							autoComplete="off"
+						/>
 						<a
 							href="https://freegrinddocs.imaoreo.dev/guide/login"
 							target="_blank"
@@ -153,19 +205,13 @@ export function SignInPage() {
 							{t("auth.sign_in.token_help")}
 						</a>
 					</div>
-					{error ? <p className="text-sm text-[var(--text-muted)]">{error}</p> : null}
-					<div className="pt-1">
-						<Button
-							type="submit"
-							variant="primary"
-							loading={isTokenLoading}
-							className="w-full"
-						>
-							{isTokenLoading
-								? t("auth.sign_in.signing_in")
-								: t("auth.sign_in.sign_in_with_token")}
-						</Button>
-					</div>
+					<AuthSubmitSection
+						error={error}
+						loading={isTokenLoading}
+						disabled={!isTokenFormValid}
+						loadingLabel={t("auth.sign_in.signing_in")}
+						label={t("auth.sign_in.sign_in_with_token")}
+					/>
 				</form>
 			)}
 		</AuthShell>

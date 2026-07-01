@@ -16,7 +16,7 @@ export function AuthShell({
 			<div className="fs-card-inner">
 				{/* Header */}
 				<div
-					className="flex shrink-0 flex-col items-center px-6 pb-10 text-center"
+					className="animate-fade-in flex shrink-0 flex-col items-center px-6 pb-10 text-center"
 					style={{ paddingTop: "max(64px, env(safe-area-inset-top))" }}
 				>
 					<img
@@ -29,7 +29,7 @@ export function AuthShell({
 				</div>
 
 				{/* Form */}
-				<div className="flex flex-1 flex-col overflow-y-auto px-6">
+				<div className="animate-fade-in flex flex-1 flex-col overflow-y-auto px-6">
 					<div className="flex-1">{children}</div>
 					{footer ? (
 						<div
