@@ -102,67 +102,88 @@ export function BackgroundInboxScanner() {
                             const lookingForTags = p.lookingFor || [];
 
                             let blockReason = "";
+                            let messages: any[] = [];
+                            let fetchedMessages = false;
+                            let outgoingCount = 0;
 
-                            if (isScannerEnabled) {
-                                if (isOutsideAgeLimits(age)) {
-                                    blockReason = age == null ? "No Age Set" : `Age limit (${age})`;
-                                } else if (isOutsideDistanceLimits(distance)) {
-                                    blockReason = "Distance limit";
-                                } else if (isForbiddenLookingFor(lookingForTags)) {
-                                    blockReason = "Forbidden 'Looking For' tag";
-                                } else if (shouldAutoBlock(name, "name")) {
-                                    blockReason = "Name keyword";
-                                } else if (shouldAutoBlock(bio, "bio")) {
-                                    blockReason = "Bio keyword";
-                                }
-                            }
-
-                            if (!blockReason && window.localStorage.getItem("fg-block-first-media") === "true") {
+                            if (window.localStorage.getItem("fg-autoblock-skip-after-two") === "true") {
                                 try {
                                     const msgRes = await api.listMessages({ conversationId });
-                                    const messages = msgRes.messages || [];
-                                    
-                                    let hasOutgoing = false;
-                                    let hasIncomingText = false;
-                                    let firstMsgIsMedia = false;
-                                    let firstMsgTimestamp = 0;
-                                    
-                                    for (let i = 0; i < messages.length; i++) {
-                                        const msg = messages[i];
+                                    messages = msgRes.messages || [];
+                                    fetchedMessages = true;
+                                    for (const msg of messages) {
                                         const msgIsMine = userId != null && Number(msg.senderId) === Number(userId);
                                         if (msgIsMine) {
-                                            hasOutgoing = true;
-                                        } else {
-                                            const msgBody: any = msg.body;
-                                            const text = msgBody && typeof msgBody.text === "string" ? msgBody.text : "";
-                                            if (text && text.trim() !== "") {
-                                                hasIncomingText = true;
-                                            }
-                                            
-                                            const typeLower = msg.type?.toLowerCase() || "";
-                                            const chat1Lower = msg.chat1Type?.toLowerCase() || "";
-                                            const isMedia =
-                                                typeLower === "image" ||
-                                                typeLower === "expiringimage" ||
-                                                typeLower === "video" ||
-                                                typeLower === "nonexpiringvideo" ||
-                                                typeLower.includes("album") ||
-                                                chat1Lower === "image" ||
-                                                chat1Lower === "expiring_image" ||
-                                                chat1Lower === "video" ||
-                                                chat1Lower === "private_video" ||
-                                                chat1Lower === "expiring_video";
+                                            outgoingCount++;
+                                        }
+                                    }
+                                } catch {}
+                            }
+
+                            if (outgoingCount < 2) {
+                                if (isScannerEnabled) {
+                                    if (isOutsideAgeLimits(age)) {
+                                        blockReason = age == null ? "No Age Set" : `Age limit (${age})`;
+                                    } else if (isOutsideDistanceLimits(distance)) {
+                                        blockReason = "Distance limit";
+                                    } else if (isForbiddenLookingFor(lookingForTags)) {
+                                        blockReason = "Forbidden 'Looking For' tag";
+                                    } else if (shouldAutoBlock(name, "name")) {
+                                        blockReason = "Name keyword";
+                                    } else if (shouldAutoBlock(bio, "bio")) {
+                                        blockReason = "Bio keyword";
+                                    }
+                                }
+
+                                if (!blockReason && window.localStorage.getItem("fg-block-first-media") === "true") {
+                                    try {
+                                        if (!fetchedMessages) {
+                                            const msgRes = await api.listMessages({ conversationId });
+                                            messages = msgRes.messages || [];
+                                            fetchedMessages = true;
+                                        }
+                                        
+                                        let hasOutgoing = false;
+                                        let hasIncomingText = false;
+                                        let firstMsgIsMedia = false;
+                                        let firstMsgTimestamp = 0;
+                                        
+                                        for (let i = 0; i < messages.length; i++) {
+                                            const msg = messages[i];
+                                            const msgIsMine = userId != null && Number(msg.senderId) === Number(userId);
+                                            if (msgIsMine) {
+                                                hasOutgoing = true;
+                                            } else {
+                                                const msgBody: any = msg.body;
+                                                const text = msgBody && typeof msgBody.text === "string" ? msgBody.text : "";
+                                                if (text && text.trim() !== "") {
+                                                    hasIncomingText = true;
+                                                }
                                                 
-                                            if (isMedia && (!text || text.trim() === "")) {
-                                                if (i === 0) {
-                                                    firstMsgIsMedia = true;
-                                                    firstMsgTimestamp = msg.timestamp || Date.now();
+                                                const typeLower = msg.type?.toLowerCase() || "";
+                                                const chat1Lower = msg.chat1Type?.toLowerCase() || "";
+                                                const isMedia =
+                                                    typeLower === "image" ||
+                                                    typeLower === "expiringimage" ||
+                                                    typeLower === "video" ||
+                                                    typeLower === "nonexpiringvideo" ||
+                                                    typeLower.includes("album") ||
+                                                    chat1Lower === "image" ||
+                                                    chat1Lower === "expiring_image" ||
+                                                    chat1Lower === "video" ||
+                                                    chat1Lower === "private_video" ||
+                                                    chat1Lower === "expiring_video";
+                                                    
+                                                if (isMedia && (!text || text.trim() === "")) {
+                                                    if (i === 0) {
+                                                        firstMsgIsMedia = true;
+                                                        firstMsgTimestamp = msg.timestamp || Date.now();
+                                                    }
                                                 }
                                             }
                                         }
-                                    }
-                                    
-                                    if (firstMsgIsMedia && !hasOutgoing && !hasIncomingText) {
+                                        
+                                        if (firstMsgIsMedia && !hasOutgoing && !hasIncomingText) {
                                         const delayEnabled = window.localStorage.getItem("fg-block-media-delay-enabled") === "true";
                                         if (delayEnabled) {
                                             const elapsedMs = Date.now() - firstMsgTimestamp;
@@ -215,6 +236,7 @@ export function BackgroundInboxScanner() {
                                 } catch (msgErr) {
                                     console.warn(`[BackgroundInboxScanner] Failed to fetch/analyze messages for conversation ${conversationId}:`, msgErr);
                                 }
+                            }
                             }
 
                             if (blockReason) {

@@ -423,7 +423,24 @@ export function ChatRealtimeBridge() {
 							}
 						}
 
-						if (isIncoming && (matchedWord || isBotMedia)) {
+						let isUserConvoSafe = false;
+						if (isIncoming && (matchedWord || isBotMedia) && window.localStorage.getItem("fg-autoblock-skip-after-two") === "true") {
+							try {
+								const log = await chatLog.readLog(m.conversationId);
+								let outgoingCount = 0;
+								for (const msg of log.messages) {
+									const msgIsMine = userIdRef.current != null && Number(msg.senderId) === Number(userIdRef.current);
+									if (msgIsMine) {
+										outgoingCount++;
+									}
+								}
+								if (outgoingCount >= 2) {
+									isUserConvoSafe = true;
+								}
+							} catch {}
+						}
+
+						if (isIncoming && (matchedWord || isBotMedia) && !isUserConvoSafe) {
 							const reason = isBotMedia ? "First message was media (Bot evasion)" : `Keyword: "${matchedWord}"`;
 							notifyAutoBlock(`Spam Intercepted`, reason);
 							

@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { 
     Ban, Clock, Download, RefreshCw, Save, Tag, Upload, Users, 
-    Wand2, Trash2, Eye, HardDrive, ShieldAlert, Crosshair, Image as ImageIcon
+    Wand2, Trash2, Eye, HardDrive, ShieldAlert, Crosshair, Image as ImageIcon,
+    MessageSquare
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { BackToSettings } from "../../components/BackToSettings";
@@ -63,6 +64,7 @@ export function SettingsAutomationPage() {
     const [blockMediaDelayEnabled, setBlockMediaDelayEnabled] = useState(() => window.localStorage.getItem("fg-block-media-delay-enabled") === "true");
     const [blockMediaDelayMinutes, setBlockMediaDelayMinutes] = useState(() => window.localStorage.getItem("fg-block-media-delay-minutes") || "2");
     const [inboxScannerEnabled, setInboxScannerEnabled] = useState(() => window.localStorage.getItem("fg-inbox-scanner-enabled") === "true");
+    const [skipBlockAfterTwo, setSkipBlockAfterTwo] = useState(() => window.localStorage.getItem("fg-autoblock-skip-after-two") === "true");
 
     // Grindr Tags Block State
     const [blockedLookingForMode, setBlockedLookingForMode] = useState(() => window.localStorage.getItem("fg-block-looking-for-mode") || "any");
@@ -179,6 +181,7 @@ export function SettingsAutomationPage() {
         window.localStorage.setItem("fg-block-max-distance", maxDistance);
         window.localStorage.setItem("fg-block-looking-for-mode", blockedLookingForMode);
         window.localStorage.setItem("fg-block-looking-for", JSON.stringify(blockedLookingFor));
+        window.localStorage.setItem("fg-autoblock-skip-after-two", String(skipBlockAfterTwo));
 
         // Trigger immediate background scan with new rules
         window.dispatchEvent(new Event("fg-trigger-inbox-scan"));
@@ -484,6 +487,26 @@ export function SettingsAutomationPage() {
                                          </p>
                                      </div>
                                  </div>
+
+                                  {/* Conversation Shield */}
+                                  <div className="flex items-start gap-3 p-4">
+                                      <div className="shrink-0 rounded-2xl bg-cyan-500/15 p-2.5 text-cyan-400">
+                                          <MessageSquare className="h-5 w-5" />
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                          <label className="flex items-start gap-2 cursor-pointer">
+                                              <input
+                                                  type="checkbox"
+                                                  checked={skipBlockAfterTwo}
+                                                  onChange={(e) => setSkipBlockAfterTwo(e.target.checked)}
+                                                  className="mt-0.5 h-4 w-4 accent-[var(--accent)] shrink-0"
+                                              />
+                                              <span className="text-xs text-[var(--text-muted)] leading-relaxed">
+                                                  <strong className="text-[var(--text)]">Disable Auto-Block for Active Chats.</strong> Stops auto-blocking a profile once you have sent them 2 or more messages, protecting active conversations.
+                                              </span>
+                                          </label>
+                                      </div>
+                                  </div>
 
                                  {/* Tags Block */}
                                  <div className="flex items-start gap-3 p-4">
