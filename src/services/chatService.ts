@@ -182,18 +182,11 @@ export function createChatService(
                 const data: any = entry.data;
 				
                 const displayName = data.name || (data.participants && data.participants[0]?.displayName) || "";
-                const aboutMe = data.participants?.[0]?.aboutMe || "";
                 const lastMessageText = data.previewText || (data.lastMessage?.body?.text) || "";
-				
-                const profileAge = data.participants?.[0]?.age;
-                const distance = data.participants?.[0]?.distanceMetres || data.participants?.[0]?.distanceMeters;
 
                 let shouldBlock = 
                     shouldAutoBlock(displayName, "name") || 
-                    shouldAutoBlock(aboutMe, "bio") || 
-                    shouldAutoBlock(lastMessageText, "message") ||
-                    isOutsideAgeLimits(profileAge) ||
-                    isOutsideDistanceLimits(distance);
+                    shouldAutoBlock(lastMessageText, "message");
 
                 if (shouldBlock && window.localStorage.getItem("fg-autoblock-skip-after-two") === "true" && data.conversationId) {
                     try {
@@ -213,11 +206,7 @@ export function createChatService(
                 if (shouldBlock) {
                     const profileId = data.participants?.[0]?.profileId;
                     if (profileId) {
-                        let reason = "Keyword match";
-                        if (isOutsideAgeLimits(profileAge)) reason = profileAge == null ? "No Age Set" : `Age Limit (${profileAge})`;
-                        else if (isOutsideDistanceLimits(distance)) reason = `Distance Limit (${Math.round(distance/1000)}km)`;
-						
-                        notifyAutoBlock(displayName || profileId, reason);
+                        notifyAutoBlock(displayName || profileId, "Keyword match");
                         fetchRest(`/v3/me/blocks/${encodeURIComponent(profileId)}`, { method: "POST" }).catch(() => {});
                     }
                     continue; // Do NOT show them in the inbox!
