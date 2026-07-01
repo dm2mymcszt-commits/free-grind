@@ -604,7 +604,9 @@
     "auth": {
         "common": {
             "email": "Email",
-            "password": "Senha"
+            "password": "Senha",
+            "show_password": "Mostrar senha",
+            "hide_password": "Ocultar senha"
         },
         "sign_in": {
             "title": "Entrar",

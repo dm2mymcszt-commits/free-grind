@@ -656,7 +656,9 @@
     "auth": {
         "common": {
             "email": "E-Mail",
-            "password": "Passwort"
+            "password": "Passwort",
+            "show_password": "Passwort anzeigen",
+            "hide_password": "Passwort verbergen"
         },
         "sign_in": {
             "title": "Anmelden",

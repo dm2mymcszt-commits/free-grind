@@ -1,12 +1,16 @@
 package dev.estopia.free_grind
 
 import android.Manifest
+import android.animation.Animator
+import android.animation.ObjectAnimator
+import android.animation.PropertyValuesHolder
 import android.app.Dialog
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
+import android.graphics.Color
 import android.os.Handler
 import android.os.Build
 import android.os.Bundle
@@ -15,12 +19,14 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.util.Log
+import android.view.View
 import android.view.WindowManager
+import android.view.animation.LinearInterpolator
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
-import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
@@ -119,9 +125,15 @@ class MainActivity : TauriActivity() {
   // stay well above that or it'll cut the splash early on every
   // normal-but-slow launch instead of only on a genuinely broken one.
   private var splashDialog: Dialog? = null
+  private var splashGlowAnimator: Animator? = null
+  private var splashSpinnerAnimator: Animator? = null
 
   private fun dismissSplash() {
     runOnUiThread {
+      splashGlowAnimator?.cancel()
+      splashGlowAnimator = null
+      splashSpinnerAnimator?.cancel()
+      splashSpinnerAnimator = null
       splashDialog?.dismiss()
       splashDialog = null
     }
@@ -145,12 +157,17 @@ class MainActivity : TauriActivity() {
       window?.let { win ->
         win.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
         // The Dialog is its own Window, so it doesn't inherit the Activity's
-        // enableEdgeToEdge() status/nav bar styling — left alone, it shows
-        // the system default white status bar instead of matching the
-        // splash background.
-        val splashBackground = ContextCompat.getColor(this@MainActivity, R.color.splash_background)
-        win.statusBarColor = splashBackground
-        win.navigationBarColor = splashBackground
+        // enableEdgeToEdge() styling — left alone, it shows the system
+        // default white status/nav bars instead of the splash background.
+        // Setting statusBarColor directly is deprecated/ignored on this
+        // project's targetSdk (36, enforced edge-to-edge) — matching
+        // enableEdgeToEdge()'s own approach instead: make the dialog draw
+        // behind transparent system bars so splash_overlay.xml's own
+        // full-bleed background shows through them, and only control the
+        // bar *icon* color via WindowInsetsControllerCompat.
+        WindowCompat.setDecorFitsSystemWindows(win, false)
+        win.statusBarColor = Color.TRANSPARENT
+        win.navigationBarColor = Color.TRANSPARENT
         val isNightMode = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
           Configuration.UI_MODE_NIGHT_YES
         WindowInsetsControllerCompat(win, win.decorView).apply {
@@ -159,6 +176,32 @@ class MainActivity : TauriActivity() {
         }
       }
       show()
+      // One full spinner rotation and one glow pulse (dim -> bright -> dim,
+      // i.e. two REVERSE half-cycles of ROTATION_MS/2 each) take the same
+      // total time, so the two read as one coordinated animation instead of
+      // two independently-timed ones.
+      val rotationMs = 1800L
+      findViewById<View>(R.id.splash_spinner)?.let { spinner ->
+        splashSpinnerAnimator = ObjectAnimator.ofFloat(spinner, View.ROTATION, 0f, 360f).apply {
+          duration = rotationMs
+          repeatCount = ObjectAnimator.INFINITE
+          interpolator = LinearInterpolator()
+          start()
+        }
+      }
+      findViewById<View>(R.id.splash_glow)?.let { glow ->
+        splashGlowAnimator = ObjectAnimator.ofPropertyValuesHolder(
+          glow,
+          PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.06f),
+          PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.06f),
+          PropertyValuesHolder.ofFloat(View.ALPHA, 0.3f, 0.55f),
+        ).apply {
+          duration = rotationMs / 2
+          repeatMode = ObjectAnimator.REVERSE
+          repeatCount = ObjectAnimator.INFINITE
+          start()
+        }
+      }
     }
     mainHandler.postDelayed({ dismissSplash() }, 45000)
     activityRef = WeakReference(this)

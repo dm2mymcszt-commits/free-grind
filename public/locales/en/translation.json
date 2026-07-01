@@ -700,7 +700,9 @@
     "auth": {
         "common": {
             "email": "Email",
-            "password": "Password"
+            "password": "Password",
+            "show_password": "Show password",
+            "hide_password": "Hide password"
         },
         "sign_in": {
             "title": "Sign In",
