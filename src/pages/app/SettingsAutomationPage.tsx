@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { 
     Ban, Clock, Download, RefreshCw, Save, Tag, Upload, Users, 
     Wand2, Trash2, Eye, HardDrive, ShieldAlert, Crosshair, Image as ImageIcon,
-    MessageSquare
+    MessageSquare, ShieldCheck
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { BackToSettings } from "../../components/BackToSettings";
@@ -13,6 +13,7 @@ import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { RangeSlider, Slider } from "../../components/ui/range-slider";
 import { interestViewsStore } from "../../services/interestViewsStore";
 import { getLookingForOptions } from "./profile-option-builders";
+import { getAutoBlockWhitelist, removeFromAutoBlockWhitelist } from "../../utils/privacy";
 
 function useIsDesktop() {
     const [isDesktop, setIsDesktop] = useState(() => {
@@ -65,6 +66,11 @@ export function SettingsAutomationPage() {
     const [blockMediaDelayMinutes, setBlockMediaDelayMinutes] = useState(() => window.localStorage.getItem("fg-block-media-delay-minutes") || "2");
     const [inboxScannerEnabled, setInboxScannerEnabled] = useState(() => window.localStorage.getItem("fg-inbox-scanner-enabled") === "true");
     const [skipBlockAfterTwo, setSkipBlockAfterTwo] = useState(() => window.localStorage.getItem("fg-autoblock-skip-after-two") === "true");
+
+    const [whitelist, setWhitelist] = useState<{ profileId: string; displayName: string }[]>([]);
+    useEffect(() => {
+        setWhitelist(getAutoBlockWhitelist());
+    }, []);
 
     // Grindr Tags Block State
     const [blockedLookingForMode, setBlockedLookingForMode] = useState(() => window.localStorage.getItem("fg-block-looking-for-mode") || "any");
@@ -600,6 +606,45 @@ export function SettingsAutomationPage() {
                                         </div>
                                     </div>
                                 </div>
+
+                                 {/* Whitelisted exceptions */}
+                                 <div className="flex items-start gap-3 p-4">
+                                     <div className="shrink-0 rounded-2xl bg-emerald-500/15 p-2.5 text-emerald-400">
+                                         <ShieldCheck className="h-5 w-5" />
+                                     </div>
+                                     <div className="min-w-0 flex-1">
+                                         <p className="text-sm font-semibold leading-snug">Auto-Block Whitelist</p>
+                                         <p className="mt-0.5 text-xs leading-relaxed text-[var(--text-muted)]">
+                                             Profiles added here are excluded from auto-blocking rules.
+                                         </p>
+
+                                         {whitelist.length === 0 ? (
+                                             <p className="mt-3 text-xs text-[var(--text-muted)] italic">No profiles whitelisted yet.</p>
+                                         ) : (
+                                             <div className="mt-3 max-h-[200px] overflow-y-auto border border-[var(--border)] rounded-xl bg-[var(--surface-1)] divide-y divide-[var(--border)]">
+                                                 {whitelist.map((profile) => (
+                                                     <div key={profile.profileId} className="flex items-center justify-between p-2.5 text-xs">
+                                                         <div className="min-w-0 flex-1 pr-2">
+                                                             <p className="font-semibold truncate">{profile.displayName}</p>
+                                                             <p className="text-[10px] text-[var(--text-muted)]">ID: {profile.profileId}</p>
+                                                         </div>
+                                                         <button
+                                                             type="button"
+                                                             onClick={() => {
+                                                                 removeFromAutoBlockWhitelist(profile.profileId);
+                                                                 setWhitelist(getAutoBlockWhitelist());
+                                                                 toast.success(`Removed ${profile.displayName} from whitelist.`);
+                                                             }}
+                                                             className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-2.5 py-1 font-semibold text-[var(--text-muted)] hover:border-red-400 hover:text-red-400 transition"
+                                                         >
+                                                             Remove
+                                                         </button>
+                                                     </div>
+                                                 ))}
+                                             </div>
+                                         )}
+                                     </div>
+                                 </div>
 
                                 <div className="p-4">
                                     <button

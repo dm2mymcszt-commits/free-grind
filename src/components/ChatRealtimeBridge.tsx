@@ -33,7 +33,7 @@ import { getOtherParticipant, getMessagePreviewLabel } from "../pages/app/chat/c
 import { getConversation, getDisplayName } from "../services/conversationDirectory";
 import { getMatchedForbiddenWord, notifyAutoBlock } from "../utils/autoblock";
 import { useApiFunctions } from "../hooks/useApiFunctions";
-import { isChatGhosted } from "../utils/privacy";
+import { isChatGhosted, isProfileAutoblockWhitelisted } from "../utils/privacy";
 import i18n from "../i18n";
 import { notifyMessage } from "../services/desktopNotify";
 
@@ -327,11 +327,12 @@ export function ChatRealtimeBridge() {
 						}
 
 						const isIncoming = userIdRef.current != null && Number(m.senderId) !== Number(userIdRef.current);
-						const matchedWord = getMatchedForbiddenWord(messageText, "message");
+						const isWhitelisted = isIncoming && m.senderId && isProfileAutoblockWhitelisted(String(m.senderId));
+						const matchedWord = isWhitelisted ? null : getMatchedForbiddenWord(messageText, "message");
 
 						// --- BOT EVASION CHECK (LIVE) ---
 						let isBotMedia = false;
-						if (isIncoming && !matchedWord && window.localStorage.getItem("fg-block-first-media") === "true") {
+						if (isIncoming && !isWhitelisted && !matchedWord && window.localStorage.getItem("fg-block-first-media") === "true") {
 							const typeLower = m.type?.toLowerCase() || "";
 							const chat1Lower = m.chat1Type?.toLowerCase() || "";
 							const isMedia =
@@ -440,7 +441,7 @@ export function ChatRealtimeBridge() {
 							} catch {}
 						}
 
-						if (isIncoming && (matchedWord || isBotMedia) && !isUserConvoSafe) {
+						if (isIncoming && !isWhitelisted && (matchedWord || isBotMedia) && !isUserConvoSafe) {
 							const reason = isBotMedia ? "First message was media (Bot evasion)" : `Keyword: "${matchedWord}"`;
 							notifyAutoBlock(`Spam Intercepted`, reason);
 							

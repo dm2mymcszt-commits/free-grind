@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApiFunctions } from "../useApiFunctions";
+import { removeFromAutoBlockWhitelist } from "../../utils/privacy";
 
 /**
  * Hook to fetch and manage blocked profile IDs.
@@ -24,6 +25,9 @@ export function useBlockProfile() {
 	return useMutation({
 		mutationFn: (profileId: string) => api.blockProfile(profileId),
 		onSuccess: (_, profileId) => {
+			// Remove from auto-block whitelist if manually blocked
+			removeFromAutoBlockWhitelist(profileId);
+
 			// Manually update the cache for blocked IDs to keep UI in sync
 			queryClient.setQueryData<string[]>(["blocked-profile-ids"], (old) => {
 				if (!old) return [profileId];

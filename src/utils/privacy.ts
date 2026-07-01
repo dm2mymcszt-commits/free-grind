@@ -28,3 +28,31 @@ export function toggleChatGhost(conversationId: string): boolean {
     }
     return !currentState;
 }
+
+export function getAutoBlockWhitelist(): { profileId: string; displayName: string }[] {
+    try {
+        const json = window.localStorage.getItem("fg-auto-block-whitelist") || "[]";
+        return JSON.parse(json);
+    } catch {
+        return [];
+    }
+}
+
+export function addToAutoBlockWhitelist(profileId: string, displayName: string) {
+    const list = getAutoBlockWhitelist();
+    if (!list.some(x => String(x.profileId) === String(profileId))) {
+        list.push({ profileId: String(profileId), displayName });
+        window.localStorage.setItem("fg-auto-block-whitelist", JSON.stringify(list));
+    }
+}
+
+export function removeFromAutoBlockWhitelist(profileId: string) {
+    const list = getAutoBlockWhitelist();
+    const filtered = list.filter(x => String(x.profileId) !== String(profileId));
+    window.localStorage.setItem("fg-auto-block-whitelist", JSON.stringify(filtered));
+}
+
+export function isProfileAutoblockWhitelisted(profileId: string): boolean {
+    const list = getAutoBlockWhitelist();
+    return list.some(x => String(x.profileId) === String(profileId));
+}

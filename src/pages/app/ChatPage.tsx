@@ -88,7 +88,7 @@ import type { ChatContactIndexRecord } from "../../types/chat-contact-index";
 import { markInboxSeen, getInboxLastSeen } from "../../services/seenStore";
 import { SCROLL_RESTORATION_TIMEOUT_MS } from "../../config/ui-constants";
 import { shouldAutoBlock, isOutsideAgeLimits } from "../../utils/autoblock";
-import { isChatGhosted } from "../../utils/privacy";
+import { isChatGhosted, isProfileAutoblockWhitelisted } from "../../utils/privacy";
 import freegrindLogo from "../../images/freegrind-logo.webp";
 import { getCachedOwnProfilePhotoHash, setCachedOwnProfilePhotoHash } from "./gridpage/cache";
 import { getThumbImageUrl, validateMediaHash } from "../../utils/media";
@@ -1406,7 +1406,11 @@ export function ChatPage() {
 				}
 
 				// --- AUTO BLOCK CHECK (HISTORICAL CHAT SCANNER) ---
-				if (!isFallback) {
+				const otherParticipant = getOtherParticipant(selectedConversation || { data: { participants: [] } } as any, userId);
+				const blockId = otherParticipant?.profileId || (responseMessages[0] && responseMessages[0].senderId);
+				const isWhitelisted = blockId ? isProfileAutoblockWhitelisted(String(blockId)) : false;
+
+				if (!isFallback && !isWhitelisted) {
 					let shouldNukeThread = false;
 					let blockReason = "";
 
@@ -1426,9 +1430,6 @@ export function ChatPage() {
 							break;
 						}
 					}
-
-					const otherParticipant = getOtherParticipant(selectedConversation || { data: { participants: [] } } as any, userId);
-					const blockId = otherParticipant?.profileId || (responseMessages[0] && responseMessages[0].senderId);
 
 					if (shouldNukeThread) {
 						appLog.info(`[AutoBlock] Sweeping historical conversation. Reason: ${blockReason}`);

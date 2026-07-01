@@ -36,6 +36,7 @@ import {
 
     FileAudio,
     Sticker,
+    ShieldCheck,
 } from "lucide-react";
 import { GiphyPickerSheet } from "./GiphyPickerSheet";
 import data from '@emoji-mart/data';
@@ -79,7 +80,13 @@ import { ChatThreadMessages } from "./ChatThreadMessages";
 import { AudioMessagePlayer } from "./AudioMessagePlayer";
 import { ConfirmDialog } from "../../../components/ui/confirm-dialog";
 import { useApiFunctions } from "../../../hooks/useApiFunctions";
-import { isChatGhosted, toggleChatGhost } from "../../../utils/privacy";
+import {
+    isChatGhosted,
+    toggleChatGhost,
+    isProfileAutoblockWhitelisted,
+    addToAutoBlockWhitelist,
+    removeFromAutoBlockWhitelist,
+} from "../../../utils/privacy";
 import { ToggleRow } from "../../../components/ui/toggle-row";
 import { BottomDrawer } from "../../../components/ui/bottom-drawer";
 import { BottomSheet, SheetClose } from "../../../components/ui/bottom-sheet";
@@ -1233,6 +1240,35 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                                                     <User className="mr-2 h-4 w-4 opacity-70" />
                                                     {t("chat.view_profile")}
                                                 </button>
+
+                                                {otherParticipant && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setIsHeaderActionsMenuOpen(false);
+                                                            const pid = String(otherParticipant.profileId);
+                                                            const whitelisted = isProfileAutoblockWhitelisted(pid);
+                                                            if (whitelisted) {
+                                                                removeFromAutoBlockWhitelist(pid);
+                                                                toast.success(`Removed "${displayName}" from Whitelist.`);
+                                                            } else {
+                                                                addToAutoBlockWhitelist(pid, displayName);
+                                                                toast.success(`Whitelisted "${displayName}" from Auto-Block.`);
+                                                            }
+                                                            forceRender(Date.now());
+                                                        }}
+                                                        className={`flex items-center rounded-lg px-2 py-2 text-left text-sm transition ${
+                                                            isProfileAutoblockWhitelisted(String(otherParticipant.profileId))
+                                                                ? "text-emerald-400 hover:bg-emerald-500/20"
+                                                                : "text-[var(--text)] hover:bg-white/10"
+                                                        }`}
+                                                    >
+                                                        <ShieldCheck className="mr-2 h-4 w-4 opacity-70" />
+                                                        {isProfileAutoblockWhitelisted(String(otherParticipant.profileId))
+                                                            ? "Whitelisted"
+                                                            : "Whitelist from Auto-Block"}
+                                                    </button>
+                                                )}
 
                                                 {!isDesktop && showGhostButton && selectedConversation && !isDraft && (
                                                     <button

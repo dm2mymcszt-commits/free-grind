@@ -35,7 +35,7 @@ import type {
 } from "../types/chat-service";
 
 import { shouldAutoBlock, isOutsideAgeLimits, isOutsideDistanceLimits, notifyAutoBlock } from "../utils/autoblock";
-import { isChatGhosted } from "../utils/privacy";
+import { isChatGhosted, isProfileAutoblockWhitelisted } from "../utils/privacy";
 import * as chatLog from "./chatLog";
 import { ApiFunctionError, assertSuccess, parseJsonSafe } from "./apiHelpers";
 import { sendViaRealtime } from "./chatRealtime";
@@ -188,12 +188,17 @@ export function createChatService(
                 const profileAge = data.participants?.[0]?.age;
                 const distance = data.participants?.[0]?.distanceMetres || data.participants?.[0]?.distanceMeters;
 
+                const profileId = data.participants?.[0]?.profileId;
+                const isWhitelisted = profileId ? isProfileAutoblockWhitelisted(String(profileId)) : false;
+
                 let shouldBlock = 
-                    shouldAutoBlock(displayName, "name") || 
-                    shouldAutoBlock(aboutMe, "bio") || 
-                    shouldAutoBlock(lastMessageText, "message") ||
-                    (profileAge !== undefined && isOutsideAgeLimits(profileAge)) ||
-                    (distance !== undefined && isOutsideDistanceLimits(distance));
+                    !isWhitelisted && (
+                        shouldAutoBlock(displayName, "name") || 
+                        shouldAutoBlock(aboutMe, "bio") || 
+                        shouldAutoBlock(lastMessageText, "message") ||
+                        (profileAge !== undefined && isOutsideAgeLimits(profileAge)) ||
+                        (distance !== undefined && isOutsideDistanceLimits(distance))
+                    );
 
                 if (shouldBlock && window.localStorage.getItem("fg-autoblock-skip-after-two") === "true" && data.conversationId) {
                     try {
