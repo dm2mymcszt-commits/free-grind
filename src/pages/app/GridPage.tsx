@@ -82,6 +82,7 @@ export function GridPage() {
 	const [isLoadingMoreCards, setIsLoadingMoreCards] = useState(false);
 	const [nextPage, setNextPage] = useState<number | null>(null);
 	const [cardsError, setCardsError] = useState<string | null>(null);
+	const [isLocationMissing, setIsLocationMissing] = useState(false);
 	const [profileImageHash, setProfileImageHash] = useState<string | null>(null);
 	const [ownDisplayName, setOwnDisplayName] = useState<string | null>(() => getCachedOwnDisplayName() ?? null);
 	const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
@@ -485,6 +486,7 @@ export function GridPage() {
 				setCardsError(
 					t("browse_page.errors.set_location"),
 				);
+				setIsLocationMissing(true);
 				setIsLoadingCards(false);
 				return;
 			}
@@ -499,6 +501,7 @@ export function GridPage() {
 				return;
 			}
 
+			setIsLocationMissing(false);
 			setCardsError(null);
 
 			if (cached) {
@@ -1459,6 +1462,8 @@ export function GridPage() {
 						<BrowseGrid
 							isLoadingCards={isLoadingCards}
 							cardsError={cardsError}
+							isLocationMissing={isLocationMissing}
+							onOpenLocation={() => setIsLocationOpen(true)}
 							cards={sortedCards}
 							chatContactIndexByProfileId={
 								(SHOW_DEMO_DATA && showDebugInfo)

@@ -289,6 +289,9 @@
         "error_load_feed": "Could not load browse feed",
         "empty_title": "No nearby profiles returned",
         "empty_desc": "Try refreshing the feed after updating your location.",
+        "no_location_title": "Set your location to get started",
+        "no_location_desc": "We need to know where you are to show nearby profiles.",
+        "no_location_button": "Set location",
         "loading": "Loading",
         "errors": {
             "load_timeout": "Browse feed request timed out. Please check your connection and try again.",

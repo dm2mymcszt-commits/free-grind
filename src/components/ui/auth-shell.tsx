@@ -34,12 +34,12 @@ export function AuthShell({
 					{footer ? (
 						<div
 							className="mt-6 text-center"
-							style={{ paddingBottom: "max(32px, env(safe-area-inset-bottom))" }}
+							style={{ paddingBottom: "max(56px, calc(env(safe-area-inset-bottom) + 24px))" }}
 						>
 							{footer}
 						</div>
 					) : (
-						<div style={{ paddingBottom: "max(32px, env(safe-area-inset-bottom))" }} />
+						<div style={{ paddingBottom: "max(56px, calc(env(safe-area-inset-bottom) + 24px))" }} />
 					)}
 				</div>
 			</div>

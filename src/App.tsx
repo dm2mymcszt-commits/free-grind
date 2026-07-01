@@ -38,6 +38,7 @@ import { PushNotificationBridge } from "./components/PushNotificationBridge";
 import { ChatRealtimeBridge } from "./components/ChatRealtimeBridge";
 import { ActiveRouteBridge } from "./components/ActiveRouteBridge";
 import { EntitlementsBridge } from "./components/EntitlementsBridge";
+import { SplashReadyBridge } from "./components/SplashReadyBridge";
 import { SmoothScroll } from "./components/SmoothScroll";
 import { usePreferences } from "./contexts/PreferencesContext";
 import ManagerApp from "./ManagerApp";
@@ -141,6 +142,7 @@ export default function App() {
 
 	return (
 		<AuthProvider>
+			<SplashReadyBridge />
 			<PreferencesProvider>
 				<SmoothScroll>
 					{showOnboarding ? (

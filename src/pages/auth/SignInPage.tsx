@@ -6,6 +6,7 @@ import { Button } from "../../components/ui/button";
 import { BugReportButton } from "../../components/ui/BugReportButton";
 import type { SignInMethod } from "../../types/auth";
 import { useTranslation } from "react-i18next";
+import { Mail, Lock, KeyRound } from "lucide-react";
 
 
 export function SignInPage() {
@@ -92,30 +93,26 @@ export function SignInPage() {
 
 			{method === "password" ? (
 				<form onSubmit={handlePasswordSubmit} className="space-y-3">
-					<div>
-						<label className="mb-1.5 block text-sm font-medium text-[var(--text-muted)]">
-							{t("auth.common.email")}
-						</label>
+					<div className="relative">
+						<Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" />
 						<input
 							type="email"
 							value={email}
 							onChange={(e) => setEmail(e.target.value)}
 							required
-							className="input-field"
-							placeholder="your@email.com"
+							className="input-field pl-9"
+							placeholder={t("auth.common.email")}
 						/>
 					</div>
-					<div>
-						<label className="mb-1.5 block text-sm font-medium text-[var(--text-muted)]">
-							{t("auth.common.password")}
-						</label>
+					<div className="relative">
+						<Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" />
 						<input
 							type="password"
 							value={password}
 							onChange={(e) => setPassword(e.target.value)}
 							required
-							className="input-field"
-							placeholder="••••••••"
+							className="input-field pl-9"
+							placeholder={t("auth.common.password")}
 						/>
 					</div>
 					{error ? <p className="text-sm text-[var(--text-muted)]">{error}</p> : null}
@@ -135,18 +132,18 @@ export function SignInPage() {
 			) : (
 				<form onSubmit={handleTokenSubmit} className="space-y-3">
 					<div>
-						<label className="mb-1.5 block text-sm font-medium text-[var(--text-muted)]">
-							{t("auth.sign_in.jwt_label")}
-						</label>
-						<input
-							type="text"
-							value={jwtToken}
-							onChange={(e) => setJwtToken(e.target.value)}
-							required
-							className="input-field"
-							placeholder="eyJhbGciOi..."
-							autoComplete="off"
-						/>
+						<div className="relative">
+							<KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" />
+							<input
+								type="text"
+								value={jwtToken}
+								onChange={(e) => setJwtToken(e.target.value)}
+								required
+								className="input-field pl-9"
+								placeholder="eyJhbGciOi..."
+								autoComplete="off"
+							/>
+						</div>
 						<a
 							href="https://freegrinddocs.imaoreo.dev/guide/login"
 							target="_blank"

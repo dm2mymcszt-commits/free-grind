@@ -272,6 +272,9 @@
         "error_load_feed": "Feed konnte nicht geladen werden",
         "empty_title": "Keine Profile in der Nähe gefunden",
         "empty_desc": "Versuche den Feed zu aktualisieren, nachdem du deinen Standort geändert hast.",
+        "no_location_title": "Lege deinen Standort fest, um loszulegen",
+        "no_location_desc": "Wir benötigen deinen Standort, um Profile in deiner Nähe anzuzeigen.",
+        "no_location_button": "Standort festlegen",
         "loading": "Lade",
         "errors": {
             "load_timeout": "Zeitüberschreitung beim Laden des Feeds. Bitte prüfe deine Verbindung und versuche es erneut.",

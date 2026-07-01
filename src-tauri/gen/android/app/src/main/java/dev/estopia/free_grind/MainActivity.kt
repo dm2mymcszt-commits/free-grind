@@ -13,6 +13,8 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.util.Log
+import android.view.View
+import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
@@ -97,23 +99,47 @@ class MainActivity : TauriActivity() {
   // Bounded pool prevents Binder-thread exhaustion when many WebSocket messages
   // arrive simultaneously and each postLocalNotification spawns avatar+IPC work.
   private val localNotifExecutor = Executors.newFixedThreadPool(2)
-  // Keeps the system splash (Theme.free_grind.Starting, installed below) on
-  // screen past the point Android would normally drop it (first window
-  // frame, which for a WebView is essentially blank) until the frontend
-  // itself has actually painted — see JsBridge.notifyContentReady(). The
-  // postDelayed fallback prevents an infinite splash if that signal never
+  // The system SplashScreen theme only supports an icon + background — no
+  // text or spinner slot. This plain overlay view (same background/icon,
+  // plus a "Free Grind" label and an indeterminate spinner) is layered on
+  // top of the WebView once it exists (see onWebViewCreate below), standing
+  // in for the system splash for as long as the app takes to actually paint
+  // real content — see JsBridge.notifyContentReady() and dismissSplash()
+  // below. The
+  // postDelayed fallback prevents it lingering forever if that signal never
   // arrives (JS error, WebView failing to load, etc.) — a real cold start
   // (cargo/webview/JS bundle init) has been observed taking ~20-25s on its
   // own, so this must stay well above that or it'll cut the splash early on
   // every normal-but-slow launch instead of only on a genuinely broken one.
-  @Volatile private var contentReady = false
+  private var splashOverlayView: View? = null
+
+  private fun dismissSplash() {
+    Log.d("Splash", "dismissSplash() called, view=$splashOverlayView")
+    runOnUiThread {
+      splashOverlayView?.let { view ->
+        view.animate().alpha(0f).setDuration(200).withEndAction {
+          (view.parent as? ViewGroup)?.removeView(view)
+          Log.d("Splash", "overlay view removed from parent")
+        }.start()
+      }
+      splashOverlayView = null
+    }
+  }
 
   override fun onCreate(savedInstanceState: Bundle?) {
-    val splashScreen = installSplashScreen()
+    Log.d("Splash", "onCreate: installing splash screen")
+    // installSplashScreen() only bridges the gap before this Activity's own
+    // window exists — it's left to dismiss at its own (near-immediate)
+    // default timing rather than held with setKeepOnScreenCondition, because
+    // the system's SplashScreenView draws *on top of* everything else,
+    // including the custom overlay added below; holding it would just hide
+    // that overlay's text/spinner behind the plain system splash for the
+    // entire wait. The overlay uses the same background/icon, so the
+    // handoff between the two is invisible regardless.
+    installSplashScreen()
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
-    splashScreen.setKeepOnScreenCondition { !contentReady }
-    mainHandler.postDelayed({ contentReady = true }, 45000)
+    mainHandler.postDelayed({ dismissSplash() }, 45000)
     activityRef = WeakReference(this)
     // Run off the main thread — createNotificationChannel makes IPC calls to
     // NotificationManagerService that can block for several seconds on some
@@ -132,6 +158,29 @@ class MainActivity : TauriActivity() {
   override fun onWebViewCreate(webView: WebView) {
     super.onWebViewCreate(webView)
     webViewRef = webView
+    Log.d("Splash", "onWebViewCreate: webView.parent=${webView.parent}, adding overlay")
+
+    // Added here rather than in onCreate: TauriActivity attaches the WebView
+    // as the window's content view asynchronously, after onCreate returns —
+    // a view added via addContentView() in onCreate was getting wiped out by
+    // that later content-view assignment, leaving nothing but the WebView's
+    // own blank white background visible for the entire wait. Adding it now,
+    // after the WebView already exists, guarantees it lands on top and stays
+    // there until dismissSplash() removes it.
+    addContentView(
+      layoutInflater.inflate(R.layout.splash_overlay, null).also {
+        splashOverlayView = it
+        Log.d("Splash", "overlay inflated: $it")
+      },
+      ViewGroup.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT,
+        ViewGroup.LayoutParams.MATCH_PARENT,
+      ),
+    )
+    Log.d(
+      "Splash",
+      "overlay addContentView done, decorView childCount=${window.decorView.let { it as? ViewGroup }?.childCount}",
+    )
 
     @Suppress("AddJavascriptInterface")
     webView.addJavascriptInterface(JsBridge(), "FreeGrindBridge")
@@ -183,14 +232,15 @@ class MainActivity : TauriActivity() {
     /**
      * Called once by main.tsx right after the first real paint (double
      * requestAnimationFrame past the initial React render) — dismisses the
-     * system splash screen installed in onCreate. Until this fires (or the
-     * 8s fallback in onCreate elapses), the splash stays up instead of the
-     * blank WebView background that would otherwise show while the app
-     * loads.
+     * system splash screen and the custom splash overlay installed in
+     * onCreate. Until this fires (or the 45s fallback in onCreate elapses),
+     * the splash stays up instead of the blank WebView background that
+     * would otherwise show while the app loads.
      */
     @JavascriptInterface
     fun notifyContentReady() {
-      contentReady = true
+      Log.d("Splash", "JsBridge.notifyContentReady() called from JS")
+      dismissSplash()
     }
 
     /**

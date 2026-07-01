@@ -11,4 +11,11 @@
          native splash background doesn't visibly flash against the app's
          own background once the WebView paints. -->
     <color name="splash_background">#F5F7FA</color>
+    <!-- Matches the "text-muted" CSS variable in src/index.css (light mode) —
+         deliberately the muted/dimmer tone, not the full-strength "text" one,
+         for a lighter-weight splash label. -->
+    <color name="splash_text">#606A79</color>
+    <!-- Matches the "accent" CSS variable in src/index.css (same in both
+         light and dark mode, so no night-mode override needed). -->
+    <color name="splash_accent">#FFCC01</color>
 </resources>
