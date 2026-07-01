@@ -151,7 +151,7 @@ jobs:
           echo "Using iOS scheme: $SCHEME"
 
           DERIVED_DATA_PATH="$RUNNER_TEMP/ios-derived"
-          xcodebuild "${PROJECT_ARGS[@]}" \
+          if ! xcodebuild "${PROJECT_ARGS[@]}" \
             -scheme "$SCHEME" \
             -configuration release \
             -destination 'generic/platform=iOS' \
@@ -159,7 +159,11 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY='' \
-            build
+            build > xcodebuild_output.log 2>&1; then
+              echo "=== XCODEBUILD FAILED - LAST 200 LINES OF LOG ==="
+              tail -n 200 xcodebuild_output.log
+              exit 1
+          fi
 
           APP_PATH=$(find "$DERIVED_DATA_PATH/Build/Products" -maxdepth 2 -type d -name '*.app' | grep -E '/(release|Release)-iphoneos/' | head -n 1)
           if [ -z "$APP_PATH" ]; then
