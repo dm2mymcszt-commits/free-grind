@@ -809,9 +809,6 @@ export function GridProfilePage() {
                         <div className="flex flex-col items-center text-center">
                             {!isLocatingProfile ? (
                                 <>
-                                    <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-[1.25rem] border border-white/10 bg-white/5 shadow-[0_8px_32px_rgba(0,0,0,0.2)] backdrop-blur-md">
-                                        <Triangle className="h-6 w-6 text-[var(--accent)] animate-pulse" />
-                                    </div>
                                     <h2 className="mb-2 text-xl font-bold text-white drop-shadow-md">Advanced Locate</h2>
                                     <p className="mb-6 text-xs leading-relaxed text-[var(--text-muted)]">
                                         Spoofs location in a shrinking triangle. A raw coordinates log will be downloaded upon completion.
@@ -887,9 +884,6 @@ export function GridProfilePage() {
                                 </>
                             ) : (
                                 <div className="flex w-full flex-col items-center pb-2 pt-2">
-                                    <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-[1.25rem] border border-[var(--accent)]/30 bg-[var(--accent)]/10 shadow-[0_0_20px_rgba(255,204,1,0.15)] animate-pulse">
-                                        <Triangle className="h-6 w-6 text-[var(--accent)] animate-spin-slow" style={{ animationDuration: '6s' }} />
-                                    </div>
                                     <h2 className="mb-2 text-xl font-bold text-white drop-shadow-md">Locating Target...</h2>
                                     <p className="mb-4 text-xs font-semibold text-[var(--accent)] animate-pulse text-center">
                                         {locateStatus || "Initializing coordinates..."}
@@ -897,16 +891,35 @@ export function GridProfilePage() {
                                     
                                     {/* NavBar-Style Liquid Glass Progress Bar */}
                                     <div 
-                                        className="relative mb-4 flex h-2.5 w-full rounded-full border border-white/5 bg-white/5 p-0.5 overflow-hidden"
+                                        className="relative mb-4 flex h-10 w-full rounded-full border border-white/10 dark:border-white/5 p-1.5 backdrop-blur-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)] select-none"
+                                        style={{
+                                            backgroundColor: "rgba(15, 17, 21, 0.25)",
+                                            background: "color-mix(in srgb, var(--surface) 25%, transparent)",
+                                        }}
                                     >
+                                        <style>
+                                            {`
+                                            @keyframes glass-shimmer {
+                                                0% { transform: translateX(-100%); }
+                                                100% { transform: translateX(100%); }
+                                            }
+                                            `}
+                                        </style>
+                                        
                                         {/* Fill Container */}
                                         <div 
-                                            className="h-full rounded-full bg-[var(--accent)] transition-all duration-500 ease-out shadow-[0_0_12px_var(--accent)] relative"
-                                            style={{ width: `${Math.max(3, locateProgress)}%` }}
+                                            className="relative h-full rounded-full bg-[var(--accent)] transition-all duration-500 ease-out shadow-[0_0_20px_var(--accent)]"
+                                            style={{ width: `${Math.max(6, locateProgress)}%` }}
                                         >
-                                            {/* Specular glass highlight inside progress fill */}
                                             <div className="absolute inset-0 overflow-hidden rounded-full">
-                                                <div className="absolute left-0 top-0 h-1/2 w-full bg-gradient-to-b from-white/20 to-transparent" />
+                                                {/* Top Specular Highlight (The subtle Glass Arc matching tabs) */}
+                                                <div className="absolute left-0 top-0 h-1/2 w-full bg-gradient-to-b from-white/30 to-transparent" />
+                                                
+                                                {/* Sweeping Elegance Shimmer */}
+                                                <div 
+                                                    className="absolute inset-0 w-[200%] -skew-x-12 bg-gradient-to-r from-transparent via-white/30 to-transparent"
+                                                    style={{ animation: 'glass-shimmer 2.5s cubic-bezier(0.4, 0, 0.2, 1) infinite' }}
+                                                />
                                             </div>
                                         </div>
                                     </div>
