@@ -8,6 +8,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useApi } from "../hooks/useApi";
 import { useApiFunctions } from "../hooks/useApiFunctions";
+import type { AppError } from "../types/api";
 import toast from "react-hot-toast";
 import {
 	AuthContext,
@@ -26,6 +27,26 @@ import { loadSeenCache } from "../services/seenStore";
 const AUTH_USER_ID_STORAGE_KEY = "fg-user-id";
 const PUSH_TOKEN_STORAGE_KEY = "fg-fcm-token";
 const PUSH_TOKEN_SYNCED_STORAGE_KEY = "fg-fcm-token-synced";
+
+// Grindr's API returns this generic validation error for several rejected-login
+// cases (wrong credentials, malformed/expired token) rather than a specific one,
+// so its raw "Error 4: invalid input parameters" text is meaningless to users.
+const INVALID_INPUT_PARAMETERS_CODE = 4;
+
+function describeLoginError(
+	appError: AppError | null,
+	fallback: string,
+	invalidCredentialsMessage: string,
+): string {
+	if (
+		appError?.kind === "Api" &&
+		typeof appError.message === "object" &&
+		appError.message.code === INVALID_INPUT_PARAMETERS_CODE
+	) {
+		return invalidCredentialsMessage;
+	}
+	return appError?.prettyMessage || fallback;
+}
 
 type AuthAction =
 	| { type: "SET_USER"; payload: number }
@@ -120,7 +141,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			toast.success("Login successful");
 		} catch (error) {
 			const appError = asAppError(error);
-			const message = appError?.prettyMessage || "Login failed";
+			const message = describeLoginError(
+				appError,
+				"Login failed",
+				"Invalid email or password. Please check your credentials and try again.",
+			);
 			appLog.error("[Auth] login failed", { kind: appError?.kind, message });
 			dispatch({ type: "SET_ERROR", payload: message });
 			toast.error(message);
@@ -143,7 +168,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			toast.success("Token login successful");
 		} catch (error) {
 			const appError = asAppError(error);
-			const message = appError?.prettyMessage || "Token login failed";
+			const message = describeLoginError(
+				appError,
+				"Token login failed",
+				"This token is invalid or has expired. Please generate a new one and try again.",
+			);
 			appLog.error("[Auth] loginWithJwt failed", { kind: appError?.kind, message });
 			dispatch({ type: "SET_ERROR", payload: message });
 			toast.error(message);

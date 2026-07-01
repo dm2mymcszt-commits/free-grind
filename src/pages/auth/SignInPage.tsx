@@ -6,7 +6,7 @@ import { Button } from "../../components/ui/button";
 import { BugReportButton } from "../../components/ui/BugReportButton";
 import type { SignInMethod } from "../../types/auth";
 import { useTranslation } from "react-i18next";
-import { Mail, Lock, KeyRound } from "lucide-react";
+import { Mail, Lock, KeyRound, AlertCircle, ExternalLink } from "lucide-react";
 import { cn } from "../../utils/cn";
 
 function AuthMethodTab({
@@ -43,8 +43,8 @@ function IconInput({
 	...inputProps
 }: { icon: ReactNode } & InputHTMLAttributes<HTMLInputElement>) {
 	return (
-		<div className="relative">
-			<span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]">
+		<div className="group relative">
+			<span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] transition-colors duration-150 group-focus-within:text-[var(--accent)]">
 				{icon}
 			</span>
 			<input {...inputProps} className={cn("input-field pl-9", className)} />
@@ -67,7 +67,12 @@ function AuthSubmitSection({
 }) {
 	return (
 		<>
-			{error ? <p className="text-sm text-[var(--text-muted)]">{error}</p> : null}
+			{error ? (
+				<div className="flex items-center gap-2 rounded-xl border border-[color-mix(in_srgb,var(--border)_60%,#f87171_40%)] bg-[color-mix(in_srgb,var(--surface)_88%,#f87171_12%)] px-3 py-2.5 text-sm text-[var(--text)]">
+					<AlertCircle className="h-4 w-4 shrink-0 text-[#f87171]" />
+					<span>{error}</span>
+				</div>
+			) : null}
 			<div className="pt-1">
 				<Button
 					type="submit"
@@ -187,6 +192,15 @@ export function SignInPage() {
 			) : (
 				<form key="token" onSubmit={handleTokenSubmit} className="animate-fade-in space-y-3">
 					<div>
+						<a
+							href="https://freegrinddocs.imaoreo.dev/guide/login"
+							target="_blank"
+							rel="noreferrer"
+							className="mb-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-[var(--accent)] hover:underline"
+						>
+							<ExternalLink className="h-3.5 w-3.5" />
+							{t("auth.sign_in.token_help")}
+						</a>
 						<IconInput
 							icon={<KeyRound className="h-4 w-4" />}
 							type="text"
@@ -196,14 +210,6 @@ export function SignInPage() {
 							placeholder="eyJhbGciOi..."
 							autoComplete="off"
 						/>
-						<a
-							href="https://freegrinddocs.imaoreo.dev/guide/login"
-							target="_blank"
-							rel="noreferrer"
-							className="mt-1.5 block text-xs text-[var(--text-muted)] underline underline-offset-4 hover:text-[var(--text)]"
-						>
-							{t("auth.sign_in.token_help")}
-						</a>
 					</div>
 					<AuthSubmitSection
 						error={error}

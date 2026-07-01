@@ -1017,8 +1017,15 @@
   z-index: 1;
 }
 
+.auth-glow {
+  display: block;
+}
+
 @media (min-width: 640px) {
   .fs-card-inner::before {
+    display: none;
+  }
+  .auth-glow {
     display: none;
   }
   .fs-card-outer {
