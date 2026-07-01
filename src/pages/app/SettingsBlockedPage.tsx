@@ -318,23 +318,38 @@ export function SettingsBlockedPage() {
 					/>
 				) : (
 					<div>
-						{/* ── Search bar ─────────────────────────────── */}
-						<div className="relative mb-3">
-							<Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" />
-							<input
-								type="text"
-								value={searchQuery}
-								onChange={(e) => setSearchQuery(e.target.value)}
-								placeholder={t("settings_blocked.search_placeholder", { defaultValue: "Search by name or ID..." })}
-								className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-1)] py-2.5 pl-9 pr-9 text-sm text-[var(--text)] placeholder:text-[var(--text-muted)] outline-none transition focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)]"
-							/>
-							{searchQuery && (
+						{/* ── Search bar & Unblock All ───────────────── */}
+						<div className="flex gap-2 mb-3">
+							<div className="relative flex-1">
+								<Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" />
+								<input
+									type="text"
+									value={searchQuery}
+									onChange={(e) => setSearchQuery(e.target.value)}
+									placeholder={t("settings_blocked.search_placeholder", { defaultValue: "Search by name or ID..." })}
+									className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-1)] py-2.5 pl-9 pr-9 text-sm text-[var(--text)] placeholder:text-[var(--text-muted)] outline-none transition focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)]"
+								/>
+								{searchQuery && (
+									<button
+										type="button"
+										onClick={() => setSearchQuery("")}
+										className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-[var(--text-muted)] transition hover:text-[var(--text)]"
+									>
+										<X className="h-3.5 w-3.5" />
+									</button>
+								)}
+							</div>
+							
+							{!isLoading && !error && allBlockedIds.length > 0 && (
 								<button
 									type="button"
-									onClick={() => setSearchQuery("")}
-									className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-[var(--text-muted)] transition hover:text-[var(--text)]"
+									onClick={() => setConfirmUnblockAll(true)}
+									disabled={isUnblockingAll}
+									className="inline-flex shrink-0 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 px-4 text-xs font-bold text-red-400 transition hover:bg-red-500/20 active:scale-95 disabled:opacity-50"
 								>
-									<X className="h-3.5 w-3.5" />
+									{isUnblockingAll 
+										? t("settings_blocked.unblocking_all", { defaultValue: "Unblocking…" }) 
+										: t("settings_blocked.unblock_all_title", { defaultValue: "Unblock All" })}
 								</button>
 							)}
 						</div>
@@ -448,41 +463,7 @@ export function SettingsBlockedPage() {
 					</div>
 				)}
 
-				{/* Unblock all — shown once list is loaded and non-empty */}
-				{!isLoading && !error && allBlockedIds.length > 0 && (
-					<div className="surface-card overflow-hidden">
-						<div className="flex items-start gap-3 p-4">
-							<div className="shrink-0 rounded-2xl bg-red-500/15 p-2.5 text-red-400">
-								<ShieldOff className="h-5 w-5" />
-							</div>
-							<div className="min-w-0 flex-1">
-								<div className="grid grid-cols-[1fr_auto] gap-x-3">
-									<p className="text-sm font-semibold leading-snug">
-										{t("settings_blocked.unblock_all_title", { defaultValue: "Unblock All" })}
-									</p>
-									<div className="row-span-2 flex items-start">
-										{isUnblockingAll ? (
-											<span className="text-xs text-[var(--text-muted)]">
-												{t("settings_blocked.unblocking_all", { defaultValue: "Unblocking…" })}
-											</span>
-										) : (
-											<button
-												type="button"
-												onClick={() => setConfirmUnblockAll(true)}
-												className="shrink-0 inline-flex items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-400 transition hover:bg-red-500/20"
-											>
-												{t("settings_blocked.unblock_all_title", { defaultValue: "Unblock All" })}
-											</button>
-										)}
-									</div>
-									<p className="mt-0.5 text-xs leading-relaxed text-[var(--text-muted)]">
-										{t("settings_blocked.unblock_all_desc", { defaultValue: "Remove all blocked accounts at once. This cannot be undone." })}
-									</p>
-								</div>
-							</div>
-						</div>
-					</div>
-				)}
+
 			</div>
 
 
