@@ -180,7 +180,7 @@ class MainActivity : TauriActivity() {
       // i.e. two REVERSE half-cycles of ROTATION_MS/2 each) take the same
       // total time, so the two read as one coordinated animation instead of
       // two independently-timed ones.
-      val rotationMs = 1800L
+      val rotationMs = 3000L
       findViewById<View>(R.id.splash_spinner)?.let { spinner ->
         splashSpinnerAnimator = ObjectAnimator.ofFloat(spinner, View.ROTATION, 0f, 360f).apply {
           duration = rotationMs

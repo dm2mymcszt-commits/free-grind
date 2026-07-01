@@ -18,4 +18,9 @@
     <!-- Matches the "accent" CSS variable in src/index.css (same in both
          light and dark mode, so no night-mode override needed). -->
     <color name="splash_accent">#FFCC01</color>
+    <!-- Middle stop for splash_glow.xml's radial gradient — a softer,
+         partly-transparent version of splash_accent so the glow fades out
+         gradually (sun-like) instead of jumping straight from solid to
+         fully transparent. -->
+    <color name="splash_accent_soft">#66FFCC01</color>
 </resources>
