@@ -56,7 +56,7 @@ jobs:
 
       - name: Build iOS Rust static library
         run: |
-          cargo build --manifest-path src-tauri/Cargo.toml --target aarch64-apple-ios --features custom-protocol --release
+          cargo rustc --manifest-path src-tauri/Cargo.toml --target aarch64-apple-ios --features custom-protocol --release --lib -- --crate-type=staticlib
 
           LIB_PATH="src-tauri/target/aarch64-apple-ios/release/libopen_grind_lib.a"
           if [ ! -f "$LIB_PATH" ]; then
