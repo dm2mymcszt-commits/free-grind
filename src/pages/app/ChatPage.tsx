@@ -2133,6 +2133,42 @@ export function ChatPage() {
 			void loadInbox({ page: 1, replace: true, silent: true });
 		}
 
+		// If a message arrives for an archived conversation, unarchive it immediately
+		// and insert a SystemUnblocked marker if it was archived due to a block.
+		const incomingConversationIds = [...new Set(messages.map((m) => m.conversationId))];
+		const reappearedArchivedIds = incomingConversationIds.filter((cid) =>
+			archivedConversationsRef.current.has(cid),
+		);
+		if (reappearedArchivedIds.length > 0) {
+			for (const cid of reappearedArchivedIds) {
+				void unarchiveConversation(cid);
+			}
+			const blockArchivedIds = reappearedArchivedIds.filter(
+				(cid) => archivedConversationsRef.current.get(cid)?.reason === "ws_delete",
+			);
+			if (blockArchivedIds.length > 0) {
+				void Promise.all(
+					blockArchivedIds.map((cid) =>
+						chatDb.insertSystemMessage(cid, "SystemUnblocked").catch(() => null),
+					),
+				).then((inserted) => {
+					const valid = inserted.filter((m): m is Message => m !== null);
+					if (valid.length > 0) {
+						window.dispatchEvent(
+							new CustomEvent<Message[]>(CHAT_SYSTEM_MESSAGE_EVENT, { detail: valid }),
+						);
+					}
+				});
+			}
+			setArchivedConversations((previous) => {
+				const next = new Map(previous);
+				for (const cid of reappearedArchivedIds) {
+					next.delete(cid);
+				}
+				return next;
+			});
+		}
+
 		// Update threadLastReadTimestamp if we receive a message from the other person
 		// in the active chat, because it implies they've read our previous messages.
 		const activeConversationId = selectedConversationIdRef.current;
