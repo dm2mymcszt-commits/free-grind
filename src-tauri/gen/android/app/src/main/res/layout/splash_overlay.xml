@@ -15,22 +15,12 @@
     android:background="@color/splash_background">
 
     <!-- Spinner rings the logo (same center, larger diameter). Its built-in
-         indeterminate animation can't be slowed down or synced with
-         anything else, so it's drawn as a static arc (indeterminate=false,
-         a partial progress value) and rotated ourselves via
-         splashSpinnerAnimator in MainActivity, at the same cycle duration
-         as the glow View's pulse (splashGlowAnimator) so the two read as
-         one coordinated animation instead of two independent ones. -->
+         indeterminate animation can't be slowed down, so it's drawn as a
+         static arc (indeterminate=false, a partial progress value) and
+         rotated ourselves via splashSpinnerAnimator in MainActivity. -->
     <FrameLayout
-        android:layout_width="300dp"
-        android:layout_height="300dp">
-
-        <View
-            android:id="@+id/splash_glow"
-            android:layout_width="300dp"
-            android:layout_height="300dp"
-            android:layout_gravity="center"
-            android:background="@drawable/splash_glow" />
+        android:layout_width="160dp"
+        android:layout_height="160dp">
 
         <com.google.android.material.progressindicator.CircularProgressIndicator
             android:id="@+id/splash_spinner"
