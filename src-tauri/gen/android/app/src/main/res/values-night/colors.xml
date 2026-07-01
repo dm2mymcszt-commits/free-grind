@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches the "dark-bg" CSS variable in src/index.css so the native
+         splash background doesn't visibly flash against the app's own
+         background once the WebView paints. -->
+    <color name="splash_background">#0F131A</color>
+</resources>

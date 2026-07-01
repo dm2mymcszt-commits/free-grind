@@ -102,7 +102,10 @@ class MainActivity : TauriActivity() {
   // frame, which for a WebView is essentially blank) until the frontend
   // itself has actually painted — see JsBridge.notifyContentReady(). The
   // postDelayed fallback prevents an infinite splash if that signal never
-  // arrives (JS error, WebView failing to load, etc.).
+  // arrives (JS error, WebView failing to load, etc.) — a real cold start
+  // (cargo/webview/JS bundle init) has been observed taking ~20-25s on its
+  // own, so this must stay well above that or it'll cut the splash early on
+  // every normal-but-slow launch instead of only on a genuinely broken one.
   @Volatile private var contentReady = false
 
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -110,7 +113,7 @@ class MainActivity : TauriActivity() {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
     splashScreen.setKeepOnScreenCondition { !contentReady }
-    mainHandler.postDelayed({ contentReady = true }, 8000)
+    mainHandler.postDelayed({ contentReady = true }, 45000)
     activityRef = WeakReference(this)
     // Run off the main thread — createNotificationChannel makes IPC calls to
     // NotificationManagerService that can block for several seconds on some
