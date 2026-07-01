@@ -159,6 +159,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY='' \
+            IPHONEOS_DEPLOYMENT_TARGET=16.0 \
             build > xcodebuild_output.log 2>&1; then
               echo "=== XCODEBUILD FAILED - LAST 200 LINES OF LOG ==="
               tail -n 200 xcodebuild_output.log
