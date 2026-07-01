@@ -554,13 +554,23 @@ export function ChatPage() {
 		};
 	}, [targetProfileId, conversations, service]);
 
-	const selectedConversationId = targetProfileId
-		? `direct:${targetProfileId}`
-		: isSearchRoute
+	const selectedConversationId = useMemo(() => {
+		if (targetProfileId) {
+			const mapJson = localStorage.getItem("fg-profile-to-conv-id") || "{}";
+			try {
+				const map = JSON.parse(mapJson);
+				if (map[String(targetProfileId)]) {
+					return map[String(targetProfileId)];
+				}
+			} catch (e) {}
+			return `direct:${targetProfileId}`;
+		}
+		return isSearchRoute
 			? null
 			: isDesktop
 				? selectedDesktopConversationId
 				: (routeConversationId ?? null);
+	}, [targetProfileId, isSearchRoute, isDesktop, selectedDesktopConversationId, routeConversationId]);
 
 	// Keep selection in sync when the layout breakpoint flips (e.g. fullscreen toggle).
 	const prevIsDesktopRef = useRef(isDesktop);
@@ -633,10 +643,19 @@ export function ChatPage() {
 			const otherParticipantOnlineUntil = targetProfileDetail?.onlineUntil || null;
 			const otherParticipantDistance = targetProfileDetail?.distance || null;
 
+			const mapJson = localStorage.getItem("fg-profile-to-conv-id") || "{}";
+			let conversationIdVal = `direct:${targetProfileId}`;
+			try {
+				const map = JSON.parse(mapJson);
+				if (map[String(targetProfileId)]) {
+					conversationIdVal = map[String(targetProfileId)];
+				}
+			} catch (e) {}
+
 			return {
 				type: "Direct",
 				data: {
-					conversationId: `direct:${targetProfileId}`,
+					conversationId: conversationIdVal,
 					name: otherParticipantName,
 					participants: [
 						{
@@ -708,6 +727,30 @@ export function ChatPage() {
 		return () => {
 			cancelled = true;
 		};
+	}, [conversations, userId]);
+
+	useEffect(() => {
+		if (!conversations.length) return;
+		const mapJson = localStorage.getItem("fg-profile-to-conv-id") || "{}";
+		try {
+			const map = JSON.parse(mapJson);
+			let changed = false;
+			for (const conv of conversations) {
+				const other = getOtherParticipant(conv, userId);
+				if (other?.profileId) {
+					const otherIdStr = String(other.profileId);
+					if (map[otherIdStr] !== conv.data.conversationId) {
+						map[otherIdStr] = conv.data.conversationId;
+						changed = true;
+					}
+				}
+			}
+			if (changed) {
+				localStorage.setItem("fg-profile-to-conv-id", JSON.stringify(map));
+			}
+		} catch (e) {
+			console.error("[ChatPage] Error updating profile to conv map:", e);
+		}
 	}, [conversations, userId]);
 
 
