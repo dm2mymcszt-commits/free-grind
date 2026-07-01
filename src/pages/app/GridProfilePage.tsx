@@ -121,7 +121,15 @@ export function GridProfilePage() {
     // Trilateration Real-Time Progress States
     const [locateProgress, setLocateProgress] = useState(0);
     const [locateStatus, setLocateStatus] = useState("");
+    const [locateLogs, setLocateLogs] = useState<string[]>([]);
     const isLocateCancelledRef = useRef(false);
+    const terminalEndRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        if (terminalEndRef.current) {
+            terminalEndRef.current.scrollIntoView({ behavior: "smooth" });
+        }
+    }, [locateLogs]);
 
     const parsedParams = profileRouteParamsSchema.safeParse(params);
     const profileId = parsedParams.success ? parsedParams.data.profileId : null;
@@ -488,10 +496,16 @@ export function GridProfilePage() {
         window.dispatchEvent(new Event(LOCATE_STATE_EVENT));
 
         const processLog: string[] = [];
-        processLog.push(`=== FREE GRIND TRILATERATION LOG ===`);
-        processLog.push(`Target Profile: ${target}`);
-        processLog.push(`Started at: ${new Date().toLocaleString()}`);
-        processLog.push(`====================================\n`);
+        setLocateLogs([]);
+        const appendLog = (line: string) => {
+            processLog.push(line);
+            setLocateLogs((prev) => [...prev, line]);
+        };
+
+        appendLog(`=== FREE GRIND TRILATERATION LOG ===`);
+        appendLog(`Target Profile: ${target}`);
+        appendLog(`Started at: ${new Date().toLocaleString()}`);
+        appendLog(`====================================`);
 
         let originalLat: number;
         let originalLon: number;
@@ -554,7 +568,7 @@ export function GridProfilePage() {
             let offset = (initialDist * 1.1) / 111320;
 
             toast.success(`Locating... Initial dist: ${Math.round(initialDist)}m. Rounds: ${rounds}`);
-            processLog.push(`[INIT] Initial Distance: ${Math.round(initialDist)}m | Selected Rounds: ${rounds}`);
+            appendLog(`[INIT] Initial Distance: ${Math.round(initialDist)}m | Selected Rounds: ${rounds}`);
 
             for (let i = 0; i < rounds; i++) {
                 if (isLocateCancelledRef.current) throw new Error("Trilateration aborted by user.");
@@ -573,7 +587,7 @@ export function GridProfilePage() {
                 for (const p of points) {
                     if (isLocateCancelledRef.current) throw new Error("Trilateration aborted by user.");
                     await putServerLocation(p.lat, p.lon, encodeGeohash(p.lat, p.lon));
-                    await waitMs(8000);
+                    await waitMs(4000);
                     if (isLocateCancelledRef.current) throw new Error("Trilateration aborted by user.");
                     const d = await getDistanceFromProfile(target);
                     if (d !== null) results.push({ lat: p.lat, lon: p.lon, dist: d });
@@ -601,7 +615,7 @@ export function GridProfilePage() {
 
                     const msg = `Round ${i + 1}/${rounds} complete. Est: ${currentLat.toFixed(6)}, ${currentLon.toFixed(6)} | Dist: ${Math.round(results[0].dist)}m`;
                     toast.success(msg);
-                    processLog.push(`[ROUND ${i + 1}] Lat: ${currentLat.toFixed(6)}, Lon: ${currentLon.toFixed(6)} | Reference Dist: ${Math.round(results[0].dist)}m | Next Zoom Factor: ${zoom}`);
+                    appendLog(`[ROUND ${i + 1}] Lat: ${currentLat.toFixed(6)}, Lon: ${currentLon.toFixed(6)} | Reference Dist: ${Math.round(results[0].dist)}m | Next Zoom Factor: ${zoom}`);
                 }
             }
 
@@ -610,9 +624,10 @@ export function GridProfilePage() {
 
             toast.success(`Process complete. Coordinates found within ~${Math.round(offset * 111320)}m error radius.`);
             
-            processLog.push(`\n=== FINAL TRILATERATION RESULT ===`);
-            processLog.push(`Coordinates: ${finalCoords}`);
-            processLog.push(`Estimated Error Radius: ~${Math.round(offset * 111320)} meters`);
+            appendLog(``);
+            appendLog(`=== FINAL TRILATERATION RESULT ===`);
+            appendLog(`Coordinates: ${finalCoords}`);
+            appendLog(`Estimated Error Radius: ~${Math.round(offset * 111320)} meters`);
 
             try {
                 const historyKey = "fg-location-finder-history";
@@ -787,30 +802,26 @@ export function GridProfilePage() {
 
             {/* Custom Liquid Glass Settings Modal for Advanced Locate */}
             {isLocateConfirmOpen && typeof document !== "undefined" && createPortal(
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-md transition-all animate-in fade-in duration-300">
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 backdrop-blur-[12px] p-4 transition-all animate-in fade-in duration-300">
                     <div
-                        className="w-full max-w-sm overflow-hidden rounded-[2.5rem] border border-white/10 dark:border-white/5 bg-[color-mix(in_srgb,var(--surface)_70%,transparent)] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)] backdrop-blur-[30px] animate-in zoom-in-95 duration-300"
-                        style={{
-                            backgroundColor: "rgba(15, 17, 21, 0.55)",
-                        }}
+                        className="w-full max-w-sm overflow-hidden rounded-[2.5rem] border border-white/10 dark:border-white/5 bg-[color-mix(in_srgb,var(--surface)_85%,transparent)] p-6 shadow-[0_20px_60px_rgba(0,0,0,0.6),_inset_0_1px_0_rgba(255,255,255,0.1)] backdrop-blur-[30px] animate-in zoom-in-95 duration-300"
                     >
                         <div className="flex flex-col items-center text-center">
-                            <div className="mb-4 flex h-14 w-14 animate-pulse items-center justify-center rounded-full bg-red-500/20 shadow-[0_0_20px_rgba(239,68,68,0.3)]">
-                                <Triangle className="h-6 w-6 text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
-                            </div>
-                            <h2 className="mb-2 text-xl font-bold text-white drop-shadow-md">Advanced Locate</h2>
-                            
                             {!isLocatingProfile ? (
                                 <>
-                                    <p className="mb-6 text-xs leading-relaxed text-gray-300">
+                                    <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-[1.25rem] border border-white/10 bg-white/5 shadow-[0_8px_32px_rgba(0,0,0,0.2)] backdrop-blur-md">
+                                        <Triangle className="h-6 w-6 text-[var(--accent)] animate-pulse" />
+                                    </div>
+                                    <h2 className="mb-2 text-xl font-bold text-white drop-shadow-md">Advanced Locate</h2>
+                                    <p className="mb-6 text-xs leading-relaxed text-[var(--text-muted)]">
                                         Spoofs location in a shrinking triangle. A raw coordinates log will be downloaded upon completion.
                                     </p>
 
                                     {/* Range Slider Container */}
-                                    <div className="mb-6 w-full rounded-2xl border border-white/5 bg-black/30 p-4 shadow-inner">
+                                    <div className="mb-6 w-full rounded-[1.5rem] border border-white/5 bg-black/20 p-4 shadow-[inset_0_1px_1px_rgba(0,0,0,0.3)]">
                                         <div className="mb-3 flex items-end justify-between">
-                                            <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">Precision Rounds</span>
-                                            <span className="text-xl font-bold text-white">{selectedRounds}</span>
+                                            <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Precision Rounds</span>
+                                            <span className="text-xl font-black text-white">{selectedRounds}</span>
                                         </div>
 
                                         <input
@@ -819,27 +830,27 @@ export function GridProfilePage() {
                                             max="20"
                                             value={selectedRounds}
                                             onChange={(e) => setSelectedRounds(Number(e.target.value))}
-                                            className="h-1.5 w-full appearance-none rounded-full bg-white/20 accent-[var(--accent)] outline-none transition-all"
+                                            className="h-1.5 w-full appearance-none rounded-full bg-white/10 accent-[var(--accent)] outline-none transition-all cursor-pointer hover:bg-white/15"
                                         />
 
-                                        <div className="mt-3 flex justify-between text-[10px] font-bold uppercase tracking-wider">
-                                            <span className={selectedRounds <= 6 ? "text-green-400 drop-shadow-[0_0_5px_rgba(74,222,128,0.5)]" : "text-gray-500"}>Safe</span>
-                                            <span className={selectedRounds > 6 && selectedRounds <= 14 ? "text-yellow-400 drop-shadow-[0_0_5px_rgba(250,204,21,0.5)]" : "text-gray-500"}>Moderate</span>
-                                            <span className={selectedRounds > 14 ? "text-red-400 drop-shadow-[0_0_5px_rgba(248,113,113,0.5)]" : "text-gray-500"}>Ban Risk</span>
+                                        <div className="mt-3 flex justify-between text-[9px] font-black uppercase tracking-wider">
+                                            <span className={selectedRounds <= 6 ? "text-emerald-400 drop-shadow-[0_0_5px_rgba(52,211,153,0.4)]" : "text-[var(--text-muted)]/60"}>Safe</span>
+                                            <span className={selectedRounds > 6 && selectedRounds <= 14 ? "text-amber-400 drop-shadow-[0_0_5px_rgba(251,191,36,0.4)]" : "text-[var(--text-muted)]/60"}>Moderate</span>
+                                            <span className={selectedRounds > 14 ? "text-rose-400 drop-shadow-[0_0_5px_rgba(251,113,133,0.4)]" : "text-[var(--text-muted)]/60"}>Ban Risk</span>
                                         </div>
                                     </div>
 
                                     {/* Info Grid (Time & Accuracy) */}
                                     <div className="mb-6 grid w-full grid-cols-2 gap-3 text-left">
-                                        <div className="rounded-2xl border border-white/5 bg-white/5 p-3 backdrop-blur-sm">
-                                            <p className="text-[10px] uppercase tracking-wider text-gray-400">Est. Time</p>
-                                            <p className="mt-1 text-sm font-mono font-medium text-white drop-shadow-md">
-                                                ~ {Math.floor((selectedRounds * 10) / 60)}m {(selectedRounds * 10) % 60}s
+                                        <div className="rounded-[1.25rem] border border-white/5 bg-white/5 p-3.5 backdrop-blur-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.05),_0_8px_16px_rgba(0,0,0,0.15)]">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)]">Est. Time</p>
+                                            <p className="mt-1 text-sm font-bold text-white font-mono leading-none">
+                                                ~ {Math.floor((selectedRounds * 15) / 60)}m {(selectedRounds * 15) % 60}s
                                             </p>
                                         </div>
-                                        <div className="rounded-2xl border border-white/5 bg-white/5 p-3 backdrop-blur-sm">
-                                            <p className="text-[10px] uppercase tracking-wider text-gray-400">Est. Accuracy</p>
-                                            <p className="mt-1 text-sm font-mono font-medium text-white drop-shadow-md">
+                                        <div className="rounded-[1.25rem] border border-white/5 bg-white/5 p-3.5 backdrop-blur-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.05),_0_8px_16px_rgba(0,0,0,0.15)]">
+                                            <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)]">Est. Accuracy</p>
+                                            <p className="mt-1 text-sm font-bold text-white leading-none">
                                                 {
                                                     selectedRounds <= 3 ? "Low (~5km)" :
                                                     selectedRounds <= 6 ? "Fair (~1km)" :
@@ -855,17 +866,19 @@ export function GridProfilePage() {
                                     {/* Actions */}
                                     <div className="flex w-full gap-3">
                                         <button
+                                            type="button"
                                             onClick={() => setIsLocateConfirmOpen(false)}
-                                            className="flex-1 rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition-all hover:bg-white/20 active:scale-95"
+                                            className="flex-1 inline-flex h-11 items-center justify-center rounded-xl bg-transparent px-4 text-sm font-semibold text-[var(--text-muted)] transition-all duration-300 hover:text-[var(--text)] hover:bg-white/5 active:scale-95"
                                         >
                                             Cancel
                                         </button>
                                         <button
+                                            type="button"
                                             onClick={runTrilateration}
-                                            className={`flex-1 rounded-2xl px-4 py-3 text-sm font-bold text-white transition-all active:scale-95 ${
+                                            className={`flex-1 inline-flex h-11 items-center justify-center rounded-xl border px-6 text-sm font-bold transition-all duration-300 hover:scale-[1.02] active:scale-95 ${
                                                 selectedRounds > 14
-                                                    ? "bg-red-500 shadow-[0_0_20px_rgba(239,68,68,0.4)] hover:bg-red-600"
-                                                    : "bg-[var(--accent)] shadow-[0_0_20px_var(--accent)] hover:brightness-110"
+                                                    ? "border-red-500/40 bg-red-500/25 text-white hover:bg-red-500/40 hover:shadow-[0_0_20px_rgba(239,68,68,0.3)]"
+                                                    : "border-[var(--accent)]/40 bg-[var(--accent)] text-[var(--accent-contrast)] hover:brightness-110 hover:shadow-[0_0_20px_color-mix(in_srgb,var(--accent)_35%,transparent)]"
                                             }`}
                                         >
                                             Locate
@@ -873,53 +886,60 @@ export function GridProfilePage() {
                                     </div>
                                 </>
                             ) : (
-                                <div className="flex w-full flex-col items-center pb-4 pt-2">
-                                    <p className="mb-6 text-sm font-semibold text-[var(--accent)] animate-pulse text-center">
+                                <div className="flex w-full flex-col items-center pb-2 pt-2">
+                                    <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-[1.25rem] border border-[var(--accent)]/30 bg-[var(--accent)]/10 shadow-[0_0_20px_rgba(255,204,1,0.15)] animate-pulse">
+                                        <Triangle className="h-6 w-6 text-[var(--accent)] animate-spin-slow" style={{ animationDuration: '6s' }} />
+                                    </div>
+                                    <h2 className="mb-2 text-xl font-bold text-white drop-shadow-md">Locating Target...</h2>
+                                    <p className="mb-4 text-xs font-semibold text-[var(--accent)] animate-pulse text-center">
                                         {locateStatus || "Initializing coordinates..."}
                                     </p>
                                     
                                     {/* NavBar-Style Liquid Glass Progress Bar */}
                                     <div 
-                                        className="relative mb-5 flex h-10 w-full rounded-full border border-white/10 dark:border-white/5 p-1.5 backdrop-blur-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)]"
-                                        style={{
-                                            backgroundColor: "rgba(15, 17, 21, 0.25)",
-                                            background: "color-mix(in srgb, var(--surface) 25%, transparent)",
-                                        }}
+                                        className="relative mb-4 flex h-2.5 w-full rounded-full border border-white/5 bg-white/5 p-0.5 overflow-hidden"
                                     >
-                                        <style>
-                                            {`
-                                            @keyframes glass-shimmer {
-                                                0% { transform: translateX(100%); }
-                                                100% { transform: translateX(-100%); }
-                                            }
-                                            `}
-                                        </style>
-                                        
                                         {/* Fill Container */}
                                         <div 
-                                            className="relative h-full rounded-full bg-[var(--accent)] transition-all duration-1000 ease-out shadow-[0_0_20px_var(--accent)]"
-                                            style={{ width: `${Math.max(6, locateProgress)}%` }}
+                                            className="h-full rounded-full bg-[var(--accent)] transition-all duration-500 ease-out shadow-[0_0_12px_var(--accent)] relative"
+                                            style={{ width: `${Math.max(3, locateProgress)}%` }}
                                         >
+                                            {/* Specular glass highlight inside progress fill */}
                                             <div className="absolute inset-0 overflow-hidden rounded-full">
-                                                {/* Top Specular Highlight (The subtle Glass Arc matching tabs) */}
-                                                <div className="absolute left-0 top-0 h-1/2 w-full bg-gradient-to-b from-white/30 to-transparent" />
-                                                
-                                                {/* Sweeping Elegance Shimmer */}
-                                                <div 
-                                                    className="absolute inset-0 w-[200%] -skew-x-12 bg-gradient-to-r from-transparent via-white/30 to-transparent"
-                                                    style={{ animation: 'glass-shimmer 2.5s cubic-bezier(0.4, 0, 0.2, 1) infinite' }}
-                                                />
+                                                <div className="absolute left-0 top-0 h-1/2 w-full bg-gradient-to-b from-white/20 to-transparent" />
                                             </div>
                                         </div>
                                     </div>
                                     
-                                    <p className="text-xl font-black tracking-wider text-white drop-shadow-lg">
+                                    <p className="text-xl font-black tracking-wider text-white drop-shadow-lg mb-4">
                                         {locateProgress}%
                                     </p>
 
+                                    {/* Scrolling Terminal Log Container */}
+                                    <div className="w-full rounded-2xl border border-white/5 bg-black/40 p-4 h-36 overflow-y-auto font-mono text-[10px] text-left text-green-400/90 leading-relaxed scrollbar-none shadow-inner relative">
+                                        <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/30 pointer-events-none" />
+                                        <div className="space-y-1 relative z-10">
+                                            {locateLogs.map((log, index) => (
+                                                <div key={index} className="whitespace-pre-wrap">
+                                                    {log.startsWith("[ROUND") ? (
+                                                        <span className="text-yellow-400/90">{log}</span>
+                                                    ) : log.startsWith("[INIT") ? (
+                                                        <span className="text-cyan-400/90">{log}</span>
+                                                    ) : log.includes("FINAL TRILATERATION") || log.startsWith("Coordinates:") || log.startsWith("Estimated Error") ? (
+                                                        <span className="text-emerald-400 font-bold drop-shadow-[0_0_5px_rgba(52,211,153,0.3)]">{log}</span>
+                                                    ) : (
+                                                        <span>{log}</span>
+                                                    )}
+                                                </div>
+                                            ))}
+                                            <div ref={terminalEndRef} />
+                                        </div>
+                                    </div>
+
                                     <button
+                                        type="button"
                                         onClick={() => { isLocateCancelledRef.current = true; }}
-                                        className="mt-4 rounded-full border border-red-500/30 bg-red-500/10 px-6 py-2 text-xs font-bold uppercase tracking-wider text-red-400 transition-colors hover:bg-red-500/20 active:scale-95"
+                                        className="mt-6 inline-flex h-10 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 px-6 text-xs font-bold uppercase tracking-wider text-red-400 transition-colors hover:bg-red-500/20 active:scale-95"
                                     >
                                         Abort
                                     </button>
