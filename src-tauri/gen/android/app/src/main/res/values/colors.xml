@@ -22,5 +22,5 @@
          partly-transparent version of splash_accent so the glow fades out
          gradually (sun-like) instead of jumping straight from solid to
          fully transparent. -->
-    <color name="splash_accent_soft">#66FFCC01</color>
+    <color name="splash_accent_soft">#33FFCC01</color>
 </resources>

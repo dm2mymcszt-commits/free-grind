@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Soft radial glow radiating from behind the splash logo, pulsed via an
+     ObjectAnimator in MainActivity (see splashGlowAnimator). gradientRadius
+     is deliberately well under half of the View's own size (see
+     splash_overlay.xml) so the gradient reaches endColor (fully
+     transparent) with plenty of margin to spare before the View's actual
+     edge — otherwise that edge renders as a faint but visible ring where
+     the fade is cut off right at the boundary. The middle centerColor stop
+     softens the falloff into more of a gradual sun-like glow instead of a
+     single straight fade. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <gradient
+        android:type="radial"
+        android:gradientRadius="100dp"
+        android:startColor="@color/splash_accent"
+        android:centerColor="@color/splash_accent_soft"
+        android:endColor="@android:color/transparent" />
+</shape>
