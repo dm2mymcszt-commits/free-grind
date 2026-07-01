@@ -123,11 +123,11 @@ export function GridProfilePage() {
     const [locateStatus, setLocateStatus] = useState("");
     const [locateLogs, setLocateLogs] = useState<string[]>([]);
     const isLocateCancelledRef = useRef(false);
-    const terminalEndRef = useRef<HTMLDivElement | null>(null);
+    const terminalRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
-        if (terminalEndRef.current) {
-            terminalEndRef.current.scrollIntoView({ behavior: "smooth" });
+        if (terminalRef.current) {
+            terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
         }
     }, [locateLogs]);
 
@@ -929,7 +929,7 @@ export function GridProfilePage() {
                                     </p>
 
                                     {/* Scrolling Terminal Log Container */}
-                                    <div className="w-full rounded-2xl border border-white/5 bg-black/40 p-4 h-36 overflow-y-auto font-mono text-[10px] text-left text-green-400/90 leading-relaxed scrollbar-none shadow-inner relative">
+                                    <div ref={terminalRef} className="w-full rounded-2xl border border-white/5 bg-black/40 p-4 h-36 overflow-y-auto font-mono text-[10px] text-left text-green-400/90 leading-relaxed scrollbar-none shadow-inner relative">
                                         <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/30 pointer-events-none" />
                                         <div className="space-y-1 relative z-10">
                                             {locateLogs.map((log, index) => (
@@ -945,7 +945,6 @@ export function GridProfilePage() {
                                                     )}
                                                 </div>
                                             ))}
-                                            <div ref={terminalEndRef} />
                                         </div>
                                     </div>
 
