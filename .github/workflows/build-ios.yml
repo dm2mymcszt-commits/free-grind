@@ -54,9 +54,13 @@ jobs:
             exit 1
           fi
 
+      - name: Force staticlib crate-type on iOS
+        run: |
+          sed -i '' 's/crate-type = \["staticlib", "cdylib", "rlib"\]/crate-type = ["staticlib"]/g' src-tauri/Cargo.toml
+
       - name: Build iOS Rust static library
         run: |
-          cargo rustc --manifest-path src-tauri/Cargo.toml --target aarch64-apple-ios --features custom-protocol --release --lib -- --crate-type=staticlib
+          cargo build --manifest-path src-tauri/Cargo.toml --target aarch64-apple-ios --features custom-protocol --release
 
           LIB_PATH="src-tauri/target/aarch64-apple-ios/release/libopen_grind_lib.a"
           if [ ! -f "$LIB_PATH" ]; then
