@@ -7,6 +7,7 @@ import { BugReportButton } from "../../components/ui/BugReportButton";
 import type { SignInMethod } from "../../types/auth";
 import { useTranslation } from "react-i18next";
 
+
 export function SignInPage() {
 	const { t } = useTranslation();
 	const [method, setMethod] = useState<SignInMethod>("password");
@@ -134,16 +135,6 @@ export function SignInPage() {
 			) : (
 				<form onSubmit={handleTokenSubmit} className="space-y-3">
 					<div>
-						<a
-							href="https://freegrinddocs.imaoreo.dev/guide/login"
-							target="_blank"
-							rel="noreferrer"
-							className="text-sm text-[var(--text-muted)] underline underline-offset-4 hover:text-[var(--text)]"
-						>
-							{t("auth.sign_in.token_help")}
-						</a>
-					</div>
-					<div>
 						<label className="mb-1.5 block text-sm font-medium text-[var(--text-muted)]">
 							{t("auth.sign_in.jwt_label")}
 						</label>
@@ -156,6 +147,14 @@ export function SignInPage() {
 							placeholder="eyJhbGciOi..."
 							autoComplete="off"
 						/>
+						<a
+							href="https://freegrinddocs.imaoreo.dev/guide/login"
+							target="_blank"
+							rel="noreferrer"
+							className="mt-1.5 block text-xs text-[var(--text-muted)] underline underline-offset-4 hover:text-[var(--text)]"
+						>
+							{t("auth.sign_in.token_help")}
+						</a>
 					</div>
 					{error ? <p className="text-sm text-[var(--text-muted)]">{error}</p> : null}
 					<div className="pt-1">

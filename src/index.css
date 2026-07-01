@@ -670,6 +670,19 @@
 		opacity: 0.45;
 	}
 
+	.input-field.input-field-glass {
+		background: color-mix(in srgb, var(--surface-2) 55%, transparent);
+		border-color: color-mix(in srgb, var(--border) 55%, transparent);
+		backdrop-filter: blur(14px);
+		-webkit-backdrop-filter: blur(14px);
+	}
+	.input-field.input-field-glass:focus {
+		background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+	}
+	.input-field.input-field-glass::placeholder {
+		opacity: 0.4;
+	}
+
 	.input-field:focus {
 		outline: 2px solid rgba(255, 204, 1, 0.58);
 		outline: 2px solid color-mix(in srgb, var(--accent) 58%, transparent);
