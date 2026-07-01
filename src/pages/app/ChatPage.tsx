@@ -979,332 +979,478 @@ export function ChatPage() {
 			}
 
 			try {
-				const response = await service.listMessages({
-					conversationId,
-					pageKey: older ? (messagePageKeyRef.current ?? undefined) : undefined,
-					includeProfile: true,
-				});
+				let responseMessages: UiMessage[] = [];
+				let firstMessageId: string | null = null;
+				let isFallback = false;
 
-				const localData = await chatLog.readLog(conversationId);
-				const localMessages = localData.messages;
-				const localMessageMap = new Map(
-					localMessages.map((message) => [message.messageId, message] as const),
-				);
-				const responseMessages = response.messages.map((message) => {
-					const localMessage = localMessageMap.get(message.messageId);
-					const localBody =
-						localMessage?.body && typeof localMessage.body === "object"
-							? (localMessage.body as Record<string, unknown>)
-							: null;
-					const currentBody =
-						message.body && typeof message.body === "object"
-							? (message.body as Record<string, unknown>)
-							: null;
-
-					// If the API already returned a fresh URL, use it as-is.
-					if (currentBody?.url) {
-						return message;
-					}
-
-					// Restore the cached URL only when it hasn't expired yet.
-					// Expired → return message without URL so the hydration pass below
-					// calls getMessage() and fetches a new signed URL from the API.
-					// Check body.url first (normalized form), then fall back to any URL field.
-					const cachedUrl = localMessage
-						? ((typeof localBody?.url === "string" ? localBody.url : null)
-							?? getMessageImageUrl(localMessage)
-							?? getMessageVideoUrl(localMessage))
-						: null;
-					if (!cachedUrl || isSignedUrlExpired(cachedUrl)) {
-						return message;
-					}
-
-					return {
-						...message,
-						body: { ...(currentBody ?? {}), url: cachedUrl },
-					};
-				});
-
-				// Persist API messages to the local log.
-				const normalizedLastRead = response.lastReadTimestamp
-					? (response.lastReadTimestamp < 100_000_000_000 ? response.lastReadTimestamp * 1000 : response.lastReadTimestamp)
-					: null;
-
-				void chatLog.appendMessages(
-					conversationId,
-					responseMessages,
-					older ? undefined : normalizedLastRead,
-				);
-
-				if (!older) {
-					setThreadLastReadTimestamp(normalizedLastRead);
-					const mediaIdImageMessages = responseMessages.filter((message) => {
-						const imageType = message.chat1Type?.toLowerCase();
-						const isImageLike =
-							message.type === "Image" ||
-							message.type === "ExpiringImage" ||
-							imageType === "image" ||
-							imageType === "expiring_image";
-
-						if (!isImageLike) return false;
-						return !getMessageImageUrl(message as UiMessage);
+				try {
+					const response = await service.listMessages({
+						conversationId,
+						pageKey: older ? (messagePageKeyRef.current ?? undefined) : undefined,
+						includeProfile: true,
 					});
 
-                    // Images that have no URL (including those whose cached URL was expired
-                    // and stripped above) need a fresh signed URL from the API.
-					if (mediaIdImageMessages.length > 0) {
-						const unresolvedMessageIds = new Set(
-							mediaIdImageMessages.map((message) => message.messageId),
-						);
+					const localData = await chatLog.readLog(conversationId);
+					const localMessages = localData.messages;
+					const localMessageMap = new Map(
+						localMessages.map((message) => [message.messageId, message] as const),
+					);
+					responseMessages = response.messages.map((message) => {
+						const localMessage = localMessageMap.get(message.messageId);
+						const localBody =
+							localMessage?.body && typeof localMessage.body === "object"
+								? (localMessage.body as Record<string, unknown>)
+								: null;
+						const currentBody =
+							message.body && typeof message.body === "object"
+								? (message.body as Record<string, unknown>)
+								: null;
 
-						void Promise.allSettled(
-							mediaIdImageMessages.map((message) =>
-								service.getMessage({
+						// If the API already returned a fresh URL, use it as-is.
+						if (currentBody?.url) {
+							return message;
+						}
+
+						// Restore the cached URL only when it hasn't expired yet.
+						// Expired → return message without URL so the hydration pass below
+						// calls getMessage() and fetches a new signed URL from the API.
+						// Check body.url first (normalized form), then fall back to any URL field.
+						const cachedUrl = localMessage
+							? ((typeof localBody?.url === "string" ? localBody.url : null)
+								?? getMessageImageUrl(localMessage)
+								?? getMessageVideoUrl(localMessage))
+							: null;
+						if (!cachedUrl || isSignedUrlExpired(cachedUrl)) {
+							return message;
+						}
+
+						return {
+							...message,
+							body: { ...(currentBody ?? {}), url: cachedUrl },
+						};
+					}) as UiMessage[];
+
+					// Persist API messages to the local log.
+					const normalizedLastRead = response.lastReadTimestamp
+						? (response.lastReadTimestamp < 100_000_000_000 ? response.lastReadTimestamp * 1000 : response.lastReadTimestamp)
+						: null;
+
+					void chatLog.appendMessages(
+						conversationId,
+						responseMessages,
+						older ? undefined : normalizedLastRead,
+					);
+
+					if (!older) {
+						setThreadLastReadTimestamp(normalizedLastRead);
+						const mediaIdImageMessages = responseMessages.filter((message) => {
+							const imageType = message.chat1Type?.toLowerCase();
+							const isImageLike =
+								message.type === "Image" ||
+								message.type === "ExpiringImage" ||
+								imageType === "image" ||
+								imageType === "expiring_image";
+
+							if (!isImageLike) return false;
+							return !getMessageImageUrl(message as UiMessage);
+						});
+
+						// Images that have no URL (including those whose cached URL was expired
+						// and stripped above) need a fresh signed URL from the API.
+						if (mediaIdImageMessages.length > 0) {
+							const unresolvedMessageIds = new Set(
+								mediaIdImageMessages.map((message) => message.messageId),
+							);
+
+							void Promise.allSettled(
+								mediaIdImageMessages.map((message) =>
+									service.getMessage({
+										conversationId,
+										messageId: message.messageId,
+									}),
+								),
+							).then((results) => {
+								const hydratedMessages: UiMessage[] = [];
+
+								for (let index = 0; index < results.length; index += 1) {
+									const result = results[index];
+									if (result.status !== "fulfilled") {
+										continue;
+									}
+
+									const hydrated = result.value as UiMessage;
+									const resolvedUrl = getMessageImageUrl(hydrated);
+									if (!resolvedUrl) {
+										continue;
+									}
+
+									// Normalize the URL to body.url so the cache restore logic
+									// can reliably find it regardless of which field the API used.
+									const normalizedHydrated = (hydrated.body as any)?.url
+										? hydrated
+										: { ...hydrated, body: { ...(hydrated.body as Record<string, unknown> ?? {}), url: resolvedUrl } };
+									hydratedMessages.push(normalizedHydrated);
+									unresolvedMessageIds.delete(hydrated.messageId);
+								}
+
+								if (hydratedMessages.length > 0) {
+									void chatLog.appendMessages(conversationId, hydratedMessages);
+
+									if (selectedConversationIdRef.current !== conversationId) return;
+
+									setThreadMessages((previous) => {
+										const map = new Map<string, UiMessage>();
+										for (const message of previous) {
+											if (message.conversationId === conversationId) {
+												map.set(message.messageId, message);
+											}
+										}
+										for (const message of hydratedMessages) {
+											map.set(message.messageId, message);
+										}
+										return [...map.values()].sort(
+											(a, b) => a.timestamp - b.timestamp,
+										);
+									});
+								}
+
+								const fallbackMessages = mediaIdImageMessages.filter((message) =>
+									unresolvedMessageIds.has(message.messageId),
+								);
+
+								if (fallbackMessages.length === 0) {
+									return;
+								}
+
+								void service
+									.getSharedConversationImages(conversationId)
+									.then((sharedImages) => {
+										if (selectedConversationIdRef.current !== conversationId) return;
+
+										const sharedImageMap = new Map<number, string>();
+										for (const item of sharedImages) {
+											if (item.url) sharedImageMap.set(item.mediaId, item.url);
+										}
+
+										const resolvedMessages: UiMessage[] = [];
+										const expiredMessages: UiMessage[] = [];
+
+										for (const message of fallbackMessages) {
+											const mediaId = getMessageMediaId(message as UiMessage);
+											if (mediaId == null) continue;
+											const url = sharedImageMap.get(mediaId);
+											if (url && message.body && typeof message.body === "object") {
+												const hydrated = {
+													...message,
+													body: { ...(message.body as Record<string, unknown>), url },
+												} as UiMessage;
+												if (getMessageImageUrl(hydrated)) {
+													resolvedMessages.push(hydrated);
+													continue;
+												}
+											}
+											expiredMessages.push({
+												...(message as UiMessage),
+												body: {
+													...((message.body as Record<string, unknown>) ?? {}),
+													_imageExpired: true,
+												},
+											});
+										}
+
+										if (resolvedMessages.length > 0) {
+											void chatLog.appendMessages(conversationId, resolvedMessages);
+
+											if (selectedConversationIdRef.current !== conversationId) return;
+											setThreadMessages((previous) => {
+												const map = new Map<string, UiMessage>();
+												for (const message of previous) {
+													if (message.conversationId === conversationId) {
+														map.set(message.messageId, message);
+													}
+												}
+												for (const message of resolvedMessages)
+													map.set(message.messageId, message);
+												return [...map.values()].sort(
+													(a, b) => a.timestamp - b.timestamp,
+												);
+											});
+										}
+
+										if (expiredMessages.length > 0 && selectedConversationIdRef.current === conversationId) {
+											setThreadMessages((previous) => {
+												const map = new Map<string, UiMessage>();
+												for (const message of previous) {
+													if (message.conversationId === conversationId) {
+														map.set(message.messageId, message);
+													}
+												}
+												for (const message of expiredMessages)
+													map.set(message.messageId, message);
+												return [...map.values()].sort(
+													(a, b) => a.timestamp - b.timestamp,
+												);
+											});
+										}
+									})
+									.catch(() => {
+										// Best effort only.
+									});
+							});
+						}
+
+						// Hydrate received video messages that have no URL yet (mediaId may be null).
+						const mediaIdVideoMessages = responseMessages.filter((message) => {
+							const isVideoLike = message.type === "Video" || message.type === "PrivateVideo" || message.type === "NonExpiringVideo" || (message as UiMessage).chat1Type?.toLowerCase() === "video" || (message as UiMessage).chat1Type?.toLowerCase() === "private_video" || (message as UiMessage).chat1Type?.toLowerCase() === "expiring_video";
+							if (!isVideoLike) return false;
+							return !getMessageVideoUrl(message as UiMessage);
+						});
+
+						if (mediaIdVideoMessages.length > 0) {
+							void Promise.allSettled(
+								mediaIdVideoMessages.map((message) =>
+									service.getMessage({ conversationId, messageId: message.messageId }),
+								),
+							).then((results) => {
+								const updates: UiMessage[] = [];
+								for (let i = 0; i < results.length; i++) {
+									const result = results[i];
+									const original = mediaIdVideoMessages[i] as UiMessage;
+									if (result.status === "fulfilled" && getMessageVideoUrl(result.value as UiMessage)) {
+										const videoMsg = result.value as UiMessage;
+										const resolvedVideoUrl = getMessageVideoUrl(videoMsg);
+										// Normalize to body.url for reliable cache restore.
+										const normalizedVideo = resolvedVideoUrl && !(videoMsg.body as any)?.url
+											? { ...videoMsg, body: { ...(videoMsg.body as Record<string, unknown> ?? {}), url: resolvedVideoUrl } }
+											: videoMsg;
+										updates.push(normalizedVideo);
+									} else {
+										updates.push({ ...original, body: { ...(original.body as Record<string, unknown> ?? {}), _videoExpired: true } });
+									}
+								}
+								if (updates.length === 0) return;
+								void chatLog.appendMessages(
 									conversationId,
-									messageId: message.messageId,
-								}),
-							),
-						).then((results) => {
-							const hydratedMessages: UiMessage[] = [];
-
-							for (let index = 0; index < results.length; index += 1) {
-								const result = results[index];
-								if (result.status !== "fulfilled") {
-									continue;
-								}
-
-								const hydrated = result.value as UiMessage;
-								const resolvedUrl = getMessageImageUrl(hydrated);
-								if (!resolvedUrl) {
-									continue;
-								}
-
-								// Normalize the URL to body.url so the cache restore logic
-								// can reliably find it regardless of which field the API used.
-								const normalizedHydrated = (hydrated.body as any)?.url
-									? hydrated
-									: { ...hydrated, body: { ...(hydrated.body as Record<string, unknown> ?? {}), url: resolvedUrl } };
-								hydratedMessages.push(normalizedHydrated);
-								unresolvedMessageIds.delete(hydrated.messageId);
-							}
-
-							if (hydratedMessages.length > 0) {
-								void chatLog.appendMessages(conversationId, hydratedMessages);
-
+									updates.filter((u) => !(u.body as any)?._videoExpired),
+								);
 								if (selectedConversationIdRef.current !== conversationId) return;
-
 								setThreadMessages((previous) => {
 									const map = new Map<string, UiMessage>();
 									for (const message of previous) {
-										if (message.conversationId === conversationId) {
-											map.set(message.messageId, message);
-										}
+										if (message.conversationId === conversationId) map.set(message.messageId, message);
 									}
-									for (const message of hydratedMessages) {
-										map.set(message.messageId, message);
-									}
-									return [...map.values()].sort(
-										(a, b) => a.timestamp - b.timestamp,
-									);
+									for (const message of updates) map.set(message.messageId, message);
+									return [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
 								});
-							}
-
-							const fallbackMessages = mediaIdImageMessages.filter((message) =>
-								unresolvedMessageIds.has(message.messageId),
-							);
-
-							if (fallbackMessages.length === 0) {
-								return;
-							}
-
-						void service
-							.getSharedConversationImages(conversationId)
-							.then((sharedImages) => {
-								if (selectedConversationIdRef.current !== conversationId) return;
-
-								const sharedImageMap = new Map<number, string>();
-								for (const item of sharedImages) {
-									if (item.url) sharedImageMap.set(item.mediaId, item.url);
-								}
-
-								const resolvedMessages: UiMessage[] = [];
-								const expiredMessages: UiMessage[] = [];
-
-								for (const message of fallbackMessages) {
-									const mediaId = getMessageMediaId(message as UiMessage);
-									if (mediaId == null) continue;
-									const url = sharedImageMap.get(mediaId);
-									if (url && message.body && typeof message.body === "object") {
-										const hydrated = {
-											...message,
-											body: { ...(message.body as Record<string, unknown>), url },
-										} as UiMessage;
-										if (getMessageImageUrl(hydrated)) {
-											resolvedMessages.push(hydrated);
-											continue;
-										}
-									}
-									expiredMessages.push({
-										...(message as UiMessage),
-										body: {
-											...((message.body as Record<string, unknown>) ?? {}),
-											_imageExpired: true,
-										},
-									});
-								}
-
-								if (resolvedMessages.length > 0) {
-									void chatLog.appendMessages(conversationId, resolvedMessages);
-
-									if (selectedConversationIdRef.current !== conversationId) return;
-									setThreadMessages((previous) => {
-										const map = new Map<string, UiMessage>();
-										for (const message of previous) {
-											if (message.conversationId === conversationId) {
-												map.set(message.messageId, message);
-											}
-										}
-										for (const message of resolvedMessages)
-											map.set(message.messageId, message);
-										return [...map.values()].sort(
-											(a, b) => a.timestamp - b.timestamp,
-										);
-									});
-								}
-
-								if (expiredMessages.length > 0 && selectedConversationIdRef.current === conversationId) {
-									setThreadMessages((previous) => {
-										const map = new Map<string, UiMessage>();
-										for (const message of previous) {
-											if (message.conversationId === conversationId) {
-												map.set(message.messageId, message);
-											}
-										}
-										for (const message of expiredMessages)
-											map.set(message.messageId, message);
-										return [...map.values()].sort(
-											(a, b) => a.timestamp - b.timestamp,
-										);
-									});
-								}
-							})
-							.catch(() => {
-								// Best effort only.
 							});
-						});
-					}
-
-					// Hydrate received video messages that have no URL yet (mediaId may be null).
-					const mediaIdVideoMessages = responseMessages.filter((message) => {
-						const isVideoLike = message.type === "Video" || message.type === "PrivateVideo" || message.type === "NonExpiringVideo" || (message as UiMessage).chat1Type?.toLowerCase() === "video" || (message as UiMessage).chat1Type?.toLowerCase() === "private_video" || (message as UiMessage).chat1Type?.toLowerCase() === "expiring_video";
-						if (!isVideoLike) return false;
-						return !getMessageVideoUrl(message as UiMessage);
-					});
-
-					if (mediaIdVideoMessages.length > 0) {
-						void Promise.allSettled(
-							mediaIdVideoMessages.map((message) =>
-								service.getMessage({ conversationId, messageId: message.messageId }),
-							),
-						).then((results) => {
-							const updates: UiMessage[] = [];
-							for (let i = 0; i < results.length; i++) {
-								const result = results[i];
-								const original = mediaIdVideoMessages[i] as UiMessage;
-								if (result.status === "fulfilled" && getMessageVideoUrl(result.value as UiMessage)) {
-									const videoMsg = result.value as UiMessage;
-									const resolvedVideoUrl = getMessageVideoUrl(videoMsg);
-									// Normalize to body.url for reliable cache restore.
-									const normalizedVideo = resolvedVideoUrl && !(videoMsg.body as any)?.url
-										? { ...videoMsg, body: { ...(videoMsg.body as Record<string, unknown> ?? {}), url: resolvedVideoUrl } }
-										: videoMsg;
-									updates.push(normalizedVideo);
-								} else {
-									updates.push({ ...original, body: { ...(original.body as Record<string, unknown> ?? {}), _videoExpired: true } });
-								}
-							}
-							if (updates.length === 0) return;
-                            void chatLog.appendMessages(
-                                conversationId,
-                                updates.filter((u) => !(u.body as any)?._videoExpired),
-                            );
-							if (selectedConversationIdRef.current !== conversationId) return;
-							setThreadMessages((previous) => {
-								const map = new Map<string, UiMessage>();
-								for (const message of previous) {
-									if (message.conversationId === conversationId) map.set(message.messageId, message);
-								}
-								for (const message of updates) map.set(message.messageId, message);
-								return [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
-							});
-						});
-					}
-				}
-
-// --- AUTO BLOCK CHECK (HISTORICAL CHAT SCANNER) ---
-				let shouldNukeThread = false;
-				let blockReason = "";
-
-				// 1. Check if their historical messages contain bad words
-				for (const m of responseMessages) {
-					let messageText = "";
-					const msgBody: any = m.body;
-					if (msgBody && typeof msgBody.text === "string") {
-						messageText = msgBody.text;
-					}
-					
-					const isIncoming = userId != null && Number(m.senderId) !== Number(userId);
-
-					if (isIncoming && shouldAutoBlock(messageText, "message")) {
-						shouldNukeThread = true;
-						blockReason = "Keyword in message history";
-						break;
-					}
-				}
-
-				const otherParticipant = getOtherParticipant(selectedConversation || { data: { participants: [] } } as any, userId);
-				const blockId = otherParticipant?.profileId || (responseMessages[0] && responseMessages[0].senderId);
-
-				if (shouldNukeThread) {
-					appLog.info(`[AutoBlock] Sweeping historical conversation. Reason: ${blockReason}`);
-					
-					if (blockId) {
-						blockProfileMutation(String(blockId)).catch(() => {});
-					}
-
-					setThreadMessages([]);
-					setThreadConversationId(null);
-					if (isDesktop) {
-						setSelectedDesktopConversationId(null);
-					} else {
-						navigate("/chat", { replace: true });
-					}
-					toast.success(`Auto-blocked: ${blockReason}`);
-					return; // Stop loading the rest of the thread!
-				}
-
-				// 2. Fetch their profile in the background to check their Age AND Bio
-				if (blockId) {
-					service.getProfileDetail(String(blockId)).then((profile) => {
-						const matchedBioWord = shouldAutoBlock(profile.aboutMe, "bio");
-						const isBadAge = isOutsideAgeLimits(profile.age);
-
-						if (matchedBioWord || isBadAge) {
-							const reason = isBadAge ? (profile.age == null ? "No Age Set" : `Age limit (${profile.age})`) : `Keyword in Bio`;
-							appLog.info(`[AutoBlock] Sweeping conversation due to: ${reason}`);
-							
-							blockProfileMutation(String(blockId)).catch(() => {});
-							
-							setThreadMessages([]);
-							setThreadConversationId(null);
-							if (isDesktop) {
-								setSelectedDesktopConversationId(null);
-							} else {
-								navigate("/chat", { replace: true });
-							}
-							toast.success(`Auto-blocked: ${reason}`);
 						}
-					}).catch(() => {});
+
+						// Surface messages from the local log that don't appear in this API page
+						// (e.g. unsent by the sender, conversation disappeared after a block).
+						const windowStart = response.messages[0]?.timestamp;
+						const windowEnd =
+							response.messages[response.messages.length - 1]?.timestamp;
+						if (windowStart != null && windowEnd != null) {
+							const apiIds = new Set(response.messages.map((m) => m.messageId));
+							void chatLog.readLog(conversationId).then(async (localData) => {
+								const localMessages = localData.messages;
+								const localCandidates = localMessages.filter(
+									(m) =>
+										!apiIds.has(m.messageId) &&
+										m.timestamp >= windowStart &&
+										m.timestamp <= windowEnd,
+								);
+								if (!localCandidates.length) return;
+
+								// Verify candidates are truly absent from API before surfacing
+								// them as local-history messages.
+								const checks = await Promise.allSettled(
+									localCandidates.map((candidate) =>
+										service.getMessage({
+											conversationId,
+											messageId: candidate.messageId,
+										}),
+									),
+								);
+
+								const localOnly: UiMessage[] = [];
+								for (let i = 0; i < localCandidates.length; i += 1) {
+									const check = checks[i];
+									if (check.status === "fulfilled") {
+										continue;
+									}
+									localOnly.push({
+										...localCandidates[i],
+										_localOnly: true,
+									} as UiMessage);
+								}
+
+								if (localOnly.length > 0) {
+									if (selectedConversationIdRef.current !== conversationId) return;
+
+									setThreadMessages((previous) => {
+										const map = new Map<string, UiMessage>();
+										for (const message of previous) {
+											if (message.conversationId === conversationId) {
+												map.set(message.messageId, message);
+											}
+										}
+										for (const message of localOnly) {
+											if (!map.has(message.messageId)) {
+												map.set(message.messageId, message);
+											}
+										}
+										return [...map.values()].sort(
+											(a, b) => a.timestamp - b.timestamp,
+										);
+									});
+								}
+							});
+						}
+					}
+
+					firstMessageId = response.messages[0] ? response.messages[0].messageId : null;
+
+					if (!older) {
+						const newest = response.messages[response.messages.length - 1];
+						if (newest) {
+							const previewText = getMessagePreviewLabel(newest, t);
+
+							syncConversation((conversation) => ({
+								...conversation,
+								data: {
+									...conversation.data,
+									lastActivityTimestamp: newest.timestamp,
+									preview: {
+										conversationId: {
+											value: newest.conversationId,
+										},
+										messageId: newest.messageId,
+										senderId: newest.senderId,
+										type: newest.type,
+										chat1Type: newest.chat1Type ?? "text",
+										text: previewText,
+										albumId: null,
+										imageHash: null,
+									},
+								},
+							}));
+						}
+					}
+
+					if (!older && selectedConversationUnreadCountRef.current > 0) {
+						const newest = response.messages[response.messages.length - 1];
+						if (newest?.messageId) {
+							void service
+								.markRead(conversationId, newest.messageId)
+								.then(() => {
+									syncConversation((conversation) => {
+										// --- GHOST CHECK ---
+										if (isChatGhosted(conversationId)) return conversation; 
+										// -------------------
+										const other = getOtherParticipant(conversation, userId);
+										if (other?.profileId) {
+											const pid = String(other.profileId);
+											void clearUnreadCountForProfile(pid).catch(() => {});
+											setChatContactIndexByProfileId((prev) => {
+												const existing = prev[pid];
+												if (!existing) return prev;
+												return {
+													...prev,
+													[pid]: { ...existing, unreadCount: 0 },
+												};
+											});
+										}
+										return {
+											...conversation,
+											data: { ...conversation.data, unreadCount: 0 },
+										};
+									});
+								})
+								.catch(() => {
+									// Best effort only.
+								});
+						}
+					}
+
+				} catch (apiError) {
+					console.warn("[ChatPage] Failed to fetch from API, trying local database fallback:", apiError);
+					const localData = await chatLog.readLog(conversationId);
+					if (localData && localData.messages && localData.messages.length > 0) {
+						responseMessages = localData.messages as UiMessage[];
+						firstMessageId = responseMessages[0]?.messageId ?? null;
+						isFallback = true;
+					} else {
+						throw apiError;
+					}
+				}
+
+				// --- AUTO BLOCK CHECK (HISTORICAL CHAT SCANNER) ---
+				if (!isFallback) {
+					let shouldNukeThread = false;
+					let blockReason = "";
+
+					// 1. Check if their historical messages contain bad words
+					for (const m of responseMessages) {
+						let messageText = "";
+						const msgBody: any = m.body;
+						if (msgBody && typeof msgBody.text === "string") {
+							messageText = msgBody.text;
+						}
+						
+						const isIncoming = userId != null && Number(m.senderId) !== Number(userId);
+
+						if (isIncoming && shouldAutoBlock(messageText, "message")) {
+							shouldNukeThread = true;
+							blockReason = "Keyword in message history";
+							break;
+						}
+					}
+
+					const otherParticipant = getOtherParticipant(selectedConversation || { data: { participants: [] } } as any, userId);
+					const blockId = otherParticipant?.profileId || (responseMessages[0] && responseMessages[0].senderId);
+
+					if (shouldNukeThread) {
+						appLog.info(`[AutoBlock] Sweeping historical conversation. Reason: ${blockReason}`);
+						
+						if (blockId) {
+							blockProfileMutation(String(blockId)).catch(() => {});
+						}
+
+						setThreadMessages([]);
+						setThreadConversationId(null);
+						if (isDesktop) {
+							setSelectedDesktopConversationId(null);
+						} else {
+							navigate("/chat", { replace: true });
+						}
+						toast.success(`Auto-blocked: ${blockReason}`);
+						return; // Stop loading the rest of the thread!
+					}
+
+					// 2. Fetch their profile in the background to check their Age AND Bio
+					if (blockId) {
+						service.getProfileDetail(String(blockId)).then((profile) => {
+							const matchedBioWord = shouldAutoBlock(profile.aboutMe, "bio");
+							const isBadAge = isOutsideAgeLimits(profile.age);
+
+							if (matchedBioWord || isBadAge) {
+								const reason = isBadAge ? (profile.age == null ? "No Age Set" : `Age limit (${profile.age})`) : `Keyword in Bio`;
+								appLog.info(`[AutoBlock] Sweeping conversation due to: ${reason}`);
+								
+								blockProfileMutation(String(blockId)).catch(() => {});
+								
+								setThreadMessages([]);
+								setThreadConversationId(null);
+								if (isDesktop) {
+									setSelectedDesktopConversationId(null);
+								} else {
+									navigate("/chat", { replace: true });
+								}
+								toast.success(`Auto-blocked: ${reason}`);
+							}
+						}).catch(() => {});
+					}
 				}
 				// --------------------------------------------------
 
@@ -1328,136 +1474,8 @@ export function ChatPage() {
 					return [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
 				});
 
-				// Surface messages from the local log that don't appear in this API page
-				// (e.g. unsent by the sender, conversation disappeared after a block).
-				if (!older && response.messages.length > 0) {
-					const windowStart = response.messages[0].timestamp;
-					const windowEnd =
-						response.messages[response.messages.length - 1].timestamp;
-					const apiIds = new Set(response.messages.map((m) => m.messageId));
-					void chatLog.readLog(conversationId).then(async (localData) => {
-						const localMessages = localData.messages;
-						const localCandidates = localMessages.filter(
-							(m) =>
-								!apiIds.has(m.messageId) &&
-								m.timestamp >= windowStart &&
-								m.timestamp <= windowEnd,
-						);
-						if (!localCandidates.length) return;
-
-						// Verify candidates are truly absent from API before surfacing
-						// them as local-history messages.
-						const checks = await Promise.allSettled(
-							localCandidates.map((candidate) =>
-								service.getMessage({
-									conversationId,
-									messageId: candidate.messageId,
-								}),
-							),
-						);
-
-						const localOnly: UiMessage[] = [];
-						for (let i = 0; i < localCandidates.length; i += 1) {
-							const check = checks[i];
-							if (check.status === "fulfilled") {
-								continue;
-							}
-							localOnly.push({
-								...localCandidates[i],
-								_localOnly: true,
-							} as UiMessage);
-						}
-
-				if (localOnly.length > 0) {
-					if (selectedConversationIdRef.current !== conversationId) return;
-
-					setThreadMessages((previous) => {
-						const map = new Map<string, UiMessage>();
-						for (const message of previous) {
-							if (message.conversationId === conversationId) {
-								map.set(message.messageId, message);
-							}
-						}
-						for (const message of localOnly) {
-							if (!map.has(message.messageId)) {
-								map.set(message.messageId, message);
-							}
-						}
-						return [...map.values()].sort(
-							(a, b) => a.timestamp - b.timestamp,
-						);
-					});
-				}
-					});
-				}
-
-				const firstMessage = response.messages[0];
-				setMessagePageKey(firstMessage ? firstMessage.messageId : null);
-				messagePageKeyRef.current = firstMessage
-					? firstMessage.messageId
-					: null;
-
-				if (!older) {
-					const newest = response.messages[response.messages.length - 1];
-					if (newest) {
-						const previewText = getMessagePreviewLabel(newest, t);
-
-						syncConversation((conversation) => ({
-							...conversation,
-							data: {
-								...conversation.data,
-								lastActivityTimestamp: newest.timestamp,
-								preview: {
-									conversationId: {
-										value: newest.conversationId,
-									},
-									messageId: newest.messageId,
-									senderId: newest.senderId,
-									type: newest.type,
-									chat1Type: newest.chat1Type ?? "text",
-									text: previewText,
-									albumId: null,
-									imageHash: null,
-								},
-							},
-						}));
-					}
-				}
-
-				if (!older && selectedConversationUnreadCountRef.current > 0) {
-					const newest = response.messages[response.messages.length - 1];
-					if (newest?.messageId) {
-						void service
-							.markRead(conversationId, newest.messageId)
-							.then(() => {
-								syncConversation((conversation) => {
- 								// --- GHOST CHECK ---
- 								if (isChatGhosted(conversationId)) return conversation; 
- 								// -------------------
- 								const other = getOtherParticipant(conversation, userId);
- 								if (other?.profileId) {
- 									const pid = String(other.profileId);
- 									void clearUnreadCountForProfile(pid).catch(() => {});
- 									setChatContactIndexByProfileId((prev) => {
-											const existing = prev[pid];
-											if (!existing) return prev;
-											return {
-												...prev,
-												[pid]: { ...existing, unreadCount: 0 },
-											};
-										});
-									}
-									return {
-										...conversation,
-										data: { ...conversation.data, unreadCount: 0 },
-									};
-								});
-							})
-							.catch(() => {
-								// Best effort only.
-							});
-					}
-				}
+				setMessagePageKey(firstMessageId);
+				messagePageKeyRef.current = firstMessageId;
 			} catch (error) {
 				const message =
 					error instanceof Error ? error.message : t("chat.errors.load_messages");
