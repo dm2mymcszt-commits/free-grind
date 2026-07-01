@@ -803,7 +803,7 @@ export function GridProfilePage() {
 
             {/* Custom Liquid Glass Settings Modal for Advanced Locate */}
             {isLocateConfirmOpen && typeof document !== "undefined" && createPortal(
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 backdrop-blur-[12px] p-4 transition-all animate-in fade-in duration-300">
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/25 backdrop-blur-[12px] p-4 transition-all animate-in fade-in duration-300">
                     <div
                         className="w-full max-w-sm overflow-hidden rounded-[2.5rem] border border-white/10 dark:border-white/5 p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)] backdrop-blur-[20px] animate-in zoom-in-95 duration-300"
                         style={{
@@ -820,7 +820,7 @@ export function GridProfilePage() {
                                     </p>
 
                                     {/* Range Slider Container */}
-                                    <div className="mb-6 w-full rounded-[1.5rem] border border-white/5 bg-black/20 p-4 shadow-[inset_0_1px_1px_rgba(0,0,0,0.3)]">
+                                    <div className="mb-6 w-full rounded-[1.5rem] border border-white/5 bg-white/5 p-4 shadow-[inset_0_1px_1px_rgba(0,0,0,0.3)]">
                                         <div className="mb-3 flex items-end justify-between">
                                             <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Precision Rounds</span>
                                             <span className="text-xl font-black text-white">{selectedRounds}</span>
