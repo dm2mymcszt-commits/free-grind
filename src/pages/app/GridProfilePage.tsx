@@ -123,11 +123,12 @@ export function GridProfilePage() {
     const [locateStatus, setLocateStatus] = useState("");
     const [locateLogs, setLocateLogs] = useState<string[]>([]);
     const isLocateCancelledRef = useRef(false);
-    const terminalRef = useRef<HTMLDivElement | null>(null);
+    const terminalContainerRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
-        if (terminalRef.current) {
-            terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+        const container = terminalContainerRef.current;
+        if (container) {
+            container.scrollTop = container.scrollHeight;
         }
     }, [locateLogs]);
 
@@ -804,7 +805,11 @@ export function GridProfilePage() {
             {isLocateConfirmOpen && typeof document !== "undefined" && createPortal(
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 backdrop-blur-[12px] p-4 transition-all animate-in fade-in duration-300">
                     <div
-                        className="w-full max-w-sm overflow-hidden rounded-[2.5rem] border border-white/10 dark:border-white/5 bg-[color-mix(in_srgb,var(--surface)_85%,transparent)] p-6 shadow-[0_20px_60px_rgba(0,0,0,0.6),_inset_0_1px_0_rgba(255,255,255,0.1)] backdrop-blur-[30px] animate-in zoom-in-95 duration-300"
+                        className="w-full max-w-sm overflow-hidden rounded-[2.5rem] border border-white/10 dark:border-white/5 p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)] backdrop-blur-[20px] animate-in zoom-in-95 duration-300"
+                        style={{
+                            backgroundColor: "rgba(15, 17, 21, 0.25)",
+                            background: "color-mix(in srgb, var(--surface) 25%, transparent)",
+                        }}
                     >
                         <div className="flex flex-col items-center text-center">
                             {!isLocatingProfile ? (
@@ -891,35 +896,16 @@ export function GridProfilePage() {
                                     
                                     {/* NavBar-Style Liquid Glass Progress Bar */}
                                     <div 
-                                        className="relative mb-4 flex h-10 w-full rounded-full border border-white/10 dark:border-white/5 p-1.5 backdrop-blur-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_inset_0_-1px_0_rgba(0,0,0,0.2),_0_12px_40px_rgba(0,0,0,0.45)] select-none"
-                                        style={{
-                                            backgroundColor: "rgba(15, 17, 21, 0.25)",
-                                            background: "color-mix(in srgb, var(--surface) 25%, transparent)",
-                                        }}
+                                        className="relative mb-4 flex h-2.5 w-full rounded-full border border-white/5 bg-white/5 p-0.5 overflow-hidden"
                                     >
-                                        <style>
-                                            {`
-                                            @keyframes glass-shimmer {
-                                                0% { transform: translateX(-100%); }
-                                                100% { transform: translateX(100%); }
-                                            }
-                                            `}
-                                        </style>
-                                        
                                         {/* Fill Container */}
                                         <div 
-                                            className="relative h-full rounded-full bg-[var(--accent)] transition-all duration-500 ease-out shadow-[0_0_20px_var(--accent)]"
-                                            style={{ width: `${Math.max(6, locateProgress)}%` }}
+                                            className="h-full rounded-full bg-[var(--accent)] transition-all duration-500 ease-out shadow-[0_0_12px_var(--accent)] relative"
+                                            style={{ width: `${Math.max(3, locateProgress)}%` }}
                                         >
+                                            {/* Specular glass highlight inside progress fill */}
                                             <div className="absolute inset-0 overflow-hidden rounded-full">
-                                                {/* Top Specular Highlight (The subtle Glass Arc matching tabs) */}
-                                                <div className="absolute left-0 top-0 h-1/2 w-full bg-gradient-to-b from-white/30 to-transparent" />
-                                                
-                                                {/* Sweeping Elegance Shimmer */}
-                                                <div 
-                                                    className="absolute inset-0 w-[200%] -skew-x-12 bg-gradient-to-r from-transparent via-white/30 to-transparent"
-                                                    style={{ animation: 'glass-shimmer 2.5s cubic-bezier(0.4, 0, 0.2, 1) infinite' }}
-                                                />
+                                                <div className="absolute left-0 top-0 h-1/2 w-full bg-gradient-to-b from-white/20 to-transparent" />
                                             </div>
                                         </div>
                                     </div>
@@ -929,7 +915,7 @@ export function GridProfilePage() {
                                     </p>
 
                                     {/* Scrolling Terminal Log Container */}
-                                    <div ref={terminalRef} className="w-full rounded-2xl border border-white/5 bg-black/40 p-4 h-36 overflow-y-auto font-mono text-[10px] text-left text-green-400/90 leading-relaxed scrollbar-none shadow-inner relative">
+                                    <div ref={terminalContainerRef} className="w-full rounded-2xl border border-white/5 bg-black/40 p-4 h-36 overflow-y-auto font-mono text-[10px] text-left text-green-400/90 leading-relaxed scrollbar-none shadow-inner relative">
                                         <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/30 pointer-events-none" />
                                         <div className="space-y-1 relative z-10">
                                             {locateLogs.map((log, index) => (
