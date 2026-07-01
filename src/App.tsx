@@ -43,6 +43,7 @@ import { usePreferences } from "./contexts/PreferencesContext";
 import ManagerApp from "./ManagerApp";
 import { getRuntimeContext } from "./services/runtimeContext";
 import { hasCompletedOnboarding } from "./utils/onboardingStorage";
+import { useRenderPhase } from "./hooks/useRenderPhase";
 
 function ErrorPage() {
 	const { t } = useTranslation();
@@ -131,6 +132,12 @@ function ManagerRoutePage() {
 
 export default function App() {
 	const [showOnboarding, setShowOnboarding] = useState(() => !hasCompletedOnboarding());
+	// The routed page itself (below) always mounts on the first frame — only
+	// these non-visual startup bridges are staggered one per frame, so their
+	// setup (websocket connect, native push-notification registration, route
+	// tracking, entitlements fetch) doesn't all land in the same first commit
+	// as the initial route.
+	const renderPhase = useRenderPhase(5);
 
 	return (
 		<AuthProvider>
@@ -141,12 +148,16 @@ export default function App() {
 							<PermissionsOnboarding onComplete={() => setShowOnboarding(false)} />
 						</div>
 					) : (<>
-					<ManagerModeRedirect />
-					<PushNotificationBridge />
-					<ChatRealtimeBridge />
-					<ActiveRouteBridge />
-					<EntitlementsBridge />
-					<OutdatedVersionPrompt />
+					{renderPhase >= 1 && <ManagerModeRedirect />}
+					{renderPhase >= 2 && <PushNotificationBridge />}
+					{renderPhase >= 3 && <ChatRealtimeBridge />}
+					{renderPhase >= 4 && <ActiveRouteBridge />}
+					{renderPhase >= 5 && (
+						<>
+							<EntitlementsBridge />
+							<OutdatedVersionPrompt />
+						</>
+					)}
 					<Routes>
 						<Route element={<RootLayout />}>
 							<Route path="/manager" element={<ManagerRoutePage />} />

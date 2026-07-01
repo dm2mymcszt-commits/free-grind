@@ -15,6 +15,7 @@ import * as chatDb from "./chatDb";
 import type { MediaKind } from "../types/chat-db";
 import { appLog } from "../utils/logger";
 import { isAutoDownloadMediaEnabled } from "../utils/mediaSettings";
+import { limitChatDbBlobRead } from "../utils/chatDbBlobLimiter";
 
 // De-dupe concurrent fetches for the same key (e.g. multiple hydration passes
 // racing for the same image).
@@ -180,7 +181,7 @@ export async function fetchAndStoreMedia(
 
 	const run = (async () => {
 		try {
-			const cached = await chatDb.getMediaFile(mediaKey);
+			const cached = await limitChatDbBlobRead(() => chatDb.getMediaFile(mediaKey));
 			if (cached?.fetchStatus === "ok") {
 				setCachedMediaUri(mediaKey, toDataUri(cached.mimeType, cached.dataBase64));
 				return;
@@ -205,7 +206,7 @@ export async function getLocalMediaUri(
 	if (!mediaKey) {
 		return null;
 	}
-	const stored = await chatDb.getMediaFile(mediaKey);
+	const stored = await limitChatDbBlobRead(() => chatDb.getMediaFile(mediaKey));
 	if (!stored || stored.fetchStatus !== "ok") {
 		return null;
 	}
@@ -239,7 +240,9 @@ export async function hydrateMediaByMessageId(messageId: string): Promise<void> 
 
 	const run = (async () => {
 		try {
-			const stored = await chatDb.getMediaFileByMessageId(messageId);
+			const stored = await limitChatDbBlobRead(() =>
+				chatDb.getMediaFileByMessageId(messageId),
+			);
 			if (stored?.fetchStatus === "ok") {
 				setCachedMediaUri(key, toDataUri(stored.mimeType, stored.dataBase64));
 			}

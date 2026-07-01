@@ -12,6 +12,7 @@ import * as chatDb from "./chatDb";
 import { fetchAndEncode, toDataUri } from "./mediaStore";
 import { getProfileImageUrl, validateMediaHash } from "../utils/media";
 import { appLog } from "../utils/logger";
+import { limitChatDbBlobRead } from "../utils/chatDbBlobLimiter";
 
 const inFlight = new Map<string, Promise<void>>();
 const memoryCache = new Map<string, string>();
@@ -49,7 +50,7 @@ export async function fetchAndStoreAvatar(
 
 	const run = (async () => {
 		try {
-			const cached = await chatDb.getAvatar(mediaHash);
+			const cached = await limitChatDbBlobRead(() => chatDb.getAvatar(mediaHash));
 			if (cached) {
 				setCachedAvatarUri(mediaHash, toDataUri(cached.mimeType, cached.dataBase64));
 				return;

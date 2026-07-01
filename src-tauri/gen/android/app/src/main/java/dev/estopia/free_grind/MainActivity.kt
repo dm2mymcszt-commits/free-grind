@@ -16,6 +16,7 @@ import android.util.Log
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.messaging.FirebaseMessaging
@@ -96,9 +97,20 @@ class MainActivity : TauriActivity() {
   // Bounded pool prevents Binder-thread exhaustion when many WebSocket messages
   // arrive simultaneously and each postLocalNotification spawns avatar+IPC work.
   private val localNotifExecutor = Executors.newFixedThreadPool(2)
+  // Keeps the system splash (Theme.free_grind.Starting, installed below) on
+  // screen past the point Android would normally drop it (first window
+  // frame, which for a WebView is essentially blank) until the frontend
+  // itself has actually painted — see JsBridge.notifyContentReady(). The
+  // postDelayed fallback prevents an infinite splash if that signal never
+  // arrives (JS error, WebView failing to load, etc.).
+  @Volatile private var contentReady = false
+
   override fun onCreate(savedInstanceState: Bundle?) {
+    val splashScreen = installSplashScreen()
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
+    splashScreen.setKeepOnScreenCondition { !contentReady }
+    mainHandler.postDelayed({ contentReady = true }, 8000)
     activityRef = WeakReference(this)
     // Run off the main thread — createNotificationChannel makes IPC calls to
     // NotificationManagerService that can block for several seconds on some
@@ -163,6 +175,19 @@ class MainActivity : TauriActivity() {
     fun setActiveRoute(route: String?) {
       activeRoute = route
       Log.d("FCM", "JsBridge.setActiveRoute=$route foreground=$inForeground")
+    }
+
+    /**
+     * Called once by main.tsx right after the first real paint (double
+     * requestAnimationFrame past the initial React render) — dismisses the
+     * system splash screen installed in onCreate. Until this fires (or the
+     * 8s fallback in onCreate elapses), the splash stays up instead of the
+     * blank WebView background that would otherwise show while the app
+     * loads.
+     */
+    @JavascriptInterface
+    fun notifyContentReady() {
+      contentReady = true
     }
 
     /**

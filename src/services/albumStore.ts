@@ -20,6 +20,7 @@ import type { AlbumDetailsResponse } from "../types/chat-service";
 import type { StoredAlbumMedia } from "../types/chat-db";
 import { appLog } from "../utils/logger";
 import { isAutoDownloadMediaEnabled } from "../utils/mediaSettings";
+import { limitChatDbBlobRead } from "../utils/chatDbBlobLimiter";
 
 /**
  * Mirrors newly-downloaded album content into the device's Downloads
@@ -167,7 +168,7 @@ export function ensureAlbumCacheChecked(albumId: number): void {
 	const run = (async () => {
 		try {
 			// The blurred chat-bubble preview (preferred cover source) first.
-			const album = await chatDb.getAlbum(String(albumId));
+			const album = await limitChatDbBlobRead(() => chatDb.getAlbum(String(albumId)));
 			if (album?.previewCoverBase64 && !albumCoverCache.has(albumId)) {
 				albumCoverCache.set(
 					albumId,
@@ -178,7 +179,7 @@ export function ensureAlbumCacheChecked(albumId: number): void {
 				}
 			}
 
-			const media = await chatDb.getAlbumMedia(String(albumId));
+			const media = await limitChatDbBlobRead(() => chatDb.getAlbumMedia(String(albumId)));
 			if (media.length > 0) {
 				updateAlbumCacheState(albumId, media);
 			}

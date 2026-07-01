@@ -101,4 +101,19 @@ void (async () => {
 			</CrashBoundary>
 		</React.StrictMode>,
 	);
+
+	// Tells the native side (MainActivity's system splash screen, see
+	// JsBridge.notifyContentReady) that there's real content to show now.
+	// Double rAF: the first fires before the browser paints this commit, the
+	// second fires only after it actually has — without it we'd dismiss the
+	// splash a frame too early, back onto the same blank WebView background
+	// it was covering. No-op on desktop/iOS/web, where window.FreeGrindBridge
+	// doesn't exist.
+	requestAnimationFrame(() => {
+		requestAnimationFrame(() => {
+			(
+				window as unknown as { FreeGrindBridge?: { notifyContentReady?: () => void } }
+			).FreeGrindBridge?.notifyContentReady?.();
+		});
+	});
 })();
