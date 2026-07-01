@@ -9,32 +9,17 @@ import { useTranslation } from "react-i18next";
 
 export function SignInPage() {
 	const { t } = useTranslation();
-	const [method, setMethod] = useState<SignInMethod>("token");
+	const [method, setMethod] = useState<SignInMethod>("password");
 
-	// Token fields
-	const [jwtToken, setJwtToken] = useState("");
-	const [isTokenLoading, setIsTokenLoading] = useState(false);
-
-	// Email/password fields
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
 	const [isPasswordLoading, setIsPasswordLoading] = useState(false);
 
+	const [jwtToken, setJwtToken] = useState("");
+	const [isTokenLoading, setIsTokenLoading] = useState(false);
+
 	const { login, loginWithJwt, error } = useAuth();
 	const navigate = useNavigate();
-
-	const handleTokenSubmit = async (e: React.FormEvent) => {
-		e.preventDefault();
-		setIsTokenLoading(true);
-		try {
-			await loginWithJwt(jwtToken.trim());
-			navigate("/");
-		} catch {
-			// AuthContext updates `error`, which is rendered in the form.
-		} finally {
-			setIsTokenLoading(false);
-		}
-	};
 
 	const handlePasswordSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -49,6 +34,19 @@ export function SignInPage() {
 		}
 	};
 
+	const handleTokenSubmit = async (e: React.FormEvent) => {
+		e.preventDefault();
+		setIsTokenLoading(true);
+		try {
+			await loginWithJwt(jwtToken.trim());
+			navigate("/");
+		} catch {
+			// AuthContext updates `error`, which is rendered in the form.
+		} finally {
+			setIsTokenLoading(false);
+		}
+	};
+
 	return (
 		<AuthShell
 			title={t("auth.sign_in.title")}
@@ -57,7 +55,7 @@ export function SignInPage() {
 				<div className="flex flex-col items-center gap-3">
 					<Link
 						to="/auth/sign-up"
-						className="text-sm font-medium text-[var(--text-muted)] hover:text-[var(--text)]"
+						className="text-sm text-[var(--text-muted)] hover:text-[var(--text)]"
 					>
 						{t("auth.sign_in.no_account")}
 					</Link>
@@ -65,22 +63,12 @@ export function SignInPage() {
 				</div>
 			}
 		>
-			<div className="mb-4 flex rounded-xl border border-[var(--border)] p-1">
-				<button
-					type="button"
-					onClick={() => setMethod("token")}
-					className={`flex-1 rounded-lg py-2 text-sm font-medium transition-colors ${
-						method === "token"
-							? "bg-[var(--accent)] text-[var(--accent-contrast)]"
-							: "text-[var(--text-muted)] hover:text-[var(--text)]"
-					}`}
-				>
-					{t("auth.sign_in.method_token")}
-				</button>
+			{/* Method selector */}
+			<div className="mb-5 flex gap-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-2)] p-1">
 				<button
 					type="button"
 					onClick={() => setMethod("password")}
-					className={`flex-1 rounded-lg py-2 text-sm font-medium transition-colors ${
+					className={`flex-1 rounded-[10px] py-2 text-sm font-medium transition-colors ${
 						method === "password"
 							? "bg-[var(--accent)] text-[var(--accent-contrast)]"
 							: "text-[var(--text-muted)] hover:text-[var(--text)]"
@@ -88,22 +76,75 @@ export function SignInPage() {
 				>
 					{t("auth.sign_in.method_password")}
 				</button>
+				<button
+					type="button"
+					onClick={() => setMethod("token")}
+					className={`flex-1 rounded-[10px] py-2 text-sm font-medium transition-colors ${
+						method === "token"
+							? "bg-[var(--accent)] text-[var(--accent-contrast)]"
+							: "text-[var(--text-muted)] hover:text-[var(--text)]"
+					}`}
+				>
+					{t("auth.sign_in.method_token")}
+				</button>
 			</div>
 
-			{method === "token" ? (
-				<form onSubmit={handleTokenSubmit} className="space-y-4">
+			{method === "password" ? (
+				<form onSubmit={handlePasswordSubmit} className="space-y-3">
+					<div>
+						<label className="mb-1.5 block text-sm font-medium text-[var(--text-muted)]">
+							{t("auth.common.email")}
+						</label>
+						<input
+							type="email"
+							value={email}
+							onChange={(e) => setEmail(e.target.value)}
+							required
+							className="input-field"
+							placeholder="your@email.com"
+						/>
+					</div>
+					<div>
+						<label className="mb-1.5 block text-sm font-medium text-[var(--text-muted)]">
+							{t("auth.common.password")}
+						</label>
+						<input
+							type="password"
+							value={password}
+							onChange={(e) => setPassword(e.target.value)}
+							required
+							className="input-field"
+							placeholder="••••••••"
+						/>
+					</div>
+					{error ? <p className="text-sm text-[var(--text-muted)]">{error}</p> : null}
+					<div className="pt-1">
+						<Button
+							type="submit"
+							variant="primary"
+							loading={isPasswordLoading}
+							className="w-full"
+						>
+							{isPasswordLoading
+								? t("auth.sign_in.signing_in")
+								: t("auth.sign_in.submit")}
+						</Button>
+					</div>
+				</form>
+			) : (
+				<form onSubmit={handleTokenSubmit} className="space-y-3">
 					<div>
 						<a
 							href="https://freegrinddocs.imaoreo.dev/guide/login"
 							target="_blank"
 							rel="noreferrer"
-							className="text-sm font-medium text-[var(--text-muted)] underline underline-offset-4 hover:text-[var(--text)]"
+							className="text-sm text-[var(--text-muted)] underline underline-offset-4 hover:text-[var(--text)]"
 						>
 							{t("auth.sign_in.token_help")}
 						</a>
 					</div>
 					<div>
-						<label className="mb-2 block text-sm font-medium text-[var(--text-muted)]">
+						<label className="mb-1.5 block text-sm font-medium text-[var(--text-muted)]">
 							{t("auth.sign_in.jwt_label")}
 						</label>
 						<input
@@ -117,7 +158,7 @@ export function SignInPage() {
 						/>
 					</div>
 					{error ? <p className="text-sm text-[var(--text-muted)]">{error}</p> : null}
-					<div className="pt-2">
+					<div className="pt-1">
 						<Button
 							type="submit"
 							variant="primary"
@@ -127,48 +168,6 @@ export function SignInPage() {
 							{isTokenLoading
 								? t("auth.sign_in.signing_in")
 								: t("auth.sign_in.sign_in_with_token")}
-						</Button>
-					</div>
-				</form>
-			) : (
-				<form onSubmit={handlePasswordSubmit} className="space-y-4">
-					<div>
-						<label className="mb-2 block text-sm font-medium text-[var(--text-muted)]">
-							{t("auth.common.email")}
-						</label>
-						<input
-							type="email"
-							value={email}
-							onChange={(e) => setEmail(e.target.value)}
-							required
-							className="input-field"
-							placeholder="your@email.com"
-						/>
-					</div>
-					<div>
-						<label className="mb-2 block text-sm font-medium text-[var(--text-muted)]">
-							{t("auth.common.password")}
-						</label>
-						<input
-							type="password"
-							value={password}
-							onChange={(e) => setPassword(e.target.value)}
-							required
-							className="input-field"
-							placeholder="••••••••"
-						/>
-					</div>
-					{error ? <p className="text-sm text-[var(--text-muted)]">{error}</p> : null}
-					<div className="pt-2">
-						<Button
-							type="submit"
-							variant="primary"
-							loading={isPasswordLoading}
-							className="w-full"
-						>
-							{isPasswordLoading
-								? t("auth.sign_in.signing_in")
-								: t("auth.sign_in.submit")}
 						</Button>
 					</div>
 				</form>

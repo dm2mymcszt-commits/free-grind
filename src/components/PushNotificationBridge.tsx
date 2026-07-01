@@ -1,8 +1,5 @@
 import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
-import { isTauriRuntime } from "../services/tauriWebSocket";
-import { hasCompletedOnboarding } from "../utils/onboardingStorage";
 import { appLog } from "../utils/logger";
 
 type NativePushNotificationDetail = {
@@ -95,24 +92,6 @@ export function PushNotificationBridge() {
 	const navigate = useNavigate();
 	const recentlyHandledKeysRef = useRef<Map<string, number>>(new Map());
 
-	// this asks for notification permission on launch instead of waiting for the
-	// first autoblock (cuz that doesnt work), so the iOS prompt shows up
-	// skipped on first launch: the onboarding flow owns the initial request
-	// so it doesn't race the native prompt against the onboarding UI
-	useEffect(() => {
-		if (!isTauriRuntime() || !hasCompletedOnboarding()) return;
-
-		(async () => {
-			try {
-				const granted = await isPermissionGranted();
-				if (!granted) {
-					await requestPermission();
-				}
-			} catch (error) {
-				appLog.warn("[PUSH_EVENT] Failed to prime notification permission", error);
-			}
-		})();
-	}, []);
 
 	useEffect(() => {
 		const markHandled = (detail: NativePushNotificationDetail): boolean => {

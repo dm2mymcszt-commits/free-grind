@@ -32,7 +32,6 @@ import { SettingsAutomationPage } from "./pages/app/SettingsAutomationPage.tsx";
 import { SettingsChatDataPage } from "./pages/app/SettingsChatDataPage.tsx";
 import { SettingsPrivacyPage } from "./pages/app/SettingsPrivacyPage.tsx";
 import { SettingsSavedPhrasesPage } from "./pages/app/SettingsSavedPhrasesPage.tsx";
-import { AnalyticsConsentPrompt } from "./components/AnalyticsConsentPrompt";
 import { PermissionsOnboarding } from "./components/PermissionsOnboarding";
 import { OutdatedVersionPrompt } from "./components/OutdatedVersionPrompt";
 import { PushNotificationBridge } from "./components/PushNotificationBridge";
@@ -137,16 +136,17 @@ export default function App() {
 		<AuthProvider>
 			<PreferencesProvider>
 				<SmoothScroll>
-					{showOnboarding && (
-						<PermissionsOnboarding onComplete={() => setShowOnboarding(false)} />
-					)}
+					{showOnboarding ? (
+						<div className="app-shell">
+							<PermissionsOnboarding onComplete={() => setShowOnboarding(false)} />
+						</div>
+					) : (<>
 					<ManagerModeRedirect />
 					<PushNotificationBridge />
 					<ChatRealtimeBridge />
 					<ActiveRouteBridge />
 					<EntitlementsBridge />
 					<OutdatedVersionPrompt />
-					<AnalyticsConsentPrompt />
 					<Routes>
 						<Route element={<RootLayout />}>
 							<Route path="/manager" element={<ManagerRoutePage />} />
@@ -223,6 +223,7 @@ export default function App() {
 							<Route path="*" element={<ErrorPage />} />
 						</Route>
 					</Routes>
+					</>)}
 				</SmoothScroll>
 			</PreferencesProvider>
 		</AuthProvider>
