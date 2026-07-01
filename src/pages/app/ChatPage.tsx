@@ -555,22 +555,17 @@ export function ChatPage() {
 	}, [targetProfileId, conversations, service]);
 
 	const selectedConversationId = useMemo(() => {
-		if (targetProfileId) {
-			const mapJson = localStorage.getItem("fg-profile-to-conv-id") || "{}";
-			try {
-				const map = JSON.parse(mapJson);
-				if (map[String(targetProfileId)]) {
-					return map[String(targetProfileId)];
-				}
-			} catch (e) {}
-			return `direct:${targetProfileId}`;
+		if (targetProfileId && userId) {
+			const numUser = Number(userId);
+			const numTarget = Number(targetProfileId);
+			return `${Math.min(numUser, numTarget)}_${Math.max(numUser, numTarget)}`;
 		}
 		return isSearchRoute
 			? null
 			: isDesktop
 				? selectedDesktopConversationId
 				: (routeConversationId ?? null);
-	}, [targetProfileId, isSearchRoute, isDesktop, selectedDesktopConversationId, routeConversationId]);
+	}, [targetProfileId, isSearchRoute, isDesktop, selectedDesktopConversationId, routeConversationId, userId]);
 
 	// Keep selection in sync when the layout breakpoint flips (e.g. fullscreen toggle).
 	const prevIsDesktopRef = useRef(isDesktop);
@@ -643,14 +638,12 @@ export function ChatPage() {
 			const otherParticipantOnlineUntil = targetProfileDetail?.onlineUntil || null;
 			const otherParticipantDistance = targetProfileDetail?.distance || null;
 
-			const mapJson = localStorage.getItem("fg-profile-to-conv-id") || "{}";
 			let conversationIdVal = `direct:${targetProfileId}`;
-			try {
-				const map = JSON.parse(mapJson);
-				if (map[String(targetProfileId)]) {
-					conversationIdVal = map[String(targetProfileId)];
-				}
-			} catch (e) {}
+			if (userId) {
+				const numUser = Number(userId);
+				const numTarget = Number(targetProfileId);
+				conversationIdVal = `${Math.min(numUser, numTarget)}_${Math.max(numUser, numTarget)}`;
+			}
 
 			return {
 				type: "Direct",
@@ -683,6 +676,14 @@ export function ChatPage() {
 
 		return null;
 	}, [conversations, selectedConversationId, targetProfileId, targetProfileDetail, userId]);
+
+	const isSelectedConversationDraft = useMemo(() => {
+		if (!selectedConversation) return true;
+		const cid = selectedConversation.data.conversationId;
+		if (cid.startsWith("direct:")) return true;
+		const exists = conversations.some((c) => c.data.conversationId === cid);
+		return !exists;
+	}, [selectedConversation, conversations]);
 
 	const selectedConversationOtherProfileId = useMemo(() => {
 		if (!selectedConversation || userId == null) {
@@ -727,30 +728,6 @@ export function ChatPage() {
 		return () => {
 			cancelled = true;
 		};
-	}, [conversations, userId]);
-
-	useEffect(() => {
-		if (!conversations.length) return;
-		const mapJson = localStorage.getItem("fg-profile-to-conv-id") || "{}";
-		try {
-			const map = JSON.parse(mapJson);
-			let changed = false;
-			for (const conv of conversations) {
-				const other = getOtherParticipant(conv, userId);
-				if (other?.profileId) {
-					const otherIdStr = String(other.profileId);
-					if (map[otherIdStr] !== conv.data.conversationId) {
-						map[otherIdStr] = conv.data.conversationId;
-						changed = true;
-					}
-				}
-			}
-			if (changed) {
-				localStorage.setItem("fg-profile-to-conv-id", JSON.stringify(map));
-			}
-		} catch (e) {
-			console.error("[ChatPage] Error updating profile to conv map:", e);
-		}
 	}, [conversations, userId]);
 
 
@@ -2765,7 +2742,7 @@ export function ChatPage() {
 					return [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
 				});
 
-				if (selectedConversation && !selectedConversation.data.conversationId.startsWith("direct:")) {
+				if (selectedConversation && !isSelectedConversationDraft) {
 					syncConversation((conversation) => ({
 						...conversation,
 						data: {
@@ -2856,7 +2833,7 @@ export function ChatPage() {
 				});
 
 				setReplyTargetMessageId(null);
-				if (selectedConversation && !selectedConversation.data.conversationId.startsWith("direct:")) {
+				if (selectedConversation && !isSelectedConversationDraft) {
 					setThreadMessages((previous) => [...previous, sentMessage]);
 				} else {
 					openConversationById(sentMessage.conversationId);
@@ -2906,7 +2883,7 @@ export function ChatPage() {
 				});
 
 				setReplyTargetMessageId(null);
-				if (selectedConversation && !selectedConversation.data.conversationId.startsWith("direct:")) {
+				if (selectedConversation && !isSelectedConversationDraft) {
 					setThreadMessages((previous) => [...previous, sentMessage]);
 				} else {
 					openConversationById(sentMessage.conversationId);
@@ -3046,7 +3023,7 @@ export function ChatPage() {
 					return [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
 				});
 
-				if (selectedConversation && !selectedConversation.data.conversationId.startsWith("direct:")) {
+				if (selectedConversation && !isSelectedConversationDraft) {
 					syncConversation((conversation) => ({
 						...conversation,
 						data: {
@@ -3186,7 +3163,7 @@ export function ChatPage() {
 			setPendingAudioWaveform(undefined);
 			setReplyTargetMessageId(null);
 
-			if (!selectedConversation || selectedConversation.data.conversationId.startsWith("direct:")) {
+			if (!selectedConversation || isSelectedConversationDraft) {
 				openConversationById(sentMessage.conversationId);
 				void loadInbox({ page: 1, replace: true });
 			}
@@ -3494,7 +3471,7 @@ export function ChatPage() {
             toast.success(t("chat.toasts.album_shared"));
             setPendingAlbumShare(null);
             setIsAlbumPickerOpen(false);
-            if (selectedConversation && !selectedConversation.data.conversationId.startsWith("direct:")) {
+            if (selectedConversation && !isSelectedConversationDraft) {
                 void loadThread({
                     conversationId: selectedConversation.data.conversationId,
                     older: false,
