@@ -5,22 +5,17 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Handler
 import android.os.Build
 import android.os.Bundle
 import android.os.Looper
-import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
-import android.provider.Settings
 import android.util.Log
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.messaging.FirebaseMessaging
@@ -28,6 +23,7 @@ import org.json.JSONObject
 import java.lang.ref.WeakReference
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.Executors
 
 class MainActivity : TauriActivity() {
   companion object {
@@ -97,23 +93,17 @@ class MainActivity : TauriActivity() {
   private var pendingFcmToken: String? = null
   private var latestFcmToken: String? = null
   private val mainHandler = Handler(Looper.getMainLooper())
-  private val requestNotificationPermission = registerForActivityResult(
-    ActivityResultContracts.RequestPermission()
-  ) { isGranted ->
-    if (isGranted) {
-      Log.d("FCM", "Notification permission granted")
-    } else {
-      Log.d("FCM", "Notification permission denied")
-    }
-  }
-
+  // Bounded pool prevents Binder-thread exhaustion when many WebSocket messages
+  // arrive simultaneously and each postLocalNotification spawns avatar+IPC work.
+  private val localNotifExecutor = Executors.newFixedThreadPool(2)
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
     activityRef = WeakReference(this)
-    ensureNotificationChannels()
-    requestNotificationPermissionIfNeeded()
-    requestBatteryOptimizationExemptionIfNeeded()
+    // Run off the main thread — createNotificationChannel makes IPC calls to
+    // NotificationManagerService that can block for several seconds on some
+    // devices (OxygenOS in particular) and cause a startup ANR.
+    localNotifExecutor.execute { ensureNotificationChannels() }
     initFirebase()
     handleNotificationIntent(intent)
   }
@@ -185,13 +175,19 @@ class MainActivity : TauriActivity() {
      */
     @JavascriptInterface
     fun postLocalNotification(payloadJson: String) {
-      Thread {
+      localNotifExecutor.execute {
         try {
           NotificationPoster.postNotification(this@MainActivity, JSONObject(payloadJson))
         } catch (e: Exception) {
           Log.e("FCM", "Failed to post local notification", e)
         }
-      }.start()
+      }
+    }
+
+    @JavascriptInterface
+    fun checkMicrophonePermission(): Boolean {
+      return checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
+        android.content.pm.PackageManager.PERMISSION_GRANTED
     }
 
     @JavascriptInterface
@@ -220,38 +216,8 @@ class MainActivity : TauriActivity() {
     if (activityRef?.get() === this) {
       activityRef = null
     }
+    localNotifExecutor.shutdown()
     super.onDestroy()
-  }
-
-  private fun requestNotificationPermissionIfNeeded() {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-      val hasPermission = ContextCompat.checkSelfPermission(
-        this,
-        Manifest.permission.POST_NOTIFICATIONS
-      ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-      Log.d("FCM", "POST_NOTIFICATIONS permission granted=$hasPermission")
-      if (!hasPermission) {
-        requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-      }
-    }
-  }
-
-  private fun requestBatteryOptimizationExemptionIfNeeded() {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
-    val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-    if (!pm.isIgnoringBatteryOptimizations(packageName)) {
-      Log.d("FCM", "Requesting battery optimization exemption to prevent push delays")
-      try {
-        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-          data = Uri.parse("package:$packageName")
-        }
-        startActivity(intent)
-      } catch (e: Exception) {
-        Log.w("FCM", "Failed to open battery optimization settings", e)
-      }
-    } else {
-      Log.d("FCM", "Already exempt from battery optimization")
-    }
   }
 
   private fun initFirebase() {
