@@ -873,7 +873,11 @@
             "reply": "Reply",
             "unsend": "Unsend",
             "delete": "Delete",
-            "cancel": "Cancel"
+            "cancel": "Cancel",
+            "add_to_saved_phrases": "Add to saved phrases",
+            "added_to_saved_phrases": "Added to saved phrases",
+            "open_media": "Open Media",
+            "download_media": "Download Media"
         },
         "realtime": {
             "connected": "Connected",

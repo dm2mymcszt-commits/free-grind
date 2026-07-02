@@ -826,7 +826,11 @@
             "reply": "Antworten",
             "unsend": "Zurückziehen",
             "delete": "Löschen",
-            "cancel": "Abbrechen"
+            "cancel": "Abbrechen",
+            "add_to_saved_phrases": "Zu gespeicherten Sätzen hinzufügen",
+            "added_to_saved_phrases": "Zu gespeicherten Sätzen hinzugefügt",
+            "open_media": "Medien öffnen",
+            "download_media": "Medien herunterladen"
         },
         "realtime": {
             "connected": "Verbunden",
