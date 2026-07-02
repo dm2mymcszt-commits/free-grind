@@ -18,7 +18,7 @@ import {
 } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useApiFunctions } from "../../hooks/useApiFunctions";
-import { useBlockProfile } from "../../hooks/queries/useProfileQueries";
+import { useBlockProfile, useUnblockProfile, useBlockedProfileIds } from "../../hooks/queries/useProfileQueries";
 import { usePresenceCheckBatch } from "../../hooks/usePresenceCheck";
 import { useAuth } from "../../contexts/useAuth";
 import { ChatApiError } from "../../services/chatService";
@@ -196,6 +196,8 @@ export function ChatPage() {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const service = useApiFunctions();
 	const { mutateAsync: blockProfileMutation } = useBlockProfile();
+	const { mutateAsync: unblockProfileMutation } = useUnblockProfile();
+	const { data: blockedProfileIdsData } = useBlockedProfileIds();
 	const { userId } = useAuth();
 	const isDesktop = useDesktopBreakpoint();
 	const threadBottomRef = useRef<HTMLDivElement | null>(null);
@@ -380,6 +382,9 @@ export function ChatPage() {
 	const [isUpdatingConversationState, setIsUpdatingConversationState] =
 		useState(false);
 	const [isBlockingProfileId, setIsBlockingProfileId] = useState<string | null>(
+		null,
+	);
+	const [isUnblockingProfileId, setIsUnblockingProfileId] = useState<string | null>(
 		null,
 	);
 	const [isDeletingConversationId, setIsDeletingConversationId] = useState<string | null>(
@@ -701,6 +706,13 @@ export function ChatPage() {
 			? String(otherParticipant.profileId)
 			: null;
 	}, [selectedConversation, userId]);
+
+	const isSelectedConversationBlockedBySelf = useMemo(() => {
+		if (!selectedConversationOtherProfileId || !blockedProfileIdsData) {
+			return false;
+		}
+		return blockedProfileIdsData.includes(selectedConversationOtherProfileId);
+	}, [selectedConversationOtherProfileId, blockedProfileIdsData]);
 
 	useEffect(() => {
 		const profileIds = conversations
@@ -3294,6 +3306,78 @@ export function ChatPage() {
 		[isBlockingProfileId, archiveConversationsLocally, blockProfileMutation, t],
 	);
 
+	const unblockProfileFromChat = useCallback(
+		async (profileId: number) => {
+			if (isUnblockingProfileId) {
+				return;
+			}
+
+			const targetProfileId = String(profileId);
+			setIsUnblockingProfileId(targetProfileId);
+
+			try {
+				await unblockProfileMutation(targetProfileId);
+
+				// Conversations with this profile can be archived either in the
+				// live list (still holds its own entry) or only in
+				// archivedConversations (entry sourced from chatDb) — check both.
+				const idsFromConversations = conversationsRef.current
+					.filter((conversation) =>
+						conversation.data.participants.some(
+							(participant) => String(participant.profileId) === targetProfileId,
+						),
+					)
+					.map((conversation) => conversation.data.conversationId);
+				const idsFromArchived = [...archivedConversationsRef.current.entries()]
+					.filter(([, info]) =>
+						info.entry.data.participants.some(
+							(participant) => String(participant.profileId) === targetProfileId,
+						),
+					)
+					.map(([conversationId]) => conversationId);
+				const affectedIds = [...new Set([...idsFromConversations, ...idsFromArchived])];
+
+				if (affectedIds.length > 0) {
+					await Promise.all(affectedIds.map((conversationId) => unarchiveConversation(conversationId)));
+					setArchivedConversations((previous) => {
+						const next = new Map(previous);
+						for (const conversationId of affectedIds) {
+							next.delete(conversationId);
+						}
+						return next;
+					});
+					for (const conversationId of affectedIds) {
+						markConversationDeleteHandled(conversationId);
+					}
+					const inserted = await Promise.all(
+						affectedIds.map((conversationId) =>
+							chatDb
+								.insertSystemMessage(conversationId, "SystemUnblockedBySelf")
+								.catch(() => null),
+						),
+					);
+					const valid = inserted.filter((m): m is Message => m !== null);
+					if (valid.length > 0) {
+						window.dispatchEvent(
+							new CustomEvent<Message[]>(CHAT_SYSTEM_MESSAGE_EVENT, { detail: valid }),
+						);
+					}
+				}
+
+				toast.success(t("profile_details.unblock_success"));
+			} catch (error) {
+				toast.error(
+					error instanceof Error
+						? error.message
+						: t("profile_details.unblock_failed"),
+				);
+			} finally {
+				setIsUnblockingProfileId(null);
+			}
+		},
+		[isUnblockingProfileId, unblockProfileMutation, t],
+	);
+
 	const toggleFavoriteFromChat = useCallback(
 		async (profileId: number, currentlyFavorite: boolean) => {
 			if (isTogglingFavoriteProfileId) return;
@@ -4686,6 +4770,9 @@ export function ChatPage() {
 			isDeletingConversation={isDeletingConversationId !== null}
 			onBlockProfile={blockProfileFromChat}
 			isBlockingProfile={isBlockingProfileId !== null}
+			onUnblockProfile={unblockProfileFromChat}
+			isUnblockingProfile={isUnblockingProfileId !== null}
+			isBlockedBySelf={isSelectedConversationBlockedBySelf}
 			onToggleFavorite={toggleFavoriteFromChat}
 			isFavorite={selectedConversation?.data.favorite ?? false}
 			isTogglingFavorite={isTogglingFavoriteProfileId !== null}
