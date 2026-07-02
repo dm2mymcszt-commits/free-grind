@@ -285,6 +285,25 @@ class MainActivity : TauriActivity() {
     }
 
     @JavascriptInterface
+    fun checkNotificationPermission(): Boolean {
+      return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+          android.content.pm.PackageManager.PERMISSION_GRANTED
+      } else {
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.areNotificationsEnabled()
+      }
+    }
+
+    @JavascriptInterface
+    fun checkLocationPermission(): Boolean {
+      return checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
+        android.content.pm.PackageManager.PERMISSION_GRANTED ||
+        checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ==
+        android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
+
+    @JavascriptInterface
     fun vibrate(durationMs: Long) {
       try {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

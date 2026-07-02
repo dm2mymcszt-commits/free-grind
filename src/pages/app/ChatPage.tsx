@@ -103,6 +103,7 @@ import type { ChatContactIndexRecord } from "../../types/chat-contact-index";
 import { markInboxSeen, getInboxLastSeen } from "../../services/seenStore";
 import { SCROLL_RESTORATION_TIMEOUT_MS } from "../../config/ui-constants";
 import { shouldAutoBlock, isOutsideAgeLimits } from "../../utils/autoblock";
+import { consumeSelfBlockAction } from "../../utils/selfBlockActions";
 import { isReadReceiptsHidden } from "../../utils/privacy";
 import freegrindLogo from "../../images/freegrind-logo.webp";
 import { getCachedOwnProfilePhotoHash, removeProfileFromBrowseCache, setCachedOwnProfilePhotoHash } from "./gridpage/cache";
@@ -1034,7 +1035,12 @@ export function ChatPage() {
 					if (blockArchivedIds.length > 0) {
 						const inserted = await Promise.all(
 							blockArchivedIds.map((cid) =>
-								chatDb.insertSystemMessage(cid, "SystemUnblocked").catch(() => null),
+								chatDb
+									.insertSystemMessage(
+										cid,
+										consumeSelfBlockAction(cid, "unblock") ? "SystemUnblockedBySelf" : "SystemUnblocked",
+									)
+									.catch(() => null),
 							),
 						);
 						const valid = inserted.filter((m): m is Message => m !== null);
@@ -2149,7 +2155,12 @@ export function ChatPage() {
 			if (blockArchivedIds.length > 0) {
 				void Promise.all(
 					blockArchivedIds.map((cid) =>
-						chatDb.insertSystemMessage(cid, "SystemUnblocked").catch(() => null),
+						chatDb
+							.insertSystemMessage(
+								cid,
+								consumeSelfBlockAction(cid, "unblock") ? "SystemUnblockedBySelf" : "SystemUnblocked",
+							)
+							.catch(() => null),
 					),
 				).then((inserted) => {
 					const valid = inserted.filter((m): m is Message => m !== null);

@@ -1415,7 +1415,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 									: undefined
 							}
 						>
-							<div className="flex items-start gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] p-3">
+							<div className="flex items-start gap-3 rounded-2xl bg-[var(--surface-2)] p-3">
 								<div className="shrink-0 rounded-xl bg-[var(--surface)] p-2.5">
 									<Archive className="h-4 w-4 text-[var(--text-muted)]" />
 								</div>
