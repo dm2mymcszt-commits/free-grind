@@ -137,15 +137,23 @@ export function InterestPage() {
 	const [lastSeenViews, setLastSeenViews] = useState(() => getInterestTabLastSeen("views"));
 	const [lastSeenTaps, setLastSeenTaps] = useState(() => getInterestTabLastSeen("taps"));
 
+	// Tabs the user has just switched to: their badge is hidden immediately (in
+	// the same render as the switch) so the pill slide and the badge collapse
+	// animate together instead of as two staggered steps. Cleared once the
+	// delayed "mark as seen" below actually catches lastSeen up to match.
+	const [justSwitchedTabs, setJustSwitchedTabs] = useState<Set<InterestTab>>(() => new Set());
+
 	const newViewsCount = useMemo(() => {
 		if (demoMode !== 0) return demoViewsCount;
+		if (justSwitchedTabs.has("views")) return 0;
 		return views.filter(v => (v.timestamp ?? 0) > lastSeenViews).length;
-	}, [views, lastSeenViews, demoMode, demoViewsCount]);
+	}, [views, lastSeenViews, demoMode, demoViewsCount, justSwitchedTabs]);
 
 	const newTapsCount = useMemo(() => {
 		if (demoMode !== 0) return demoTapsCount;
+		if (justSwitchedTabs.has("taps")) return 0;
 		return taps.filter(t => (t.timestamp ?? 0) > lastSeenTaps).length;
-	}, [taps, lastSeenTaps, demoMode, demoTapsCount]);
+	}, [taps, lastSeenTaps, demoMode, demoTapsCount, justSwitchedTabs]);
 
 	// Mark active tab as seen
 	useEffect(() => {
@@ -154,8 +162,9 @@ export function InterestPage() {
 			const maxInItems = items.length > 0 ? Math.max(...items.map(i => i.timestamp ?? 0)) : 0;
 			const at = Math.max(Date.now(), maxInItems);
 
-			// Delay marking as seen to allow the tab transition to finish smoothly
-			// without the width of the tab changing mid-animation.
+			// Delay persisting "seen" so a quick tab switch-and-back doesn't
+			// immediately drop the badge; the badge itself is already hidden
+			// right away via justSwitchedTabs above.
 			const timer = setTimeout(() => {
 				if (demoMode !== 0) {
 					if (activeTab === "views") setDemoViewsCount(0);
@@ -168,6 +177,12 @@ export function InterestPage() {
 				} else {
 					setLastSeenTaps(at);
 				}
+				setJustSwitchedTabs((prev) => {
+					if (!prev.has(activeTab)) return prev;
+					const next = new Set(prev);
+					next.delete(activeTab);
+					return next;
+				});
 			}, 300);
 
 			return () => clearTimeout(timer);
@@ -487,6 +502,7 @@ export function InterestPage() {
 			// Always explicitly set the tab in the URL so our new default setting doesn't override it
 			nextParams.set("tab", nextTab);
 			setSearchParams(nextParams, { replace: true });
+			setJustSwitchedTabs((prev) => (prev.has(nextTab) ? prev : new Set(prev).add(nextTab)));
 		},
 		[searchParams, setSearchParams],
 	);
