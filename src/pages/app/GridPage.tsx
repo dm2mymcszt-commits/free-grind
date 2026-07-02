@@ -67,7 +67,7 @@ export function GridPage() {
 	const BROWSE_LOAD_TIMEOUT_MS = 15000;
 	const TAP_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-	const { userId, savedAccounts, switchAccount } = useAuth();
+	const { userId, savedAccounts, switchAccount, settingsReady } = useAuth();
 	const apiFunctions = useApiFunctions();
 	const {
 		geohash,
@@ -276,10 +276,18 @@ export function GridPage() {
 		applyDraft,
 	} = useBrowseFilters(getDefaultBrowseFiltersDraft());
 
+	// Reload whenever the active account's chatDb is ready (settingsReady),
+	// so switching accounts from GridPage's own account switcher also
+	// switches filters instead of leaking the previous account's browse
+	// filters into the newly active one (mirrors the per-profile location
+	// reload in PreferencesContext.tsx).
 	useEffect(() => {
+		if (!settingsReady) {
+			return;
+		}
 		void loadBrowseFiltersDraft().then(applyDraft);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, []);
+	}, [userId, settingsReady]);
 
 	const [isFiltersOpen, setIsFiltersOpen] = useState(false);
 	const [isLocationOpen, setIsLocationOpen] = useState(false);
