@@ -670,7 +670,9 @@
             "token_help": "Wie du deinen Authentifizierungs-Token erhältst",
             "jwt_label": "JWT-Token",
             "signing_in": "Melde an...",
-            "submit": "Anmelden"
+            "submit": "Anmelden",
+            "add_profile_title": "Profil hinzufügen",
+            "add_profile_subtitle": "Melde dich mit dem Konto an, das du hinzufügen möchtest."
         },
         "sign_up": {
             "title": "Registrieren",

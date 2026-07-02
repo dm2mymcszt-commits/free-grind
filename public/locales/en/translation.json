@@ -714,7 +714,9 @@
             "token_help": "How to get your authentication token",
             "jwt_label": "JWT Token",
             "signing_in": "Signing in...",
-            "submit": "Sign In"
+            "submit": "Sign In",
+            "add_profile_title": "Add Profile",
+            "add_profile_subtitle": "Sign in with the account you want to add."
         },
         "bug_report": {
             "button": "Report a bug"
