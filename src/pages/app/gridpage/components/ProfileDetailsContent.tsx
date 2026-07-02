@@ -12,6 +12,7 @@ import {
 	Globe,
 	Hash,
 	Heart,
+	Home,
 	MapPin,
 	MessageCircle,
 	MessageSquare,
@@ -39,7 +40,7 @@ import {
 	formatWeightKg,
 	shouldHideField,
 } from "../utils";
-import { reverseGeocodeGeohash } from "../geocoding";
+import { reverseGeocodeCityDistrictForGeohash } from "../geocoding";
 import { getProfileImageUrl, getThumbImageUrl } from "../../../../utils/media";
 import { ProfileImage } from "../../../../components/ui/profile-image";
 import freegrindLogo from "../../../../images/freegrind-logo.webp";
@@ -56,7 +57,7 @@ function TravelPlanRow({ plan, t }: { plan: TravelPlan; t: ReturnType<typeof use
 
 	useEffect(() => {
 		let cancelled = false;
-		void reverseGeocodeGeohash(plan.geohash).then((label) => {
+		void reverseGeocodeCityDistrictForGeohash(plan.geohash).then((label) => {
 			if (!cancelled) {
 				setLocation(label);
 			}
@@ -194,6 +195,7 @@ export function ProfileDetailsContent({
 	const hasTravelPlans = visibleTravelPlans.length > 0;
 	const rightNowTextTrimmed = activeProfile.rightNowText?.trim();
 	const hasRightNow = !shouldHideField(rightNowTextTrimmed);
+	const isRightNowHosting = activeProfile.rightNow === "HOSTING";
 
 	const renderPhotoCreatedBadge = (_hash: string) => null;
 
@@ -545,12 +547,23 @@ export function ProfileDetailsContent({
 				<div className="grid gap-8">
 					{hasRightNow && (
 						<div>
-							<p
-								className="mb-2 text-xs font-semibold uppercase tracking-[0.1em]"
-								style={{ color: "var(--right-now)" }}
-							>
-								{t("profile_details.right_now")}
-							</p>
+							<div className="mb-2 flex items-center gap-2">
+								<p
+									className="text-xs font-semibold uppercase tracking-[0.1em]"
+									style={{ color: "var(--right-now)" }}
+								>
+									{t("profile_details.right_now")}
+								</p>
+								{isRightNowHosting && (
+									<span
+										className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white"
+										style={{ backgroundColor: "var(--right-now)" }}
+									>
+										<Home className="h-3 w-3" />
+										{t("right_now.hosting")}
+									</span>
+								)}
+							</div>
 							<div
 								className="rounded-xl px-4 py-3"
 								style={{
