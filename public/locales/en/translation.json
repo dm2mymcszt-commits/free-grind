@@ -603,6 +603,8 @@
         "behavior": "Behavior",
         "confirm_before_block": "Confirm Before Blocking",
         "confirm_before_block_desc": "Ask for confirmation before blocking a profile. Turn this off to block immediately, without a prompt.",
+        "confirm_before_delete_conversation": "Confirm Before Deleting Chats",
+        "confirm_before_delete_conversation_desc": "Ask for confirmation before deleting a conversation. Turn this off to delete immediately, without a prompt.",
         "units": "Units",
         "units_description": "Choose how distance and height are displayed.",
         "units_world": "World (meters + cm)",
