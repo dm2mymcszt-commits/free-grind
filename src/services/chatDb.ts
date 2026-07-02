@@ -36,7 +36,9 @@ import type {
 	StoredMediaFile,
 	StoredMessage,
 } from "../types/chat-db";
+import type { IndexedMessage } from "../types/chat-cache";
 import { appLog } from "../utils/logger";
+import { getMessageText } from "../utils/messageText";
 import { guardAgainstClosedPool } from "./sqlitePoolGuard";
 
 // Pre-multi-account file. Once a user is known, the active db switches to a
@@ -830,6 +832,79 @@ export async function getMessagesPage(
 					[conversationId, options.limit],
 				);
 	return rows.map(rowToStoredMessage).sort((a, b) => a.timestamp - b.timestamp);
+}
+
+function escapeLikePattern(value: string): string {
+	return value.replace(/[\\%_]/g, (char) => `\\${char}`);
+}
+
+/**
+ * Full-database message text search — unlike the in-memory index in
+ * pages/app/chat/cache.ts (which only ever sees messages from conversations
+ * opened during this session), this scans every conversation's persisted
+ * history via chatDb.
+ *
+ * `body_json` has no dedicated text column, so matching is a raw LIKE over
+ * the JSON blob (cheap, no FTS table to maintain) — that can false-positive
+ * on a hit inside a non-text field (e.g. a media URL), so rows are
+ * re-checked against the same rendered text (getMessageText) used for
+ * display before being returned. Over-fetches by 3x to absorb rows dropped
+ * by that re-check while still hitting the requested limit when possible.
+ */
+export async function searchMessages(
+	query: string,
+	options?: { conversationId?: string; limit?: number },
+): Promise<IndexedMessage[]> {
+	const needle = query.trim();
+	if (!needle) {
+		return [];
+	}
+
+	const db = await getDb();
+	const limit = options?.limit ?? 40;
+	const pattern = `%${escapeLikePattern(needle)}%`;
+
+	const rows = options?.conversationId
+		? await db.select<MessageRow[]>(
+				`
+				SELECT * FROM messages
+				WHERE conversation_id = $1 AND unsent = 0 AND body_json LIKE $2 ESCAPE '\\'
+				ORDER BY timestamp DESC LIMIT $3
+				`,
+				[options.conversationId, pattern, limit * 3],
+			)
+		: await db.select<MessageRow[]>(
+				`
+				SELECT * FROM messages
+				WHERE unsent = 0 AND body_json LIKE $1 ESCAPE '\\'
+				ORDER BY timestamp DESC LIMIT $2
+				`,
+				[pattern, limit * 3],
+			);
+
+	const needleLower = needle.toLowerCase();
+	const results: IndexedMessage[] = [];
+	for (const row of rows) {
+		const message = rowToStoredMessage(row);
+		const text = getMessageText(message);
+		const searchText = text.toLowerCase();
+		if (!text || !searchText.includes(needleLower)) {
+			continue;
+		}
+		results.push({
+			messageId: message.messageId,
+			conversationId: message.conversationId,
+			senderId: message.senderId,
+			timestamp: message.timestamp,
+			text,
+			searchText,
+		});
+		if (results.length >= limit) {
+			break;
+		}
+	}
+
+	return results;
 }
 
 export async function setMessageLocalHistory(

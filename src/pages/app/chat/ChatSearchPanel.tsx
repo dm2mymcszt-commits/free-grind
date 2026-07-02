@@ -5,9 +5,12 @@ import toast from "react-hot-toast";
 import { useTranslation } from "react-i18next";
 import { useApiFunctions } from "../../../hooks/useApiFunctions";
 import { usePreferences } from "../../../contexts/PreferencesContext";
+import * as chatDb from "../../../services/chatDb";
 import type { ConversationEntry } from "../../../types/messages";
 import type { ProfileSearchResult, SearchMode } from "../../../types/chat-page";
+import type { IndexedMessage } from "../../../types/chat-cache";
 import { getProfileImageUrl, validateMediaHash } from "../../../utils/media";
+import { appLog } from "../../../utils/logger";
 import { ProfileImage } from "../../../components/ui/profile-image";
 import { useAvatarCache } from "../../../hooks/useAvatarCache";
 import { resolveAvatarSrc } from "../../../services/avatarStore";
@@ -53,10 +56,49 @@ export function ChatSearchPanel({ isDesktop, searchQuery, searchMode, onClose, o
 		[searchQuery],
 	);
 
-	const messageSearchResults = useMemo(
-		() => searchMessagesLocal(searchQuery, { limit: 80 }),
-		[searchQuery],
-	);
+	const [dbMessageResults, setDbMessageResults] = useState<IndexedMessage[]>([]);
+
+	useEffect(() => {
+		if (searchMode !== "messages" || searchQuery.trim().length < 2) {
+			setDbMessageResults([]);
+			return;
+		}
+
+		let active = true;
+		const timeoutId = window.setTimeout(() => {
+			void chatDb
+				.searchMessages(searchQuery, { limit: 80 })
+				.then((results) => {
+					if (active) {
+						setDbMessageResults(results);
+					}
+				})
+				.catch((error) => {
+					appLog.warn("[chat-search] db message search failed", error);
+				});
+		}, 200);
+
+		return () => {
+			active = false;
+			window.clearTimeout(timeoutId);
+		};
+	}, [searchMode, searchQuery]);
+
+	const messageSearchResults = useMemo(() => {
+		const merged = new Map<string, IndexedMessage>();
+		for (const result of dbMessageResults) {
+			merged.set(result.messageId, result);
+		}
+		// In-memory results last: they reflect the live thread, so they win
+		// over a possibly-stale db row for the same message id (e.g. a message
+		// edited/unsent locally moments ago, before the db write settles).
+		for (const result of searchMessagesLocal(searchQuery, { limit: 80 })) {
+			merged.set(result.messageId, result);
+		}
+		return [...merged.values()]
+			.sort((a, b) => b.timestamp - a.timestamp)
+			.slice(0, 80);
+	}, [searchQuery, dbMessageResults]);
 
 	const getSearchProfileImage = useCallback((hash: string | null | undefined) => {
 		if (!hash || !validateMediaHash(hash)) return null;
