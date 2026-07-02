@@ -3123,43 +3123,50 @@ export function ChatPage() {
 		void loadInbox({ page: nextPage, replace: false });
 	};
 
-	const togglePin = async () => {
-		if (!selectedConversation || isUpdatingConversationState) {
+	const togglePinConversation = useCallback(
+		async (conversationId: string, isPinned: boolean) => {
+			if (isUpdatingConversationState) {
+				return;
+			}
+
+			setIsUpdatingConversationState(true);
+
+			try {
+				if (isPinned) {
+					await service.unpinConversation(conversationId);
+				} else {
+					await service.pinConversation(conversationId);
+				}
+				setConversations((previous) => {
+					const updated = previous.map((conversation) =>
+						conversation.data.conversationId === conversationId
+							? { ...conversation, data: { ...conversation.data, pinned: !isPinned } }
+							: conversation,
+					);
+					// Re-sort so the pin change is reflected in list order immediately.
+					return [...updated].sort((a, b) => {
+						if (a.data.pinned && !b.data.pinned) return -1;
+						if (b.data.pinned && !a.data.pinned) return 1;
+						return (b.data.lastActivityTimestamp ?? 0) - (a.data.lastActivityTimestamp ?? 0);
+					});
+				});
+			} catch (error) {
+				toast.error(
+					error instanceof Error ? error.message : t("chat.errors.update_pin_state"),
+				);
+			} finally {
+				setIsUpdatingConversationState(false);
+			}
+		},
+		[isUpdatingConversationState, service, t],
+	);
+
+	const togglePin = useCallback(() => {
+		if (!selectedConversation) {
 			return;
 		}
-
-		setIsUpdatingConversationState(true);
-		const isPinned = selectedConversation.data.pinned;
-
-		try {
-			if (isPinned) {
-				await service.unpinConversation(
-					selectedConversation.data.conversationId,
-				);
-			} else {
-				await service.pinConversation(selectedConversation.data.conversationId);
-			}
-			setConversations((previous) => {
-				const updated = previous.map((conversation) =>
-					conversation.data.conversationId === selectedConversation.data.conversationId
-						? { ...conversation, data: { ...conversation.data, pinned: !isPinned } }
-						: conversation,
-				);
-				// Re-sort so the pin change is reflected in list order immediately.
-				return [...updated].sort((a, b) => {
-					if (a.data.pinned && !b.data.pinned) return -1;
-					if (b.data.pinned && !a.data.pinned) return 1;
-					return (b.data.lastActivityTimestamp ?? 0) - (a.data.lastActivityTimestamp ?? 0);
-				});
-			});
-		} catch (error) {
-			toast.error(
-				error instanceof Error ? error.message : t("chat.errors.update_pin_state"),
-			);
-		} finally {
-			setIsUpdatingConversationState(false);
-		}
-	};
+		return togglePinConversation(selectedConversation.data.conversationId, selectedConversation.data.pinned);
+	}, [selectedConversation, togglePinConversation]);
 
 	const toggleMute = async () => {
 		if (!selectedConversation || isUpdatingConversationState) {
@@ -3209,16 +3216,19 @@ export function ChatPage() {
 	}, [selectedConversation]);
 
 	const deleteConversationFromChat = useCallback(
-		async (conversationId: string) => {
+		async (conversationId: string, localOnly = false) => {
 			if (isDeletingConversationId) {
 				return;
 			}
 
 			setIsDeletingConversationId(conversationId);
 			try {
-				await service.deleteConversation(conversationId);
-				// This is the one real purge path — every other case (block, 404,
-				// inbox absence) archives, never deletes.
+				// Conversations already archived locally (block/404/inbox absence)
+				// have nothing server-side left worth deleting for us — and the
+				// server may already 404 on them — so those purges stay local-only.
+				if (!localOnly) {
+					await service.deleteConversation(conversationId);
+				}
 				await chatDb.deleteConversationCascade(conversationId);
 				setArchivedConversations((previous) => {
 					if (!previous.has(conversationId)) {
@@ -3265,6 +3275,11 @@ export function ChatPage() {
 			}
 		},
 		[isDeletingConversationId, isDesktop, navigate, service, t],
+	);
+
+	const deleteConversationLocalOnly = useCallback(
+		(conversationId: string) => deleteConversationFromChat(conversationId, true),
+		[deleteConversationFromChat],
 	);
 
 	const blockProfileFromChat = useCallback(
@@ -4698,6 +4713,10 @@ export function ChatPage() {
 			}}
 			onClearInboxFilters={clearInboxFilters}
 			typingConversationIds={typingConversationIds}
+			onTogglePinConversation={togglePinConversation}
+			onDeleteConversation={deleteConversationFromChat}
+			onDeleteConversationLocal={deleteConversationLocalOnly}
+			isDeletingConversationId={isDeletingConversationId}
 		/>
 	);
 
