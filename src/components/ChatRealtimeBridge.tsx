@@ -51,6 +51,7 @@ import { captureAlbumsForMessages } from "../services/albumStore";
 import { getConversation } from "../services/conversationDirectory";
 import { shouldAutoBlock, getMatchedForbiddenWord, notifyAutoBlock } from "../utils/autoblock";
 import { useApiFunctions } from "../hooks/useApiFunctions";
+import { useBlockedProfileIds } from "../hooks/queries/useProfileQueries";
 import { isReadReceiptsHidden } from "../utils/privacy";
 import { notifyLocal } from "../services/localNotify";
 
@@ -236,6 +237,17 @@ export function ChatRealtimeBridge() {
 		userIdRef.current = userId;
 	}, [userId]);
 
+	// A profile still existing (isProfileFound) doesn't mean a conversation
+	// archived by *our own* block should reopen — we chose that, and merely
+	// receiving a stray/in-flight WS event for them (e.g. a read receipt
+	// that was already in transit when the block landed) shouldn't undo it.
+	// Only reconcile activity for profiles we haven't blocked ourselves.
+	const { data: blockedProfileIdsData } = useBlockedProfileIds();
+	const blockedProfileIdsRef = useRef<Set<string>>(new Set());
+	useEffect(() => {
+		blockedProfileIdsRef.current = new Set(blockedProfileIdsData ?? []);
+	}, [blockedProfileIdsData]);
+
 	// Boot the realtime manager whenever the user is authenticated.
 	// getToken is called fresh on every (re)connect so an expired token
 	// never blocks reconnection.
@@ -282,7 +294,9 @@ export function ChatRealtimeBridge() {
 		// chat.v1.conversation.delete, inbox reload, or profile-page visit.
 		const maybeUnarchiveOnActivity = (profileId: string | number | null | undefined) => {
 			if (profileId == null) return;
-			void reconcileArchivedConversationForProfile(String(profileId), isProfileFound);
+			const id = String(profileId);
+			if (blockedProfileIdsRef.current.has(id)) return;
+			void reconcileArchivedConversationForProfile(id, isProfileFound);
 		};
 
 		// Foreground-only: fires the OS notification straight from the
