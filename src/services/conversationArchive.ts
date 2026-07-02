@@ -50,7 +50,7 @@ export async function unarchiveConversation(conversationId: string): Promise<voi
 // messages. Guard against that two ways: skip exact redeliveries we've
 // already seen by notificationId, and skip any event for a conversation
 // that was processed moments ago even if its notificationId is new/null.
-const DUPLICATE_EVENT_WINDOW_MS = 4_000;
+const DUPLICATE_EVENT_WINDOW_MS = 15_000;
 const lastProcessedAt = new Map<string, number>();
 const seenNotificationIds = new Map<string, number>();
 const NOTIFICATION_ID_TTL_MS = 10 * 60_000;
@@ -61,6 +61,17 @@ function pruneSeenNotificationIds(now: number) {
 			seenNotificationIds.delete(id);
 		}
 	}
+}
+
+/**
+ * Lets a caller that just archived/unarchived a conversation directly (e.g.
+ * blocking someone from an open chat, applied immediately rather than
+ * waiting on the WS round-trip) preempt the matching chat.v1.conversation.delete
+ * echo that will still arrive shortly after — without this, that echo would
+ * read local state as "already archived" and flip it right back to unarchived.
+ */
+export function markConversationDeleteHandled(conversationId: string): void {
+	lastProcessedAt.set(conversationId, Date.now());
 }
 
 /**

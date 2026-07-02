@@ -242,7 +242,7 @@ export function SignInPage() {
 						loading={isTokenLoading}
 						disabled={!isTokenFormValid}
 						loadingLabel={t("auth.sign_in.signing_in")}
-						label={t("auth.sign_in.sign_in_with_token")}
+						label={t("auth.sign_in.submit")}
 					/>
 				</form>
 			)}

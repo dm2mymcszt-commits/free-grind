@@ -27,7 +27,9 @@ import * as chatDb from "../../services/chatDb";
 import type { ArchivedReason } from "../../types/chat-db";
 import {
 	archiveConversation,
+	archiveConversations,
 	unarchiveConversation,
+	markConversationDeleteHandled,
 } from "../../services/conversationArchive";
 import {
 	CHAT_REALTIME_EVENT,
@@ -3242,57 +3244,43 @@ export function ChatPage() {
 			try {
 				await blockProfileMutation(targetProfileId);
 				removeProfileFromBrowseCache(targetProfileId);
-				setConversations((previous) =>
-					previous.filter(
-						(conversation) =>
-							!conversation.data.participants.some(
-								(participant) =>
-									String(participant.profileId) === targetProfileId,
-							),
-					),
-				);
-				setSelectedDesktopConversationId((current) => {
-					if (!current) {
-						return null;
+
+				// Move every conversation with this profile straight into
+				// archived mode — the same read-only view used when someone
+				// else blocks us — instead of deleting it from the list.
+				// Handled locally rather than waiting on the WS
+				// conversation.delete echo, and that echo is suppressed
+				// below so it can't flip this back to unarchived.
+				const affectedIds = conversationsRef.current
+					.filter((conversation) =>
+						conversation.data.participants.some(
+							(participant) => String(participant.profileId) === targetProfileId,
+						),
+					)
+					.map((conversation) => conversation.data.conversationId);
+
+				if (affectedIds.length > 0) {
+					await archiveConversations(affectedIds, "ws_delete");
+					archiveConversationsLocally(affectedIds, "ws_delete");
+					for (const conversationId of affectedIds) {
+						markConversationDeleteHandled(conversationId);
 					}
-					const activeConversation = conversationsRef.current.find(
-						(conversation) => conversation.data.conversationId === current,
+					const inserted = await Promise.all(
+						affectedIds.map((conversationId) =>
+							chatDb
+								.insertSystemMessage(conversationId, "SystemBlockedBySelf")
+								.catch(() => null),
+						),
 					);
-					if (!activeConversation) {
-						return null;
-					}
-					const blockedInSelectedConversation =
-						activeConversation.data.participants.some(
-							(participant) =>
-								String(participant.profileId) === targetProfileId,
+					const valid = inserted.filter((m): m is Message => m !== null);
+					if (valid.length > 0) {
+						window.dispatchEvent(
+							new CustomEvent<Message[]>(CHAT_SYSTEM_MESSAGE_EVENT, { detail: valid }),
 						);
-					return blockedInSelectedConversation ? null : current;
-				});
-				setThreadConversationId((current) => {
-					if (!current) {
-						return null;
 					}
-					const activeConversation = conversationsRef.current.find(
-						(conversation) => conversation.data.conversationId === current,
-					);
-					if (!activeConversation) {
-						return null;
-					}
-					const blockedInSelectedConversation =
-						activeConversation.data.participants.some(
-							(participant) =>
-								String(participant.profileId) === targetProfileId,
-						);
-					return blockedInSelectedConversation ? null : current;
-				});
-				setThreadMessages((previous) =>
-					previous.filter(
-						(message) =>
-							message.conversationId !== selectedConversationIdRef.current,
-					),
-				);
+				}
+
 				toast.success(t("profile_details.block_success"));
-				navigate("/chat", { replace: true });
 			} catch (error) {
 				toast.error(
 					error instanceof Error
@@ -3303,7 +3291,7 @@ export function ChatPage() {
 				setIsBlockingProfileId(null);
 			}
 		},
-		[isBlockingProfileId, navigate, service, t],
+		[isBlockingProfileId, archiveConversationsLocally, blockProfileMutation, t],
 	);
 
 	const toggleFavoriteFromChat = useCallback(
