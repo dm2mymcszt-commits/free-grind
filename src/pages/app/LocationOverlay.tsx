@@ -519,7 +519,12 @@ export function LocationOverlay({ onClose, exploreLocation, onSetExploreLocation
 							</div>
 						)}
 
-						{/* Quick picks: GPS first (set tab only), then saved locations — one consistent list/row style */}
+						{/* Quick picks: GPS first (set tab only), then saved locations — one
+						    consistent list/row style. Hidden entirely when there's nothing
+						    to show — e.g. the explore tab with no active explore and no
+						    saved locations yet, since GPS (the other permanent entry) only
+						    applies to the "set" tab. */}
+						{(!isExploreTab || exploreLocation || savedLocations.length > 0) && (
 						<div>
 							<p className="mb-2 px-1 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
 								{t("browse_location.quick_picks")}
@@ -594,6 +599,7 @@ export function LocationOverlay({ onClose, exploreLocation, onSetExploreLocation
 								))}
 							</div>
 						</div>
+						)}
 
 						{/* Location search: separated from quick picks above as its own group */}
 						<div className="space-y-3">

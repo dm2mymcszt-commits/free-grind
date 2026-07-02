@@ -6,8 +6,9 @@ import { BackToSettings } from "../../components/BackToSettings";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { ToggleRow } from "../../components/ui/toggle-row";
 import { useAuth } from "../../contexts/useAuth";
+import { AndroidFs, AndroidPublicGeneralPurposeDir } from "tauri-plugin-android-fs-api";
 import * as chatDb from "../../services/chatDb";
-import { deleteAllDownloadedMedia, getDownloadedMediaUsage } from "../../services/saveMedia";
+import { deleteAllDownloadedMedia, getDownloadedMediaUsage, isAndroid } from "../../services/saveMedia";
 import { isAutoDownloadMediaEnabled, setAutoDownloadMediaEnabled } from "../../utils/mediaSettings";
 import { appLog } from "../../utils/logger";
 import type { FullDbExport } from "../../types/chat-db";
@@ -90,15 +91,35 @@ export function SettingsDataPage() {
 		try {
 			const data = await chatDb.exportFullDatabase(userId);
 			const json = JSON.stringify(data);
-			const blob = new Blob([json], { type: "application/json" });
-			const url = URL.createObjectURL(blob);
-			const a = document.createElement("a");
-			a.href = url;
-			a.download = `free-grind-data-${new Date().toISOString().slice(0, 10)}.json`;
-			document.body.appendChild(a);
-			a.click();
-			document.body.removeChild(a);
-			URL.revokeObjectURL(url);
+			const fileName = `free-grind-data-${new Date().toISOString().slice(0, 10)}.json`;
+
+			if (isAndroid()) {
+				// The blob-URL + <a download> trick below doesn't trigger a save on
+				// Android's WebView, so write the export directly via MediaStore instead.
+				const bytes = new TextEncoder().encode(json);
+				const uri = await AndroidFs.createNewPublicFile(AndroidPublicGeneralPurposeDir.Download, fileName, "application/json", {
+					isPending: true,
+				});
+				try {
+					await AndroidFs.writeFile(uri, bytes);
+					await AndroidFs.setPublicFilePending(uri, false);
+					await AndroidFs.scanPublicFile(uri);
+				} catch (error) {
+					await AndroidFs.removeFile(uri).catch(() => {});
+					throw error;
+				}
+			} else {
+				const blob = new Blob([json], { type: "application/json" });
+				const url = URL.createObjectURL(blob);
+				const a = document.createElement("a");
+				a.href = url;
+				a.download = fileName;
+				document.body.appendChild(a);
+				a.click();
+				document.body.removeChild(a);
+				URL.revokeObjectURL(url);
+			}
+
 			toast.success(t("data_backup.export_success", { defaultValue: "Data exported." }));
 		} catch (error) {
 			toast.error(getErrorMessage(error, t("data_backup.export_failed", { defaultValue: "Failed to export data." })));

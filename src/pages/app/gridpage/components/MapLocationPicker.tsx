@@ -63,6 +63,21 @@ export function MapLocationPicker({
 	useEffect(() => {
 		let mounted = true;
 
+		// This map always lives inside a scrollable overlay (LocationOverlay's
+		// content area). MapLibre's own scroll-zoom handler calls
+		// preventDefault() on wheel, but that races against the ancestor's
+		// native overflow scroll in this app's webview, which sometimes wins
+		// and scrolls the overlay instead of zooming the map. Belt-and-braces:
+		// block the page-scroll side ourselves so only the map ever reacts to
+		// wheel input here, regardless of that race. Attached directly (not
+		// inside initMap) so it's in place before the async maplibre import
+		// resolves, and removable via the same reference in cleanup below.
+		const blockWheelPropagation = (event: WheelEvent) => {
+			event.preventDefault();
+		};
+		const wheelTarget = mapContainerRef.current;
+		wheelTarget?.addEventListener("wheel", blockWheelPropagation, { passive: false });
+
 		// Waits for the browser to actually paint the current layout (two
 		// rAFs, since the first one just schedules a frame that hasn't been
 		// painted yet) before measuring the container. The parent overlay is
@@ -99,6 +114,7 @@ export function MapLocationPicker({
 					// have nothing to go on.
 					zoom: startCenter ? defaultZoom : 2,
 					attributionControl: false,
+					scrollZoom: true,
 				});
 
 				map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
@@ -140,6 +156,7 @@ export function MapLocationPicker({
 
 		return () => {
 			mounted = false;
+			wheelTarget?.removeEventListener("wheel", blockWheelPropagation);
 			resizeObserverRef.current?.disconnect();
 			resizeObserverRef.current = null;
 			if (mapRef.current) {
