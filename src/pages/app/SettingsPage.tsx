@@ -8,7 +8,7 @@ import {
 	ChevronLeft,
 	ChevronRight,
 	ClipboardList,
-	Download,
+	DatabaseBackup,
 	GitBranch,
 	Images,
 	Info,
@@ -383,124 +383,6 @@ export function SettingsPage() {
 
 			<div className="grid gap-6">
 
-				{/* Account switcher — saved accounts you can tap between without
-				    re-entering a password. Each one keeps its own chat history
-				    and caches fully separate (see chatDb.ts/cache.ts), so
-				    switching never shows a leftover account's data. */}
-				<div>
-					<p className="mb-2 px-1 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
-						{t("settings.account_section", { defaultValue: "Account" })}
-					</p>
-					<div className="surface-card divide-y divide-[var(--border)] overflow-hidden">
-						{savedAccounts.map((account) => {
-							const isActive = userId != null && String(userId) === account.profileId;
-							const isSwitching = switchingProfileId === account.profileId;
-							const isRemoving = removingProfileId === account.profileId;
-							const savedProfile = getSavedAccountProfile(account.profileId);
-							return (
-								<div key={account.profileId} className="flex items-center gap-1">
-									<button
-										type="button"
-										onClick={() => void handleSwitchAccount(account.profileId)}
-										disabled={isActive || isSwitching || isRemoving}
-										className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-[var(--surface-2)] active:bg-[var(--surface-2)] disabled:cursor-not-allowed"
-									>
-										<div className="relative h-10 w-10 shrink-0">
-											<Avatar
-												src={savedProfile.photoHash ? getThumbImageUrl(savedProfile.photoHash, "75x75") : null}
-												alt=""
-												fallback={savedProfile.displayName ?? undefined}
-												className="h-full w-full rounded-2xl border-0"
-											/>
-											{isSwitching && (
-												<div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-[var(--surface)]/80">
-													<Loader2 className="h-5 w-5 animate-spin text-[var(--accent)]" />
-												</div>
-											)}
-										</div>
-										<div className="min-w-0 flex-1">
-											<p className="truncate text-sm font-semibold leading-snug">
-												{savedProfile.displayName || account.email || account.profileId}
-											</p>
-											<p className="text-xs text-[var(--text-muted)] leading-snug mt-0.5">
-												{isActive
-													? t("settings.account_active", { defaultValue: "Currently active" })
-													: t("settings.account_tap_to_switch", { defaultValue: "Tap to switch" })}
-											</p>
-										</div>
-										{isActive && (
-											<div className="flex shrink-0 items-center gap-1 rounded-full bg-[var(--accent)] py-1 pl-1.5 pr-2.5 text-xs font-bold text-white shadow-sm">
-												<Check className="h-3.5 w-3.5 shrink-0" />
-												{t("browse_location.badge_active", { defaultValue: "Active" })}
-											</div>
-										)}
-									</button>
-									{isActive ? (
-										<button
-											type="button"
-											onClick={() => void handleLogout()}
-											disabled={isLoggingOut}
-											aria-label={t("settings.logout")}
-											className="mr-2 shrink-0 rounded-xl p-2.5 text-[var(--text-muted)] transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-60"
-										>
-											{isLoggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
-										</button>
-									) : (
-										<button
-											type="button"
-											onClick={() => void handleRemoveSavedAccount(account.profileId)}
-											disabled={isSwitching || isRemoving}
-											aria-label={t("settings.account_remove", { defaultValue: "Remove saved account" })}
-											className="mr-2 shrink-0 rounded-xl p-2.5 text-[var(--text-muted)] transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-60"
-										>
-											{isRemoving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-										</button>
-									)}
-								</div>
-							);
-						})}
-						<button
-							type="button"
-							onClick={() => navigate("/auth/sign-in?mode=add-profile")}
-							className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-[var(--surface-2)] active:bg-[var(--surface-2)]"
-						>
-							<div className="rounded-2xl bg-[var(--surface-2)] p-2.5 shrink-0 text-[var(--text-muted)]">
-								<UserPlus className="h-5 w-5" />
-							</div>
-							<div className="min-w-0 flex-1">
-								<p className="text-sm font-semibold leading-snug">
-									{t("settings.add_account", { defaultValue: "Add account" })}
-								</p>
-								<p className="text-xs text-[var(--text-muted)] leading-snug mt-0.5">
-									{t("settings.add_account_desc", { defaultValue: "Sign in with another account" })}
-								</p>
-							</div>
-							<ChevronRight className="h-4 w-4 shrink-0 text-[var(--text-muted)] opacity-50" />
-						</button>
-						{/* Fallback while savedAccounts is still loading (briefly empty
-						    right after mount) — never leaves the user without any way
-						    to log out. */}
-						{savedAccounts.length === 0 && (
-							<button
-								type="button"
-								onClick={() => void handleLogout()}
-								disabled={isLoggingOut}
-								className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-[var(--surface-2)] active:bg-[var(--surface-2)] disabled:opacity-60"
-							>
-								<div className="rounded-2xl bg-red-500/15 p-2.5 shrink-0 text-red-400">
-									{isLoggingOut ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogOut className="h-5 w-5" />}
-								</div>
-								<div className="min-w-0 flex-1">
-									<p className="text-sm font-semibold leading-snug">{t("settings.logout")}</p>
-									<p className="text-xs text-[var(--text-muted)] leading-snug mt-0.5">
-										{t("profile_editor.logout_description", { defaultValue: "You will be signed out of your account on this device." })}
-									</p>
-								</div>
-							</button>
-						)}
-					</div>
-				</div>
-
 				{/* Profile */}
 				<div>
 					<p className="mb-2 px-1 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">Profile</p>
@@ -547,13 +429,6 @@ export function SettingsPage() {
 							t("settings.saved_phrases", { defaultValue: "Saved Phrases" }),
 							t("settings.saved_phrases_desc", { defaultValue: "Manage chat quick replies and import/export .txt" }),
 						)}
-						{navRow(
-							() => navigate("/settings/chat-data"),
-							<Download className="h-5 w-5" />,
-							"bg-teal-500/15 text-teal-400",
-							t("settings.chat_data", { defaultValue: "Chat Data" }),
-							t("settings.chat_data_desc", { defaultValue: "Downloaded media storage, and backup/restore your chat history" }),
-						)}
 					</div>
 				</div>
 
@@ -574,6 +449,22 @@ export function SettingsPage() {
 							"bg-sky-500/15 text-sky-400",
 							t("settings.privacy"),
 							t("settings.privacy_desc"),
+						)}
+					</div>
+				</div>
+
+				{/* Data */}
+				<div>
+					<p className="mb-2 px-1 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+						{t("settings.data_section", { defaultValue: "Data" })}
+					</p>
+					<div className="surface-card overflow-hidden divide-y divide-[var(--border)]">
+						{navRow(
+							() => navigate("/settings/data"),
+							<DatabaseBackup className="h-5 w-5" />,
+							"bg-teal-500/15 text-teal-400",
+							t("settings.data", { defaultValue: "Data" }),
+							t("settings.data_desc", { defaultValue: "Downloaded media storage, and back up/restore your entire account" }),
 						)}
 					</div>
 				</div>
@@ -821,6 +712,124 @@ export function SettingsPage() {
 							"bg-rose-500/15 text-rose-400",
 							t("settings.report_issue"),
 							t("settings.report_issue_desc"),
+						)}
+					</div>
+				</div>
+
+				{/* Account switcher — saved accounts you can tap between without
+				    re-entering a password. Each one keeps its own chat history
+				    and caches fully separate (see chatDb.ts/cache.ts), so
+				    switching never shows a leftover account's data. */}
+				<div>
+					<p className="mb-2 px-1 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+						{t("settings.account_section", { defaultValue: "Account" })}
+					</p>
+					<div className="surface-card divide-y divide-[var(--border)] overflow-hidden">
+						{savedAccounts.map((account) => {
+							const isActive = userId != null && String(userId) === account.profileId;
+							const isSwitching = switchingProfileId === account.profileId;
+							const isRemoving = removingProfileId === account.profileId;
+							const savedProfile = getSavedAccountProfile(account.profileId);
+							return (
+								<div key={account.profileId} className="flex items-center gap-1">
+									<button
+										type="button"
+										onClick={() => void handleSwitchAccount(account.profileId)}
+										disabled={isActive || isSwitching || isRemoving}
+										className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-[var(--surface-2)] active:bg-[var(--surface-2)] disabled:cursor-not-allowed"
+									>
+										<div className="relative h-10 w-10 shrink-0">
+											<Avatar
+												src={savedProfile.photoHash ? getThumbImageUrl(savedProfile.photoHash, "75x75") : null}
+												alt=""
+												fallback={savedProfile.displayName ?? undefined}
+												className="h-full w-full rounded-2xl border-0"
+											/>
+											{isSwitching && (
+												<div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-[var(--surface)]/80">
+													<Loader2 className="h-5 w-5 animate-spin text-[var(--accent)]" />
+												</div>
+											)}
+										</div>
+										<div className="min-w-0 flex-1">
+											<p className="truncate text-sm font-semibold leading-snug">
+												{savedProfile.displayName || account.email || account.profileId}
+											</p>
+											<p className="text-xs text-[var(--text-muted)] leading-snug mt-0.5">
+												{isActive
+													? t("settings.account_active", { defaultValue: "Currently active" })
+													: t("settings.account_tap_to_switch", { defaultValue: "Tap to switch" })}
+											</p>
+										</div>
+										{isActive && (
+											<div className="flex shrink-0 items-center gap-1 rounded-full bg-[var(--accent)] py-1 pl-1.5 pr-2.5 text-xs font-bold text-white shadow-sm">
+												<Check className="h-3.5 w-3.5 shrink-0" />
+												{t("browse_location.badge_active", { defaultValue: "Active" })}
+											</div>
+										)}
+									</button>
+									{isActive ? (
+										<button
+											type="button"
+											onClick={() => void handleLogout()}
+											disabled={isLoggingOut}
+											aria-label={t("settings.logout")}
+											className="mr-2 shrink-0 rounded-xl p-2.5 text-[var(--text-muted)] transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-60"
+										>
+											{isLoggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
+										</button>
+									) : (
+										<button
+											type="button"
+											onClick={() => void handleRemoveSavedAccount(account.profileId)}
+											disabled={isSwitching || isRemoving}
+											aria-label={t("settings.account_remove", { defaultValue: "Remove saved account" })}
+											className="mr-2 shrink-0 rounded-xl p-2.5 text-[var(--text-muted)] transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-60"
+										>
+											{isRemoving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+										</button>
+									)}
+								</div>
+							);
+						})}
+						<button
+							type="button"
+							onClick={() => navigate("/auth/sign-in?mode=add-profile")}
+							className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-[var(--surface-2)] active:bg-[var(--surface-2)]"
+						>
+							<div className="rounded-2xl bg-[var(--surface-2)] p-2.5 shrink-0 text-[var(--text-muted)]">
+								<UserPlus className="h-5 w-5" />
+							</div>
+							<div className="min-w-0 flex-1">
+								<p className="text-sm font-semibold leading-snug">
+									{t("settings.add_account", { defaultValue: "Add account" })}
+								</p>
+								<p className="text-xs text-[var(--text-muted)] leading-snug mt-0.5">
+									{t("settings.add_account_desc", { defaultValue: "Sign in with another account" })}
+								</p>
+							</div>
+							<ChevronRight className="h-4 w-4 shrink-0 text-[var(--text-muted)] opacity-50" />
+						</button>
+						{/* Fallback while savedAccounts is still loading (briefly empty
+						    right after mount) — never leaves the user without any way
+						    to log out. */}
+						{savedAccounts.length === 0 && (
+							<button
+								type="button"
+								onClick={() => void handleLogout()}
+								disabled={isLoggingOut}
+								className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-[var(--surface-2)] active:bg-[var(--surface-2)] disabled:opacity-60"
+							>
+								<div className="rounded-2xl bg-red-500/15 p-2.5 shrink-0 text-red-400">
+									{isLoggingOut ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogOut className="h-5 w-5" />}
+								</div>
+								<div className="min-w-0 flex-1">
+									<p className="text-sm font-semibold leading-snug">{t("settings.logout")}</p>
+									<p className="text-xs text-[var(--text-muted)] leading-snug mt-0.5">
+										{t("profile_editor.logout_description", { defaultValue: "You will be signed out of your account on this device." })}
+									</p>
+								</div>
+							</button>
 						)}
 					</div>
 				</div>

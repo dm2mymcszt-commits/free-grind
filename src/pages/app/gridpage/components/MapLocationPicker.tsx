@@ -11,6 +11,8 @@ type MapLocationPickerProps = {
 	className?: string;
 	defaultZoom?: number;
 	initialCenter?: [number, number];
+	/** Marker color override — defaults to --accent inside createPinMarkerElement. */
+	pinColor?: string;
 };
 
 export function MapLocationPicker({
@@ -26,6 +28,7 @@ export function MapLocationPicker({
 	// in on the middle of the ocean whenever the real center wasn't ready
 	// yet. Leaving it undefined when not passed keeps that distinction.
 	initialCenter,
+	pinColor,
 }: MapLocationPickerProps) {
 	const { t } = useTranslation();
 	const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -54,6 +57,8 @@ export function MapLocationPicker({
 	selectedLocationRef.current = selectedLocation;
 	const initialCenterRef = useRef(initialCenter);
 	initialCenterRef.current = initialCenter;
+	const pinColorRef = useRef(pinColor);
+	pinColorRef.current = pinColor;
 
 	useEffect(() => {
 		let mounted = true;
@@ -109,7 +114,7 @@ export function MapLocationPicker({
 				mapRef.current = map;
 
 				if (currentSelectedLocation) {
-					markerRef.current = new maplibregl.Marker({ element: createPinMarkerElement(), anchor: "bottom" })
+					markerRef.current = new maplibregl.Marker({ element: createPinMarkerElement(pinColorRef.current), anchor: "bottom" })
 						.setLngLat([currentSelectedLocation.lon, currentSelectedLocation.lat])
 						.addTo(map);
 				}
@@ -160,17 +165,17 @@ export function MapLocationPicker({
 
 		const lngLat: [number, number] = [selectedLocation.lon, selectedLocation.lat];
 
-		if (markerRef.current) {
-			markerRef.current.setLngLat(lngLat);
-		} else {
-			markerRef.current = new maplibregl.Marker({ element: createPinMarkerElement(), anchor: "bottom" })
-				.setLngLat(lngLat)
-				.addTo(map);
-		}
+		// Recreated (not just repositioned) so a pinColor change — e.g.
+		// switching between the "set" and "explore" tabs while the map stays
+		// mounted — is reflected immediately instead of keeping the old color.
+		markerRef.current?.remove();
+		markerRef.current = new maplibregl.Marker({ element: createPinMarkerElement(pinColor), anchor: "bottom" })
+			.setLngLat(lngLat)
+			.addTo(map);
 
 		map.jumpTo({ center: lngLat, zoom: Math.max(defaultZoom, map.getZoom()) });
 		map.resize();
-	}, [defaultZoom, selectedLocation]);
+	}, [defaultZoom, selectedLocation, pinColor]);
 
 	return <div ref={mapContainerRef} className={className} />;
 }
