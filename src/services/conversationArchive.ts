@@ -114,11 +114,18 @@ export function markConversationDeleteHandled(conversationId: string): void {
  * - about to unarchive: profile still gone -> this isn't really an unblock
  *   (or a stale/duplicate event) -> stay archived instead of flipping to
  *   an unblocked state that isn't true.
+ *
+ * `isBlockedByMe`, when given, is a fallback for the "we did this / this was
+ * done to us" disambiguation on the block direction: the local self-action
+ * marker only exists if the block came from this same device/session, so a
+ * block made elsewhere (another device) would otherwise show as "You were
+ * blocked" instead of "You blocked this person".
  */
 export async function toggleArchiveOnConversationDelete(
 	conversationIds: string[],
 	notificationId?: string | null,
 	isProfileFound?: (profileId: string) => Promise<boolean>,
+	isBlockedByMe?: (profileId: string) => Promise<boolean>,
 ): Promise<{ archived: string[]; unarchived: string[]; systemMessages: Message[] }> {
 	const archived: string[] = [];
 	const unarchived: string[] = [];
@@ -188,7 +195,15 @@ export async function toggleArchiveOnConversationDelete(
 			// Leave a local marker in the conversation's own history so it's
 			// visible in the chat log when this happened. Distinguish "we did
 			// this" from "this was done to us" using the self-action tracker.
-			const isSelf = consumeSelfBlockAction(conversationId, isUnblock ? "unblock" : "block");
+			let isSelf = consumeSelfBlockAction(conversationId, isUnblock ? "unblock" : "block");
+			// The self-action tracker only sees blocks triggered from *this*
+			// device — blocking the same profile from another device leaves no
+			// local marker here, so it would otherwise be misread as "they
+			// blocked us". For the block direction, fall back to asking the
+			// server whether we currently block this profile.
+			if (!isSelf && !isUnblock && isBlockedByMe && existing?.otherProfileId) {
+				isSelf = await isBlockedByMe(existing.otherProfileId).catch(() => false);
+			}
 			try {
 				const message = await chatDb.insertSystemMessage(
 					conversationId,

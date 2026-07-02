@@ -287,6 +287,21 @@ export function ChatRealtimeBridge() {
 			}
 		};
 
+		// Fallback for toggleArchiveOnConversationDelete's self/other
+		// disambiguation: the local self-action marker only exists when the
+		// block came from this device, so blocking the same profile from
+		// another device would otherwise show as "You were blocked" here.
+		// Fetches fresh (bypassing the 10-minute query staleTime) so a block
+		// made moments ago on another device is picked up right away.
+		const isBlockedByMe = async (profileId: string): Promise<boolean> => {
+			try {
+				const blockedIds = await apiFunctions.getBlockedProfileIds();
+				return blockedIds.some((id) => String(id) === profileId);
+			} catch {
+				return false;
+			}
+		};
+
 		// Any incoming activity from a profile whose conversation is
 		// currently archived (typing, a read receipt, a tap, a view, a
 		// message) is a live signal they might be reachable again — recheck
@@ -498,6 +513,7 @@ export function ChatRealtimeBridge() {
 							ids,
 							notificationId,
 							isProfileFound,
+							isBlockedByMe,
 						);
 						if (systemMessages.length > 0) {
 							window.dispatchEvent(
