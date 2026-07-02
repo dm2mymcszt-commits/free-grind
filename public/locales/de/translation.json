@@ -663,7 +663,8 @@
         "sign_in": {
             "title": "Anmelden",
             "subtitle": "Nutze deine Grindr-Zugangsdaten oder einen Token für Google, Apple oder Facebook.",
-            "no_account": "Noch kein Konto? Registrieren",
+            "no_account_label": "Noch kein Konto?",
+            "no_account_action": "Registrieren",
             "method_token": "Token",
             "method_password": "E-Mail & Passwort",
             "token_help": "Wie du deinen Authentifizierungs-Token erhältst",

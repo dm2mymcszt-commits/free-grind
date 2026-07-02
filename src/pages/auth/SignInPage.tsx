@@ -142,12 +142,15 @@ export function SignInPage() {
 			subtitle={t("auth.sign_in.subtitle")}
 			footer={
 				<div className="flex flex-col items-center gap-3">
-					<Link
-						to="/auth/sign-up"
-						className="text-sm text-[var(--text-muted)] hover:text-[var(--text)]"
-					>
-						{t("auth.sign_in.no_account")}
-					</Link>
+					<span className="text-sm text-[var(--text-muted)]">
+						{t("auth.sign_in.no_account_label")}{" "}
+						<Link
+							to="/auth/sign-up"
+							className="font-bold underline hover:text-[var(--text)]"
+						>
+							{t("auth.sign_in.no_account_action")}
+						</Link>
+					</span>
 					<BugReportButton />
 				</div>
 			}
@@ -190,7 +193,7 @@ export function SignInPage() {
 							<button
 								type="button"
 								onClick={() => setShowPassword((prev) => !prev)}
-								className="text-[var(--text-muted)] hover:text-[var(--text)]"
+								className="flex items-center p-0 text-[var(--text-muted)] hover:text-[var(--text)]"
 								tabIndex={-1}
 								aria-label={
 									showPassword
