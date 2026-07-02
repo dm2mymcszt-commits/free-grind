@@ -33,7 +33,11 @@ import {
 	incrementUnreadCountForProfile,
 	clearUnreadCountForProfile,
 } from "../services/chatContactIndex";
-import { toggleArchiveOnConversationDelete } from "../services/conversationArchive";
+import {
+	toggleArchiveOnConversationDelete,
+	reconcileArchivedConversationForProfile,
+	CHAT_SYSTEM_MESSAGE_EVENT,
+} from "../services/conversationArchive";
 import { messageSchema, type Message } from "../types/messages";
 import type { RealtimeEnvelope, RealtimeStatus } from "../types/chat-realtime";
 import { appLog } from "../utils/logger";
@@ -74,7 +78,10 @@ export const CHAT_REALTIME_STATUS = "fg:chat-realtime-status";
 export const TAP_RECEIVED_EVENT = "fg:tap-received";
 export const VIEW_RECEIVED_EVENT = "fg:view-received";
 export const TYPING_STATUS_EVENT = "fg:typing-status";
-export const CHAT_SYSTEM_MESSAGE_EVENT = "fg:chat-system-message";
+// Re-exported so existing importers (e.g. ChatPage.tsx) don't need to change
+// where they pull this from — conversationArchive.ts is now the source of
+// truth since it also dispatches this event from applySelfBlockAction.
+export { CHAT_SYSTEM_MESSAGE_EVENT };
 
 export type TypingStatusDetail = {
 	conversationId: string;
@@ -246,6 +253,38 @@ export function ChatRealtimeBridge() {
 		});
 		*/
 
+		// Shared by both the conversation.delete handling below and the
+		// "any activity from an archived profile" recheck: deleted/banned
+		// profiles are simply missing from this response instead of
+		// erroring, same as the stale-share cleanup on the albums page.
+		const isProfileFound = async (profileId: string): Promise<boolean> => {
+			try {
+				const raw = await apiFunctions.getProfilesByIds([profileId]);
+				const profiles =
+					raw && typeof raw === "object" && Array.isArray((raw as { profiles?: unknown }).profiles)
+						? (raw as { profiles: unknown[] }).profiles
+						: [];
+				return profiles.some(
+					(p) =>
+						p &&
+						typeof p === "object" &&
+						String((p as { profileId?: unknown }).profileId) === profileId,
+				);
+			} catch {
+				return true;
+			}
+		};
+
+		// Any incoming activity from a profile whose conversation is
+		// currently archived (typing, a read receipt, a tap, a view, a
+		// message) is a live signal they might be reachable again — recheck
+		// and pull it out of archive instead of waiting for the next
+		// chat.v1.conversation.delete, inbox reload, or profile-page visit.
+		const maybeUnarchiveOnActivity = (profileId: string | number | null | undefined) => {
+			if (profileId == null) return;
+			void reconcileArchivedConversationForProfile(String(profileId), isProfileFound);
+		};
+
 		// Foreground-only: fires the OS notification straight from the
 		// WebSocket event so it shows up instantly, before FCM's delayed
 		// push would otherwise be the only source. Android routes through
@@ -361,6 +400,7 @@ export function ChatRealtimeBridge() {
 							}),
 						);
 						triggerTapNotification(tap);
+						maybeUnarchiveOnActivity(tap.profileId);
 					}
 				}
 
@@ -373,6 +413,7 @@ export function ChatRealtimeBridge() {
 								detail: view,
 							}),
 						);
+						maybeUnarchiveOnActivity(view.profileId);
 					}
 				}
 
@@ -388,6 +429,9 @@ export function ChatRealtimeBridge() {
 									detail: { conversationId, profileId, status: status as TypingStatusDetail["status"] },
 								}),
 							);
+							if (userIdRef.current != null && Number(profileId) !== Number(userIdRef.current)) {
+								maybeUnarchiveOnActivity(profileId);
+							}
 						}
 					}
 				}
@@ -402,6 +446,7 @@ export function ChatRealtimeBridge() {
 						if (cid && !Number.isNaN(ts) && !Number.isNaN(senderId) && userIdRef.current != null) {
 							if (senderId !== userIdRef.current) {
 								await chatLog.appendMessages(cid, [], ts);
+								maybeUnarchiveOnActivity(senderId);
 							} else {
 								const conv = getConversation(cid);
 								if (conv && !isReadReceiptsHidden(cid)) {
@@ -435,7 +480,11 @@ export function ChatRealtimeBridge() {
 					if (ids.length > 0) {
 						const notificationId =
 							typeof envelope.notificationId === "string" ? envelope.notificationId : null;
-						const { systemMessages } = await toggleArchiveOnConversationDelete(ids, notificationId);
+						const { systemMessages } = await toggleArchiveOnConversationDelete(
+							ids,
+							notificationId,
+							isProfileFound,
+						);
 						if (systemMessages.length > 0) {
 							window.dispatchEvent(
 								new CustomEvent<Message[]>(CHAT_SYSTEM_MESSAGE_EVENT, {
@@ -473,6 +522,10 @@ export function ChatRealtimeBridge() {
 						const list = byConv.get(m.conversationId) ?? [];
 						list.push(m);
 						byConv.set(m.conversationId, list);
+
+						if (isIncoming) {
+							maybeUnarchiveOnActivity(m.senderId);
+						}
 
 						// Update local contact index for unread badge persistence
 						if (isIncoming) {
