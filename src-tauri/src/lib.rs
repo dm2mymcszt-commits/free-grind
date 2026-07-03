@@ -83,6 +83,7 @@ pub fn run() {
                 #[cfg(target_os = "windows")]
                 {
                     use tauri::Manager;
+                    use tauri::webview::Color;
                     use windows::Win32::Foundation::HWND;
                     use windows::Win32::Graphics::Dwm::{
                         DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE,
@@ -95,7 +96,7 @@ pub fn run() {
                     use webview2_com::PermissionRequestedEventHandler;
 
                     if let Some(win) = app.get_webview_window("main") {
-                        let _ = win.set_background_color(Some(tauri::Color(0, 0, 0, 0)));
+                        let _ = win.set_background_color(Some(Color(0, 0, 0, 0)));
 
                         // Remove the 1px border that Windows 11 draws around transparent layered windows
                         if let Ok(hwnd) = win.hwnd() {
