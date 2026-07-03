@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { BarChart3, CheckCheck, Eye, ImageOff, ToggleRight, ScanSearch } from "lucide-react";
+import { CheckCheck, Eye, ImageOff, ToggleRight, ScanSearch } from "lucide-react";
 import { BackToSettings } from "../../components/BackToSettings";
 import { ToggleRow } from "../../components/ui/toggle-row";
 import { usePreferences } from "../../contexts/PreferencesContext";
@@ -12,11 +12,6 @@ import {
 	setRecordProfileViewsEnabled,
 	setShowReadReceiptToggle as persistShowReadReceiptToggle,
 } from "../../utils/privacy";
-import {
-	readAnalyticsConsentChoice,
-	writeAnalyticsConsentChoice,
-	type AnalyticsConsentChoice,
-} from "../../utils/analyticsConsent";
 
 export function SettingsPrivacyPage() {
 	const { t } = useTranslation();
@@ -25,7 +20,6 @@ export function SettingsPrivacyPage() {
 	const [readReceiptsEnabled, setReadReceiptsEnabled] = useState(() => !getHideReadReceiptsGlobal());
 	const [showReadReceiptToggle, setShowReadReceiptToggle] = useState(() => getShowReadReceiptToggle());
 	const [recordProfileViews, setRecordProfileViews] = useState(() => isRecordProfileViewsEnabled());
-	const [analyticsConsent, setAnalyticsConsent] = useState<AnalyticsConsentChoice | null>(() => readAnalyticsConsentChoice());
 	const [imageScannerEnabled, setImageScannerEnabled] = useState(() => window.localStorage.getItem("fg-image-scanner-enabled") === "true");
 
 	return (
@@ -115,32 +109,6 @@ export function SettingsPrivacyPage() {
 							checked={blurIncomingMedia}
 							onChange={(checked) => void setPreferences({ blurIncomingMedia: checked })}
 						/>
-					</div>
-				</div>
-
-				{/* Analytics & Discovery */}
-				<div>
-					<p className="mb-2 px-1 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
-						{t("customizability.analytics.title")}
-					</p>
-					<div className="surface-card overflow-hidden">
-						<ToggleRow
-							icon={<BarChart3 className="h-5 w-5" />}
-							iconClass="bg-violet-500/15 text-violet-400"
-							label={t("customizability.analytics.title")}
-							description={t("customizability.analytics.description")}
-							checked={analyticsConsent === "granted"}
-							onChange={(checked) => {
-								const choice: AnalyticsConsentChoice = checked ? "granted" : "denied";
-								writeAnalyticsConsentChoice(choice);
-								setAnalyticsConsent(choice);
-							}}
-						/>
-						<div className="border-t border-[var(--border)] px-4 py-3">
-							<p className="text-xs text-[var(--text-muted)] leading-relaxed">
-								{t("customizability.analytics.note")}
-							</p>
-						</div>
 					</div>
 				</div>
 
