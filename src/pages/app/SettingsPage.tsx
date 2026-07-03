@@ -7,14 +7,12 @@ import {
     Check,
     ChevronLeft,
     ChevronRight,
-    ClipboardList,
     DatabaseBackup,
     Download,
     Images,
     Info,
     Loader2,
     LogOut,
-    MessageSquareWarning,
     Palette,
     Radar,
     Shield,
@@ -451,20 +449,6 @@ export function SettingsPage() {
 							"bg-slate-500/15 text-slate-400",
 							t("settings.about"),
 							t("settings.about_desc"),
-						)}
-						{navRow(
-							() => navigate("/settings/issues"),
-							<ClipboardList className="h-5 w-5" />,
-							"bg-orange-500/15 text-orange-400",
-							t("settings.issue_board"),
-							t("settings.issue_board_desc"),
-						)}
-						{navRow(
-							() => navigate("/settings/report-issue"),
-							<MessageSquareWarning className="h-5 w-5" />,
-							"bg-rose-500/15 text-rose-400",
-							t("settings.report_issue"),
-							t("settings.report_issue_desc"),
 						)}
 					</div>
 				</div>
