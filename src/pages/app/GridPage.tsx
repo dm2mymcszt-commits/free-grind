@@ -291,6 +291,22 @@ export function GridPage() {
 
 	const [isFiltersOpen, setIsFiltersOpen] = useState(false);
 	const [isLocationOpen, setIsLocationOpen] = useState(false);
+
+	useEffect(() => {
+		const handleOpenLocation = () => setIsLocationOpen(true);
+		window.addEventListener("open-location", handleOpenLocation);
+		
+		// If we were navigated here from another tab via NavBar with state
+		if (location.state && (location.state as any).openLocation) {
+			setIsLocationOpen(true);
+			// Clear state so it doesn't reopen on refresh
+			window.history.replaceState({}, "");
+		}
+
+		return () => {
+			window.removeEventListener("open-location", handleOpenLocation);
+		};
+	}, [location.state]);
 	const [isAccountSwitcherOpen, setIsAccountSwitcherOpen] = useState(false);
 	const [switchingProfileId, setSwitchingProfileId] = useState<string | null>(null);
 	const accountSwitcherRef = useRef<HTMLDivElement>(null);

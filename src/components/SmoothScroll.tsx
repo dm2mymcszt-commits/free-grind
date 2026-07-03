@@ -38,8 +38,20 @@ export function SmoothScroll({
 			return;
 		}
 
+		// Find the scrollable container. On PC with has-titlebar, it's .app-shell.
+		// Otherwise, we let it default to window.
+		const wrapper = document.documentElement.classList.contains("has-titlebar") 
+			? (document.querySelector(".app-shell") as HTMLElement | null)
+			: window;
+			
+		const content = document.documentElement.classList.contains("has-titlebar")
+			? (document.querySelector(".app-shell > div:last-child") as HTMLElement | null) // The Outlet wrapper
+			: document.documentElement;
+
 		// Initialize Lenis
 		const lenis = new Lenis({
+			wrapper: wrapper || window,
+			content: content || document.documentElement,
 			duration: duration,
 			lerp: lerp,
 			easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),

@@ -1,4 +1,4 @@
-﻿import { Grid as GridIcon, Droplet, Flame, MessageCircle, MapPin, Settings } from "lucide-react";
+import { Grid as GridIcon, Droplet, Flame, MessageCircle, MapPin, Settings } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { useState, useEffect, useRef } from "react";
@@ -381,7 +381,11 @@ export function NavBar() {
                             onClick={(e) => {
                                 e.stopPropagation();
                                 setShowBrowseMenu(false);
-                                navigate('/browse/location');
+                                if (activeTab === "browse") {
+                                    window.dispatchEvent(new CustomEvent("open-location"));
+                                } else {
+                                    navigate('/', { state: { openLocation: true } });
+                                }
                             }}
                         >
                             <MapPin className="h-6 w-6 md:h-7 md:w-7" strokeWidth={1.8} />
