@@ -1,7 +1,8 @@
-import { ChevronLeft, ChevronRight, Download, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, X, ScanSearch } from "lucide-react";
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import toast from "react-hot-toast";
 import { saveMediaToDevice } from "../services/saveMedia";
 import { appLog } from "../utils/logger";
@@ -318,6 +319,16 @@ export function PhotoViewer({
 		}
 	};
 
+	// --- MEDIA SCANNER ---
+	const scannerEnabled = window.localStorage.getItem("fg-image-scanner-enabled") === "true";
+	const openExternalTool = async (targetUrl: string) => {
+		try {
+			await openUrl(targetUrl);
+		} catch {
+			window.open(targetUrl, "_blank");
+		}
+	};
+
 	if (!isOpen || N === 0) return null;
 
 	const slots: Array<{ photoIndex: number; slotIndex: number }> =
@@ -355,6 +366,32 @@ export function PhotoViewer({
 			>
 				<Download className="h-5 w-5" />
 			</button>
+
+			{getMediaInfo(photos[centerIdx]).type === "image" && scannerEnabled && (
+				<button
+					type="button"
+					onClick={(e) => {
+						e.stopPropagation();
+						const currentMedia = photos[centerIdx];
+						if (currentMedia) {
+							const { url } = getMediaInfo(currentMedia);
+							openExternalTool(`https://lens.google.com/uploadbyurl?url=${encodeURIComponent(url)}`);
+						}
+					}}
+					onTouchStart={(e) => { e.stopPropagation(); gestureMovedRef.current = false; }}
+					onTouchEnd={(e) => handleButtonTouchEnd(e, () => {
+						const currentMedia = photos[centerIdx];
+						if (currentMedia) {
+							const { url } = getMediaInfo(currentMedia);
+							openExternalTool(`https://lens.google.com/uploadbyurl?url=${encodeURIComponent(url)}`);
+						}
+					})}
+					className="absolute left-16 top-[calc(env(safe-area-inset-top,0px)+2rem)] z-[83] inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/30 bg-black/50 text-white transition hover:bg-black/70 sm:left-20 sm:top-5"
+					aria-label="Google Lens Search"
+				>
+					<ScanSearch className="h-5 w-5" />
+				</button>
+			)}
 
 			{N > 1 && (
 				<>

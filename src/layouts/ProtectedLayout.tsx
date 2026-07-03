@@ -1,6 +1,8 @@
 import { Outlet, useLocation } from "react-router-dom";
 import { NavBar } from "../components/NavBar";
 import { useEffect, useState } from "react";
+import { BackgroundViewScanner } from "../components/BackgroundViewScanner";
+import { BackgroundInboxScanner } from "../components/BackgroundInboxScanner";
 
 export function ProtectedLayout() {
 	const location = useLocation();
@@ -27,6 +29,8 @@ export function ProtectedLayout() {
 
 	return (
 		<div className="relative">
+			<BackgroundViewScanner />
+			<BackgroundInboxScanner />
 			<Outlet />
 			{!shouldHideNavbar ? <NavBar /> : null}
 		</div>

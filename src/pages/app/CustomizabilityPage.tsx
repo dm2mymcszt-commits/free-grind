@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Ban, Flame, Languages, LayoutGrid, Monitor, Moon, Ruler, Sparkles, Star, Sun, Trash2 } from "lucide-react";
+import { Ban, Flame, Languages, LayoutGrid, Monitor, Moon, Ruler, Sparkles, Star, Sun, Trash2, RotateCcw } from "lucide-react";
 import toast from "react-hot-toast";
 import { usePreferences, ACCENT_PRESETS, type ColorScheme } from "../../contexts/PreferencesContext";
 import { BackToSettings } from "../../components/BackToSettings";
@@ -572,6 +572,23 @@ export function CustomizabilityPage() {
 								{ value: "american", label: t("customizability.units_american") },
 							]}
 						/>
+					</div>
+				</div>
+
+				{/* ADVANCED */}
+				<div>
+					<SectionLabel>Advanced</SectionLabel>
+					<div className="surface-card overflow-hidden divide-y divide-[var(--border)]">
+						<div className="p-4 flex items-center justify-between">
+							<div className="flex items-center gap-3">
+								<div className="rounded-2xl bg-red-500/15 p-2.5 text-red-400 shrink-0"><RotateCcw className="h-5 w-5" /></div>
+								<div>
+									<p className="text-sm font-semibold">Reset Warnings</p>
+									<p className="text-xs text-[var(--text-muted)]">Restore "Don't ask again" popups.</p>
+								</div>
+							</div>
+							<button type="button" onClick={() => { localStorage.removeItem(SKIP_BLOCK_CONFIRM_KEY); localStorage.removeItem("profile_skip_unblock_confirm"); localStorage.removeItem("chat_skip_delete_confirm"); localStorage.removeItem("fg-reply-warning-seen"); toast.success("Warnings restored!"); }} className="h-9 px-4 rounded-lg bg-red-500/10 text-red-400 font-semibold text-sm hover:bg-red-500/20 transition">Reset</button>
+						</div>
 					</div>
 				</div>
 

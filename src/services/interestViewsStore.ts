@@ -165,6 +165,52 @@ export const interestViewsStore = {
 			};
 		});
 	},
+
+	async clear(): Promise<void> {
+		const db = await openDatabase();
+		if (!db) return;
+
+		return new Promise((resolve) => {
+			const tx = db.transaction(STORE_NAME, "readwrite");
+			const store = tx.objectStore(STORE_NAME);
+			store.clear();
+
+			tx.oncomplete = () => {
+				db.close();
+				resolve();
+			};
+
+			tx.onerror = (event) => {
+				appLog.error("[interestStore] clear transaction failed", event);
+				db.close();
+				resolve();
+			};
+		});
+	},
+
+	async deleteMany(ids: string[]): Promise<void> {
+		const db = await openDatabase();
+		if (!db) return;
+
+		return new Promise((resolve) => {
+			const tx = db.transaction(STORE_NAME, "readwrite");
+			const store = tx.objectStore(STORE_NAME);
+			for (const id of ids) {
+				store.delete(id);
+			}
+
+			tx.oncomplete = () => {
+				db.close();
+				resolve();
+			};
+
+			tx.onerror = (event) => {
+				appLog.error("[interestStore] deleteMany transaction failed", event);
+				db.close();
+				resolve();
+			};
+		});
+	},
 };
 
 export type { StoredInterestView };

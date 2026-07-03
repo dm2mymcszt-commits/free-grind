@@ -40,7 +40,9 @@ import {
 	User,
 	Volume2,
 	X,
+	FileAudio,
 } from "lucide-react";
+import { extractAudioToWav, getAudioFileMetadata } from "../../../utils/audioUtils";
 import { useTranslation } from "react-i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactCrop, { type Crop, type PixelCrop } from "react-image-crop";
@@ -285,6 +287,35 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 	const dragProgress = Math.min(1, Math.abs(Math.min(0, recordDragX)) / CANCEL_THRESHOLD);
 	const stopRecordingRef = useRef<(autoSend?: boolean) => void>(() => {});
 
+	// --- AUDIO / VIDEO UPLOAD ---
+	const [isMicMenuOpen, setIsMicMenuOpen] = useState(false);
+	const audioFileInputRef = useRef<HTMLInputElement>(null);
+	const [isProcessingAudioFile, setIsProcessingAudioFile] = useState(false);
+	const pointerStartPos = useRef({ x: 0, y: 0 });
+	const wasLongPressRef = useRef(false);
+	const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const micMenuJustOpenedRef = useRef(false);
+
+	useEffect(() => {
+		if (!isGiphyPickerOpen && !isMicMenuOpen) return;
+		if (isMicMenuOpen) micMenuJustOpenedRef.current = true;
+		const handleClickOutside = (_e: MouseEvent) => {
+			if (micMenuJustOpenedRef.current) {
+				micMenuJustOpenedRef.current = false;
+				return;
+			}
+			setIsGiphyPickerOpen(false);
+			setIsMicMenuOpen(false);
+		};
+		const raf = requestAnimationFrame(() => {
+			window.addEventListener("click", handleClickOutside);
+		});
+		return () => {
+			cancelAnimationFrame(raf);
+			window.removeEventListener("click", handleClickOutside);
+		};
+	}, [isGiphyPickerOpen, isMicMenuOpen]);
+
 	const cleanupAnalyser = useCallback(() => {
 		if (waveformRafRef.current) { cancelAnimationFrame(waveformRafRef.current); waveformRafRef.current = null; }
 		analyserRef.current = null;
@@ -302,6 +333,81 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 			void audioCtxRef.current?.close();
 		};
 	}, []);
+
+	const handleAudioFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+		const file = e.target.files?.[0];
+		if (!file) return;
+		
+		setIsMicMenuOpen(false);
+		setIsProcessingAudioFile(true);
+		
+		try {
+			let audioBlob: Blob;
+			let durationMs: number;
+			let waveform: number[] | undefined = undefined;
+
+			const headerSlice = file.slice(0, Math.min(file.size, 1024));
+			const headerBuf = await new Promise<ArrayBuffer>((resolve) => {
+				const reader = new FileReader();
+				reader.onload = () => resolve(reader.result as ArrayBuffer);
+				reader.onerror = () => resolve(new ArrayBuffer(0));
+				reader.readAsArrayBuffer(headerSlice);
+			});
+			const view = new DataView(headerBuf);
+			const bytes = new Uint8Array(headerBuf);
+			let isMp4Mov = false;
+			let pos = 0;
+			const limit = Math.min(headerBuf.byteLength, 1024);
+			while (pos + 8 <= limit) {
+				const size = view.getUint32(pos);
+				const typeBytes = bytes.slice(pos + 4, pos + 8);
+				const type = String.fromCharCode(...typeBytes);
+				if (["ftyp", "moov", "mdat", "wide", "free", "uuid"].includes(type)) {
+					isMp4Mov = true;
+					break;
+				}
+				if (size < 8) break;
+				pos += size;
+			}
+			const isVideo = file.type.startsWith("video/") || isMp4Mov ||
+				file.name.endsWith(".mov") || file.name.endsWith(".mp4") ||
+				file.name.endsWith(".MOV") || file.name.endsWith(".MP4");
+			
+			if (isVideo) {
+				toast.loading(t("chat.extracting_audio", { defaultValue: "Extracting audio from video..." }), { id: "audio-extract" });
+				const result = await extractAudioToWav(file);
+				audioBlob = result.blob;
+				durationMs = result.durationMs;
+				waveform = result.waveform;
+				if (result.waveform) {
+					setRecordedWaveform(result.waveform);
+				}
+				toast.success(t("chat.extracted_audio", { defaultValue: "Audio extracted!" }), { id: "audio-extract" });
+			} else {
+				audioBlob = file;
+				toast.loading(t("chat.processing_audio", { defaultValue: "Processing audio..." }), { id: "audio-extract" });
+				const result = await getAudioFileMetadata(audioBlob);
+				durationMs = result.durationMs;
+				waveform = result.waveform;
+				if (result.waveform) {
+					setRecordedWaveform(result.waveform);
+				}
+				toast.success(t("chat.processed_audio", { defaultValue: "Audio processed!" }), { id: "audio-extract" });
+			}
+			
+			props.onAudioRecorded(audioBlob, Math.round(durationMs), false, waveform);
+			
+		} catch (err: any) {
+			appLog.error("Error processing audio file:", err);
+			const errMsg = err?.message || String(err);
+			toast.error(t("chat.errors.process_audio_failed", { defaultValue: `Failed to process audio file: ${errMsg}` }));
+		} finally {
+			setIsProcessingAudioFile(false);
+			if (audioFileInputRef.current) {
+				audioFileInputRef.current.value = "";
+			}
+		}
+	};
 
 	const startRecording = useCallback(async () => {
 		if (isRecording) return;
@@ -1761,60 +1867,153 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 									{isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizontal className="h-4 w-4" />}
 								</button>
 							) : (
-								<button
-									type="button"
-									onClick={isDesktop ? () => void startRecording() : undefined}
-									onPointerDown={!isDesktop ? (e) => {
-										e.preventDefault();
-										e.currentTarget.setPointerCapture(e.pointerId);
-										swipeStartXRef.current = e.clientX;
-										isCapturingRef.current = true;
-										hasVibratedRef.current = false;
-										setRecordDragX(0);
-										holdTimerRef.current = setTimeout(() => setShowRecordCircle(true), 150);
-										void startRecording();
-									} : undefined}
-									onPointerMove={!isDesktop ? (e) => {
-										if (!isCapturingRef.current) return;
-										const dx = e.clientX - swipeStartXRef.current;
-										setRecordDragX(Math.min(0, dx));
-										if (!hasVibratedRef.current && dx < -CANCEL_THRESHOLD) {
-											hasVibratedRef.current = true;
-											isCapturingRef.current = false;
+								<div className="relative flex shrink-0">
+									<button
+										type="button"
+										onContextMenu={(e) => {
+											e.preventDefault();
+											e.stopPropagation();
+											setIsMicMenuOpen(true);
+										}}
+										onPointerDown={(e) => {
+											if (e.button !== 0 && e.pointerType === "mouse") return;
+											e.preventDefault();
+											e.currentTarget.setPointerCapture(e.pointerId);
+											pointerStartPos.current = { x: e.clientX, y: e.clientY };
+											wasLongPressRef.current = false;
+											
+											longPressTimerRef.current = setTimeout(() => {
+												wasLongPressRef.current = true;
+												longPressTimerRef.current = null;
+												if (isDesktop) {
+													setIsMicMenuOpen(true);
+												} else {
+													swipeStartXRef.current = e.clientX;
+													isCapturingRef.current = true;
+													hasVibratedRef.current = false;
+													setRecordDragX(0);
+													setShowRecordCircle(true);
+													void startRecording();
+												}
+											}, 250);
+										}}
+										onPointerMove={(e) => {
+											if (longPressTimerRef.current) {
+												const dx = Math.abs(e.clientX - pointerStartPos.current.x);
+												const dy = Math.abs(e.clientY - pointerStartPos.current.y);
+												if (dx > 10 || dy > 10) {
+													clearTimeout(longPressTimerRef.current);
+													longPressTimerRef.current = null;
+												}
+											}
+											if (!isDesktop && isCapturingRef.current) {
+												const dx = e.clientX - swipeStartXRef.current;
+												setRecordDragX(Math.min(0, dx));
+												if (!hasVibratedRef.current && dx < -CANCEL_THRESHOLD) {
+													hasVibratedRef.current = true;
+													isCapturingRef.current = false;
+													e.currentTarget.releasePointerCapture(e.pointerId);
+													if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
+													(window as unknown as { FreeGrindBridge?: { vibrate?: (ms: number) => void } }).FreeGrindBridge?.vibrate?.(80) ?? navigator.vibrate?.(80);
+													setTrashBounce(true);
+													setTimeout(() => {
+														setTrashBounce(false);
+														setRecordDragX(0);
+												setShowRecordCircle(false);
+														cancelRecording();
+													}, 280);
+												}
+											}
+										}}
+										onPointerUp={(e) => {
+											const isLong = wasLongPressRef.current;
+											if (longPressTimerRef.current) {
+												clearTimeout(longPressTimerRef.current);
+												longPressTimerRef.current = null;
+											}
 											e.currentTarget.releasePointerCapture(e.pointerId);
-											if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
-											(window as unknown as { FreeGrindBridge?: { vibrate?: (ms: number) => void } }).FreeGrindBridge?.vibrate?.(80) ?? navigator.vibrate?.(80);
-											setTrashBounce(true);
-											setTimeout(() => {
-												setTrashBounce(false);
+											
+											if (isDesktop) {
+												if (!isLong) {
+													void startRecording();
+												}
+											} else {
+												isCapturingRef.current = false;
 												setRecordDragX(0);
+												if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+												setShowRecordCircle(false);
+												if (isLong) {
+													stopRecording(true);
+												} else {
+													setIsMicMenuOpen(true);
+												}
+											}
+										}}
+										onPointerCancel={(e) => {
+											if (longPressTimerRef.current) {
+												clearTimeout(longPressTimerRef.current);
+												longPressTimerRef.current = null;
+											}
+											e.currentTarget.releasePointerCapture(e.pointerId);
+											if (!isDesktop) {
+												isCapturingRef.current = false;
+												setRecordDragX(0);
+												if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
 												setShowRecordCircle(false);
 												cancelRecording();
-											}, 280);
-										}
-									} : undefined}
-									onPointerUp={!isDesktop ? () => { isCapturingRef.current = false; setRecordDragX(0); if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; } setShowRecordCircle(false); stopRecording(true); } : undefined}
-									onPointerCancel={!isDesktop ? () => { isCapturingRef.current = false; setRecordDragX(0); if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; } setShowRecordCircle(false); cancelRecording(); } : undefined}
-									className={`relative shrink-0 inline-flex h-8 w-8 items-center justify-center rounded-lg transition select-none touch-none ${isRecording ? "text-red-500" : "text-[var(--accent)] hover:opacity-80"}`}
-									style={showRecordCircle ? {
-										transform: `translateX(${recordDragX}px)`,
-										transition: recordDragX === 0 ? "transform 0.3s cubic-bezier(0.34,1.56,0.64,1)" : "none",
-									} : undefined}
-									aria-label={t("chat.record_audio", { defaultValue: "Record audio" })}
-								>
-									{showRecordCircle && (
-										<span
-											className="pointer-events-none absolute rounded-full"
-											style={{
-												inset: "-20px",
-												background: `color-mix(in srgb, var(--accent) ${Math.round((1 - dragProgress) * 100)}%, #ef4444)`,
-												opacity: 0.2,
-												boxShadow: `0 0 0 1.5px color-mix(in srgb, var(--accent) ${Math.round((1 - dragProgress) * 100)}%, #ef4444)`,
+											}
+										}}
+										className={`relative shrink-0 inline-flex h-8 w-8 items-center justify-center rounded-lg transition select-none touch-none ${isRecording ? "text-red-500" : "text-[var(--accent)] hover:opacity-80"}`}
+										style={showRecordCircle ? {
+											transform: `translateX(${recordDragX}px)`,
+											transition: recordDragX === 0 ? "transform 0.3s cubic-bezier(0.34,1.56,0.64,1)" : "none",
+										} : undefined}
+										disabled={isProcessingAudioFile}
+										aria-label={t("chat.record_audio", { defaultValue: "Record audio" })}
+									>
+										{showRecordCircle && (
+											<span
+												className="pointer-events-none absolute rounded-full"
+												style={{
+													inset: "-20px",
+													background: `color-mix(in srgb, var(--accent) ${Math.round((1 - dragProgress) * 100)}%, #ef4444)`,
+													opacity: 0.2,
+													boxShadow: `0 0 0 1.5px color-mix(in srgb, var(--accent) ${Math.round((1 - dragProgress) * 100)}%, #ef4444)`,
+												}}
+											/>
+										)}
+										{isProcessingAudioFile ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic className="h-4 w-4" />}
+									</button>
+
+									{/* Glassmorphism Popup Menu for Audio/Video Upload */}
+									<div 
+										className={`absolute bottom-full right-0 mb-3 w-[220px] origin-bottom-right rounded-2xl border border-white/10 bg-[var(--surface)]/80 backdrop-blur-xl p-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.3)] transition-all duration-300 ${
+											isMicMenuOpen ? "scale-100 opacity-100" : "pointer-events-none scale-90 opacity-0"
+										}`}
+									>
+										<button
+											type="button"
+											onClick={(e) => {
+												e.stopPropagation();
+												audioFileInputRef.current?.click();
 											}}
-										/>
-									)}
-									<Mic className="relative h-4 w-4" />
-								</button>
+											className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium text-[var(--text)] transition-colors hover:bg-white/10 active:bg-white/5"
+										>
+											<div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent)] text-[var(--accent-contrast)]">
+												<FileAudio className="h-4 w-4" />
+											</div>
+											<span>{t("chat.upload_audio_video", { defaultValue: "Upload Audio/Video" })}</span>
+										</button>
+									</div>
+
+									<input
+										type="file"
+										ref={audioFileInputRef}
+										accept="audio/mp4, audio/aac, audio/mpeg, audio/ogg, audio/wav, audio/webm, video/mp4, video/webm, video/quicktime"
+										className="hidden"
+										onChange={handleAudioFileSelect}
+									/>
+								</div>
 							)}
 						</div>}
 

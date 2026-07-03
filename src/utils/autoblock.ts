@@ -1,10 +1,8 @@
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import { isTauriRuntime } from "../services/tauriWebSocket";
-import { getSetting, setSetting } from "../services/chatDb";
-import { appLog } from "./logger";
 
 export async function notifyAutoBlock(profileName: string, reason: string) {
-    appLog.info(`[AutoBlock] Banned: ${profileName} | Reason: ${reason}`);
+    console.log(`[AutoBlock] Banned: ${profileName} | Reason: ${reason}`);
 
     if (!isTauriRuntime()) return;
 
@@ -18,149 +16,93 @@ export async function notifyAutoBlock(profileName: string, reason: string) {
         if (permissionGranted) {
             sendNotification({
                 title: "Free Grind Auto-Blocker",
-                body: `Blocked: ${profileName}\n${reason}`, // Shows the full message now!
+                body: `Blocked: ${profileName}\n${reason}`,
             });
         }
     } catch (e) {
-        appLog.error("Failed to send notification", e);
+        console.error("Failed to send notification", e);
     }
 }
 
-// ---------------------------------------------------------------------------
-// Automation settings — backed by the active profile's db (chatDb), kept in
-// an in-memory cache so the hot-path checkers below (called per-message
-// during chat/grid filtering) can stay synchronous instead of awaiting a db
-// round-trip on every check.
-// ---------------------------------------------------------------------------
-
-export interface AutomationSettings {
-    blockOnChat: boolean;
-    blockGrid: boolean;
-    forbiddenWords: string;
-    minAge: string;
-    maxAge: string;
-    refreshEnabled: boolean;
-    refreshInterval: string;
-}
-
-const DEFAULT_AUTOMATION_SETTINGS: AutomationSettings = {
-    blockOnChat: false,
-    blockGrid: false,
-    forbiddenWords: "",
-    minAge: "18",
-    maxAge: "99",
-    refreshEnabled: false,
-    refreshInterval: "5",
-};
-
-const AUTOMATION_SETTINGS_KEY = "automation";
-
-let automationCache: AutomationSettings = DEFAULT_AUTOMATION_SETTINGS;
-
-/**
- * Populates the in-memory automation cache from the active profile's db.
- * Awaited by AuthContext before it flips settingsReady, so by the time any
- * consumer observes settingsReady=true the cache already reflects the
- * active profile.
- */
-export async function loadAutomationCache(): Promise<void> {
-    try {
-        const stored = await getSetting<Partial<AutomationSettings>>(AUTOMATION_SETTINGS_KEY);
-        automationCache = { ...DEFAULT_AUTOMATION_SETTINGS, ...stored };
-    } catch (error) {
-        appLog.error("[AutoBlock] failed to load automation settings", error);
-        automationCache = DEFAULT_AUTOMATION_SETTINGS;
-    }
-    lastSavedWords = null;
-}
-
-export function getAutomationSettings(): AutomationSettings {
-    return automationCache;
-}
-
-export async function setAutomationSettings(
-    patch: Partial<AutomationSettings>,
-): Promise<AutomationSettings> {
-    automationCache = { ...automationCache, ...patch };
-    await setSetting(AUTOMATION_SETTINGS_KEY, automationCache);
-    lastSavedWords = null;
-    return automationCache;
-}
-
-export function getForbiddenWords(): string {
-    return automationCache.forbiddenWords;
-}
-
-export async function setForbiddenWords(value: string): Promise<void> {
-    await setAutomationSettings({ forbiddenWords: value });
-}
-
-export function getAutoRefreshSettings(): { enabled: boolean; intervalMinutes: string } {
-    return { enabled: automationCache.refreshEnabled, intervalMinutes: automationCache.refreshInterval };
-}
-
-let cachedKeywords: string[] = [];
-let cachedRegex: RegExp | null = null;
+// --- JAY'S PERFORMANCE CACHE + YOUR EXACT MATCH REGEX ---
 let lastSavedWords: string | null = null;
+let cachedRegexes: { keyword: string, regex: RegExp }[] = [];
 
-// NEW: Returns the exact word that triggered the block
-export function getMatchedForbiddenWord(text: string | null | undefined, context: "grid" | "chat"): string | null {
+// Target can be: "name", "bio", or "message"
+export function getMatchedForbiddenWord(text: string | null | undefined, target: "name" | "bio" | "message"): string | null {
     if (!text) return null;
-    const isGridEnabled = automationCache.blockGrid;
-    const isChatEnabled = automationCache.blockOnChat;
 
-    if (context === "grid" && !isGridEnabled) return null;
-    if (context === "chat" && !isChatEnabled) return null;
+    // Check specific toggles
+    if (target === "name" && window.localStorage.getItem("fg-block-name") === "false") return null;
+    if (target === "bio" && window.localStorage.getItem("fg-block-bio") === "false") return null;
+    if (target === "message" && window.localStorage.getItem("fg-block-message") === "false") return null;
 
-    const savedWords = automationCache.forbiddenWords;
+    const savedWords = window.localStorage.getItem("fg-forbidden-words");
+    if (!savedWords || savedWords.trim() === "") return null;
 
-    // Cache logic: only re-compile regex if keywords changed
+    // Jay's Cache Logic: Only re-compile the Regexes if you changed your settings!
     if (savedWords !== lastSavedWords) {
         lastSavedWords = savedWords;
-        cachedKeywords = savedWords.split(',')
+        cachedRegexes = savedWords.split(',')
             .map(word => word.trim().toLowerCase())
-            .filter(word => word.length > 0);
-        
-        if (cachedKeywords.length > 0) {
-            // Sort by length descending to ensure "Snapchat" matches before "Snap"
-            const sortedKeywords = [...cachedKeywords].sort((a, b) => b.length - a.length);
-            const pattern = sortedKeywords
-                .map(keyword => keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-                .join('|');
-            // Using a capturing group for the keywords and non-capturing groups for boundaries
-            cachedRegex = new RegExp(`(?:^|\\W)(${pattern})(?:$|\\W)`, 'i');
-        } else {
-            cachedRegex = null;
+            .filter(word => word.length > 0)
+            .map(keyword => {
+                const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                return {
+                    keyword,
+                    regex: new RegExp(`(?:^|\\W)${escaped}(?:$|\\W)`, 'i') // Your exact match rule
+                };
+            });
+    }
+
+    if (cachedRegexes.length === 0) return null;
+
+    for (const item of cachedRegexes) {
+        if (item.regex.test(text)) {
+            return item.keyword; // Boom. Caught.
         }
     }
-
-    if (!cachedRegex) return null;
-
-    const lowerText = text.toLowerCase();
-    const match = lowerText.match(cachedRegex);
-    if (match) {
-        // Return the first captured group (the actual keyword)
-        return match[1];
-    }
-
     return null;
 }
+// --------------------------------------------------------
 
-// Keep this for the Grid/Inbox where we only need true/false
-export function shouldAutoBlock(text: string | null | undefined, context: "grid" | "chat"): boolean {
-    return getMatchedForbiddenWord(text, context) !== null;
+export function shouldAutoBlock(text: string | null | undefined, target: "name" | "bio" | "message"): boolean {
+    return getMatchedForbiddenWord(text, target) !== null;
 }
 
-export function isOutsideAgeLimits(age: number | null | undefined, context: "grid" | "chat"): boolean {
-    if (age == null) return false;
-    const isGridEnabled = automationCache.blockGrid;
-    const isChatEnabled = automationCache.blockOnChat;
+// --- Grindr Tag Blocker ---
+export function isForbiddenLookingFor(profileLookingFor: number[] | null | undefined): boolean {
+    if (!profileLookingFor || profileLookingFor.length === 0) return false;
+    
+    const savedTags = window.localStorage.getItem("fg-block-looking-for");
+    if (!savedTags) return false;
+    
+    const mode = window.localStorage.getItem("fg-block-looking-for-mode") || "any"; // "any" or "only"
 
-    if (context === "grid" && !isGridEnabled) return false;
-    if (context === "chat" && !isChatEnabled) return false;
+    try {
+        const blockedIds = JSON.parse(savedTags) as number[];
+        if (!Array.isArray(blockedIds) || blockedIds.length === 0) return false;
+        
+        if (mode === "only") {
+            // Block ONLY if every single tag they have is in our blocked list
+            return profileLookingFor.every(id => blockedIds.includes(id));
+        } else {
+            // Block if ANY tag they have is in our blocked list
+            return profileLookingFor.some(id => blockedIds.includes(id));
+        }
+    } catch {
+        return false;
+    }
+}
+// --------------------------------------------------------
 
-    const rawMin = automationCache.minAge;
-    const rawMax = automationCache.maxAge;
+export function isOutsideAgeLimits(age: number | null | undefined): boolean {
+    if (age == null) {
+        return window.localStorage.getItem("fg-block-no-age") === "true";
+    }
+
+    const rawMin = window.localStorage.getItem("fg-block-min-age");
+    const rawMax = window.localStorage.getItem("fg-block-max-age");
 
     if (rawMin && rawMin.trim() !== "") {
         const minAge = parseInt(rawMin.trim(), 10);
@@ -172,4 +114,65 @@ export function isOutsideAgeLimits(age: number | null | undefined, context: "gri
     }
 
     return false;
+}
+
+// Distance Blocker
+export function isOutsideDistanceLimits(distanceMeters: number | null | undefined): boolean {
+    if (distanceMeters == null || isNaN(distanceMeters)) return false; 
+    
+    const rawMax = window.localStorage.getItem("fg-block-max-distance");
+    if (rawMax && rawMax.trim() !== "") {
+        const maxKm = parseFloat(rawMax.trim());
+        // Convert meters to km and check
+        if (!isNaN(maxKm) && (distanceMeters / 1000) > maxKm) return true;
+    }
+    
+    return false;
+}
+
+// --- PER-CHAT GHOST MODE LOGIC ---
+export function isChatGhosted(conversationId: string): boolean {
+    const globalGhost = window.localStorage.getItem("fg-ghost-mode") === "true";
+    const exceptionsStr = window.localStorage.getItem("fg-ghost-exceptions") || "{}";
+    
+    try {
+        const exceptions = JSON.parse(exceptionsStr) as Record<string, boolean>;
+        if (typeof exceptions[conversationId] === "boolean") {
+            return exceptions[conversationId];
+        }
+    } catch {}
+    
+    return globalGhost;
+}
+
+export function toggleChatGhost(conversationId: string): boolean {
+    const currentState = isChatGhosted(conversationId);
+    const exceptionsStr = window.localStorage.getItem("fg-ghost-exceptions") || "{}";
+    
+    try {
+        const exceptions = JSON.parse(exceptionsStr) as Record<string, boolean>;
+        exceptions[conversationId] = !currentState;
+        window.localStorage.setItem("fg-ghost-exceptions", JSON.stringify(exceptions));
+    } catch {
+        window.localStorage.setItem("fg-ghost-exceptions", JSON.stringify({ [conversationId]: !currentState }));
+    }
+    return !currentState;
+}
+
+export async function loadAutomationCache(): Promise<void> {
+    // Dummy function to satisfy AuthContext.tsx
+}
+
+export function getAutoRefreshSettings(): { enabled: boolean; intervalMinutes: string } {
+    const enabled = window.localStorage.getItem("fg-auto-refresh-enabled") === "true";
+    const intervalMinutes = window.localStorage.getItem("fg-auto-refresh-interval") || "5";
+    return { enabled, intervalMinutes };
+}
+
+export function getForbiddenWords(): string {
+    return window.localStorage.getItem("fg-forbidden-words") || "";
+}
+
+export async function setForbiddenWords(value: string): Promise<void> {
+    window.localStorage.setItem("fg-forbidden-words", value);
 }

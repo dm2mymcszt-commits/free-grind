@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { BarChart3, CheckCheck, Eye, ImageOff, ToggleRight } from "lucide-react";
+import { BarChart3, CheckCheck, Eye, ImageOff, ToggleRight, ScanSearch } from "lucide-react";
 import { BackToSettings } from "../../components/BackToSettings";
 import { ToggleRow } from "../../components/ui/toggle-row";
 import { usePreferences } from "../../contexts/PreferencesContext";
@@ -26,6 +26,7 @@ export function SettingsPrivacyPage() {
 	const [showReadReceiptToggle, setShowReadReceiptToggle] = useState(() => getShowReadReceiptToggle());
 	const [recordProfileViews, setRecordProfileViews] = useState(() => isRecordProfileViewsEnabled());
 	const [analyticsConsent, setAnalyticsConsent] = useState<AnalyticsConsentChoice | null>(() => readAnalyticsConsentChoice());
+	const [imageScannerEnabled, setImageScannerEnabled] = useState(() => window.localStorage.getItem("fg-image-scanner-enabled") === "true");
 
 	return (
 		<section className="app-screen">
@@ -36,6 +37,24 @@ export function SettingsPrivacyPage() {
 			</header>
 
 			<div className="grid gap-6">
+
+				{/* Security */}
+				<div>
+					<p className="mb-2 px-1 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">Security</p>
+					<div className="surface-card overflow-hidden divide-y divide-[var(--border)]">
+						<ToggleRow
+							icon={<ScanSearch className="h-5 w-5" />}
+							iconClass="bg-blue-500/15 text-blue-400"
+							label="Media Scanner"
+							description="Adds a Scanner Hub to the photo viewer to instantly reverse-search images using Google Lens."
+							checked={imageScannerEnabled}
+							onChange={(checked) => {
+								setImageScannerEnabled(checked);
+								window.localStorage.setItem("fg-image-scanner-enabled", String(checked));
+							}}
+						/>
+					</div>
+				</div>
 
 				{/* Read Receipts */}
 				<div>
