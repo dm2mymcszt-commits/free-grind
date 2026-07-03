@@ -120,7 +120,7 @@ export function getCurrentHotswapChannel(): HotswapChannel {
 }
 
 export function isHotswapAvailable(): boolean {
-	return isTauri();
+	return false;
 }
 
 export async function markHotswapStartupReady(): Promise<void> {

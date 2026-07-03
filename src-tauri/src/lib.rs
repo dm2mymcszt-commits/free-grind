@@ -46,27 +46,8 @@ pub fn run() {
             }
         };
 
-        #[cfg(target_os = "windows")]
-        let is_manager_runtime = windows_instance::WindowsInstance::current().is_manager();
-        #[cfg(not(target_os = "windows"))]
-        let is_manager_runtime = false;
-
         let context = tauri::generate_context!();
-        let (hotswap, context) = if is_manager_runtime {
-            (None, context)
-        } else {
-            match tauri_plugin_hotswap::init(context) {
-                Ok((h, c)) => (Some(h), c),
-                Err(e) => {
-                    panic!("failed to initialize hotswap plugin: {}", e);
-                }
-            }
-        };
-
-        let mut builder = tauri::Builder::default();
-        if let Some(hotswap_plugin) = hotswap {
-            builder = builder.plugin(hotswap_plugin);
-        }
+        let builder = tauri::Builder::default();
 
         let app = builder
             .plugin(tauri_plugin_notification::init())
@@ -187,15 +168,7 @@ pub fn run() {
     #[cfg(mobile)]
     {
         let context = tauri::generate_context!();
-        let (hotswap, context) = match tauri_plugin_hotswap::init(context) {
-            Ok((h, c)) => (h, c),
-            Err(e) => {
-                panic!("failed to initialize hotswap plugin: {}", e);
-            }
-        };
-
         let builder = tauri::Builder::default()
-            .plugin(hotswap)
             .plugin(tauri_plugin_notification::init())
             .plugin(tauri_plugin_os::init())
             .plugin(tauri_plugin_geolocation::init())
