@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { 
     Ban, Clock, Download, RefreshCw, Save, Tag, Upload, Users, 
-    Wand2, Trash2, Eye, HardDrive, ShieldAlert, Crosshair, Image as ImageIcon,
+    Wand2, Trash2, Eye, ShieldAlert, Crosshair, Image as ImageIcon,
     MessageSquare, ShieldCheck
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -15,30 +15,8 @@ import { interestViewsStore } from "../../services/interestViewsStore";
 import { getLookingForOptions } from "./profile-option-builders";
 import { getAutoBlockWhitelist, removeFromAutoBlockWhitelist } from "../../utils/privacy";
 
-function useIsDesktop() {
-    const [isDesktop, setIsDesktop] = useState(() => {
-        if (typeof window === "undefined") return false;
-        const isMobilePlatform = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        return !isMobilePlatform && window.innerWidth >= 768;
-    });
-
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-        const handleResize = () => {
-            const isMobilePlatform = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-            setIsDesktop(!isMobilePlatform && window.innerWidth >= 768);
-        };
-        handleResize();
-        window.addEventListener("resize", handleResize);
-        return () => window.removeEventListener("resize", handleResize);
-    }, []);
-
-    return isDesktop;
-}
-
 export function SettingsAutomationPage() {
     const { t } = useTranslation();
-    const isDesktop = useIsDesktop();
     const queryClient = useQueryClient();
 
     // --- AUTO REFRESH STATE ---
@@ -90,9 +68,7 @@ export function SettingsAutomationPage() {
     const [lockedViewsCount, setLockedViewsCount] = useState<number | null>(null);
     const [lastViewScanTime, setLastViewScanTime] = useState(() => window.localStorage.getItem("fg-view-scanner-last-run"));
 
-    // --- AUTO-DOWNLOAD STATE ---
-    const [autoDownloadMedia, setAutoDownloadMedia] = useState(() => window.localStorage.getItem("fg-auto-download-media") === "true");
-    const [downloadBaseDir, setDownloadBaseDir] = useState(() => window.localStorage.getItem("fg-download-base-dir") || "Download");
+
 
     // Live update the Views Recovery Stats every 5 seconds
     useEffect(() => {
@@ -149,11 +125,7 @@ export function SettingsAutomationPage() {
         toast.success(val ? "Views Recovery Enabled" : "Views Recovery Disabled", { id: "view-scanner-toggle" });
     };
 
-    const handleToggleAutoDownload = (val: boolean) => {
-        setAutoDownloadMedia(val);
-        window.localStorage.setItem("fg-auto-download-media", String(val));
-        toast.success(val ? "Auto-Download Enabled" : "Auto-Download Disabled", { id: "download-toggle" });
-    };
+
 
     const handleToggleRefresh = (val: boolean) => {
         setRefreshEnabled(val);
@@ -313,48 +285,7 @@ export function SettingsAutomationPage() {
                     </div>
                 </div>
 
-                {/* AUTO DOWNLOAD */}
-                {isDesktop && (
-                    <div>
-                        <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
-                            Auto-Download Media
-                        </p>
-                        <div className="surface-card divide-y divide-[var(--border)] overflow-hidden">
-                            <ToggleRow
-                                icon={<HardDrive className="h-5 w-5" />}
-                                iconClass="bg-cyan-500/15 text-cyan-400"
-                                label="Enable Auto-Downloader"
-                                description="Silently save all incoming media to your device organized by profile."
-                                checked={autoDownloadMedia}
-                                onChange={handleToggleAutoDownload}
-                            />
 
-                            {autoDownloadMedia && (
-                                <div className="p-4">
-                                    <p className="mb-2 text-sm font-semibold text-[var(--text)]">Save Location</p>
-                                    <p className="mb-3 text-xs text-[var(--text-muted)] leading-relaxed">
-                                        A "FreeGrind_Media" folder will be created inside the location you choose.
-                                    </p>
-                                    <select
-                                        value={downloadBaseDir}
-                                        onChange={(e) => {
-                                            setDownloadBaseDir(e.target.value);
-                                            window.localStorage.setItem("fg-download-base-dir", e.target.value);
-                                            toast.success("Save location updated!");
-                                        }}
-                                        className="h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-1)] px-3 text-sm text-[var(--text)] outline-none transition focus:border-[var(--accent)]"
-                                    >
-                                        <option value="Download">Downloads Folder (Default)</option>
-                                        <option value="Picture">Pictures Folder</option>
-                                        <option value="Document">Documents Folder</option>
-                                        <option value="Video">Videos Folder</option>
-                                        <option value="Desktop">Desktop</option>
-                                    </select>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
 
                 {/* AUTO BLOCK */}
                 <div>
