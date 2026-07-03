@@ -81,7 +81,14 @@ import { ChatThreadMessages } from "./ChatThreadMessages";
 import { AudioMessagePlayer } from "./AudioMessagePlayer";
 import { ConfirmDialog } from "../../../components/ui/confirm-dialog";
 import { useApiFunctions } from "../../../hooks/useApiFunctions";
-import { getShowReadReceiptToggle, isReadReceiptsHidden, toggleReadReceiptsHidden } from "../../../utils/privacy";
+import {
+	getShowReadReceiptToggle,
+	isReadReceiptsHidden,
+	toggleReadReceiptsHidden,
+	isProfileAutoblockWhitelisted,
+	addToAutoBlockWhitelist,
+	removeFromAutoBlockWhitelist,
+} from "../../../utils/privacy";
 import { ToggleRow } from "../../../components/ui/toggle-row";
 import { BottomDrawer } from "../../../components/ui/bottom-drawer";
 import { BottomSheet, SheetClose } from "../../../components/ui/bottom-sheet";
@@ -1380,6 +1387,28 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 														<MessageCircleOff className="mr-2 h-4 w-4 opacity-70" />
 													)}
 													{selectedConversation.data.muted ? t("chat.unmute") : t("chat.mute")}
+												</button>
+											)}
+											{otherParticipant && !isArchived && (
+												<button
+													type="button"
+													onClick={() => {
+														setIsHeaderActionsMenuOpen(false);
+														const targetId = String(otherParticipant.profileId);
+														if (isProfileAutoblockWhitelisted(targetId)) {
+															removeFromAutoBlockWhitelist(targetId);
+															toast.success(`Removed "${displayName}" from Auto-Block Whitelist.`);
+														} else {
+															addToAutoBlockWhitelist(targetId, displayName);
+															toast.success(`Added "${displayName}" to Auto-Block Whitelist.`);
+														}
+													}}
+													className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text)] transition hover:bg-[var(--surface-2)]"
+												>
+													<ShieldCheck className="mr-2 h-4 w-4 opacity-70" />
+													{isProfileAutoblockWhitelisted(String(otherParticipant.profileId))
+														? "Remove Whitelist"
+														: "Add Whitelist"}
 												</button>
 											)}
 											{/* — Keyword banning — */}
