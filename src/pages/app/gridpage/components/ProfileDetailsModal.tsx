@@ -1074,23 +1074,12 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 								/>
 							</div>
 						))}
-						{(activeProfile.lastReceivedTapTimestamp != null || hasRightNowSlide) && (
+						{activeProfile.lastReceivedTapTimestamp != null && (
 							<div className="pointer-events-none absolute bottom-3 left-3 z-20 flex flex-row items-center gap-1.5">
-								{activeProfile.lastReceivedTapTimestamp != null && (
-									<div className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
-										<Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" />
-										<span className="text-xs font-medium text-white">{formatRelativeTime(activeProfile.lastReceivedTapTimestamp)}</span>
-									</div>
-								)}
-								{hasRightNowSlide && (
-									<p
-										className="inline-flex items-center gap-1 rounded-full bg-black/65 px-3 py-1 text-xs font-semibold ring-1 ring-white/25"
-										style={{ color: "var(--right-now)" }}
-									>
-										<Zap className="h-3.5 w-3.5" />
-										<span>{t("profile_details.right_now")}</span>
-									</p>
-								)}
+								<div className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
+									<Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" />
+									<span className="text-xs font-medium text-white">{formatRelativeTime(activeProfile.lastReceivedTapTimestamp)}</span>
+								</div>
 							</div>
 						)}
 						{carouselHashes.length > 1 && (
@@ -1423,25 +1412,14 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 								/>
 							</div>
 						))}
-						{(activeProfile.lastReceivedTapTimestamp != null || hasRightNowSlide) && (
+						{activeProfile.lastReceivedTapTimestamp != null && (
 							<div className="pointer-events-none absolute bottom-3 left-3 z-20 flex flex-row items-center gap-1.5">
-								{activeProfile.lastReceivedTapTimestamp != null && (
-									<div className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
-										<Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" />
-										<span className="text-xs font-medium text-white">
-											{formatRelativeTime(activeProfile.lastReceivedTapTimestamp)}
-										</span>
-									</div>
-								)}
-								{hasRightNowSlide && (
-									<p
-										className="inline-flex items-center gap-1 rounded-full bg-black/65 px-3 py-1 text-xs font-semibold ring-1 ring-white/25"
-										style={{ color: "var(--right-now)" }}
-									>
-										<Zap className="h-3.5 w-3.5" />
-										<span>{t("profile_details.right_now")}</span>
-									</p>
-								)}
+								<div className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
+									<Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" />
+									<span className="text-xs font-medium text-white">
+										{formatRelativeTime(activeProfile.lastReceivedTapTimestamp)}
+									</span>
+								</div>
 							</div>
 						)}
 						{carouselHashes.length > 1 && (

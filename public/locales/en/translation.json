@@ -8,6 +8,8 @@
         "profile_editor_desc": "Edit profile details, identity, and preferences.",
         "customizability": "Customizability",
         "customizability_desc": "Change color scheme and accent color.",
+        "behavior": "Behavior",
+        "behavior_desc": "Confirmation prompts for blocking and deleting chats.",
         "privacy": "Privacy & Analytics",
         "privacy_desc": "Read receipts, profile view tracking, media blur, and analytics.",
         "automation": "Automation",
@@ -657,6 +659,9 @@
             "current": "Current",
             "not_selected": "Not selected yet"
         }
+    },
+    "behavior": {
+        "subtitle": "Manage confirmation prompts before blocking profiles or deleting chats."
     },
     "issue_search": {
         "title": "Issues & Feature Requests",

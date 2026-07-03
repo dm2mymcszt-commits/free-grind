@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import {
 	BadgeInfo,
+	Ban,
 	Bell,
 	Bookmark,
 	Bug,
@@ -401,12 +402,26 @@ export function SettingsPage() {
 							t("settings.my_albums"),
 							t("settings.my_albums_desc"),
 						)}
+					</div>
+				</div>
+
+				{/* Customizability */}
+				<div>
+					<p className="mb-2 px-1 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">Customizability</p>
+					<div className="surface-card overflow-hidden divide-y divide-[var(--border)]">
 						{navRow(
 							() => navigate("/settings/customizability"),
 							<Palette className="h-5 w-5" />,
 							"bg-violet-500/15 text-violet-400",
 							t("settings.customizability"),
 							t("settings.customizability_desc"),
+						)}
+						{navRow(
+							() => navigate("/settings/behavior"),
+							<Ban className="h-5 w-5" />,
+							"bg-red-500/15 text-red-400",
+							t("settings.behavior"),
+							t("settings.behavior_desc"),
 						)}
 					</div>
 				</div>
@@ -750,6 +765,11 @@ export function SettingsPage() {
 													<Loader2 className="h-5 w-5 animate-spin text-[var(--accent)]" />
 												</div>
 											)}
+											{isActive && (
+												<div className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--accent)] text-white ring-2 ring-[var(--surface)]">
+													<Check className="h-2.5 w-2.5" strokeWidth={3} />
+												</div>
+											)}
 										</div>
 										<div className="min-w-0 flex-1">
 											<p className="truncate text-sm font-semibold leading-snug">
@@ -761,12 +781,6 @@ export function SettingsPage() {
 													: t("settings.account_tap_to_switch", { defaultValue: "Tap to switch" })}
 											</p>
 										</div>
-										{isActive && (
-											<div className="flex shrink-0 items-center gap-1 rounded-full bg-[var(--accent)] py-1 pl-1.5 pr-2.5 text-xs font-bold text-white shadow-sm">
-												<Check className="h-3.5 w-3.5 shrink-0" />
-												{t("browse_location.badge_active", { defaultValue: "Active" })}
-											</div>
-										)}
 									</button>
 									{isActive ? (
 										<button

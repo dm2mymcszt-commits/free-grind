@@ -26,6 +26,7 @@ import {
 	Sparkles,
 	Syringe,
 	User,
+	Zap,
 } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -451,6 +452,12 @@ export function ProfileDetailsContent({
 									{profileStatusLabel}
 								</span>
 							)}
+							{hasRightNow && (
+								<span className="flex items-center gap-1 font-semibold" style={{ color: "var(--right-now)" }}>
+									<Zap className="h-3.5 w-3.5" />
+									{t("profile_details.right_now")}
+								</span>
+							)}
 							{profileDistance !== undefined && profileDistance !== null && (
 								<span className="flex items-center gap-1">
 									<MapPin className="h-3.5 w-3.5" />
@@ -547,23 +554,18 @@ export function ProfileDetailsContent({
 				<div className="grid gap-8">
 					{hasRightNow && (
 						<div>
-							<div className="mb-2 flex items-center gap-2">
-								<p
-									className="text-xs font-semibold uppercase tracking-[0.1em]"
-									style={{ color: "var(--right-now)" }}
-								>
-									{t("profile_details.right_now")}
-								</p>
+							<p
+								className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.1em]"
+								style={{ color: "var(--right-now)" }}
+							>
+								{t("profile_details.right_now")}
 								{isRightNowHosting && (
-									<span
-										className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white"
-										style={{ backgroundColor: "var(--right-now)" }}
-									>
-										<Home className="h-3 w-3" />
-										{t("right_now.hosting")}
-									</span>
+									<>
+										<span aria-hidden="true">·</span>
+										<Home className="h-3.5 w-3.5" aria-label={t("right_now.hosting")} />
+									</>
 								)}
-							</div>
+							</p>
 							<div
 								className="rounded-xl px-4 py-3"
 								style={{

@@ -88,7 +88,7 @@ import type { ArchivedReason } from "../../../types/chat-db";
 import { useAvatarCache } from "../../../hooks/useAvatarCache";
 import { resolveAvatarSrc } from "../../../services/avatarStore";
 import { getForbiddenWords, setForbiddenWords } from "../../../utils/autoblock";
-import { SKIP_BLOCK_CONFIRM_KEY, SKIP_UNBLOCK_CONFIRM_KEY } from "../../../utils/blockConfirm";
+import { SKIP_BLOCK_CONFIRM_KEY, SKIP_UNBLOCK_CONFIRM_KEY, SKIP_DELETE_CONVERSATION_CONFIRM_KEY } from "../../../utils/blockConfirm";
 
 async function fixWebmDuration(blob: Blob, durationMs: number): Promise<Blob> {
 	if (!blob.type.includes("webm")) return blob;
@@ -418,6 +418,13 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 	const [isBlockConfirmOpen, setIsBlockConfirmOpen] = useState(false);
 	const [isDeleteConversationConfirmOpen, setIsDeleteConversationConfirmOpen] =
 		useState(false);
+	const [dontAskDeleteConversationAgain, setDontAskDeleteConversationAgain] = useState(false);
+	const [skipDeleteConversationConfirm, setSkipDeleteConversationConfirm] = useState(() => {
+		if (typeof window === "undefined") {
+			return false;
+		}
+		return localStorage.getItem(SKIP_DELETE_CONVERSATION_CONFIRM_KEY) === "true";
+	});
 	const [dontAskBlockAgain, setDontAskBlockAgain] = useState(false);
 	const [skipBlockConfirm, setSkipBlockConfirm] = useState(() => {
 		if (typeof window === "undefined") {
@@ -966,12 +973,21 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 						return;
 					}
 					setIsHeaderActionsMenuOpen(false);
+					if (skipDeleteConversationConfirm) {
+						void onDeleteConversation(selectedConversation.data.conversationId);
+						return;
+					}
+					setDontAskDeleteConversationAgain(false);
 					setIsDeleteConversationConfirmOpen(true);
 				};
 
 				const confirmDeleteConversation = () => {
 					if (!onDeleteConversation || isDeletingConversation) {
 						return;
+					}
+					if (dontAskDeleteConversationAgain && typeof window !== "undefined") {
+						localStorage.setItem(SKIP_DELETE_CONVERSATION_CONFIRM_KEY, "true");
+						setSkipDeleteConversationConfirm(true);
 					}
 					setIsDeleteConversationConfirmOpen(false);
 					void onDeleteConversation(selectedConversation.data.conversationId);
@@ -1412,6 +1428,9 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 							onCancel={closeDeleteConversationConfirm}
 							isProcessing={isDeletingConversation}
 							confirmTone="danger"
+							dontAskAgainLabel={t("profile_details.dont_ask_again")}
+							dontAskAgainChecked={dontAskDeleteConversationAgain}
+							onDontAskAgainChange={setDontAskDeleteConversationAgain}
 						/>
 					</>
 				);

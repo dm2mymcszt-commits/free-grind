@@ -8,6 +8,8 @@
         "profile_editor_desc": "Bearbeite Profildetails, Identität und Einstellungen.",
         "customizability": "Personalisierung",
         "customizability_desc": "Farbschema und Akzentfarbe ändern.",
+        "behavior": "Verhalten",
+        "behavior_desc": "Bestätigungsabfragen zum Blockieren und Löschen von Chats.",
         "privacy": "Privatsphäre & Analytics",
         "privacy_desc": "Lesebestätigungen, Profilaufrufe, Medien-Blur und Analytics.",
         "automation": "Automation",
@@ -635,6 +637,9 @@
         },
         "blur_incoming_media": "Chat-Medien unscharf",
         "blur_incoming_media_description": "Blendet Bilder und Videos in Chats automatisch unscharf ein. Am Desktop: Hover oder Klick zum Anzeigen. Im Chat wird die Anzeige beim Verlassen wieder zurückgesetzt."
+    },
+    "behavior": {
+        "subtitle": "Verwalte Bestätigungsabfragen vor dem Blockieren von Profilen oder dem Löschen von Chats."
     },
     "issues_form": {
         "title": "Fehler melden oder Feature vorschlagen",
