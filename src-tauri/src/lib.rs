@@ -83,12 +83,44 @@ pub fn run() {
                 #[cfg(target_os = "windows")]
                 {
                     use tauri::Manager;
+                    use windows::Win32::Foundation::HWND;
+                    use windows::Win32::Graphics::Dwm::{
+                        DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE,
+                        DWMWCP_DONOTROUND,
+                    };
                     use webview2_com::Microsoft::Web::WebView2::Win32::{
                         COREWEBVIEW2_PERMISSION_KIND_GEOLOCATION, COREWEBVIEW2_PERMISSION_KIND_MICROPHONE,
                         COREWEBVIEW2_PERMISSION_STATE_ALLOW,
                     };
                     use webview2_com::PermissionRequestedEventHandler;
+
                     if let Some(win) = app.get_webview_window("main") {
+                        let _ = win.set_background_color(Some(tauri::Color(0, 0, 0, 0)));
+
+                        // Remove the 1px border that Windows 11 draws around transparent layered windows
+                        if let Ok(hwnd) = win.hwnd() {
+                            let hwnd_val = HWND(hwnd.0 as _);
+                            unsafe {
+                                // Prevent Windows 11 DWM from drawing native rounded corners (which often draws a 1px border line)
+                                let corner_preference = DWMWCP_DONOTROUND;
+                                let _ = DwmSetWindowAttribute(
+                                    hwnd_val,
+                                    DWMWA_WINDOW_CORNER_PREFERENCE,
+                                    &corner_preference as *const _ as *const _,
+                                    std::mem::size_of::<i32>() as u32,
+                                );
+
+                                // Set border color to NONE to suppress the 1px border
+                                let color = 0xFFFFFFFE_u32; // DWMWA_COLOR_NONE
+                                let _ = DwmSetWindowAttribute(
+                                    hwnd_val,
+                                    DWMWA_BORDER_COLOR,
+                                    &color as *const u32 as *const _,
+                                    std::mem::size_of::<u32>() as u32,
+                                );
+                            }
+                        }
+
                         let _ = win.with_webview(|webview| {
                             let Ok(core) = (unsafe { webview.controller().CoreWebView2() }) else {
                                 return;

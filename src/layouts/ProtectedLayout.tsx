@@ -1,16 +1,12 @@
-﻿import { Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { NavBar } from "../components/NavBar";
 import { BackgroundViewScanner } from "../components/BackgroundViewScanner";
 import { BackgroundInboxScanner } from "../components/BackgroundInboxScanner";
-import { useLocationEngine } from "../hooks/useLocationEngine";
 import { useDesktopBreakpoint } from "../hooks/useDesktopBreakpoint";
 
 export function ProtectedLayout() {
     const location = useLocation();
     const isDesktop = useDesktopBreakpoint();
-    
-    // THIS ACTIVATES THE LOCATION ENGINE GLOBALLY!
-    useLocationEngine(); 
 
     const isChatConversationRoute =
         (/^\/chat\/[^/]+$/.test(location.pathname) && location.pathname !== "/chat/albums") ||

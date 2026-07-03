@@ -1430,7 +1430,7 @@ export function GridPage() {
 								>
 									<button
 										type="button"
-										onClick={() => setIsLocationOpen(true)}
+										onClick={() => navigate('/browse/location')}
 										className="flex min-w-0 flex-1 items-center gap-2.5 pl-2 pr-3 text-left active:scale-[0.99]"
 									>
 										<div
@@ -1653,7 +1653,7 @@ export function GridPage() {
 							isLoadingCards={isLoadingCards}
 							cardsError={cardsError}
 							isLocationMissing={isLocationMissing}
-							onOpenLocation={() => setIsLocationOpen(true)}
+							onOpenLocation={() => navigate('/browse/location')}
 							cards={sortedCards}
 							chatContactIndexByProfileId={
 								(SHOW_DEMO_DATA && showDebugInfo)
