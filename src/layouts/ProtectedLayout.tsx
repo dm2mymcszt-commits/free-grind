@@ -1,38 +1,37 @@
-import { Outlet, useLocation } from "react-router-dom";
+﻿import { Outlet, useLocation } from "react-router-dom";
 import { NavBar } from "../components/NavBar";
-import { useEffect, useState } from "react";
 import { BackgroundViewScanner } from "../components/BackgroundViewScanner";
 import { BackgroundInboxScanner } from "../components/BackgroundInboxScanner";
+import { useLocationEngine } from "../hooks/useLocationEngine";
+import { useDesktopBreakpoint } from "../hooks/useDesktopBreakpoint";
 
 export function ProtectedLayout() {
-	const location = useLocation();
+    const location = useLocation();
+    const isDesktop = useDesktopBreakpoint();
+    
+    // THIS ACTIVATES THE LOCATION ENGINE GLOBALLY!
+    useLocationEngine(); 
+
     const isChatConversationRoute =
         (/^\/chat\/[^/]+$/.test(location.pathname) && location.pathname !== "/chat/albums") ||
         (location.pathname === "/chat" && new URLSearchParams(location.search).has("targetProfileId"));
 	const isProfileRoute = /^\/profile\/[^/]+$/.test(location.pathname);
 
-	// Determine if we are on a large enough screen to show both the inbox and chat thread.
-	// This matches the 1024px breakpoint used in ChatPage.tsx for the dual-pane layout.
-	const [isChatDualPane, setIsChatDualPane] = useState(window.innerWidth >= 1024);
+    // Hide navbar on mobile/tablet for full-screen chat or profile pages.
+    const shouldHideNavbar = (isChatConversationRoute || isProfileRoute) && !isDesktop;
 
-	useEffect(() => {
-		const handleResize = () => {
-			setIsChatDualPane(window.innerWidth >= 1024);
-		};
-
-		window.addEventListener("resize", handleResize);
-		return () => window.removeEventListener("resize", handleResize);
-	}, []);
-
-	// Hide navbar on mobile/tablet for full-screen chat or profile pages.
-	const shouldHideNavbar = (isChatConversationRoute || isProfileRoute) && !isChatDualPane;
-
-	return (
-		<div className="relative">
-			<BackgroundViewScanner />
-			<BackgroundInboxScanner />
-			<Outlet />
-			{!shouldHideNavbar ? <NavBar /> : null}
-		</div>
-	);
+    return (
+        <div className="relative">
+            {/* Silently caches incoming views every 60s to bypass paywalls later */}
+            <BackgroundViewScanner />
+            
+            {/* Scans incoming unread chats to automatically apply block rules */}
+            <BackgroundInboxScanner />
+			
+            <div className="app-page-container">
+                <Outlet />
+            </div>
+            {!shouldHideNavbar ? <NavBar /> : null}
+        </div>
+    );
 }
