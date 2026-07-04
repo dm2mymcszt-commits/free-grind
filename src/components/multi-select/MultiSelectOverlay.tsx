@@ -5,6 +5,7 @@ import { Button } from "../ui/button";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 import { useApiFunctions } from "../../hooks/useApiFunctions";
+import { deleteConversationOnly } from "../../services/chatDb";
 
 export function MultiSelectOverlay() {
     const { isActive, selectedItems, viewType, deactivateMode, selectableItems, setSelectedItems } = useMultiSelect();
@@ -89,6 +90,7 @@ export function MultiSelectOverlay() {
                     for (const item of selectedItems) {
                         try {
                             await api.deleteConversation(item.id);
+                            await deleteConversationOnly(item.id);
                             successCount++;
                         } catch (e) {
                             console.error(`Failed to delete conversation ${item.id}`, e);

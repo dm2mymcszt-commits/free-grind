@@ -3330,6 +3330,7 @@ export function ChatPage() {
 				}
 				// Keep local database history intact so deleted chats can still be retrieved
 				// await chatDb.deleteConversationCascade(conversationId);
+				await chatDb.deleteConversationOnly(conversationId);
 				setArchivedConversations((previous) => {
 					if (!previous.has(conversationId)) {
 						return previous;

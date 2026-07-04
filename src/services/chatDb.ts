@@ -648,6 +648,21 @@ export async function deleteConversationCascade(
 	});
 }
 
+export async function deleteConversationOnly(
+	conversationId: string,
+): Promise<void> {
+	const db = await getDb();
+
+	await executeWithLockRetry(db, "delete-conversation-only", async () => {
+		await db.execute("DELETE FROM conversation_meta WHERE conversation_id = $1", [
+			conversationId,
+		]);
+		await db.execute("DELETE FROM conversations WHERE conversation_id = $1", [
+			conversationId,
+		]);
+	});
+}
+
 // ---------------------------------------------------------------------------
 // conversation_meta (last-read tracking)
 // ---------------------------------------------------------------------------
