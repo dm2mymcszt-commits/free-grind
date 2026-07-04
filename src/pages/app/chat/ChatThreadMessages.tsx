@@ -4,6 +4,7 @@ import { MapLocationPreview } from "../gridpage/components/MapLocationPreview";
 import { AudioMessagePlayer } from "./AudioMessagePlayer";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import React, { Fragment, useEffect, useState, useMemo, useCallback, useRef, useLayoutEffect } from "react";
+import { formatRelativeTime } from "../../../utils/relativeTime";
 
 import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
@@ -80,6 +81,8 @@ type ChatThreadMessagesProps = {
 	threadBottomRef: { current: HTMLDivElement | null };
 	isPartnerTyping?: boolean;
 	isArchived?: boolean;
+	hasChattedBefore?: boolean;
+	lastMessageTimestamp?: number | null;
 };
 
 const getReactionEmoji = (type: number): string => {
@@ -287,6 +290,8 @@ export function ChatThreadMessages({
 	threadBottomRef,
 	isPartnerTyping = false,
 	isArchived = false,
+	hasChattedBefore = false,
+	lastMessageTimestamp = null,
 }: ChatThreadMessagesProps) {
 	const { t } = useTranslation();
 	useLocalMediaCache();
@@ -779,6 +784,27 @@ export function ChatThreadMessages({
             ) : null}
 
             <div className={`flex flex-col gap-2 ${!isDesktop ? "px-[var(--app-px)] pt-4" : ""}`}>
+				{threadMessages.length === 0 && !hasChattedBefore && (
+					<div className="flex flex-col items-center justify-center p-8 text-center text-sm text-[var(--text-muted)] animate-fade-in mt-4">
+						<p className="font-semibold bg-[var(--surface-2)] border border-[var(--border)] px-5 py-3 rounded-2xl max-w-xs shadow-md text-white/90">
+							{t("chat.start_new_conversation", {
+								name: selectedConversation.data.name,
+								defaultValue: `Start a new conversation with ${selectedConversation.data.name}`
+							})}
+						</p>
+					</div>
+				)}
+				{threadMessages.length === 0 && hasChattedBefore && lastMessageTimestamp && (
+					<div className="flex flex-col items-center justify-center p-8 text-center text-sm text-[var(--text-muted)] animate-fade-in mt-4">
+						<p className="font-semibold bg-[var(--surface-2)] border border-[var(--border)] px-5 py-3 rounded-2xl max-w-xs shadow-md text-white/90">
+							{t("chat.chatted_before_time", {
+								name: selectedConversation.data.name,
+								time: formatRelativeTime(lastMessageTimestamp),
+								defaultValue: `You've chatted with ${selectedConversation.data.name} ${formatRelativeTime(lastMessageTimestamp)}`
+							})}
+						</p>
+					</div>
+				)}
             {(() => {
                 // Track the last header label to detect day transitions during rendering
                 let lastHeader = "";

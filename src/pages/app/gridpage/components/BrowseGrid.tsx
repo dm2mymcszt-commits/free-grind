@@ -59,6 +59,7 @@ type BrowseGridProps = {
 	hasMore?: boolean;
 	isLoadingMore?: boolean;
 	onLoadMore?: () => void;
+	hideImages?: boolean;
 };
 
 export function BrowseGrid({
@@ -73,6 +74,7 @@ export function BrowseGrid({
 	hasMore,
 	isLoadingMore,
 	onLoadMore,
+	hideImages,
 }: BrowseGridProps) {
 	const { t } = useTranslation();
 	const { mobileGridColumns } = usePreferences();
@@ -211,6 +213,7 @@ export function BrowseGrid({
 						onSelectProfile={onSelectProfile}
 						onMessageProfile={onMessageProfile}
 						isDesktop={isDesktop}
+						hideImages={hideImages}
 					/>
 				))}
 			</div>

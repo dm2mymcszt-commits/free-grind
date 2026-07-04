@@ -24,6 +24,8 @@ import { useRevealOnScroll } from "../../../hooks/useRevealOnScroll";
 import { useAvatarCache } from "../../../hooks/useAvatarCache";
 import { resolveAvatarSrc } from "../../../services/avatarStore";
 import { FEED_HEADER_OFFSET, FEED_MASK_GRADIENT_STOP } from "../../../config/design-config";
+import { SelectableItem } from "../../../components/multi-select/SelectableItem";
+import { useMultiSelect } from "../../../contexts/MultiSelectContext";
 
 type ChatInboxPanelProps = ChatInboxHeaderProps & {
 	isLoadingInbox: boolean;
@@ -62,12 +64,7 @@ type ChatConversationRowProps = {
 	isSelected: boolean;
 	isTyping: boolean;
 	isArchived: boolean;
-	isDesktop: boolean;
-	onSelectConversation: (c: ConversationEntry) => void;
 	onViewProfile: (profileId: number) => void;
-	onOpenContextMenu: (conversation: ConversationEntry, isArchived: boolean, x: number, y: number) => void;
-	onSwipePin: (conversation: ConversationEntry) => void;
-	onSwipeDeleteRequest: (conversation: ConversationEntry, isArchived: boolean) => void;
 };
 
 // Pinning is a server-side flag on a live conversation — it doesn't make
@@ -170,145 +167,14 @@ function ChatConversationRow({
 	isSelected,
 	isTyping,
 	isArchived,
-	isDesktop,
-	onSelectConversation,
 	onViewProfile,
-	onOpenContextMenu,
-	onSwipePin,
-	onSwipeDeleteRequest,
 }: ChatConversationRowProps) {
 	const { t } = useTranslation();
 	const { showDebugInfo } = usePreferences();
 	const { ref, revealClass } = useRevealOnScroll();
+	const { isActive, viewType: activeViewType } = useMultiSelect();
+	const isMultiSelectActive = isActive && activeViewType === "inbox";
 	useAvatarCache();
-
-	const contentRef = useRef<HTMLDivElement | null>(null);
-	const pinIconRef = useRef<HTMLDivElement | null>(null);
-	const deleteIconRef = useRef<HTMLDivElement | null>(null);
-	const swipeStateRef = useRef<{
-		startX: number;
-		startY: number;
-		dx: number;
-		armed: boolean;
-		lock: "pending" | "horizontal" | "vertical";
-	} | null>(null);
-	const suppressClickRef = useRef(false);
-
-	const SWIPE_THRESHOLD = 60;
-	const SWIPE_MAX_DRAG = 96;
-	const DIRECTION_LOCK_DISTANCE = 8;
-
-	const resetSwipeVisual = () => {
-		const content = contentRef.current;
-		if (content) {
-			content.style.transition = "transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease";
-			content.style.transform = "translateX(0px)";
-			content.style.boxShadow = "none";
-		}
-		for (const icon of [pinIconRef.current, deleteIconRef.current]) {
-			if (!icon) continue;
-			icon.style.transition = "opacity 0.2s, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)";
-			icon.style.opacity = "0";
-			icon.style.transform = "scale(0.5)";
-		}
-	};
-
-	const handleTouchStart = (event: React.TouchEvent) => {
-		if (isDesktop || event.touches.length !== 1) {
-			swipeStateRef.current = null;
-			return;
-		}
-		const touch = event.touches[0];
-		swipeStateRef.current = { startX: touch.clientX, startY: touch.clientY, dx: 0, armed: false, lock: "pending" };
-	};
-
-	const handleTouchMove = (event: React.TouchEvent) => {
-		if (isDesktop || event.touches.length !== 1) return;
-		const state = swipeStateRef.current;
-		if (!state || state.lock === "vertical") return;
-
-		const touch = event.touches[0];
-		const rawDx = touch.clientX - state.startX;
-		const rawDy = touch.clientY - state.startY;
-
-		if (state.lock === "pending") {
-			if (Math.max(Math.abs(rawDx), Math.abs(rawDy)) < DIRECTION_LOCK_DISTANCE) return;
-			// Whichever axis moved further decides the gesture — once it's a
-			// vertical scroll we stop touching the row entirely so scrolling
-			// the list can never leave a swipe "armed" for the next touchend.
-			state.lock = Math.abs(rawDy) > Math.abs(rawDx) ? "vertical" : "horizontal";
-			if (state.lock === "vertical") return;
-		}
-		// Pinning isn't available for archived conversations, so don't let a
-		// right-swipe reveal an action that would silently do nothing.
-		if (rawDx > 0 && isArchived) return;
-
-		const dx = Math.max(-SWIPE_MAX_DRAG, Math.min(SWIPE_MAX_DRAG, rawDx));
-		state.dx = dx;
-
-		const content = contentRef.current;
-		if (content && dx !== 0) {
-			content.style.transition = "none";
-			content.style.transform = `translateX(${dx}px)`;
-			content.style.boxShadow =
-				"-8px 0 16px -4px rgba(0, 0, 0, 0.35), 8px 0 16px -4px rgba(0, 0, 0, 0.35)";
-		}
-		const activeIcon = dx > 0 ? pinIconRef.current : deleteIconRef.current;
-		const inactiveIcon = dx > 0 ? deleteIconRef.current : pinIconRef.current;
-		if (inactiveIcon) inactiveIcon.style.opacity = "0";
-		if (activeIcon) {
-			const progress = Math.min(Math.abs(dx) / 40, 1);
-			activeIcon.style.transition = "none";
-			activeIcon.style.opacity = String(progress);
-			activeIcon.style.transform = `scale(${0.5 + progress * 0.5})`;
-		}
-
-		const isArmed = Math.abs(dx) > SWIPE_THRESHOLD;
-		if (isArmed !== state.armed) {
-			state.armed = isArmed;
-			if (isArmed) {
-				(window as unknown as { FreeGrindBridge?: { vibrate?: (ms: number) => void } }).FreeGrindBridge
-					?.vibrate?.(15) ?? navigator.vibrate?.(15);
-			}
-		}
-	};
-
-	const handleTouchEnd = () => {
-		const state = swipeStateRef.current;
-		swipeStateRef.current = null;
-		if (!state) return;
-
-		if (Math.abs(state.dx) > 8) {
-			suppressClickRef.current = true;
-		}
-		resetSwipeVisual();
-		if (!state.armed) return;
-
-		if (state.dx > 0) {
-			onSwipePin(conversation);
-		} else {
-			onSwipeDeleteRequest(conversation, isArchived);
-		}
-	};
-
-	const handleTouchCancel = () => {
-		swipeStateRef.current = null;
-		resetSwipeVisual();
-	};
-
-	const handleClick = () => {
-		if (suppressClickRef.current) {
-			suppressClickRef.current = false;
-			return;
-		}
-		onSelectConversation(conversation);
-	};
-
-	const handleContextMenu = (event: React.MouseEvent) => {
-		if (!isDesktop) return;
-		event.preventDefault();
-		onOpenContextMenu(conversation, isArchived, event.clientX, event.clientY);
-	};
 
 	const otherParticipant = getOtherParticipant(conversation, userId);
 	const otherProfileId = otherParticipant?.profileId ? String(otherParticipant.profileId) : null;
@@ -326,132 +192,117 @@ function ChatConversationRow({
 	const readReceiptsHidden = isReadReceiptsHidden(conversation.data.conversationId);
 
 	return (
-		<div ref={ref} className={`relative overflow-hidden ${revealClass}`}>
-			<div className="pointer-events-none absolute inset-0 flex items-center justify-between px-6">
-				<div
-					ref={pinIconRef}
-					className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-3)]"
-					style={{ opacity: 0, transform: "scale(0.5)" }}
-				>
-					<Pin className="h-4 w-4 text-[var(--accent)]" />
-				</div>
-				<div
-					ref={deleteIconRef}
-					className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-3)]"
-					style={{ opacity: 0, transform: "scale(0.5)" }}
-				>
-					<Trash2 className="h-4 w-4 text-red-500" />
-				</div>
-			</div>
-			<div
-				ref={contentRef}
-				onClick={handleClick}
-				onContextMenu={handleContextMenu}
-				onTouchStart={handleTouchStart}
-				onTouchEnd={handleTouchEnd}
-				onTouchMove={handleTouchMove}
-				onTouchCancel={handleTouchCancel}
-				style={{
-					touchAction: "pan-y",
-					...(isSelected
-						? { borderLeft: "2px solid var(--accent)", paddingLeft: "14px" }
-						: { paddingLeft: "16px" }),
+		<div
+			ref={ref}
+			className={`relative flex items-center gap-4 py-3 px-4 h-full text-left transition-all duration-300 rounded-2xl ${
+				isSelected 
+					? "border backdrop-blur-md" 
+					: "border border-transparent hover:bg-white/5"
+			} ${revealClass}`}
+			style={{
+				borderColor: isSelected 
+					? "color-mix(in srgb, var(--accent) 35%, transparent)" 
+					: undefined,
+				backgroundImage: isSelected
+					? "linear-gradient(90deg, color-mix(in srgb, var(--accent) 14%, transparent) 0%, color-mix(in srgb, var(--accent) 3%, transparent) 100%)"
+					: undefined,
+				boxShadow: isSelected
+					? "0 8px 24px -4px rgba(0, 0, 0, 0.3), 0 0 12px color-mix(in srgb, var(--accent) 12%, transparent), inset 0 1px 0 0 rgba(255, 255, 255, 0.15)"
+					: undefined
+			}}
+		>
+			<button
+				type="button"
+				title={displayName}
+				aria-label={displayName}
+				onClick={(e) => {
+					e.stopPropagation();
+					if (isArchived) return;
+					if (otherParticipant?.profileId) onViewProfile(otherParticipant.profileId);
 				}}
-				className="no-touch-callout relative flex cursor-pointer items-center gap-4 border-b border-[var(--surface-2)] py-3 pr-4 text-left transition"
+				disabled={isArchived}
+				className="relative shrink-0 disabled:cursor-default disabled:opacity-80"
 			>
-					<button
-						type="button"
-						title={displayName}
-						aria-label={displayName}
-						onClick={(e) => {
-							e.stopPropagation();
-							if (isArchived) return;
-							if (otherParticipant?.profileId) onViewProfile(otherParticipant.profileId);
-						}}
-						disabled={isArchived}
-						className="relative shrink-0 disabled:cursor-default disabled:opacity-80"
-					>
-						<div className="h-14 w-14 squircle bg-[var(--surface-2)] drop-shadow-sm">
-							<ProfileImage
-								src={resolveAvatarSrc(
-									otherParticipant?.primaryMediaHash,
-									getParticipantAvatarUrl(otherParticipant?.primaryMediaHash),
-								)}
-								alt={displayName}
-							/>
-						</div>
-						{isOtherParticipantOnline && (
-							<span className="absolute -bottom-0.5 -right-0.5 z-10 h-3 w-3 rounded-full border-[1.5px] border-[var(--bg)] bg-green-500 shadow-sm" />
+				<div className="h-14 w-14 squircle bg-[var(--surface-2)] drop-shadow-sm">
+					<ProfileImage
+						src={resolveAvatarSrc(
+							otherParticipant?.primaryMediaHash,
+							getParticipantAvatarUrl(otherParticipant?.primaryMediaHash),
 						)}
-						{conversation.data.pinned ? (
-							<div className="absolute -top-1 -right-1 rounded-full bg-black/40 p-0.5 text-white backdrop-blur-sm">
-								<Pin className="h-2.5 w-2.5 fill-current" />
-							</div>
-						) : null}
-					</button>
+						alt={displayName}
+					/>
+				</div>
+				{isOtherParticipantOnline && (
+					<span className="absolute -bottom-0.5 -right-0.5 z-10 h-3 w-3 rounded-full border-[1.5px] border-[var(--bg)] bg-green-500 shadow-sm" />
+				)}
+				{conversation.data.pinned ? (
+					<div className="absolute -top-1 -right-1 rounded-full bg-black/40 p-0.5 text-white backdrop-blur-sm">
+						<Pin className="h-2.5 w-2.5 fill-current" />
+					</div>
+				) : null}
+			</button>
 
-					<div className="min-w-0 flex-1">
-						<div className="flex items-center justify-between gap-2">
-							<div className="flex min-w-0 items-center gap-1.5">
-								<p className="truncate text-sm font-semibold text-[var(--text)]">
-									{displayName}
-								</p>
-								{isArchived && (
-									<span title={t("chat.archived.badge", { defaultValue: "Archived" })}>
-										<Archive className="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
-									</span>
-								)}
-								{readReceiptsHidden && (
-									<span title={t("privacy.read_receipts_hidden_badge")}>
-										<EyeOff className="h-3.5 w-3.5 shrink-0 text-purple-400" />
-									</span>
-								)}
-								{otherParticipant?.profileId && presenceResults[otherParticipant.profileId] ? (
-									<img
-										src={freegrindLogo}
-										alt="Free Grind user"
-										title={t("profile_details.uses_free_grind")}
-										className="h-3.5 w-3.5 shrink-0 rounded-full border border-[var(--border)]"
-									/>
-								) : null}
-							</div>
-							<span className="shrink-0 text-xs text-[var(--text-muted)]">
-								{formatConversationTime(conversation.data.lastActivityTimestamp)}
+			<div className="min-w-0 flex-1">
+				<div className="flex items-center justify-between gap-2">
+					<div className="flex min-w-0 items-center gap-1.5">
+						<p className="truncate text-sm font-semibold text-[var(--text)]">
+							{displayName}
+						</p>
+						{isArchived && (
+							<span title={t("chat.archived.badge", { defaultValue: "Archived" })}>
+								<Archive className="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
 							</span>
-						</div>
-
-						<div className="mt-0.5 flex items-center justify-between gap-2">
-							<p className={`truncate text-sm ${
-								conversation.data.unreadCount > 0 ? "font-semibold text-[var(--text)]" : "text-[var(--text-muted)]"
-							}`}>
-								{isTyping ? (
-									<span className="italic text-[var(--accent)]">{t("chat.typing")}</span>
-								) : (
-									getPreviewText(conversation, t)
-								)}
-							</p>
-							{conversation.data.unreadCount > 0 ? (
-								<span className={`flex min-w-[20px] shrink-0 flex-col items-center justify-center rounded-full bg-[var(--accent)] px-1.5 py-0.5 text-[11px] font-bold text-[var(--accent-contrast)] shadow-sm ${showDebugInfo ? "min-h-[28px]" : ""}`}>
-									<span>{conversation.data.unreadCount}</span>
-									{showDebugInfo && (
-										<span className="text-[7px] leading-tight opacity-80">
-											db:{databaseUnread} a:{apiUnread}
-										</span>
-									)}
-								</span>
-							) : null}
-						</div>
-
-						{conversation.data.muted ? (
-							<span className="mt-1 inline-block rounded-md bg-[var(--surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
-								{t("chat.muted")}
+						)}
+						{readReceiptsHidden && (
+							<span title={t("privacy.read_receipts_hidden_badge")}>
+								<EyeOff className="h-3.5 w-3.5 shrink-0 text-purple-400" />
 							</span>
+						)}
+						{otherParticipant?.profileId && presenceResults[otherParticipant.profileId] ? (
+							<img
+								src={freegrindLogo}
+								alt="Free Grind user"
+								title={t("profile_details.uses_free_grind")}
+								className="h-3.5 w-3.5 shrink-0 rounded-full border border-[var(--border)]"
+							/>
 						) : null}
 					</div>
+					<span className="shrink-0 text-xs text-[var(--text-muted)]">
+						{formatConversationTime(conversation.data.lastActivityTimestamp)}
+					</span>
 				</div>
+
+				<div className="mt-0.5 flex items-center justify-between gap-2">
+					<p className={`truncate text-sm ${
+						conversation.data.unreadCount > 0 ? "font-semibold text-[var(--text)]" : "text-[var(--text-muted)]"
+					}`}>
+						{isTyping ? (
+							<span className="italic text-[var(--accent)]">{t("chat.typing")}</span>
+						) : (
+							getPreviewText(conversation, t)
+						)}
+					</p>
+					{conversation.data.unreadCount > 0 && !isMultiSelectActive ? (
+						<span className={`flex min-w-[20px] shrink-0 flex-col items-center justify-center rounded-full bg-[var(--accent)] px-1.5 py-0.5 text-[11px] font-bold text-[var(--accent-contrast)] shadow-sm ${showDebugInfo ? "min-h-[28px]" : ""}`}>
+							<span>{conversation.data.unreadCount}</span>
+							{showDebugInfo && (
+								<span className="text-[7px] leading-tight opacity-80">
+									db:{databaseUnread} a:{apiUnread}
+								</span>
+							)}
+						</span>
+					) : null}
+				</div>
+
+				{conversation.data.muted ? (
+					<span className="mt-1 inline-block rounded-md bg-[var(--surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
+						{t("chat.muted")}
+					</span>
+				) : null}
 			</div>
-		);
-	}
+		</div>
+	);
+}
 
 export function ChatInboxPanel({
 	isDesktop,
@@ -509,10 +360,6 @@ export function ChatInboxPanel({
 		x: number;
 		y: number;
 	} | null>(null);
-	const [deleteConfirmState, setDeleteConfirmState] = useState<{
-		conversation: ConversationEntry;
-		isArchived: boolean;
-	} | null>(null);
 	const [dontAskDeleteAgain, setDontAskDeleteAgain] = useState(false);
 	const [skipDeleteConfirm, setSkipDeleteConfirm] = useState(() => {
 		if (typeof window === "undefined") {
@@ -521,17 +368,54 @@ export function ChatInboxPanel({
 		return localStorage.getItem(SKIP_DELETE_CONVERSATION_CONFIRM_KEY) === "true";
 	});
 
-	const requestDeleteConversation = (conversation: ConversationEntry, isArchived: boolean) => {
+	const { isActive, viewType: activeViewType, setSelectableItems } = useMultiSelect();
+	const isMultiSelectActive = isActive && activeViewType === "inbox";
+
+	useEffect(() => {
+		if (isActive && activeViewType === "inbox") {
+			const items = filteredConversations.map((conversation) => {
+				const otherParticipant = getOtherParticipant(conversation, userId);
+				const otherProfileId = otherParticipant?.profileId ? String(otherParticipant.profileId) : undefined;
+				const localNickname = otherProfileId ? localNicknamesByProfileId[otherProfileId] : null;
+				const displayName = localNickname || conversation.data.name || t("chat.unknown");
+				return {
+					id: conversation.data.conversationId,
+					name: displayName,
+					profileId: otherProfileId,
+				};
+			});
+			setSelectableItems(items);
+		}
+	}, [isActive, activeViewType, filteredConversations, userId, localNicknamesByProfileId, setSelectableItems, t]);
+
+	const [deleteCandidate, setDeleteCandidate] = useState<{
+		conversation: ConversationEntry;
+		isArchived: boolean;
+		complete: () => void;
+		revert: () => void;
+	} | null>(null);
+
+	const handleDeleteConversation = (
+		conversation: ConversationEntry,
+		isArchived: boolean,
+		completeSwipe: () => void,
+		revertSwipe: () => void
+	) => {
 		if (skipDeleteConfirm) {
+			completeSwipe();
 			if (isArchived) {
-				void onDeleteConversationLocal(conversation.data.conversationId);
+				void onDeleteConversationLocal(conversation.data.conversationId).catch(() => {
+					revertSwipe();
+				});
 			} else {
-				void onDeleteConversation(conversation.data.conversationId);
+				void onDeleteConversation(conversation.data.conversationId).catch(() => {
+					revertSwipe();
+				});
 			}
 			return;
 		}
 		setDontAskDeleteAgain(false);
-		setDeleteConfirmState({ conversation, isArchived });
+		setDeleteCandidate({ conversation, isArchived, complete: completeSwipe, revert: revertSwipe });
 	};
 
 	const markUserScroll = () => {
@@ -696,28 +580,45 @@ export function ChatInboxPanel({
 								</div>
 							) : (
 								<>
-									{filteredConversations.map((conversation) => (
-										<ChatConversationRow
-											key={conversation.data.conversationId}
-											conversation={conversation}
-											userId={userId}
-											localNicknamesByProfileId={localNicknamesByProfileId}
-											chatContactIndexByProfileId={chatContactIndexByProfileId}
-											nowTimestamp={nowTimestamp}
-											presenceResults={presenceResults}
-											isSelected={conversation.data.conversationId === selectedConversationId}
-											isTyping={typingConversationIds?.has(conversation.data.conversationId) ?? false}
-											isArchived={archivedConversationIds.has(conversation.data.conversationId)}
-											isDesktop={isDesktop}
-											onSelectConversation={onSelectConversation}
-											onViewProfile={onViewProfile}
-											onOpenContextMenu={(c, isArchived, x, y) =>
-												setContextMenuState({ conversation: c, isArchived, x, y })
-											}
-											onSwipePin={(c) => void onTogglePinConversation(c.data.conversationId, c.data.pinned)}
-											onSwipeDeleteRequest={requestDeleteConversation}
-										/>
-									))}
+									<div className="flex flex-col pt-3 gap-3 px-[var(--app-px)]">
+									{filteredConversations.map((conversation) => {
+										const otherParticipant = getOtherParticipant(conversation, userId);
+										const otherProfileId = otherParticipant?.profileId ? String(otherParticipant.profileId) : null;
+										const localNickname = otherProfileId ? localNicknamesByProfileId[otherProfileId] : null;
+										const displayName = localNickname || conversation.data.name || t("chat.unknown");
+
+										return (
+											<SwipeableRow
+												key={conversation.data.conversationId}
+												onDelete={(complete, revert) => handleDeleteConversation(conversation, archivedConversationIds.has(conversation.data.conversationId), complete, revert)}
+												isDisabled={isActive}
+												isSelected={conversation.data.conversationId === selectedConversationId}
+											>
+												<SelectableItem
+													id={conversation.data.conversationId}
+													profileId={otherProfileId ?? undefined}
+													name={displayName}
+													viewType="inbox"
+													onNormalClick={() => onSelectConversation(conversation)}
+													roundedClassName="rounded-2xl"
+												>
+													<ChatConversationRow
+														conversation={conversation}
+														userId={userId}
+														localNicknamesByProfileId={localNicknamesByProfileId}
+														chatContactIndexByProfileId={chatContactIndexByProfileId}
+														nowTimestamp={nowTimestamp}
+														presenceResults={presenceResults}
+														isSelected={conversation.data.conversationId === selectedConversationId}
+														isTyping={typingConversationIds?.has(conversation.data.conversationId) ?? false}
+														isArchived={archivedConversationIds.has(conversation.data.conversationId)}
+														onViewProfile={onViewProfile}
+													/>
+												</SelectableItem>
+											</SwipeableRow>
+										);
+									})}
+								</div>
 
 									{nextPage && !showArchivedOnly ? (
 										<div className="px-3 py-2">
@@ -749,36 +650,45 @@ export function ChatInboxPanel({
 						void onTogglePinConversation(conversation.data.conversationId, conversation.data.pinned);
 					}}
 					onDelete={() => {
+						const { conversation } = contextMenuState;
 						setContextMenuState(null);
-						requestDeleteConversation(contextMenuState.conversation, contextMenuState.isArchived);
+						handleDeleteConversation(conversation, contextMenuState.isArchived, () => {}, () => {});
 					}}
 				/>
 			) : null}
 
 			<ConfirmDialog
-				isOpen={deleteConfirmState !== null}
+				isOpen={deleteCandidate !== null}
 				title={t("chat.delete_conversation")}
 				message={t("chat.delete_conversation_confirm")}
 				confirmLabel={t("chat.delete_conversation")}
 				cancelLabel={t("chat.actions.cancel")}
-				onConfirm={() => {
-					if (!deleteConfirmState) return;
-					const { conversation, isArchived } = deleteConfirmState;
+				onConfirm={async () => {
+					if (!deleteCandidate) return;
+					const { conversation, isArchived, complete, revert } = deleteCandidate;
 					if (dontAskDeleteAgain && typeof window !== "undefined") {
 						localStorage.setItem(SKIP_DELETE_CONVERSATION_CONFIRM_KEY, "true");
 						setSkipDeleteConfirm(true);
 					}
-					setDeleteConfirmState(null);
-					if (isArchived) {
-						void onDeleteConversationLocal(conversation.data.conversationId);
-					} else {
-						void onDeleteConversation(conversation.data.conversationId);
+					setDeleteCandidate(null);
+					try {
+						complete(); // Instantly animate out
+						if (isArchived) {
+							await onDeleteConversationLocal(conversation.data.conversationId);
+						} else {
+							await onDeleteConversation(conversation.data.conversationId);
+						}
+					} catch (e) {
+						revert(); // Snap back on error
 					}
 				}}
-				onCancel={() => setDeleteConfirmState(null)}
+				onCancel={() => {
+					deleteCandidate?.revert(); // Snap back
+					setDeleteCandidate(null);
+				}}
 				isProcessing={
-					deleteConfirmState != null &&
-					isDeletingConversationId === deleteConfirmState.conversation.data.conversationId
+					deleteCandidate != null &&
+					isDeletingConversationId === deleteCandidate.conversation.data.conversationId
 				}
 				confirmTone="danger"
 				dontAskAgainLabel={t("profile_details.dont_ask_again")}
@@ -787,4 +697,126 @@ export function ChatInboxPanel({
 			/>
 		</PullToRefreshContainer>
 	);
+}
+
+function SwipeableRow({
+    children,
+    onDelete,
+    isDisabled,
+    isSelected,
+}: {
+    children: React.ReactNode;
+    onDelete: (complete: () => void, revert: () => void) => void;
+    isDisabled?: boolean;
+    isSelected?: boolean;
+}) {
+    const [startX, setStartX] = useState<number | null>(null);
+    const [currentX, setCurrentX] = useState(0);
+    const [isSwiping, setIsSwiping] = useState(false);
+    const [isAnimatingOut, setIsAnimatingOut] = useState(false);
+
+    const handlePointerDown = (e: React.PointerEvent) => {
+        if (isDisabled) return;
+        if (e.button !== 0) return;
+        setStartX(e.clientX);
+        setIsSwiping(true);
+    };
+
+    const handlePointerMove = (e: React.PointerEvent) => {
+        if (!isSwiping || startX === null) return;
+        const deltaX = e.clientX - startX;
+        
+        if (deltaX < 0) {
+            if (deltaX < -140) {
+                setCurrentX(-140 + (deltaX + 140) * 0.2);
+            } else {
+                setCurrentX(deltaX);
+            }
+        } else {
+            setCurrentX(0);
+        }
+    };
+
+    const handlePointerUp = (e: React.PointerEvent) => {
+        if (!isSwiping) return;
+        setIsSwiping(false);
+        setStartX(null);
+
+        if (currentX < -90) {
+            triggerDelete();
+        } else {
+            setCurrentX(0);
+        }
+
+        if (Math.abs(currentX) > 10) {
+            e.stopPropagation();
+            e.preventDefault();
+        }
+    };
+
+    const triggerDelete = () => {
+        onDelete(
+            () => {
+                setIsAnimatingOut(true);
+                setCurrentX(-500);
+            },
+            () => {
+                setIsAnimatingOut(false);
+                setCurrentX(0);
+            }
+        );
+    };
+
+    return (
+        <div
+            className={`relative overflow-hidden shrink-0 rounded-2xl transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] select-none touch-pan-y ${
+                isSelected ? "border border-white/5" : "border border-transparent"
+            }`}
+            style={{
+                height: isAnimatingOut ? "0px" : "96px",
+                opacity: isAnimatingOut ? 0 : 1,
+                transform: isAnimatingOut ? "scaleY(0.8)" : "none",
+                transformOrigin: "center top",
+            }}
+        >
+            {/* Crimson Liquid Glass Underlay Background (revealed on drag) */}
+            {currentX < 0 && (
+                <div 
+                    className="absolute inset-y-0 right-0 bg-gradient-to-r from-red-600/15 to-red-600/80 backdrop-blur-md z-0 cursor-pointer"
+                    style={{ width: `${Math.abs(currentX)}px` }}
+                    onClick={triggerDelete}
+                />
+            )}
+
+            {/* Crimson Sharp Foreground Label (Z-20: Always crisp, floats on top of the blurred card, never blurred) */}
+            {currentX < -60 && (
+                <div 
+                    className="absolute inset-y-0 right-0 flex items-center justify-end px-6 text-white z-20 pointer-events-none transition-opacity duration-200"
+                    style={{ width: `${Math.abs(currentX)}px` }}
+                >
+                    <div className="flex flex-col items-center gap-1">
+                        <Trash2 className="h-5 w-5 text-red-100 drop-shadow-[0_2px_8px_rgba(239,68,68,0.6)] animate-pulse" />
+                        <span className="text-[10px] font-extrabold uppercase tracking-widest text-red-100">Delete</span>
+                    </div>
+                </div>
+            )}
+
+            {/* Foreground Content Card with dynamic liquid glass blur & dissolve effect proportional to drag progress */}
+            <div
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerLeave={handlePointerUp}
+                className="relative bg-transparent w-full h-full z-10 shrink-0 select-none cursor-grab active:cursor-grabbing"
+                style={{
+                    transform: `translateX(${currentX}px)`,
+                    filter: currentX < 0 ? `blur(${Math.min(6, Math.abs(currentX) / 25)}px)` : "none",
+                    opacity: currentX < 0 ? Math.max(0.3, 1 - Math.abs(currentX) / 250) : 1,
+                    transition: isSwiping ? "none" : "transform 0.25s cubic-bezier(0.25, 1, 0.5, 1), filter 0.25s ease, opacity 0.25s ease",
+                }}
+            >
+                {children}
+            </div>
+        </div>
+    );
 }

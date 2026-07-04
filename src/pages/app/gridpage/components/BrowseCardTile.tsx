@@ -13,6 +13,7 @@ import { usePresenceCheck } from "../../../../hooks/usePresenceCheck";
 import { usePreferences } from "../../../../contexts/PreferencesContext";
 import type { ChatContactIndexRecord } from "../../../../types/chat-contact-index";
 import { useRevealOnScroll } from "../../../../hooks/useRevealOnScroll";
+import { SelectableItem } from "../../../../components/multi-select/SelectableItem";
 
 type BrowseCardTileProps = {
 	card: BrowseCard;
@@ -20,6 +21,7 @@ type BrowseCardTileProps = {
 	onSelectProfile: (profileId: string) => void;
 	onMessageProfile: (profileId: string) => void;
 	isDesktop?: boolean;
+	hideImages?: boolean;
 };
 
 export function BrowseCardTile({
@@ -28,6 +30,7 @@ export function BrowseCardTile({
 	onSelectProfile,
 	onMessageProfile: _onMessageProfile,
 	isDesktop = false,
+	hideImages = false,
 }: BrowseCardTileProps) {
 	const { t } = useTranslation();
 	const { unitsPreset, showDebugInfo } = usePreferences();
@@ -50,20 +53,27 @@ export function BrowseCardTile({
 
 	return (
 		<div ref={ref} className={cn(!isDesktop && "bg-black rounded-[4px] overflow-hidden", revealClass)}>
-			<button
-				type="button"
-				key={card.profileId}
-				onClick={() => !isDemoCard && onSelectProfile(card.profileId)}
-				className={cn(
-					"surface-card-grid overflow-hidden text-left transition-transform w-full block relative",
-					!isDemoCard && "active:scale-95",
-					isDesktop
-						? "rounded-xl shadow-sm"
-						: "rounded-[4px]",
-					isBoosting ? "p-[2.5px] z-20" : "p-0",
-					isDemoCard && "cursor-default"
-				)}
+			<SelectableItem
+				id={card.profileId}
+				profileId={card.profileId}
+				name={name}
+				viewType="grid"
+				onNormalClick={() => !isDemoCard && onSelectProfile(card.profileId)}
+				roundedClassName={isDesktop ? "rounded-xl" : "rounded-[4px]"}
 			>
+				<button
+					type="button"
+					key={card.profileId}
+					className={cn(
+						"surface-card-grid overflow-hidden text-left transition-transform w-full block relative",
+						!isDemoCard && "active:scale-95",
+						isDesktop
+							? "rounded-xl shadow-sm"
+							: "rounded-[4px]",
+						isBoosting ? "p-[2.5px] z-20" : "p-0",
+						isDemoCard && "cursor-default"
+					)}
+				>
 				{/* Animated Gradient Border Layer (Enhanced Glow) */}
 				{isBoosting && (
 					<div
@@ -85,7 +95,9 @@ export function BrowseCardTile({
 						src={card.primaryImageUrl}
 						alt={t("browse_page.profile_photo_alt", { name })}
 						className={cn(
-							isDemoCard && "blur-md scale-110"
+							"transition-all duration-300",
+							(isDemoCard || hideImages) && "blur-xl scale-110",
+							hideImages && "opacity-60"
 						)}
 					/>
 
@@ -183,8 +195,9 @@ export function BrowseCardTile({
 						</span>
 					</div>
 					</div>
-				</div>
-			</button>
+					</div>
+				</button>
+			</SelectableItem>
 		</div>
 	);
 }

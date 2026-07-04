@@ -46,6 +46,8 @@ import ManagerApp from "./ManagerApp";
 import { getRuntimeContext } from "./services/runtimeContext";
 import { hasCompletedOnboarding } from "./utils/onboardingStorage";
 import { useRenderPhase } from "./hooks/useRenderPhase";
+import { MultiSelectProvider } from "./contexts/MultiSelectContext";
+import { MultiSelectOverlay } from "./components/multi-select/MultiSelectOverlay";
 
 function ErrorPage() {
 	const { t } = useTranslation();
@@ -146,99 +148,102 @@ export default function App() {
 			<SplashReadyBridge />
 			<PreferencesProvider>
 				<SmoothScroll>
-					{showOnboarding ? (
-						<div className="app-shell">
-							<PermissionsOnboarding onComplete={() => setShowOnboarding(false)} />
-						</div>
-					) : (<>
-					{renderPhase >= 1 && <ManagerModeRedirect />}
-					{renderPhase >= 2 && <PushNotificationBridge />}
-					{renderPhase >= 3 && <ChatRealtimeBridge />}
-					{renderPhase >= 4 && <ActiveRouteBridge />}
-					{renderPhase >= 5 && (
-						<>
-							<EntitlementsBridge />
-							<OutdatedVersionPrompt />
-						</>
-					)}
-					<Routes>
-						<Route element={<RootLayout />}>
-							<Route path="/manager" element={<ManagerRoutePage />} />
-							{/* Auth Routes */}
-							<Route path="/auth/sign-in" element={<SignInPage />} />
-							<Route path="/auth/sign-up" element={<SignUpPage />} />
-							<Route
-								path="/auth/password-reset"
-								element={<PasswordResetPage />}
-							/>
-							<Route path="/report-issue" element={<ReportIssuePage />} />
-
-							{/* Protected Routes */}
-							<Route
-								element={
-									<ProtectedRoute>
-										<ProtectedLayout />
-									</ProtectedRoute>
-								}
-							>
-								<Route path="/" element={<GridPage />} />
-								<Route path="/browse/location" element={<BrowseLocationPage />} />
-								<Route path="/right-now" element={<RightNowPage />} />
-								<Route path="/interest" element={<InterestPage />} />
-								<Route path="/chat" element={<ChatPage />} />
-								<Route path="/chat/filters" element={<ChatFiltersPage />} />
-								<Route path="/chat/search" element={<ChatSearchPage />} />
-								<Route path="/chat/albums" element={<SharedAlbumsPage />} />
-								<Route path="/chat/:conversationId" element={<ChatPage />} />
-								<Route path="/profile/:profileId" element={<GridProfilePage />} />
-								<Route path="/settings" element={<SettingsPage />} />
-								<Route path="/settings/notifications" element={<SettingsNotificationsPage />} />
-								<Route path="/settings/automation" element={<SettingsAutomationPage />} />
-								<Route path="/settings/data" element={<SettingsDataPage />} />
-								<Route path="/settings/privacy" element={<SettingsPrivacyPage />} />
-								<Route path="/settings/about" element={<AboutPage />} />
-								<Route path="/settings/albums" element={<SettingsAlbumsPage />} />
-								<Route path="/settings/blocked" element={<SettingsBlockedPage />} />
-								<Route path="/settings/saved-phrases" element={<SettingsSavedPhrasesPage />} />
+					<MultiSelectProvider>
+						{showOnboarding ? (
+							<div className="app-shell">
+								<PermissionsOnboarding onComplete={() => setShowOnboarding(false)} />
+							</div>
+						) : (<>
+						{renderPhase >= 1 && <ManagerModeRedirect />}
+						{renderPhase >= 2 && <PushNotificationBridge />}
+						{renderPhase >= 3 && <ChatRealtimeBridge />}
+						{renderPhase >= 4 && <ActiveRouteBridge />}
+						{renderPhase >= 5 && (
+							<>
+								<EntitlementsBridge />
+								<OutdatedVersionPrompt />
+							</>
+						)}
+						<Routes>
+							<Route element={<RootLayout />}>
+								<Route path="/manager" element={<ManagerRoutePage />} />
+								{/* Auth Routes */}
+								<Route path="/auth/sign-in" element={<SignInPage />} />
+								<Route path="/auth/sign-up" element={<SignUpPage />} />
 								<Route
-									path="/settings/api-inspector"
+									path="/auth/password-reset"
+									element={<PasswordResetPage />}
+								/>
+								<Route path="/report-issue" element={<ReportIssuePage />} />
+
+								{/* Protected Routes */}
+								<Route
 									element={
-										<DeveloperModeRoute>
-											<ApiInspectorPage />
-										</DeveloperModeRoute>
+										<ProtectedRoute>
+											<ProtectedLayout />
+										</ProtectedRoute>
 									}
-								/>
-								<Route
-									path="/settings/shared-albums"
-									element={<SharedAlbumsPage />}
-								/>
-								<Route
-									path="/settings/age-verification"
-									element={<AgeVerificationPage />}
-								/>
-								<Route
-									path="/settings/customizability"
-									element={<CustomizabilityPage />}
-								/>
-								<Route
-									path="/settings/report-issue"
-									element={<ReportIssuePage />}
-								/>
-								<Route
-									path="/settings/issues"
-									element={<IssueSearchPage />}
-								/>
-								<Route
-									path="/settings/profile-editor"
-									element={<ProfileEditorPage />}
-								/>
-							</Route>
+								>
+									<Route path="/" element={<GridPage />} />
+									<Route path="/browse/location" element={<BrowseLocationPage />} />
+									<Route path="/right-now" element={<RightNowPage />} />
+									<Route path="/interest" element={<InterestPage />} />
+									<Route path="/chat" element={<ChatPage />} />
+									<Route path="/chat/filters" element={<ChatFiltersPage />} />
+									<Route path="/chat/search" element={<ChatSearchPage />} />
+									<Route path="/chat/albums" element={<SharedAlbumsPage />} />
+									<Route path="/chat/:conversationId" element={<ChatPage />} />
+									<Route path="/profile/:profileId" element={<GridProfilePage />} />
+									<Route path="/settings" element={<SettingsPage />} />
+									<Route path="/settings/notifications" element={<SettingsNotificationsPage />} />
+									<Route path="/settings/automation" element={<SettingsAutomationPage />} />
+									<Route path="/settings/data" element={<SettingsDataPage />} />
+									<Route path="/settings/privacy" element={<SettingsPrivacyPage />} />
+									<Route path="/settings/about" element={<AboutPage />} />
+									<Route path="/settings/albums" element={<SettingsAlbumsPage />} />
+									<Route path="/settings/blocked" element={<SettingsBlockedPage />} />
+									<Route path="/settings/saved-phrases" element={<SettingsSavedPhrasesPage />} />
+									<Route
+										path="/settings/api-inspector"
+										element={
+											<DeveloperModeRoute>
+												<ApiInspectorPage />
+											</DeveloperModeRoute>
+										}
+									/>
+									<Route
+										path="/settings/shared-albums"
+										element={<SharedAlbumsPage />}
+									/>
+									<Route
+										path="/settings/age-verification"
+										element={<AgeVerificationPage />}
+									/>
+									<Route
+										path="/settings/customizability"
+										element={<CustomizabilityPage />}
+									/>
+									<Route
+										path="/settings/report-issue"
+										element={<ReportIssuePage />}
+									/>
+									<Route
+										path="/settings/issues"
+										element={<IssueSearchPage />}
+									/>
+									<Route
+										path="/settings/profile-editor"
+										element={<ProfileEditorPage />}
+									/>
+								</Route>
 
-							{/* Error Route */}
-							<Route path="*" element={<ErrorPage />} />
-						</Route>
-					</Routes>
-					</>)}
+								{/* Error Route */}
+								<Route path="*" element={<ErrorPage />} />
+							</Route>
+						</Routes>
+						<MultiSelectOverlay />
+						</>)}
+					</MultiSelectProvider>
 				</SmoothScroll>
 			</PreferencesProvider>
 		</AuthProvider>

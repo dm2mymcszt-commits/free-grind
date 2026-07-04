@@ -299,10 +299,7 @@ export function NavBar() {
         const item = navItems.find((i) => i.value === value);
         if (item) {
             if (value === "browse") {
-                const isCurrentlyBrowse = location.pathname === "/" || location.pathname.startsWith("/browse/");
-                if (!isCurrentlyBrowse) {
-                    navigate(item.path);
-                }
+                // Do not navigate immediately on tab change; let onClick handle it on release (short click)
             } else {
                 navigate(item.path);
             }
@@ -428,13 +425,27 @@ export function NavBar() {
                                                     if (isLongPressingRef.current) {
                                                         isLongPressingRef.current = false;
                                                         e.preventDefault();
+                                                        // Restore the tab visual selection back to the actual route we are on
+                                                        const currentItem = navItems.find(
+                                                            (nav) =>
+                                                                (nav.path === "/" &&
+                                                                    (location.pathname === "/" ||
+                                                                        location.pathname.startsWith("/browse/"))) ||
+                                                                location.pathname === nav.path ||
+                                                                (nav.path !== "/" && location.pathname.startsWith(`${nav.path}/`)),
+                                                        );
+                                                        if (currentItem) {
+                                                            setActiveTab(currentItem.value);
+                                                        }
                                                         return;
                                                     }
                                                     // Otherwise, execute normal navigation routing or scroll to top
-                                                    if (activeTab === "browse") {
+                                                    const isCurrentlyBrowse = location.pathname === "/" || location.pathname.startsWith("/browse/");
+                                                    if (isCurrentlyBrowse) {
                                                         window.scrollTo({ top: 0, behavior: "smooth" });
                                                         window.dispatchEvent(new CustomEvent("browse-scroll-top"));
                                                     } else {
+                                                        setActiveTab("browse");
                                                         navigate(item.path);
                                                     }
                                                 }

@@ -195,6 +195,18 @@ export function GridPage() {
 
 	const isDesktop = useDesktopBreakpoint();
 	const [mobileKeyboardInset, setMobileKeyboardInset] = useState(0);
+	const [hideGridImages, setHideGridImages] = useState(() => {
+		if (typeof window === "undefined") return false;
+		return localStorage.getItem("fg-hide-grid-images") === "true";
+	});
+
+	const toggleHideGridImages = () => {
+		setHideGridImages((prev) => {
+			const next = !prev;
+			localStorage.setItem("fg-hide-grid-images", next.toString());
+			return next;
+		});
+	};
 
 	useEffect(() => {
 		if (isDesktop) {
@@ -1586,6 +1598,26 @@ export function GridPage() {
 
 									<button
 										type="button"
+										onClick={toggleHideGridImages}
+										className={cn(
+											"inline-flex size-9 shrink-0 items-center justify-center text-sm font-bold transition-all active:scale-95",
+											hideGridImages
+												? "rounded-full border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] shadow-lg shadow-[var(--accent)]/40"
+												: "glass-pill text-[var(--accent)]"
+										)}
+										style={!hideGridImages ? { "--pill-color": "var(--accent)" } as React.CSSProperties : undefined}
+										aria-label="Toggle images visibility"
+										title="Toggle images visibility"
+									>
+										{hideGridImages ? (
+											<EyeOff className="h-4 w-4" />
+										) : (
+											<Eye className="h-4 w-4" />
+										)}
+									</button>
+
+									<button
+										type="button"
 										onClick={() =>
 											setBrowseFilters((prev: typeof browseFilters) => ({
 												...prev,
@@ -1683,6 +1715,7 @@ export function GridPage() {
 							onLoadMore={() => {
 								void handleLoadMoreCards();
 							}}
+							hideImages={hideGridImages}
 						/>
 					</div>
 				</FeedScrollContainer>

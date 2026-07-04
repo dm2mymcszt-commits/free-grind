@@ -194,6 +194,14 @@ export function ChatPage() {
 	const navigate = useNavigate();
 	const { conversationId: routeConversationId } = useParams();
 	const [searchParams, setSearchParams] = useSearchParams();
+	const targetProfileId = useMemo(() => {
+		const raw = searchParams.get("targetProfileId");
+		if (!raw) {
+			return null;
+		}
+		const parsed = Number(raw);
+		return Number.isFinite(parsed) ? parsed : null;
+	}, [searchParams]);
 	const service = useApiFunctions();
 	const { mutateAsync: blockProfileMutation } = useBlockProfile();
 	const { mutateAsync: unblockProfileMutation } = useUnblockProfile();
@@ -415,17 +423,26 @@ export function ChatPage() {
 
 	// Extract profile IDs from conversations for batch presence check
 	const conversationProfileIds = useMemo(
-		() =>
-			conversations
+		() => {
+			const ids = conversations
 				.map((conv) => {
 					const otherParticipant = getOtherParticipant(conv, userId);
 					return otherParticipant?.profileId != null
 						? String(otherParticipant.profileId)
 						: null;
 				})
-				.filter((id): id is string => id != null)
-				.slice(0, 50), // Limit to 50
-		[conversations, userId],
+				.filter((id): id is string => id != null);
+
+			if (targetProfileId) {
+				const targetStr = String(targetProfileId);
+				if (!ids.includes(targetStr)) {
+					ids.push(targetStr);
+				}
+			}
+
+			return ids.slice(0, 50); // Limit to 50
+		},
+		[conversations, userId, targetProfileId],
 	);
 	const presenceResults = usePresenceCheckBatch(
 		conversationProfileIds.length > 0 ? conversationProfileIds : null,
@@ -617,14 +634,37 @@ export function ChatPage() {
 	const [hasRestoredInboxScroll, setHasRestoredInboxScroll] = useState(false);
 	const initialLastSeenInbox = useRef(getInboxLastSeen());
 
-	const targetProfileId = useMemo(() => {
-		const raw = searchParams.get("targetProfileId");
-		if (!raw) {
-			return null;
+
+	const [targetProfileDetail, setTargetProfileDetail] = useState<any | null>(null);
+
+	useEffect(() => {
+		if (!targetProfileId) {
+			setTargetProfileDetail(null);
+			return;
 		}
-		const parsed = Number(raw);
-		return Number.isFinite(parsed) ? parsed : null;
-	}, [searchParams]);
+
+		const hasExisting = conversations.some((conversation) =>
+			conversation.data.participants.some(
+				(participant) => Number(participant.profileId) === targetProfileId,
+			),
+		);
+		if (hasExisting) {
+			return;
+		}
+
+		let cancelled = false;
+		service
+			.getProfileDetail(String(targetProfileId))
+			.then((detail) => {
+				if (cancelled) return;
+				setTargetProfileDetail(detail);
+			})
+			.catch(() => {});
+
+		return () => {
+			cancelled = true;
+		};
+	}, [targetProfileId, conversations, service]);
 	const chatReturnTo = useMemo(() => {
 		const raw = searchParams.get("returnTo");
 		if (!raw || !raw.startsWith("/")) {
@@ -634,11 +674,18 @@ export function ChatPage() {
 	}, [searchParams]);
 	const isSearchRoute = routeConversationId === "search";
 
-	const selectedConversationId = targetProfileId || isSearchRoute
-		? null
-		: isDesktop
-			? selectedDesktopConversationId
-			: (routeConversationId ?? null);
+	const selectedConversationId = useMemo(() => {
+		if (targetProfileId && userId) {
+			const numUser = Number(userId);
+			const numTarget = Number(targetProfileId);
+			return `${Math.min(numUser, numTarget)}_${Math.max(numUser, numTarget)}`;
+		}
+		return isSearchRoute
+			? null
+			: isDesktop
+				? selectedDesktopConversationId
+				: (routeConversationId ?? null);
+	}, [targetProfileId, isSearchRoute, isDesktop, selectedDesktopConversationId, routeConversationId, userId]);
 
 	// Keep selection in sync when the layout breakpoint flips (e.g. fullscreen toggle).
 	const prevIsDesktopRef = useRef(isDesktop);
@@ -687,15 +734,68 @@ export function ChatPage() {
 	]);
 
 	const selectedConversation = useMemo(
-		() =>
-			conversations.find(
-				(conversation) =>
-					conversation.data.conversationId === selectedConversationId,
-			) ??
-			(selectedConversationId
-				? archivedConversations.get(selectedConversationId)?.entry ?? null
-				: null),
-		[conversations, archivedConversations, selectedConversationId],
+		() => {
+			if (selectedConversationId) {
+				const existing = conversations.find(
+					(conversation) =>
+						conversation.data.conversationId === selectedConversationId,
+				) ?? archivedConversations.get(selectedConversationId)?.entry ?? null;
+				if (existing) {
+					return existing;
+				}
+			}
+
+			if (targetProfileId) {
+				const existingByProfile = conversations.find((conversation) =>
+					conversation.data.participants.some(
+						(participant) => Number(participant.profileId) === targetProfileId,
+					),
+				);
+				if (existingByProfile) {
+					return existingByProfile;
+				}
+
+				const otherParticipantName = targetProfileDetail?.displayName || `User ${targetProfileId}`;
+				const otherParticipantAvatar = targetProfileDetail?.profileImageMediaHash || null;
+				const otherParticipantLastOnline = targetProfileDetail?.seen || null;
+				const otherParticipantOnlineUntil = targetProfileDetail?.onlineUntil || null;
+				const otherParticipantDistance = targetProfileDetail?.distance || null;
+
+				let conversationIdVal = `direct:${targetProfileId}`;
+				if (userId) {
+					const numUser = Number(userId);
+					const numTarget = Number(targetProfileId);
+					conversationIdVal = `${Math.min(numUser, numTarget)}_${Math.max(numUser, numTarget)}`;
+				}
+
+				return {
+					type: "Direct",
+					data: {
+						conversationId: conversationIdVal,
+						name: otherParticipantName,
+						participants: [
+							{
+								profileId: Number(userId),
+								primaryMediaHash: null,
+							},
+							{
+								profileId: targetProfileId,
+								primaryMediaHash: otherParticipantAvatar,
+								lastOnline: otherParticipantLastOnline,
+								onlineUntil: otherParticipantOnlineUntil,
+								distance: otherParticipantDistance,
+							},
+						],
+						unreadCount: 0,
+						muted: false,
+						lastActivityTimestamp: Date.now(),
+					},
+				};
+			}
+
+			return null;
+		},
+		[conversations, archivedConversations, selectedConversationId, targetProfileId, targetProfileDetail, userId],
 	);
 
 	const selectedConversationOtherProfileId = useMemo(() => {
@@ -1951,7 +2051,10 @@ export function ChatPage() {
 					archiveConversationsLocally([conversationId], "ws_delete");
 					await chatDb.insertSystemMessage(conversationId, "SystemBlocked").catch(() => {});
 				}
-				if (apiError?.status === 404 || apiError?.status === 403 || archivedConversationsRef.current.has(conversationId)) {
+				const isDraft = conversationId.startsWith("direct:") || 
+					(conversationId.includes("_") && !conversations.some((c) => c.data.conversationId === conversationId));
+
+				if (isDraft || apiError?.status === 404 || apiError?.status === 403 || archivedConversationsRef.current.has(conversationId)) {
 					// Recover the same way whether the request literally 404d/403d,
 					// or it failed because a block's chat.v1.conversation.delete WS
 					// event raced ahead and archived the conversation while a
@@ -1995,7 +2098,7 @@ export function ChatPage() {
 				isLoadingOlderMessagesRef.current = false;
 			}
 		},
-		[service, syncConversation, archiveConversationsLocally],
+		[service, syncConversation, archiveConversationsLocally, conversations],
 	);
 
 	const mergeIncomingMessages = useCallback((messages: Message[]) => {
@@ -3225,7 +3328,8 @@ export function ChatPage() {
 				if (!localOnly) {
 					await service.deleteConversation(conversationId);
 				}
-				await chatDb.deleteConversationCascade(conversationId);
+				// Keep local database history intact so deleted chats can still be retrieved
+				// await chatDb.deleteConversationCascade(conversationId);
 				setArchivedConversations((previous) => {
 					if (!previous.has(conversationId)) {
 						return previous;
@@ -4722,6 +4826,22 @@ export function ChatPage() {
 
 	const renderSearch = <ChatSearchPage />;
 
+	const hasChattedBeforeSelected = useMemo(() => {
+		if (targetProfileId) {
+			const chatContact = chatContactIndexByProfileId[String(targetProfileId)];
+			return Boolean(chatContact?.hasChatted) || (chatContact?.unreadCount ?? 0) > 0 || chatContact?.lastMessageTimestamp != null;
+		}
+		return true;
+	}, [targetProfileId, chatContactIndexByProfileId]);
+
+	const lastMessageTimestampSelected = useMemo(() => {
+		if (targetProfileId) {
+			const chatContact = chatContactIndexByProfileId[String(targetProfileId)];
+			return chatContact?.lastMessageTimestamp ?? null;
+		}
+		return null;
+	}, [targetProfileId, chatContactIndexByProfileId]);
+
 	const renderThread = (
 		<ChatThreadPanel
 			navigate={navigate}
@@ -4768,6 +4888,8 @@ export function ChatPage() {
 			isLoadingThread={isLoadingThread}
 			threadConversationId={threadConversationId}
 			threadError={threadError}
+			hasChattedBefore={hasChattedBeforeSelected}
+			lastMessageTimestamp={lastMessageTimestampSelected}
 			loadThread={loadThread}
 			threadScrollContainerRef={threadScrollContainerRef}
 			handleThreadScroll={handleThreadScroll}

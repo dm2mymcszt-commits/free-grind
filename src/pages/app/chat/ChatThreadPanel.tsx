@@ -144,6 +144,8 @@ type ChatThreadPanelProps = {
 	onToggleFavorite?: (profileId: number, currentlyFavorite: boolean) => void | Promise<void>;
 	isFavorite?: boolean;
 	isTogglingFavorite?: boolean;
+	hasChattedBefore?: boolean;
+	lastMessageTimestamp?: number | null;
 	localNickname?: string | null;
 	onEditLocalNickname?: (profileId: number, defaultName: string) => void | Promise<void>;
 	getProfileReturnToChatPath: (profileId: number) => string;
@@ -580,6 +582,8 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 		isLoadingThread,
 		threadConversationId,
 		threadError,
+		hasChattedBefore = false,
+		lastMessageTimestamp = null,
 		loadThread,
 		threadScrollContainerRef,
 		handleThreadScroll,
@@ -1639,7 +1643,9 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 						threadBottomRef={threadBottomRef}
 						isPartnerTyping={isPartnerTyping}
 						isArchived={isArchived}
-				/>
+						hasChattedBefore={hasChattedBefore}
+						lastMessageTimestamp={lastMessageTimestamp}
+					/>
 				)
 			) : (
 				<div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
