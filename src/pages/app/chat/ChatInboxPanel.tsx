@@ -46,6 +46,7 @@ type ChatInboxPanelProps = ChatInboxHeaderProps & {
 	onRefreshInbox: () => Promise<void>;
 	onLoadMoreInbox: () => void;
 	onSelectConversation: (conversation: ConversationEntry) => void;
+	onOpenConversationById: (conversationId: string) => void;
 	onViewProfile: (profileId: number) => void;
 	onClearInboxFilters: () => void;
 	typingConversationIds?: Set<string>;
@@ -484,15 +485,14 @@ export function ChatInboxPanel({
 	showHeader,
 	isSearchOpen,
 	searchQuery,
-	searchMode,
 	onSetIsSearchOpen,
 	onSetSearchQuery,
-	onSetSearchMode,
 	onSetIsFiltersOpen,
 	onSetFiltersDraft,
 	onRefreshInbox,
 	onLoadMoreInbox,
 	onSelectConversation,
+	onOpenConversationById,
 	onViewProfile,
 	onClearInboxFilters: _onClearInboxFilters,
 	onToggleHidePinned,
@@ -616,10 +616,8 @@ export function ChatInboxPanel({
 					activeFilterCount={activeFilterCount}
 					isSearchOpen={isSearchOpen}
 					searchQuery={searchQuery}
-					searchMode={searchMode}
 					onSetIsSearchOpen={onSetIsSearchOpen}
 					onSetSearchQuery={onSetSearchQuery}
-					onSetSearchMode={onSetSearchMode}
 					onSetIsFiltersOpen={onSetIsFiltersOpen}
 					onSetFiltersDraft={onSetFiltersDraft}
 					onToggleFavoritesOnly={onToggleFavoritesOnly}
@@ -634,9 +632,8 @@ export function ChatInboxPanel({
 				<ChatSearchPanel
 					isDesktop={isDesktop}
 					searchQuery={searchQuery}
-					searchMode={searchMode}
 					onClose={() => { onSetIsSearchOpen(false); onSetSearchQuery(""); }}
-					onViewProfile={onViewProfile}
+					onOpenConversationById={onOpenConversationById}
 				/>
 			) : (
 				<div

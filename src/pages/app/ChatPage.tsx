@@ -60,7 +60,6 @@ import {
 	indexMessages,
 	searchMessagesLocal,
 } from "./chat/cache";
-import { ChatSearchPage } from "./ChatSearchPage";
 import { ChatInboxPanel } from "./chat/ChatInboxPanel";
 import { ChatInboxHeader } from "./chat/ChatInboxHeader";
 import { ChatFiltersOverlay } from "./chat/ChatFiltersOverlay";
@@ -92,7 +91,6 @@ import { fetchAndStoreMedia, hydrateMediaByMessageId } from "../../services/medi
 import { captureAlbum, captureAlbumsForMessages, getLocalAlbum } from "../../services/albumStore";
 import { useAvatarCache } from "../../hooks/useAvatarCache";
 import { resolveAvatarSrc } from "../../services/avatarStore";
-import type { SearchMode } from "../../types/chat-page";
 import { useDesktopBreakpoint } from "../../hooks/useDesktopBreakpoint";
 import { appLog } from "../../utils/logger";
 import {
@@ -265,7 +263,6 @@ export function ChatPage() {
 	// Header state (shared between ChatInboxHeader on desktop and ChatInboxPanel on mobile)
 	const [chatIsSearchOpen, setChatIsSearchOpen] = useState(false);
 	const [chatSearchQuery, setChatSearchQuery] = useState("");
-	const [chatSearchMode, setChatSearchMode] = useState<SearchMode>("messages");
 	const [chatIsFiltersOpen, setChatIsFiltersOpen] = useState(false);
 	const [chatFiltersDraft, setChatFiltersDraft] = useState<ChatFiltersDraft>(() => buildChatFiltersDraft({}));
 
@@ -637,9 +634,7 @@ export function ChatPage() {
 		}
 		return raw;
 	}, [searchParams]);
-	const isSearchRoute = routeConversationId === "search";
-
-	const selectedConversationId = targetProfileId || isSearchRoute
+	const selectedConversationId = targetProfileId
 		? null
 		: isDesktop
 			? selectedDesktopConversationId
@@ -654,7 +649,7 @@ export function ChatPage() {
 
 		if (isDesktop) {
 			// Switched to desktop: pull the active route conversation into state.
-			if (routeConversationId && routeConversationId !== "search") {
+			if (routeConversationId) {
 				setSelectedDesktopConversationId(routeConversationId);
 			}
 		} else {
@@ -674,7 +669,7 @@ export function ChatPage() {
 			return;
 		}
 
-		if (!routeConversationId || routeConversationId === "search") {
+		if (!routeConversationId) {
 			return;
 		}
 
@@ -688,7 +683,6 @@ export function ChatPage() {
 		routeConversationId,
 		selectedDesktopConversationId,
 		targetProfileId,
-		isSearchRoute,
 	]);
 
 	const selectedConversation = useMemo(
@@ -702,6 +696,46 @@ export function ChatPage() {
 				: null),
 		[conversations, archivedConversations, selectedConversationId],
 	);
+
+	// Landing directly on a conversationId that isn't in the currently loaded
+	// live inbox page(s) or the archived map (e.g. opening a message search
+	// result for an older conversation the inbox hasn't paginated to) would
+	// otherwise resolve selectedConversation to null and silently fall back
+	// to showing the inbox instead of the thread. It's still in local chatDb
+	// (that's what made it searchable in the first place) — pull it in from
+	// there instead of requiring a live /v4/inbox page to already include it.
+	useEffect(() => {
+		if (!selectedConversationId || selectedConversation) {
+			return;
+		}
+		let cancelled = false;
+		void chatDb.getConversation(selectedConversationId).then((stored) => {
+			if (cancelled || !stored) {
+				return;
+			}
+			if (stored.archived) {
+				setArchivedConversations((previous) => {
+					if (previous.has(stored.conversationId)) return previous;
+					const next = new Map(previous);
+					next.set(stored.conversationId, {
+						reason: stored.archivedReason ?? "ws_delete",
+						entry: stored.entry,
+					});
+					return next;
+				});
+			} else {
+				setConversations((previous) => {
+					if (previous.some((c) => c.data.conversationId === stored.conversationId)) {
+						return previous;
+					}
+					return [...previous, stored.entry];
+				});
+			}
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [selectedConversationId, selectedConversation]);
 
 	const selectedConversationOtherProfileId = useMemo(() => {
 		if (!selectedConversation || userId == null) {
@@ -4792,10 +4826,8 @@ export function ChatPage() {
 		activeFilterCount: chatActiveFilterCount,
 		isSearchOpen: chatIsSearchOpen,
 		searchQuery: chatSearchQuery,
-		searchMode: chatSearchMode,
 		onSetIsSearchOpen: setChatIsSearchOpen,
 		onSetSearchQuery: setChatSearchQuery,
-		onSetSearchMode: setChatSearchMode,
 		onSetIsFiltersOpen: setChatIsFiltersOpen,
 		onSetFiltersDraft: setChatFiltersDraft,
 		onToggleFavoritesOnly: toggleInboxFavoritesOnly,
@@ -4826,6 +4858,7 @@ export function ChatPage() {
 			onRefreshInbox={() => loadInbox({ page: 1, replace: true })}
 			onLoadMoreInbox={handleLoadMoreInbox}
 			onSelectConversation={handleSelectConversation}
+			onOpenConversationById={openConversationById}
 			onViewProfile={(profileId) => {
 				const returnTo = "/chat";
 				const nextParams = new URLSearchParams();
@@ -4840,8 +4873,6 @@ export function ChatPage() {
 			isDeletingConversationId={isDeletingConversationId}
 		/>
 	);
-
-	const renderSearch = <ChatSearchPage />;
 
 	const renderThread = (
 		<ChatThreadPanel
@@ -4982,23 +5013,19 @@ export function ChatPage() {
 				className={`app-screen ${isDesktop ? "w-full !h-dvh !px-0 !pb-0 overflow-x-hidden flex flex-col" : "!p-0 !max-w-none !w-full"}`}
 			>
 				{isDesktop ? (
-					isSearchRoute ? (
-						<div className="mx-auto w-full max-w-6xl px-[var(--app-px)]">{renderSearch}</div>
-					) : (
-						<>
-							<ChatInboxHeader
-								{...sharedInboxHeaderProps}
-								isDesktop={true}
-							/>
-							<div className="flex-1 min-h-0 mx-auto w-full max-w-6xl px-3 pb-[calc(env(safe-area-inset-bottom,0px)+104px)] grid grid-cols-[360px_minmax(0,1fr)] gap-3">
-								{renderInbox}
-								{renderThread}
-							</div>
-						</>
-					)
+					<>
+						<ChatInboxHeader
+							{...sharedInboxHeaderProps}
+							isDesktop={true}
+						/>
+						<div className="flex-1 min-h-0 mx-auto w-full max-w-6xl px-3 pb-[calc(env(safe-area-inset-bottom,0px)+104px)] grid grid-cols-[360px_minmax(0,1fr)] gap-3">
+							{renderInbox}
+							{renderThread}
+						</div>
+					</>
 				) : (
 					<div className="w-full">
-						{isSearchRoute ? renderSearch : selectedConversation ?? targetProfileId ? renderThread : renderInbox}
+						{selectedConversation ?? targetProfileId ? renderThread : renderInbox}
 					</div>
 				)}
 

@@ -1269,7 +1269,7 @@
         "title": "Suche",
         "subtitle": "Konversationen, Nachrichten und Profile finden",
         "back_to_inbox": "Zurück zum Posteingang",
-        "placeholder": "Konversationen, Nachrichten, Profile suchen",
+        "placeholder": "In lokal gespeicherten Nachrichten suchen",
         "mode_label": "Suchmodus",
         "quick_start_label": "Schnellstart",
         "quick_start_placeholder": "Schnellstart per Profil-ID",

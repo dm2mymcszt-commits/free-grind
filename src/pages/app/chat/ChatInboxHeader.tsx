@@ -6,7 +6,6 @@ import { PageHeaderBackground } from "../../../components/ui/PageHeaderBackgroun
 import { buildChatFiltersDraft, type ChatFiltersDraft } from "./chatUtils";
 import { cn } from "../../../utils/cn";
 import type { InboxFilters } from "../../../types/messages";
-import type { SearchMode } from "../../../types/chat-page";
 
 type RealtimeStatusMeta = { className: string; symbol: string; label: string };
 
@@ -19,10 +18,8 @@ export type ChatInboxHeaderProps = {
 	activeFilterCount: number;
 	isSearchOpen: boolean;
 	searchQuery: string;
-	searchMode: SearchMode;
 	onSetIsSearchOpen: (v: boolean) => void;
 	onSetSearchQuery: (v: string) => void;
-	onSetSearchMode: (v: SearchMode) => void;
 	onSetIsFiltersOpen: (v: boolean) => void;
 	onSetFiltersDraft: (v: ChatFiltersDraft) => void;
 	onToggleFavoritesOnly: () => void;
@@ -41,10 +38,8 @@ export function ChatInboxHeader({
 	activeFilterCount,
 	isSearchOpen,
 	searchQuery,
-	searchMode,
 	onSetIsSearchOpen,
 	onSetSearchQuery,
-	onSetSearchMode,
 	onSetIsFiltersOpen,
 	onSetFiltersDraft,
 	onToggleFavoritesOnly,
@@ -205,23 +200,6 @@ export function ChatInboxHeader({
 										<X className="h-3.5 w-3.5" />
 									</button>
 								)}
-							</div>
-							<div className="flex gap-1.5">
-								{(["messages", "conversations", "profiles"] as const).map((mode) => (
-									<button
-										key={mode}
-										type="button"
-										onClick={() => onSetSearchMode(mode)}
-										className={cn(
-											"rounded-full border px-3 py-1 text-xs font-bold transition",
-											searchMode === mode
-												? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)]"
-												: "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--text)]",
-										)}
-									>
-										{t(`chat_search.modes.${mode}`)}
-									</button>
-								))}
 							</div>
 						</div>
 					)}
