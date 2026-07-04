@@ -1,7 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import {
 	BadgeInfo,
-	Ban,
 	Bell,
 	Bookmark,
 	Bug,
@@ -20,6 +19,7 @@ import {
 	Radar,
 	RefreshCcw,
 	Shield,
+	SlidersHorizontal,
     Workflow,
 	Trash2,
 	UserPlus,
@@ -418,10 +418,17 @@ export function SettingsPage() {
 						)}
 						{navRow(
 							() => navigate("/settings/behavior"),
-							<Ban className="h-5 w-5" />,
-							"bg-red-500/15 text-red-400",
+							<SlidersHorizontal className="h-5 w-5" />,
+							"bg-slate-500/15 text-slate-400",
 							t("settings.behavior"),
 							t("settings.behavior_desc"),
+						)}
+						{navRow(
+							() => navigate("/settings/notifications"),
+							<Bell className="h-5 w-5" />,
+							"bg-blue-500/15 text-blue-400",
+							t("settings.notifications"),
+							t("settings.notifications_desc"),
 						)}
 					</div>
 				</div>

@@ -19,7 +19,10 @@ import {
 	getPreviewText,
 } from "../chat/chatUtils";
 import { isReadReceiptsHidden, useReadReceiptsChanged } from "../../../utils/privacy";
-import { SKIP_DELETE_CONVERSATION_CONFIRM_KEY } from "../../../utils/blockConfirm";
+import {
+	SKIP_DELETE_CONVERSATION_CONFIRM_KEY,
+	isDeleteConversationConfirmSkipped,
+} from "../../../utils/blockConfirm";
 import { useRevealOnScroll } from "../../../hooks/useRevealOnScroll";
 import { useAvatarCache } from "../../../hooks/useAvatarCache";
 import { resolveAvatarSrc } from "../../../services/avatarStore";
@@ -378,10 +381,20 @@ function ChatConversationRow({
 									getParticipantAvatarUrl(otherParticipant?.primaryMediaHash),
 								)}
 								alt={displayName}
+								className={isArchived ? "grayscale" : undefined}
 							/>
 						</div>
-						{isOtherParticipantOnline && (
-							<span className="absolute -bottom-0.5 -right-0.5 z-10 h-3 w-3 rounded-full border-[1.5px] border-[var(--bg)] bg-green-500 shadow-sm" />
+						{isArchived ? (
+							<span
+								title={t("chat.archived.badge", { defaultValue: "Archived" })}
+								className="absolute -bottom-0.5 -right-0.5 z-10 flex h-4 w-4 items-center justify-center rounded-full border-[1.5px] border-[var(--bg)] bg-[var(--surface-2)] shadow-sm"
+							>
+								<Archive className="h-2.5 w-2.5 text-[var(--text-muted)]" />
+							</span>
+						) : (
+							isOtherParticipantOnline && (
+								<span className="absolute -bottom-0.5 -right-0.5 z-10 h-3 w-3 rounded-full border-[1.5px] border-[var(--bg)] bg-green-500 shadow-sm" />
+							)
 						)}
 						{conversation.data.pinned ? (
 							<div className="absolute -top-1 -right-1 rounded-full bg-black/40 p-0.5 text-white backdrop-blur-sm">
@@ -396,11 +409,6 @@ function ChatConversationRow({
 								<p className="truncate text-sm font-semibold text-[var(--text)]">
 									{displayName}
 								</p>
-								{isArchived && (
-									<span title={t("chat.archived.badge", { defaultValue: "Archived" })}>
-										<Archive className="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
-									</span>
-								)}
 								{readReceiptsHidden && (
 									<span title={t("privacy.read_receipts_hidden_badge")}>
 										<EyeOff className="h-3.5 w-3.5 shrink-0 text-purple-400" />
@@ -489,9 +497,9 @@ export function ChatInboxPanel({
 	onClearInboxFilters: _onClearInboxFilters,
 	onToggleHidePinned,
 	onToggleFavoritesOnly,
-	showArchivedOnly,
+	hideArchived,
 	archivedCount,
-	onToggleShowArchivedOnly,
+	onToggleHideArchived,
 	typingConversationIds,
 	onTogglePinConversation,
 	onDeleteConversation,
@@ -514,15 +522,9 @@ export function ChatInboxPanel({
 		isArchived: boolean;
 	} | null>(null);
 	const [dontAskDeleteAgain, setDontAskDeleteAgain] = useState(false);
-	const [skipDeleteConfirm, setSkipDeleteConfirm] = useState(() => {
-		if (typeof window === "undefined") {
-			return false;
-		}
-		return localStorage.getItem(SKIP_DELETE_CONVERSATION_CONFIRM_KEY) === "true";
-	});
 
 	const requestDeleteConversation = (conversation: ConversationEntry, isArchived: boolean) => {
-		if (skipDeleteConfirm) {
+		if (isDeleteConversationConfirmSkipped()) {
 			if (isArchived) {
 				void onDeleteConversationLocal(conversation.data.conversationId);
 			} else {
@@ -554,12 +556,7 @@ export function ChatInboxPanel({
 
 	useEffect(() => {
 		const sentinel = loadMoreSentinelRef.current;
-		// Archived conversations are sourced from chatDb, not live inbox
-		// pagination — paging further through /v4/inbox can never surface
-		// more of them, so don't auto-load while that filter is active (the
-		// short filtered list would otherwise keep the sentinel in view and
-		// trigger an endless fetch-everything cascade).
-		if (!sentinel || !nextPage || showArchivedOnly) {
+		if (!sentinel || !nextPage) {
 			return;
 		}
 
@@ -591,7 +588,6 @@ export function ChatInboxPanel({
 		isLoadingMoreInbox,
 		nextPage,
 		onLoadMoreInbox,
-		showArchivedOnly,
 	]);
 
 	return (
@@ -628,9 +624,9 @@ export function ChatInboxPanel({
 					onSetFiltersDraft={onSetFiltersDraft}
 					onToggleFavoritesOnly={onToggleFavoritesOnly}
 					onToggleHidePinned={onToggleHidePinned}
-					showArchivedOnly={showArchivedOnly}
+					hideArchived={hideArchived}
 					archivedCount={archivedCount}
-					onToggleShowArchivedOnly={onToggleShowArchivedOnly}
+					onToggleHideArchived={onToggleHideArchived}
 				/>
 			)}
 
@@ -719,7 +715,7 @@ export function ChatInboxPanel({
 										/>
 									))}
 
-									{nextPage && !showArchivedOnly ? (
+									{nextPage ? (
 										<div className="px-3 py-2">
 											<div ref={loadMoreSentinelRef} className="h-8 w-full" aria-hidden="true" />
 											{isLoadingMoreInbox ? (
@@ -766,7 +762,6 @@ export function ChatInboxPanel({
 					const { conversation, isArchived } = deleteConfirmState;
 					if (dontAskDeleteAgain && typeof window !== "undefined") {
 						localStorage.setItem(SKIP_DELETE_CONVERSATION_CONFIRM_KEY, "true");
-						setSkipDeleteConfirm(true);
 					}
 					setDeleteConfirmState(null);
 					if (isArchived) {

@@ -6,10 +6,12 @@
         "language_description": "Choose your preferred language.",
         "profile_editor": "Profile Editor",
         "profile_editor_desc": "Edit profile details, identity, and preferences.",
-        "customizability": "Customizability",
+        "customizability": "Appearance",
         "customizability_desc": "Change color scheme and accent color.",
         "behavior": "Behavior",
         "behavior_desc": "Confirmation prompts for blocking and deleting chats.",
+        "notifications": "Notifications",
+        "notifications_desc": "Choose which notifications you get, and whether they show up while the app is open.",
         "privacy": "Privacy & Analytics",
         "privacy_desc": "Read receipts, profile view tracking, media blur, and analytics.",
         "automation": "Automation",
@@ -609,6 +611,8 @@
         "behavior": "Behavior",
         "confirm_before_block": "Confirm Before Blocking",
         "confirm_before_block_desc": "Ask for confirmation before blocking a profile. Turn this off to block immediately, without a prompt.",
+        "confirm_before_unblock": "Confirm Before Unblocking",
+        "confirm_before_unblock_desc": "Ask for confirmation before unblocking a profile. Turn this off to unblock immediately, without a prompt.",
         "confirm_before_delete_conversation": "Confirm Before Deleting Chats",
         "confirm_before_delete_conversation_desc": "Ask for confirmation before deleting a conversation. Turn this off to delete immediately, without a prompt.",
         "units": "Units",
@@ -662,6 +666,15 @@
     },
     "behavior": {
         "subtitle": "Manage confirmation prompts before blocking profiles or deleting chats."
+    },
+    "notifications_page": {
+        "subtitle": "Choose which notifications you get, and whether they show up while the app is open.",
+        "chat_enabled": "Message Notifications",
+        "chat_enabled_desc": "Get notified when someone sends you a message.",
+        "taps_enabled": "Tap Notifications",
+        "taps_enabled_desc": "Get notified when someone taps you.",
+        "foreground": "Notifications While App Is Open",
+        "foreground_desc": "Show notifications (for the types enabled above) while you have the app open. Turn this off to only be notified once the app is in the background or closed."
     },
     "issue_search": {
         "title": "Issues & Feature Requests",
@@ -850,6 +863,11 @@
             "sent_location": "Sent a location",
             "sent_message": "Sent a message",
             "replied_profile_photo": "Replied to a profile photo"
+        },
+        "notifications": {
+            "someone": "Someone",
+            "tapped_you": "Tapped you",
+            "tapped_you_back": "Tapped you back"
         },
         "thread": {
             "unsent": "This message was unsent",
@@ -1243,6 +1261,7 @@
             "button": "Got it"
         },
         "unknown_profile": "Unknown Profile",
+        "blocked_profile": "Blocked",
         "unknown_time": "Unknown time",
         "tap_labels": {
             "friendly": "Friendly",

@@ -26,6 +26,7 @@ import type {
 	AlbumMediaUpsertInput,
 	AlbumUpsertInput,
 	ArchivedReason,
+	BlockState,
 	DownloadedMediaEntry,
 	FullDbExport,
 	MediaFileUpsertInput,
@@ -65,6 +66,7 @@ type ConversationRow = {
 	archived: number;
 	archived_reason: string | null;
 	archived_at: number | null;
+	block_state: string | null;
 	last_seen_in_inbox_at: number | null;
 	created_at: number;
 	updated_at: number;
@@ -180,6 +182,15 @@ async function getDb(): Promise<Database> {
 				await db.execute(
 					"CREATE INDEX IF NOT EXISTS idx_conversations_archived ON conversations(archived)",
 				);
+				// Added later: explicit, durable "who blocked whom" state — the
+				// source of truth for archive/system-message decisions instead of
+				// inferring direction from toggling `archived` on an ambiguous
+				// chat.v1.conversation.delete event. NULL = not blocked either way.
+				try {
+					await db.execute("ALTER TABLE conversations ADD COLUMN block_state TEXT");
+				} catch {
+					// already migrated
+				}
 
 				await db.execute(`
 					CREATE TABLE IF NOT EXISTS conversation_meta (
@@ -478,6 +489,7 @@ function rowToStoredConversation(row: ConversationRow): StoredConversation {
 		archived: Boolean(row.archived),
 		archivedReason: (row.archived_reason as ArchivedReason | null) ?? null,
 		archivedAt: row.archived_at,
+		blockState: (row.block_state as BlockState | null) ?? null,
 		lastSeenInInboxAt: row.last_seen_in_inbox_at,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
@@ -567,6 +579,50 @@ export async function findConversationByProfileId(
 	return row ? rowToStoredConversation(row) : null;
 }
 
+/**
+ * Bulk lookup of the local block_state for a set of profiles — used to gate
+ * profile navigation outside of chat (e.g. Interest/Taps) the same way
+ * ChatThreadPanel/ChatInboxPanel gate it via a conversation's archived
+ * state, without one DB round trip per row.
+ */
+export async function getBlockStatesByProfileIds(
+	profileIds: string[],
+): Promise<Map<string, BlockState>> {
+	if (profileIds.length === 0) {
+		return new Map();
+	}
+	const db = await getDb();
+	const placeholders = profileIds.map((_, i) => `$${i + 1}`).join(", ");
+	const rows = await db.select<{ other_profile_id: string; block_state: string }[]>(
+		`SELECT other_profile_id, block_state FROM conversations WHERE other_profile_id IN (${placeholders}) AND block_state IS NOT NULL`,
+		profileIds,
+	);
+	return new Map(rows.map((row) => [row.other_profile_id, row.block_state as BlockState]));
+}
+
+/**
+ * Backfills other_profile_id for a conversation whose row already exists
+ * but was created without it resolved (e.g. a chat.v1.conversation.delete
+ * arriving for a conversation started moments earlier, before it's ever been
+ * through a normal /v4/inbox sync — upsertConversation is what normally
+ * keeps this current, but that requires the participant list from a live
+ * inbox entry). Never overwrites a value that's already set.
+ */
+export async function backfillOtherProfileId(
+	conversationId: string,
+	otherProfileId: string,
+): Promise<void> {
+	const db = await getDb();
+	const now = Date.now();
+
+	await executeWithLockRetry(db, "backfill-other-profile-id", async () => {
+		await db.execute(
+			"UPDATE conversations SET other_profile_id = $2, updated_at = $3 WHERE conversation_id = $1 AND other_profile_id IS NULL",
+			[conversationId, otherProfileId, now],
+		);
+	});
+}
+
 export async function setConversationArchived(
 	conversationId: string,
 	archived: boolean,
@@ -583,6 +639,27 @@ export async function setConversationArchived(
 			WHERE conversation_id = $1
 			`,
 			[conversationId, archived ? 1 : 0, archived ? reason : null, archived ? now : null, now],
+		);
+	});
+}
+
+/**
+ * Sets (or clears, with null) the explicit "who blocked whom" state for a
+ * conversation — the source of truth conversationArchive.ts uses to decide
+ * archiving/system messages, instead of inferring direction from toggling
+ * `archived` on an ambiguous chat.v1.conversation.delete event.
+ */
+export async function setBlockState(
+	conversationId: string,
+	blockState: BlockState | null,
+): Promise<void> {
+	const db = await getDb();
+	const now = Date.now();
+
+	await executeWithLockRetry(db, "set-block-state", async () => {
+		await db.execute(
+			"UPDATE conversations SET block_state = $2, updated_at = $3 WHERE conversation_id = $1",
+			[conversationId, blockState, now],
 		);
 	});
 }

@@ -5,6 +5,7 @@ import toast from "react-hot-toast";
 import { useTranslation } from "react-i18next";
 import { useApiFunctions } from "../../../hooks/useApiFunctions";
 import { usePreferences } from "../../../contexts/PreferencesContext";
+import { useAuth } from "../../../contexts/useAuth";
 import * as chatDb from "../../../services/chatDb";
 import type { ConversationEntry } from "../../../types/messages";
 import type { ProfileSearchResult, SearchMode } from "../../../types/chat-page";
@@ -15,6 +16,8 @@ import { ProfileImage } from "../../../components/ui/profile-image";
 import { useAvatarCache } from "../../../hooks/useAvatarCache";
 import { resolveAvatarSrc } from "../../../services/avatarStore";
 import { formatDistance } from "../gridpage/utils";
+import { getOtherParticipant, getParticipantAvatarUrl } from "./chatUtils";
+import { formatRelativeTime } from "../../../utils/relativeTime";
 import {
 	indexConversations,
 	searchConversationsLocal,
@@ -34,6 +37,7 @@ export function ChatSearchPanel({ isDesktop, searchQuery, searchMode, onClose, o
 	const navigate = useNavigate();
 	const service = useApiFunctions();
 	const { geohash, unitsPreset } = usePreferences();
+	const { userId } = useAuth();
 	const { t } = useTranslation();
 	useAvatarCache();
 
@@ -104,6 +108,31 @@ export function ChatSearchPanel({ isDesktop, searchQuery, searchMode, onClose, o
 		if (!hash || !validateMediaHash(hash)) return null;
 		return resolveAvatarSrc(hash, getProfileImageUrl(hash));
 	}, []);
+
+	// Conversation/message search results only carry a flat text index
+	// (see cache.ts), not the participant data needed to show a real avatar
+	// like the normal chat list rows do — look that up from the already-
+	// loaded inbox entries instead of showing a generic placeholder.
+	const conversationsById = useMemo(() => {
+		const map = new Map<string, ConversationEntry>();
+		for (const entry of conversations) {
+			map.set(entry.data.conversationId, entry);
+		}
+		return map;
+	}, [conversations]);
+
+	const getConversationAvatarMeta = useCallback(
+		(conversationId: string) => {
+			const entry = conversationsById.get(conversationId);
+			const otherParticipant = entry ? getOtherParticipant(entry, userId) : null;
+			const hash = otherParticipant?.primaryMediaHash;
+			return {
+				name: entry?.data.name || t("chat.unknown"),
+				avatarSrc: hash ? resolveAvatarSrc(hash, getParticipantAvatarUrl(hash)) : null,
+			};
+		},
+		[conversationsById, userId, t],
+	);
 
 	useEffect(() => {
 		indexConversations(conversations);
@@ -230,23 +259,27 @@ export function ChatSearchPanel({ isDesktop, searchQuery, searchMode, onClose, o
 		<div className={`min-h-0 flex-1 overflow-y-auto ${px} py-3`} data-lenis-prevent>
 			<div className="flex flex-col gap-1.5">
 
-				{/* Conversations */}
-				{searchMode === "conversations" && conversationSearchResults.map((result) => (
-					<button
-						key={result.conversationId}
-						type="button"
-						onClick={() => openConversationById(result.conversationId)}
-						className="flex w-full items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-left transition hover:border-[var(--accent)]"
-					>
-						<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--surface-2)] text-sm font-semibold uppercase text-[var(--text-muted)]">
-							{result.name?.[0] ?? <MessageCircle className="h-4 w-4" />}
-						</div>
-						<div className="min-w-0 flex-1">
-							<p className="truncate text-sm font-semibold">{highlight(result.name, searchQuery)}</p>
-							<p className="truncate text-xs text-[var(--text-muted)]">{result.preview || t("chat_search.no_preview")}</p>
-						</div>
-					</button>
-				))}
+				{/* Conversations — styled like the real chat list rows, using the
+				    matched conversation's own last-message preview. */}
+				{searchMode === "conversations" && conversationSearchResults.map((result) => {
+					const { avatarSrc } = getConversationAvatarMeta(result.conversationId);
+					return (
+						<button
+							key={result.conversationId}
+							type="button"
+							onClick={() => openConversationById(result.conversationId)}
+							className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-[var(--surface-2)]"
+						>
+							<div className="h-12 w-12 shrink-0 squircle bg-[var(--surface-2)]">
+								<ProfileImage src={avatarSrc} alt={result.name} />
+							</div>
+							<div className="min-w-0 flex-1">
+								<p className="truncate text-sm font-semibold text-[var(--text)]">{highlight(result.name, searchQuery)}</p>
+								<p className="truncate text-xs text-[var(--text-muted)]">{result.preview || t("chat_search.no_preview")}</p>
+							</div>
+						</button>
+					);
+				})}
 				{searchMode === "conversations" && conversationSearchResults.length === 0 && (
 					<div className="flex flex-col items-center gap-2 py-10 text-[var(--text-muted)]">
 						<MessageCircle className="h-7 w-7 opacity-30" />
@@ -254,23 +287,42 @@ export function ChatSearchPanel({ isDesktop, searchQuery, searchMode, onClose, o
 					</div>
 				)}
 
-				{/* Messages */}
-				{searchMode === "messages" && messageSearchResults.map((result) => (
-					<button
-						key={result.messageId}
-						type="button"
-						onClick={() => openConversationById(result.conversationId)}
-						className="flex w-full items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-left transition hover:border-[var(--accent)]"
-					>
-						<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--surface-2)] text-[var(--text-muted)]">
-							<MessageCircle className="h-4 w-4" />
-						</div>
-						<div className="min-w-0 flex-1">
-							<p className="truncate text-xs text-[var(--text-muted)]">{result.conversationId}</p>
-							<p className="mt-0.5 line-clamp-2 text-sm">{highlight(result.text, searchQuery)}</p>
-						</div>
-					</button>
-				))}
+				{/* Messages — shown as an actual chat bubble (own vs. their side,
+				    same rounding/colors as the real thread) under a small header
+				    naming who it's with and when, instead of a generic list row. */}
+				{searchMode === "messages" && messageSearchResults.map((result) => {
+					const { name, avatarSrc } = getConversationAvatarMeta(result.conversationId);
+					const isMine = userId != null && Number(result.senderId) === Number(userId);
+					return (
+						<button
+							key={result.messageId}
+							type="button"
+							onClick={() => openConversationById(result.conversationId)}
+							className="flex w-full flex-col gap-1.5 rounded-xl px-3 py-2.5 text-left transition hover:bg-[var(--surface-2)]"
+						>
+							<div className="flex items-center gap-2">
+								<div className="h-6 w-6 shrink-0 overflow-hidden rounded-full bg-[var(--surface-2)]">
+									<ProfileImage src={avatarSrc} alt={name} />
+								</div>
+								<p className="truncate text-xs font-semibold text-[var(--text-muted)]">{name}</p>
+								<span className="shrink-0 text-[10px] text-[var(--text-muted)]">
+									{formatRelativeTime(result.timestamp)}
+								</span>
+							</div>
+							<div className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
+								<div
+									className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
+										isMine
+											? "bg-[var(--accent)] text-[var(--accent-contrast)] rounded-br-[3px]"
+											: "bg-[var(--surface-2)] text-[var(--text)] rounded-bl-[3px]"
+									}`}
+								>
+									{highlight(result.text, searchQuery)}
+								</div>
+							</div>
+						</button>
+					);
+				})}
 				{searchMode === "messages" && messageSearchResults.length === 0 && (
 					<div className="flex flex-col items-center gap-2 py-10 text-[var(--text-muted)]">
 						<MessageCircle className="h-7 w-7 opacity-30" />

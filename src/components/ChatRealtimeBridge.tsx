@@ -36,6 +36,7 @@ import {
 import {
 	toggleArchiveOnConversationDelete,
 	reconcileArchivedConversationForProfile,
+	reconcileBlockStateWithBlockedList,
 	CHAT_SYSTEM_MESSAGE_EVENT,
 } from "../services/conversationArchive";
 import { messageSchema, type Message } from "../types/messages";
@@ -53,6 +54,12 @@ import { shouldAutoBlock, getMatchedForbiddenWord, notifyAutoBlock } from "../ut
 import { useApiFunctions } from "../hooks/useApiFunctions";
 import { useBlockedProfileIds } from "../hooks/queries/useProfileQueries";
 import { isReadReceiptsHidden } from "../utils/privacy";
+import { classifyProfileAccess } from "../utils/profileAccessStatus";
+import {
+	isChatNotificationsEnabled,
+	isForegroundNotificationsEnabled,
+	isTapNotificationsEnabled,
+} from "../utils/notificationSettings";
 import { notifyLocal } from "../services/localNotify";
 
 let cachedIsAndroid: boolean | null = null;
@@ -137,7 +144,7 @@ function parseTapPayload(payload: unknown): TapReceivedDetail | null {
 	const display =
 		typeof r.senderDisplayName === "string" && r.senderDisplayName.trim()
 			? r.senderDisplayName.trim()
-			: profileId;
+			: "";
 	const image =
 		typeof r.senderProfileImageHash === "string" && r.senderProfileImageHash
 			? r.senderProfileImageHash
@@ -211,7 +218,7 @@ function extractMessages(envelope: RealtimeEnvelope): Message[] {
 }
 
 export function ChatRealtimeBridge() {
-	const { userId } = useAuth();
+	const { userId, settingsReady } = useAuth();
 	const { callMethod } = useApi();
     const apiFunctions = useApiFunctions();
 	const location = useLocation();
@@ -247,6 +254,22 @@ export function ChatRealtimeBridge() {
 	useEffect(() => {
 		blockedProfileIdsRef.current = new Set(blockedProfileIdsData ?? []);
 	}, [blockedProfileIdsData]);
+
+	// Catches a block or unblock made on another device while this device's
+	// app wasn't running at all, or otherwise missed here (so no WS event or
+	// 403 ever had a chance to tell it) — see reconcileBlockStateWithBlockedList.
+	// Runs whenever the blocked-profile-ids data actually changes (a new
+	// array reference only happens on genuine query success), typically once
+	// at app start and again on any later refetch. Gated on settingsReady,
+	// not just userId, so this can't run against the previous account's
+	// chatDb file (or the pre-login legacy one) while setActiveChatDbUser is
+	// still switching — it would read/write the wrong conversations table.
+	useEffect(() => {
+		if (userId == null || !settingsReady || !blockedProfileIdsData) {
+			return;
+		}
+		void reconcileBlockStateWithBlockedList(blockedProfileIdsData);
+	}, [userId, settingsReady, blockedProfileIdsData]);
 
 	// Boot the realtime manager whenever the user is authenticated.
 	// getToken is called fresh on every (re)connect so an expired token
@@ -287,16 +310,38 @@ export function ChatRealtimeBridge() {
 			}
 		};
 
+		// A fresh chat.v1.conversation.delete that isn't self-attributed could
+		// mean either "they blocked us" or "their profile was deleted/banned" —
+		// isProfileFound (a bulk profile lookup) can't reliably tell those apart.
+		// classifyProfileAccess reads GET /v7/profiles/:id's stub-response quirk
+		// (see its own doc comment) — an immediate and reliable signal (confirmed
+		// live right after a block, no propagation delay), unlike attempting to
+		// load the conversation's messages, which can lag behind the block being
+		// enacted server-side.
+		const checkConversationAccessible = async (
+			profileId: string,
+		): Promise<"accessible" | "not_found" | "blocked"> => {
+			try {
+				const profile = await apiFunctions.getProfileDetail(profileId);
+				return classifyProfileAccess(profile);
+			} catch {
+				return "accessible";
+			}
+		};
+
 		// Fallback for toggleArchiveOnConversationDelete's self/other
 		// disambiguation: the local self-action marker only exists when the
 		// block came from this device, so blocking the same profile from
 		// another device would otherwise show as "You were blocked" here.
-		// Fetches fresh (bypassing the 10-minute query staleTime) so a block
-		// made moments ago on another device is picked up right away.
+		// Fetches fresh (bypassing the cached blockedProfileIdsRef/query
+		// staleTime) rather than risking a stale answer — this only runs on an
+		// actual chat.v1.conversation.delete event, rare enough that a live
+		// network round trip here is cheap, and correctness matters more than
+		// saving one request for exactly this decision.
 		const isBlockedByMe = async (profileId: string): Promise<boolean> => {
 			try {
 				const blockedIds = await apiFunctions.getBlockedProfileIds();
-				return blockedIds.some((id) => String(id) === profileId);
+				return blockedIds.includes(profileId);
 			} catch {
 				return false;
 			}
@@ -321,11 +366,16 @@ export function ChatRealtimeBridge() {
 		// desktop/iOS have no competing push channel, so they go straight
 		// to notifyLocal().
 		const triggerIncomingMessageNotification = (m: Message) => {
-			if (!isAppForeground()) return;
+			if (
+				!isAppForeground() ||
+				!isChatNotificationsEnabled() ||
+				!isForegroundNotificationsEnabled()
+			)
+				return;
 
 			const conv = getConversation(m.conversationId);
 			const other = conv ? getOtherParticipant(conv, userIdRef.current) : null;
-			const senderName = conv?.data.name?.trim() || "Someone";
+			const senderName = conv?.data.name?.trim() || tRef.current("chat.notifications.someone");
 			const bodyText = getMessagePreviewLabel(m, tRef.current);
 
 			if (isAndroidRuntime()) {
@@ -356,10 +406,17 @@ export function ChatRealtimeBridge() {
 		};
 
 		const triggerTapNotification = (tap: TapReceivedDetail) => {
-			if (!isAppForeground()) return;
+			if (
+				!isAppForeground() ||
+				!isTapNotificationsEnabled() ||
+				!isForegroundNotificationsEnabled()
+			)
+				return;
 
-			const senderName = tap.displayName || "Someone";
-			const bodyText = tap.isMutual ? "Tapped you back" : "Tapped you";
+			const senderName = tap.displayName || tRef.current("chat.notifications.someone");
+			const bodyText = tap.isMutual
+				? tRef.current("chat.notifications.tapped_you_back")
+				: tRef.current("chat.notifications.tapped_you");
 
 			if (isAndroidRuntime()) {
 				const payload = {
@@ -514,6 +571,8 @@ export function ChatRealtimeBridge() {
 							notificationId,
 							isProfileFound,
 							isBlockedByMe,
+							checkConversationAccessible,
+							userIdRef.current,
 						);
 						if (systemMessages.length > 0) {
 							window.dispatchEvent(
