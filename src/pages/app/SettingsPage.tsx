@@ -24,7 +24,7 @@ import {
 	UserPlus,
 	UserX,
 } from "lucide-react";
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, type CSSProperties } from "react";
 import toast from "react-hot-toast";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -91,13 +91,18 @@ function describeInboxSyncStatus(status: InboxSyncStatus, t: TFunction) {
 								defaultValue: "{{count}} checked so far",
 								count: status.conversationsSoFar,
 							}),
-				icon: <Loader2 className="h-5 w-5 animate-spin" />,
-				iconClass: "bg-sky-500/15 text-sky-400",
+				badgeIcon: <Loader2 className="h-3 w-3 animate-spin" />,
+				badgeClass: "",
+				badgeStyle: {
+					backgroundColor: "var(--accent)",
+					color: "var(--accent-contrast)",
+				} as CSSProperties | undefined,
 				progressPercent: null as number | null,
+				active: true,
 			};
 		case "syncing_messages": {
 			const progressPercent =
-				status.total > 0 ? Math.round((status.completed / status.total) * 100) : 100;
+				status.total > 0 ? Math.round((status.completed / status.total) * 100) : null;
 			return {
 				title: t("settings.chat_sync_syncing_messages", {
 					defaultValue: "Syncing latest messages…",
@@ -107,9 +112,14 @@ function describeInboxSyncStatus(status: InboxSyncStatus, t: TFunction) {
 					completed: status.completed,
 					total: status.total,
 				}),
-				icon: <Loader2 className="h-5 w-5 animate-spin" />,
-				iconClass: "bg-sky-500/15 text-sky-400",
+				badgeIcon: <Loader2 className="h-3 w-3 animate-spin" />,
+				badgeClass: "",
+				badgeStyle: {
+					backgroundColor: "var(--accent)",
+					color: "var(--accent-contrast)",
+				} as CSSProperties | undefined,
 				progressPercent,
+				active: true,
 			};
 		}
 		case "done":
@@ -126,17 +136,21 @@ function describeInboxSyncStatus(status: InboxSyncStatus, t: TFunction) {
 								defaultValue: "{{count}} conversations synced",
 								count: status.conversations,
 							}),
-				icon: <CheckCircle2 className="h-5 w-5" />,
-				iconClass: "bg-emerald-500/15 text-emerald-400",
+				badgeIcon: <CheckCircle2 className="h-3 w-3" />,
+				badgeClass: "bg-emerald-500 text-white",
+				badgeStyle: undefined as CSSProperties | undefined,
 				progressPercent: null,
+				active: false,
 			};
 		case "error":
 			return {
 				title: t("settings.chat_sync_error", { defaultValue: "Chat sync failed" }),
 				description: status.message,
-				icon: <AlertCircle className="h-5 w-5" />,
-				iconClass: "bg-red-500/15 text-red-400",
+				badgeIcon: <AlertCircle className="h-3 w-3" />,
+				badgeClass: "bg-red-500 text-white",
+				badgeStyle: undefined as CSSProperties | undefined,
 				progressPercent: null,
+				active: false,
 			};
 		default:
 			return {
@@ -144,9 +158,14 @@ function describeInboxSyncStatus(status: InboxSyncStatus, t: TFunction) {
 				description: t("settings.chat_sync_preparing_desc", {
 					defaultValue: "Runs in the background and won't slow down the app.",
 				}),
-				icon: <Loader2 className="h-5 w-5 animate-spin" />,
-				iconClass: "bg-sky-500/15 text-sky-400",
+				badgeIcon: <Loader2 className="h-3 w-3 animate-spin" />,
+				badgeClass: "",
+				badgeStyle: {
+					backgroundColor: "var(--accent)",
+					color: "var(--accent-contrast)",
+				} as CSSProperties | undefined,
 				progressPercent: null,
+				active: true,
 			};
 	}
 }
@@ -619,19 +638,42 @@ export function SettingsPage() {
 					<p className="mb-2 px-1 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">Chat</p>
 					<div className="surface-card overflow-hidden divide-y divide-[var(--border)]">
 						<div className="flex items-center gap-3 px-4 py-3.5">
-							<div className={`shrink-0 rounded-2xl p-2.5 ${inboxSyncDisplay.iconClass}`}>
-								{inboxSyncDisplay.icon}
+							<div className="relative shrink-0">
+								<div className="rounded-2xl bg-[var(--surface-2)] p-2.5 text-[var(--text-muted)]">
+									<DatabaseBackup className="h-5 w-5" />
+								</div>
+								<div
+									className={`absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full ring-2 ring-[var(--surface)] ${inboxSyncDisplay.badgeClass}`}
+									style={inboxSyncDisplay.badgeStyle}
+								>
+									{inboxSyncDisplay.badgeIcon}
+								</div>
 							</div>
 							<div className="min-w-0 flex-1">
-								<p className="text-sm font-semibold leading-snug">{inboxSyncDisplay.title}</p>
-								<p className="mt-0.5 text-xs leading-snug text-[var(--text-muted)]">
+								<div className="flex items-center justify-between gap-2">
+									<p className="text-sm font-semibold leading-snug">{inboxSyncDisplay.title}</p>
+									{inboxSyncDisplay.progressPercent != null && (
+										<p className="shrink-0 text-xs font-semibold tabular-nums text-[var(--accent)]">
+											{inboxSyncDisplay.progressPercent}%
+										</p>
+									)}
+								</div>
+								<p className="mt-0.5 text-xs leading-snug tabular-nums text-[var(--text-muted)]">
 									{inboxSyncDisplay.description}
 								</p>
-								{inboxSyncDisplay.progressPercent != null && (
+								{inboxSyncDisplay.active && (
 									<div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-2)]">
 										<div
-											className="h-full rounded-full bg-sky-500 transition-all duration-300"
-											style={{ width: `${inboxSyncDisplay.progressPercent}%` }}
+											className={
+												inboxSyncDisplay.progressPercent == null
+													? "h-full w-2/5 animate-progress-indeterminate rounded-full bg-[var(--accent)]"
+													: "h-full rounded-full bg-[var(--accent)] transition-all duration-300"
+											}
+											style={
+												inboxSyncDisplay.progressPercent != null
+													? { width: `${inboxSyncDisplay.progressPercent}%` }
+													: undefined
+											}
 										/>
 									</div>
 								)}
