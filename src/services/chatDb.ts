@@ -1270,6 +1270,20 @@ export async function getAlbum(albumId: string): Promise<StoredAlbum | null> {
 	return row ? rowToStoredAlbum(row) : null;
 }
 
+/**
+ * Deletes a single album and its cached media — used when the user removes
+ * a received album from the shared-albums page, whether or not the share
+ * itself is still live server-side.
+ */
+export async function deleteAlbum(albumId: string): Promise<void> {
+	const db = await getDb();
+
+	await executeWithLockRetry(db, "delete-album", async () => {
+		await db.execute("DELETE FROM album_media WHERE album_id = $1", [albumId]);
+		await db.execute("DELETE FROM albums WHERE album_id = $1", [albumId]);
+	});
+}
+
 /** All albums ever shared within this conversation, eagerly captured and durable. */
 export async function getAlbumsForConversation(
 	conversationId: string,
