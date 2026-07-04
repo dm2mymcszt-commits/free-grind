@@ -2900,20 +2900,15 @@ export function ChatPage() {
 
 		let result: ConversationEntry[];
 		if (showArchivedOnly) {
-			result = archivedEntries;
-		} else {
-			const liveConversations = conversations.filter(
-				(c) => !archivedConversations.has(c.data.conversationId),
-			);
-			// Sort archived entries back into their natural position (by
-			// recency) instead of always tacking them on at the very end,
-			// where a single archived chat among many active ones would be
-			// easy to miss without scrolling.
-			result = [...liveConversations, ...archivedEntries].sort((a, b) => {
+			result = [...archivedEntries].sort((a, b) => {
 				if (a.data.pinned && !b.data.pinned) return -1;
 				if (b.data.pinned && !a.data.pinned) return 1;
 				return (b.data.lastActivityTimestamp ?? 0) - (a.data.lastActivityTimestamp ?? 0);
 			});
+		} else {
+			result = conversations.filter(
+				(c) => !archivedConversations.has(c.data.conversationId),
+			);
 		}
 
 		if (activeInboxFilters.favoritesOnly) {
