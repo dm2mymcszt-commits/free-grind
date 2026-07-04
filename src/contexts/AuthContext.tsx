@@ -24,6 +24,7 @@ import { loadMediaSettingsCache } from "../utils/mediaSettings";
 import { loadPrivacyCache } from "../utils/privacy";
 import { loadSeenCache } from "../services/seenStore";
 import { runInboxSync } from "../services/inboxSync";
+import { syncSavedPhrasesFromServer } from "../services/savedPhrases";
 
 const AUTH_USER_ID_STORAGE_KEY = "fg-user-id";
 const PUSH_TOKEN_STORAGE_KEY = "fg-fcm-token";
@@ -300,6 +301,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			if (state.userId != null) {
 				const userId = state.userId;
 				void runInboxSync(apiFunctions, userId, () => currentUserIdRef.current === userId);
+				// Fire-and-forget: pulls this account's saved phrases from Grindr and
+				// unions them into the local list. Guarded by the same "still the
+				// active profile" check as the inbox sync above, since chatDb (and so
+				// where the merged list gets written) already points at whichever
+				// profile is active by the time this resolves.
+				void syncSavedPhrasesFromServer(
+					apiFunctions.getSavedPhrases,
+					() => currentUserIdRef.current === userId,
+				);
 			}
 
 			await Promise.all([

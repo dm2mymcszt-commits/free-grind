@@ -43,6 +43,7 @@ import {
 	type TypingStatusDetail,
 } from "../../components/ChatRealtimeBridge";
 import { PhotoViewer, type PhotoViewerMedia } from "../../components/PhotoViewer";
+import { PhotoActionBar } from "../../components/PhotoActionBar";
 import {
 	messageSchema,
 	type ConversationEntry,
@@ -3958,6 +3959,63 @@ export function ChatPage() {
 		[loadInbox, openConversationById, selectedConversation, service, t, targetProfileId, userId, replyTargetMessageId, setReplyTargetMessageId],
 	);
 
+	// Sent from the in-thread album image viewer's reply/react bar — deliberately
+	// independent of the main compose bar's isSending/replyTargetMessageId state,
+	// since the photo viewer sits on top of it and shouldn't disable or hijack it.
+	const sendAlbumContentReaction = useCallback(
+		async (albumId: number, albumContentId: number) => {
+			if (!userId) return;
+			const targetProfileIdValue = selectedConversation
+				? (getOtherParticipant(selectedConversation, userId)?.profileId ?? null)
+				: targetProfileId;
+			if (!targetProfileIdValue) {
+				toast.error(t("chat.errors.missing_recipient"));
+				return;
+			}
+			try {
+				const sentMessage = await service.sendMessage({
+					type: "AlbumContentReaction",
+					target: { type: "Direct", targetId: targetProfileIdValue },
+					body: { albumId, albumContentId },
+				});
+				if (selectedConversation) {
+					setThreadMessages((previous) => [...previous, sentMessage]);
+				}
+				toast.success(t("chat.toasts.album_reaction_sent", { defaultValue: "Reaction sent" }));
+			} catch (error) {
+				toast.error(error instanceof Error ? error.message : t("chat.errors.send_failed"));
+			}
+		},
+		[selectedConversation, service, t, targetProfileId, userId],
+	);
+
+	const sendAlbumContentReply = useCallback(
+		async (albumId: number, albumContentId: number, contentType: string | null, text: string) => {
+			if (!userId) return;
+			const targetProfileIdValue = selectedConversation
+				? (getOtherParticipant(selectedConversation, userId)?.profileId ?? null)
+				: targetProfileId;
+			if (!targetProfileIdValue) {
+				toast.error(t("chat.errors.missing_recipient"));
+				return;
+			}
+			try {
+				const sentMessage = await service.sendMessage({
+					type: "AlbumContentReply",
+					target: { type: "Direct", targetId: targetProfileIdValue },
+					body: { albumId, albumContentId, albumContentReply: text, contentType: contentType ?? "image/jpeg" },
+				});
+				if (selectedConversation) {
+					setThreadMessages((previous) => [...previous, sentMessage]);
+				}
+				toast.success(t("chat.toasts.album_reply_sent", { defaultValue: "Reply sent" }));
+			} catch (error) {
+				toast.error(error instanceof Error ? error.message : t("chat.errors.send_failed"));
+			}
+		},
+		[selectedConversation, service, t, targetProfileId, userId],
+	);
+
 	const sendMediaAttachment = useCallback(
 		async (
 			file: File,
@@ -4551,7 +4609,7 @@ export function ChatPage() {
 	}, [selectedConversation, userId, t, loadThread]);
 
 	const openAlbumViewerById = useCallback(
-		async (albumId: number) => {
+		async (albumId: number, isOwnAlbum?: boolean) => {
 			albumViewerCancelledRef.current = false;
 			setIsAlbumSheetOpen(true);
 			setAlbumViewerMediaIndex(null);
@@ -4563,7 +4621,7 @@ export function ChatPage() {
 			const cached = await getLocalAlbum(albumId).catch(() => null);
 			if (albumViewerCancelledRef.current) return;
 			if (cached) {
-				setAlbumViewer(cached);
+				setAlbumViewer({ ...cached, isOwn: isOwnAlbum });
 				setIsAlbumViewerLoading(false);
 			} else {
 				setAlbumViewer(null);
@@ -4592,11 +4650,14 @@ export function ChatPage() {
 				const merged = await getLocalAlbum(albumId);
 				if (albumViewerCancelledRef.current) return;
 				setAlbumViewer(
-					merged ?? {
-						albumId: details.albumId,
-						albumName: details.albumName,
-						content: details.content,
-					},
+					merged
+						? { ...merged, isOwn: isOwnAlbum }
+						: {
+							albumId: details.albumId,
+							albumName: details.albumName,
+							content: details.content,
+							isOwn: isOwnAlbum,
+						},
 				);
 			} catch (error) {
 				if (albumViewerCancelledRef.current) return;
@@ -5204,6 +5265,18 @@ export function ChatPage() {
 				onClose={closeAlbumMediaViewer}
 				photos={albumViewerPhotos}
 				initialIndex={albumViewerMediaIndex ?? 0}
+				renderFooter={(idx) => {
+					const item = albumViewer?.content[idx];
+					if (!albumViewer || !item || albumViewer.isOwn) return null;
+					return (
+						<PhotoActionBar
+							onSendText={(text) =>
+								sendAlbumContentReply(albumViewer.albumId, item.contentId, item.contentType, text)
+							}
+							onReact={() => sendAlbumContentReaction(albumViewer.albumId, item.contentId)}
+						/>
+					);
+				}}
 			/>
 
 			<PhotoViewer

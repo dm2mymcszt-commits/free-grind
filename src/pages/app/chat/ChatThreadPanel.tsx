@@ -161,7 +161,7 @@ type ChatThreadPanelProps = {
 	endMessageLongPress: () => void;
 	messageLongPressTriggeredRef: { current: boolean };
 	openFullScreenImage: (imageUrl: string, meta?: { takenOnGrindr: boolean; createdAtLabel: string | null; timestamp: number }, mediaType?: "image" | "video") => void;
-	openAlbumViewerById: (albumId: number) => void | Promise<void>;
+	openAlbumViewerById: (albumId: number, isOwnAlbum?: boolean) => void | Promise<void>;
 	selectedThreadMessageMatches: Array<{ messageId: string }>;
 	activeThreadSearchIndex: number;
 	openMessageActionId: string | null;

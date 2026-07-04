@@ -19,6 +19,8 @@ export type PhotoViewerProps = {
 	initialIndex?: number;
 	onIndexChange?: (index: number) => void;
 	renderExtraInfo?: (index: number) => React.ReactNode;
+	/** Full-width bar anchored to the bottom (e.g. a reply/react bar) — pushes the page-count pill and renderExtraInfo up out of its way when present. */
+	renderFooter?: (index: number) => React.ReactNode;
 };
 
 function getMediaInfo(photo: string | PhotoViewerMedia) {
@@ -33,6 +35,7 @@ export function PhotoViewer({
 	initialIndex = 0,
 	onIndexChange,
 	renderExtraInfo,
+	renderFooter,
 }: PhotoViewerProps) {
 	const { t } = useTranslation();
 	const N = photos.length;
@@ -339,7 +342,7 @@ export function PhotoViewer({
 				onClick={(e) => { e.stopPropagation(); onClose(); }}
 				onTouchStart={(e) => { e.stopPropagation(); gestureMovedRef.current = false; }}
 				onTouchEnd={(e) => handleButtonTouchEnd(e, onClose)}
-				className="absolute right-3 top-[calc(env(safe-area-inset-top,0px)+2rem)] z-[83] inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/30 bg-black/50 text-white sm:right-5 sm:top-5"
+				className="absolute right-3 top-[calc(env(safe-area-inset-top,0px)+2rem)] z-[83] inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/40 text-white shadow-lg backdrop-blur-md transition active:scale-90 sm:right-5 sm:top-5"
 				aria-label={t("profile_details.close_photo_viewer")}
 			>
 				<X className="h-5 w-5" />
@@ -350,7 +353,7 @@ export function PhotoViewer({
 				onClick={(e) => { e.stopPropagation(); void handleSave(); }}
 				onTouchEnd={(e) => handleButtonTouchEnd(e, () => void handleSave())}
 				disabled={isSaving}
-				className="absolute left-3 top-[calc(env(safe-area-inset-top,0px)+2rem)] z-[83] inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/30 bg-black/50 text-white disabled:opacity-50 sm:left-5 sm:top-5"
+				className="absolute left-3 top-[calc(env(safe-area-inset-top,0px)+2rem)] z-[83] inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/40 text-white shadow-lg backdrop-blur-md transition active:scale-90 disabled:opacity-50 sm:left-5 sm:top-5"
 				aria-label={t("profile_details.save_to_gallery")}
 			>
 				<Download className="h-5 w-5" />
@@ -363,7 +366,7 @@ export function PhotoViewer({
 						onClick={(e) => { e.stopPropagation(); showPrev(); }}
 						onTouchStart={(e) => { e.stopPropagation(); gestureMovedRef.current = false; }}
 						onTouchEnd={(e) => handleButtonTouchEnd(e, showPrev)}
-						className="absolute left-2 top-1/2 z-[83] inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/30 bg-black/50 text-white sm:left-4 sm:h-11 sm:w-11"
+						className="absolute left-2 top-1/2 z-[83] inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-black/40 text-white shadow-lg backdrop-blur-md transition active:scale-90 sm:left-4 sm:h-11 sm:w-11"
 						aria-label={t("profile_details.previous_photo")}
 					>
 						<ChevronLeft className="h-5 w-5" />
@@ -373,7 +376,7 @@ export function PhotoViewer({
 						onClick={(e) => { e.stopPropagation(); showNext(); }}
 						onTouchStart={(e) => { e.stopPropagation(); gestureMovedRef.current = false; }}
 						onTouchEnd={(e) => handleButtonTouchEnd(e, showNext)}
-						className="absolute right-2 top-1/2 z-[83] inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/30 bg-black/50 text-white sm:right-4 sm:h-11 sm:w-11"
+						className="absolute right-2 top-1/2 z-[83] inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-black/40 text-white shadow-lg backdrop-blur-md transition active:scale-90 sm:right-4 sm:h-11 sm:w-11"
 						aria-label={t("profile_details.next_photo")}
 					>
 						<ChevronRight className="h-5 w-5" />
@@ -382,7 +385,13 @@ export function PhotoViewer({
 			)}
 
 			{N > 1 && (
-				<p className="absolute bottom-[calc(env(safe-area-inset-bottom,0px)+1.25rem)] left-1/2 z-[83] -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-xs text-white">
+				<p
+					className={`absolute left-1/2 z-[83] -translate-x-1/2 rounded-full border border-white/15 bg-black/40 px-3 py-1 text-xs font-medium text-white shadow-lg backdrop-blur-md ${
+						renderFooter
+							? "bottom-[calc(env(safe-area-inset-bottom,0px)+5.5rem)]"
+							: "bottom-[calc(env(safe-area-inset-bottom,0px)+1.25rem)]"
+					}`}
+				>
 					{centerIdx + 1} / {N}
 				</p>
 			)}
@@ -450,7 +459,7 @@ export function PhotoViewer({
 										/>
 									)}
 									{isCurrent && renderExtraInfo && (
-										<div className="absolute bottom-3 left-3 flex items-center gap-2">
+										<div className="absolute left-1/2 top-3 flex -translate-x-1/2 items-center gap-2">
 											{renderExtraInfo(centerIdx)}
 										</div>
 									)}
@@ -460,6 +469,15 @@ export function PhotoViewer({
 					})}
 				</div>
 			</div>
+
+			{renderFooter && (
+				<div
+					className="absolute inset-x-0 bottom-0 z-[83]"
+					onClick={(e) => e.stopPropagation()}
+				>
+					{renderFooter(centerIdx)}
+				</div>
+			)}
 		</div>,
 		document.body,
 	);

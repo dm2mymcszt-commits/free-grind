@@ -309,6 +309,19 @@ export function GridProfilePage() {
 		}
 	};
 
+	const handleSendProfilePhotoReply = async (targetProfileId: string, imageHash: string, text: string) => {
+		try {
+			await apiFunctions.sendMessage({
+				type: "ProfilePhotoReply",
+				target: { type: "Direct", targetId: Number(targetProfileId) },
+				body: { imageHash, photoContentReply: text },
+			});
+			toast.success(t("chat.toasts.photo_reply_sent", { defaultValue: "Reply sent" }));
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : t("chat.errors.send_failed"));
+		}
+	};
+
 	const performBlockProfile = async (targetProfileId: string) => {
 		try {
 			await blockProfileMutation(targetProfileId);
@@ -630,6 +643,7 @@ export function GridProfilePage() {
 				onNextProfile={handleNextProfile}
 				onMessageProfile={handleMessageProfile}
 				onSendQuickMessage={handleSendQuickMessage}
+				onSendProfilePhotoReply={handleSendProfilePhotoReply}
 				onTriangleProfile={handleTriangleProfile}
 				onBlockProfile={handleBlockProfile}
 				onUnblockProfile={handleUnblockProfile}
