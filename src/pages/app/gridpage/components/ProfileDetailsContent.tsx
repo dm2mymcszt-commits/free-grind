@@ -44,7 +44,7 @@ import {
 import { reverseGeocodeCityDistrictForGeohash } from "../geocoding";
 import { getProfileImageUrl, getThumbImageUrl } from "../../../../utils/media";
 import { ProfileImage } from "../../../../components/ui/profile-image";
-import freegrindLogo from "../../../../images/freegrind-logo.webp";
+import { FreeGrindBadge } from "../../../../components/FreeGrindBadge";
 import { TapSelector } from "./TapSelector";
 import type { ChatContactIndexRecord } from "../../../../types/chat-contact-index";
 import { formatRelativeTime } from "../../../../utils/relativeTime";
@@ -501,12 +501,7 @@ export function ProfileDetailsContent({
 						)}
 					</div>
 					{usesFreegrind && (
-						<img
-							src={freegrindLogo}
-							alt="Free Grind user"
-							title={t("profile_details.uses_free_grind")}
-							className="mt-1 h-6 w-6 shrink-0 rounded-full border border-[var(--border)]"
-						/>
+						<FreeGrindBadge size="lg" title={t("profile_details.uses_free_grind")} className="mt-1" />
 					)}
 				</div>
 				{hasChatHistory && (

@@ -53,6 +53,7 @@ import {
 } from "../pages/app/chat/chatUtils";
 import { fetchAndStoreMedia } from "../services/mediaStore";
 import { captureAlbumsForMessages } from "../services/albumStore";
+import { captureReplyPreviewsForMessages } from "../services/replyMediaStore";
 import { getConversation } from "../services/conversationDirectory";
 import { shouldAutoBlock, getMatchedForbiddenWord, notifyAutoBlock } from "../utils/autoblock";
 import { useApiFunctions } from "../hooks/useApiFunctions";
@@ -725,6 +726,7 @@ export function ChatRealtimeBridge() {
 							});
 						}
 						captureAlbumsForMessages(msgs, cid, (id) => apiFunctions.getAlbum(id));
+						captureReplyPreviewsForMessages(msgs, cid);
 					}
 				}
 

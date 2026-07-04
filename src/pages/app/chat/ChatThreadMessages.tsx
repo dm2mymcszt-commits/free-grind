@@ -21,6 +21,7 @@ import { useAlbumCache } from "../../../hooks/useAlbumCache";
 import {
     ensureAlbumCacheChecked,
     getCachedAlbumCoverUri,
+    getCachedAlbumContentThumbUri,
     isAlbumCachedLocally,
     isAlbumKnownRevoked,
 } from "../../../services/albumStore";
@@ -36,6 +37,8 @@ import {
 	getMessageAlbumId,
 	getMessageAudioUrl,
 	getMediaCaptureTarget,
+	getReplyImageHashTarget,
+	getAlbumContentReplyTarget,
 	getMessageImageCreatedAt,
 	getGaymojiUrl,
 	getMessageImageUrl,
@@ -941,8 +944,18 @@ export function ChatThreadMessages({
                         || replyToMsgRef?.type === "Giphy" || replyToMsg?.type === "Giphy";
                     const replyIsAudio = replyPreviewRaw?.type === "Audio" || replyPreviewRaw?.chat1Type === "audio"
                         || replyToMsgRef?.type === "Audio" || replyToMsg?.type === "Audio";
-                    const replyImageUrl = replyToMsg ? getMessageImageUrl(replyToMsg) : null;
+                    // Prefer whatever's already durably cached (survives the referenced
+                    // content outliving its signed URL / hash-thumb endpoint / album
+                    // share) over resolving straight from live message data — same
+                    // rationale as the main image/album handling above.
+                    const replyToMsgCaptureTarget = replyToMsg ? getMediaCaptureTarget(replyToMsg) : null;
+                    const cachedReplyImageUri = replyToMsgCaptureTarget?.kind === "image"
+                        ? getCachedMediaUri(replyToMsgCaptureTarget.mediaKey)
+                        : null;
+                    const replyImageUrl = cachedReplyImageUri ?? (replyToMsg ? getMessageImageUrl(replyToMsg) : null);
                     const replyImageHash = typeof replyPreviewRaw?.imageHash === "string" ? replyPreviewRaw.imageHash : null;
+                    const replyHashTarget = getReplyImageHashTarget(message);
+                    const cachedReplyHashUri = replyHashTarget ? getCachedMediaUri(replyHashTarget.mediaKey) : null;
                     const _replyRawRecord = replyPreviewRaw as Record<string, unknown> | null | undefined;
                     const replyPreviewUrl = replyIsImage && typeof replyPreviewRaw?.url === "string" && replyPreviewRaw.url.startsWith("http") ? replyPreviewRaw.url
                         : replyIsImage && typeof _replyRawRecord?.stillPath === "string" ? String(_replyRawRecord.stillPath)
@@ -950,8 +963,27 @@ export function ChatThreadMessages({
                         : replyIsImage && typeof _replyRawRecord?.urlPath === "string" ? String(_replyRawRecord.urlPath)
                         : null;
                     const replyMsgBody = message.body as Record<string, unknown> | null | undefined;
+                    // Scoped to AlbumContentReply only (matching albumContentThumbUrl
+                    // below) — AlbumContentReaction has no reply-quote bar at all; its
+                    // own thumbnail is resolved separately by the isAlbumReactionBubble
+                    // block further down. Without this guard, once a reacted-to item's
+                    // thumb gets cached, this block would start truthily contributing
+                    // to replyThumbUrl for Reaction messages too, popping a redundant
+                    // quote bar in above the dedicated reaction bubble.
+                    const ownAlbumContentTarget = message.type === "AlbumContentReply"
+                        ? getAlbumContentReplyTarget(message)
+                        : null;
+                    const cachedAlbumContentThumbUri = ownAlbumContentTarget
+                        ? getCachedAlbumContentThumbUri(ownAlbumContentTarget.albumId, ownAlbumContentTarget.contentId)
+                        : null;
                     const albumContentThumbUrl = message.type === "AlbumContentReply" && typeof replyMsgBody?.previewUrl === "string"
                         ? replyMsgBody.previewUrl
+                        : null;
+                    const referencedAlbumContentTarget = replyToMsg
+                        ? getAlbumContentReplyTarget(replyToMsg)
+                        : (message.replyToMessage ? getAlbumContentReplyTarget(message.replyToMessage as unknown as UiMessage) : null);
+                    const cachedReplyToMsgThumbUri = referencedAlbumContentTarget
+                        ? getCachedAlbumContentThumbUri(referencedAlbumContentTarget.albumId, referencedAlbumContentTarget.contentId)
                         : null;
                     const replyToMsgThumbUrl = (() => {
                         const embedded = message.replyToMessage as Record<string, unknown> | null | undefined;
@@ -962,7 +994,14 @@ export function ChatThreadMessages({
                         if ((t === "AlbumContentReaction" || t === "AlbumContentReply") && typeof b?.previewUrl === "string") return b.previewUrl;
                         return null;
                     })();
-                    const replyThumbUrl = replyImageUrl ?? (replyImageHash ? getThumbImageUrl(replyImageHash, "320x320") : null) ?? replyPreviewUrl ?? albumContentThumbUrl ?? replyToMsgThumbUrl;
+                    const replyThumbUrl = replyImageUrl
+                        ?? cachedReplyHashUri
+                        ?? (replyImageHash ? getThumbImageUrl(replyImageHash, "320x320") : null)
+                        ?? replyPreviewUrl
+                        ?? cachedAlbumContentThumbUri
+                        ?? albumContentThumbUrl
+                        ?? cachedReplyToMsgThumbUri
+                        ?? replyToMsgThumbUrl;
                     const replyAudioDuration = (() => {
                         if (!replyIsAudio) return null;
                         const embedded = message.replyToMessage as Record<string, unknown> | null | undefined;
@@ -1011,7 +1050,7 @@ export function ChatThreadMessages({
                         isAlbumMessage && messageText === t("chat.preview.shared_album") && !hasReply;
                     const isLocationOnlyBubble =
                         Boolean(location) && messageText === t("chat.preview.sent_location");
-                    const hasVisualMedia = Boolean(imageUrl) || Boolean(videoUrl) || isAlbumOnlyBubble || isLocationOnlyBubble;
+                    const hasVisualMedia = Boolean(imageUrl) || Boolean(videoUrl) || isAlbumOnlyBubble || isLocationOnlyBubble || isAlbumReactionBubble;
                 const isAudioOnlyBubble =
                         Boolean(audioUrl) && messageText === t("chat.thread.shared_audio");
                     const isMediaOnlyBubble =
@@ -1586,7 +1625,12 @@ export function ChatThreadMessages({
 
                                     {isAlbumReactionBubble ? (() => {
                                         const rxBody = message.body as Record<string, unknown> | null | undefined;
-                                        const rxPreviewUrl = typeof rxBody?.previewUrl === "string" ? rxBody.previewUrl : null;
+                                        const rxTarget = getAlbumContentReplyTarget(message);
+                                        const rxCachedThumbUri = rxTarget
+                                            ? getCachedAlbumContentThumbUri(rxTarget.albumId, rxTarget.contentId)
+                                            : null;
+                                        const rxPreviewUrl = rxCachedThumbUri
+                                            ?? (typeof rxBody?.previewUrl === "string" ? rxBody.previewUrl : null);
                                         const rxAlbumId = typeof rxBody?.albumId === "number" ? rxBody.albumId : null;
                                         const rxLabel = mine
                                             ? t("chat.preview.tapped_album_photo_theirs")
@@ -1608,6 +1652,11 @@ export function ChatThreadMessages({
                                                         <img src={rxPreviewUrl} alt="" className="aspect-square w-full object-cover" />
                                                     ) : (
                                                         <div className="h-48 w-full bg-[var(--surface-2)]" />
+                                                    )}
+                                                    {localOnly && (
+                                                        <span className="absolute left-2 top-2 z-10 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
+                                                            {t("chat.thread.from_local_history")}
+                                                        </span>
                                                     )}
                                                     <div className="absolute inset-x-0 bottom-0 flex flex-col bg-gradient-to-t from-black/80 via-black/40 to-transparent px-3 py-2 text-white">
                                                         <div className="flex items-center justify-between gap-2 text-[10px]">
@@ -1737,9 +1786,11 @@ export function ChatThreadMessages({
                                     ) : null}
 
                                     {message.type === "ProfilePhotoReply" ? (() => {
+                                        const hashTarget = getReplyImageHashTarget(message);
+                                        const cachedPhotoUri = hashTarget ? getCachedMediaUri(hashTarget.mediaKey) : null;
                                         const body = message.body as Record<string, unknown> | null | undefined;
                                         const hash = typeof body?.imageHash === "string" ? body.imageHash : null;
-                                        const photoUrl = hash ? getThumbImageUrl(hash, "320x320") : null;
+                                        const photoUrl = cachedPhotoUri ?? (hash ? getThumbImageUrl(hash, "320x320") : null);
                                         return (
                                             <div className={`relative mb-2.5 mt-1 flex overflow-hidden rounded-[6px] text-xs ${mine ? "bg-black/20" : "bg-black/[0.08]"}`}>
                                                 <div className={`absolute left-0 top-0 h-full w-[3px] shrink-0 ${mine ? "bg-white/60" : "bg-[var(--accent)]/50"}`} />

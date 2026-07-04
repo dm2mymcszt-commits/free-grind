@@ -34,6 +34,7 @@ import { SettingsDataPage } from "./pages/app/SettingsDataPage.tsx";
 import { SettingsPrivacyPage } from "./pages/app/SettingsPrivacyPage.tsx";
 import { SettingsSavedPhrasesPage } from "./pages/app/SettingsSavedPhrasesPage.tsx";
 import { PermissionsOnboarding } from "./components/PermissionsOnboarding";
+import { VersionAnnouncement } from "./components/VersionAnnouncement";
 import { OutdatedVersionPrompt } from "./components/OutdatedVersionPrompt";
 import { PushNotificationBridge } from "./components/PushNotificationBridge";
 import { ChatRealtimeBridge } from "./components/ChatRealtimeBridge";
@@ -45,6 +46,8 @@ import { usePreferences } from "./contexts/PreferencesContext";
 import ManagerApp from "./ManagerApp";
 import { getRuntimeContext } from "./services/runtimeContext";
 import { hasCompletedOnboarding } from "./utils/onboardingStorage";
+import { getLastSeenAnnouncementVersion, markAnnouncementSeen } from "./utils/announcementStorage";
+import { VERSION_ANNOUNCEMENTS } from "./data/versionAnnouncements";
 import { useRenderPhase } from "./hooks/useRenderPhase";
 
 function ErrorPage() {
@@ -132,14 +135,32 @@ function ManagerRoutePage() {
 	return <ManagerApp currentLabel={currentLabel} />;
 }
 
+const CURRENT_APP_VERSION = import.meta.env.VITE_APP_VERSION;
+const PENDING_ANNOUNCEMENT = VERSION_ANNOUNCEMENTS.find((a) => a.version === CURRENT_APP_VERSION) ?? null;
+
 export default function App() {
 	const [showOnboarding, setShowOnboarding] = useState(() => !hasCompletedOnboarding());
+	const [showAnnouncement, setShowAnnouncement] = useState(
+		() => !showOnboarding && !!PENDING_ANNOUNCEMENT && getLastSeenAnnouncementVersion() !== CURRENT_APP_VERSION,
+	);
 	// The routed page itself (below) always mounts on the first frame — only
 	// these non-visual startup bridges are staggered one per frame, so their
 	// setup (websocket connect, native push-notification registration, route
 	// tracking, entitlements fetch) doesn't all land in the same first commit
 	// as the initial route.
 	const renderPhase = useRenderPhase(5);
+
+	const handleOnboardingComplete = () => {
+		// A fresh install is already on the current version — it shouldn't
+		// immediately see a "what's new" screen for the version it just installed.
+		markAnnouncementSeen(CURRENT_APP_VERSION);
+		setShowOnboarding(false);
+	};
+
+	const handleAnnouncementClose = () => {
+		markAnnouncementSeen(CURRENT_APP_VERSION);
+		setShowAnnouncement(false);
+	};
 
 	return (
 		<AuthProvider>
@@ -148,7 +169,11 @@ export default function App() {
 				<SmoothScroll>
 					{showOnboarding ? (
 						<div className="app-shell">
-							<PermissionsOnboarding onComplete={() => setShowOnboarding(false)} />
+							<PermissionsOnboarding onComplete={handleOnboardingComplete} />
+						</div>
+					) : showAnnouncement && PENDING_ANNOUNCEMENT ? (
+						<div className="app-shell">
+							<VersionAnnouncement announcement={PENDING_ANNOUNCEMENT} onClose={handleAnnouncementClose} />
 						</div>
 					) : (<>
 					{renderPhase >= 1 && <ManagerModeRedirect />}

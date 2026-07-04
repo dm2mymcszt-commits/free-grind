@@ -92,6 +92,7 @@ import {
 } from "./chat/chatUtils";
 import { fetchAndStoreMedia, hydrateMediaByMessageId } from "../../services/mediaStore";
 import { captureAlbum, captureAlbumsForMessages, getLocalAlbum } from "../../services/albumStore";
+import { captureReplyPreviewsForMessages } from "../../services/replyMediaStore";
 import { useAvatarCache } from "../../hooks/useAvatarCache";
 import { resolveAvatarSrc } from "../../services/avatarStore";
 import { useDesktopBreakpoint } from "../../hooks/useDesktopBreakpoint";
@@ -1682,6 +1683,7 @@ export function ChatPage() {
 				captureAlbumsForMessages(responseMessages, conversationId, (id) =>
 					service.getAlbum(id),
 				);
+				captureReplyPreviewsForMessages(responseMessages, conversationId);
 
 				if (!older) {
 					setThreadLastReadTimestamp(normalizedLastRead);
@@ -2273,6 +2275,7 @@ export function ChatPage() {
 			void chatLog.appendMessages(cid, msgs);
 			captureMediaForMessages(msgs, cid, userId);
 			captureAlbumsForMessages(msgs, cid, (id) => service.getAlbum(id));
+			captureReplyPreviewsForMessages(msgs, cid);
 		}
 
 		setThreadMessages((previous) => {

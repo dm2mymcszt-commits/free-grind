@@ -857,6 +857,71 @@ export function getMediaCaptureTarget(message: UiMessage): MediaCaptureTarget | 
 	return null;
 }
 
+export type ReplyImageHashTarget = { mediaKey: string; url: string };
+
+/**
+ * Stable cache key + fetch URL for a reply-quote thumbnail (or a
+ * ProfilePhotoReply's own photo), when identified by a content hash. Uses
+ * the exact same `image:<hash>` key scheme as getMediaKeyForMessage("image")
+ * so it transparently shares mediaStore's cache with the original message,
+ * if that was ever captured too. Returns null for any message that isn't
+ * actually a reply-to-picture or ProfilePhotoReply — a plain Image message's
+ * own hash is already covered by getMediaCaptureTarget.
+ */
+export function getReplyImageHashTarget(message: UiMessage): ReplyImageHashTarget | null {
+	const preview = message.replyPreview as Record<string, unknown> | null | undefined;
+	const previewHash = typeof preview?.imageHash === "string" ? preview.imageHash : null;
+
+	let hash: string | null = null;
+	if (previewHash && validateMediaHash(previewHash)) {
+		hash = previewHash;
+	} else if (message.type === "ProfilePhotoReply") {
+		const body = message.body as Record<string, unknown> | null | undefined;
+		const bodyHash = typeof body?.imageHash === "string" ? body.imageHash : null;
+		if (bodyHash && validateMediaHash(bodyHash)) {
+			hash = bodyHash;
+		}
+	}
+
+	if (!hash) {
+		return null;
+	}
+	return { mediaKey: `image:${hash}`, url: getThumbImageUrl(hash, "320x320") };
+}
+
+export type AlbumContentReplyTarget = {
+	albumId: number;
+	contentId: number;
+	contentType: string | null;
+	previewUrl: string | null;
+};
+
+/**
+ * Extracts the specific album content item an AlbumContentReply/Reaction
+ * message references, plus its live (but expiring) previewUrl — used to
+ * durably capture that one item's thumbnail into album_media (see
+ * albumStore.ts's captureAlbumContentThumbFromMessage), independent of
+ * whether the album's full share was ever captured in this thread.
+ */
+export function getAlbumContentReplyTarget(message: UiMessage): AlbumContentReplyTarget | null {
+	if (message.type !== "AlbumContentReply" && message.type !== "AlbumContentReaction") {
+		return null;
+	}
+	const body = message.body as Record<string, unknown> | null | undefined;
+	const albumId = typeof body?.albumId === "number" ? body.albumId : Number(body?.albumId);
+	const contentId =
+		typeof body?.albumContentId === "number" ? body.albumContentId : Number(body?.albumContentId);
+	if (!Number.isFinite(albumId) || !Number.isFinite(contentId)) {
+		return null;
+	}
+	return {
+		albumId,
+		contentId,
+		contentType: typeof body?.contentType === "string" ? body.contentType : null,
+		previewUrl: typeof body?.previewUrl === "string" ? body.previewUrl : null,
+	};
+}
+
 export function getMessageLocation(
 	message: UiMessage,
 ): { lat: number; lon: number } | null {

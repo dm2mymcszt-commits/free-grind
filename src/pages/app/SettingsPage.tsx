@@ -9,11 +9,13 @@ import {
 	ChevronRight,
 	ClipboardList,
 	DatabaseBackup,
+	Download,
 	GitBranch,
 	Images,
 	Info,
 	Loader2,
 	LogOut,
+	Megaphone,
 	MessageSquareWarning,
 	Palette,
 	Radar,
@@ -49,6 +51,9 @@ import {
 import { Button } from "../../components/ui/button";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { FingerprintCheckButton } from "../../components/FingerprintCheckButton";
+import { VersionAnnouncement } from "../../components/VersionAnnouncement";
+import { VERSION_ANNOUNCEMENTS } from "../../data/versionAnnouncements";
+import { OutdatedVersionPromptView } from "../../components/OutdatedVersionPrompt";
 import { Avatar } from "../../components/ui/avatar";
 import { getThumbImageUrl } from "../../utils/media";
 import { getSavedAccountProfile, removeSavedAccountProfile } from "../../services/savedAccountProfiles";
@@ -56,6 +61,13 @@ import { getAutomationSettings } from "../../utils/autoblock";
 
 const PUSH_TOKEN_STORAGE_KEY = "fg-fcm-token";
 const PUSH_TOKEN_SYNCED_STORAGE_KEY = "fg-fcm-token-synced";
+// Always previews whichever entry was added/edited most recently, regardless
+// of whether it matches the app's current running version yet.
+const LATEST_ANNOUNCEMENT = VERSION_ANNOUNCEMENTS[VERSION_ANNOUNCEMENTS.length - 1] ?? null;
+const PREVIEW_RELEASE_INFO = {
+	latestVersion: "9.9.9",
+	releasesUrl: "https://github.com/imaoreo/free-grind/releases",
+};
 
 function getErrorMessage(error: unknown, fallback: string): string {
 	if (error instanceof Error && error.message) {
@@ -185,6 +197,8 @@ export function SettingsPage() {
 	const navigate = useNavigate();
 	const { callMethod, asAppError } = useApi();
 	const { developerMode, showDebugInfo, setPreferences } = usePreferences();
+	const [previewAnnouncement, setPreviewAnnouncement] = useState(false);
+	const [previewOutdatedPrompt, setPreviewOutdatedPrompt] = useState(false);
 	const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
 	const [isSwitchingChannel, setIsSwitchingChannel] = useState(false);
 	const [isSyncingFcm, setIsSyncingFcm] = useState(false);
@@ -955,9 +969,43 @@ export function SettingsPage() {
 									</div>
 								</div>
 							</div>
+							{navRow(
+								() => setPreviewAnnouncement(true),
+								<Megaphone className="h-5 w-5" />,
+								"bg-[var(--surface-2)] text-[var(--text-muted)]",
+								"Preview Version Announcement",
+								LATEST_ANNOUNCEMENT
+									? `View the "${LATEST_ANNOUNCEMENT.headline}" screen (v${LATEST_ANNOUNCEMENT.version}).`
+									: "No version announcement configured yet.",
+								undefined,
+								!LATEST_ANNOUNCEMENT,
+							)}
+							{navRow(
+								() => setPreviewOutdatedPrompt(true),
+								<Download className="h-5 w-5" />,
+								"bg-[var(--surface-2)] text-[var(--text-muted)]",
+								"Preview Outdated Update Prompt",
+								"View the \"Update Available\" screen shown when the app is out of date.",
+							)}
 						</div>
 					</div>
 				) : null}
+
+				{previewAnnouncement && LATEST_ANNOUNCEMENT && (
+					<VersionAnnouncement
+						announcement={LATEST_ANNOUNCEMENT}
+						buttonLabel="Close"
+						onClose={() => setPreviewAnnouncement(false)}
+					/>
+				)}
+
+				{previewOutdatedPrompt && (
+					<OutdatedVersionPromptView
+						appVersion={import.meta.env.VITE_APP_VERSION}
+						releaseInfo={PREVIEW_RELEASE_INFO}
+						onDismiss={() => setPreviewOutdatedPrompt(false)}
+					/>
+				)}
 
 				{/* About */}
 				<div>

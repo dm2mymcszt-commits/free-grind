@@ -75,6 +75,7 @@ import {
 import { getThumbImageUrl } from "../../../utils/media";
 import { formatDistance } from "../gridpage/utils";
 import { ProfileImage } from "../../../components/ui/profile-image";
+import { FreeGrindBadge } from "../../../components/FreeGrindBadge";
 import { ChatThreadMessages } from "./ChatThreadMessages";
 import { AudioMessagePlayer } from "./AudioMessagePlayer";
 import { ConfirmDialog } from "../../../components/ui/confirm-dialog";
@@ -1093,12 +1094,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 										</p>
 										{otherParticipant?.profileId &&
 										presenceResults[otherParticipant.profileId] ? (
-											<img
-												src={freegrindLogo}
-												alt="Free Grind user"
-												title="Uses Free Grind"
-												className="shrink-0 h-5 w-5 rounded-full border border-[var(--border)]"
-											/>
+											<FreeGrindBadge size="md" title={t("profile_details.uses_free_grind")} />
 										) : null}
 									</div>
 									<p className="text-sm text-[var(--text-muted)]">
