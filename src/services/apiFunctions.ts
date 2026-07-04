@@ -13,6 +13,7 @@ import { createAgeVerificationMethods } from "./api/ageVerificationMethods";
 import { createFeedMethods } from "./api/feedMethods";
 import { createPresenceMethods } from "./api/presenceMethods";
 import { createFavoritesMethods } from "./api/favoritesMethods";
+import { createPhrasesMethods } from "./api/phrasesMethods";
 import type { RightNowFeedItem, RightNowCreatePostRequest, RightNowCreatePostMedia, RightNowUpdatePostRequest } from "../types/right-now";
 
 export {
@@ -36,6 +37,7 @@ export function createApiFunctions(fetchRest: RestFetcher, t: (key: string) => s
 		...createFeedMethods(fetchRest, t),
 		...createPresenceMethods(fetchRest),
 		...createFavoritesMethods(fetchRest, t),
+		...createPhrasesMethods(fetchRest),
 
 		async request(
 			path: string,

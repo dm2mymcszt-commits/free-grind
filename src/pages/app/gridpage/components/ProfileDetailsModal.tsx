@@ -50,6 +50,7 @@ import {
 import { ProfileDetailsContent } from "./ProfileDetailsContent";
 import type { ChatContactIndexRecord } from "../../../../types/chat-contact-index";
 import { PhotoViewer } from "../../../../components/PhotoViewer";
+import { PhotoActionBar } from "../../../../components/PhotoActionBar";
 
 type OwnProfileData = { tags: string[] };
 const ownProfileDataCache = new Map<string, OwnProfileData>();
@@ -63,6 +64,7 @@ type ProfileDetailsModalProps = {
 	onClose: () => void;
 	onMessageProfile?: (profileId: string) => void;
 	onSendQuickMessage?: (profileId: string, text: string) => void;
+	onSendProfilePhotoReply?: (profileId: string, imageHash: string, text: string) => void | Promise<void>;
 	onTriangleProfile?: (profileId: string) => void;
 	onBlockProfile?: (profileId: string) => void;
 	onUnblockProfile?: (profileId: string) => void;
@@ -111,6 +113,7 @@ export function ProfileDetailsModal({
 	onClose,
 	onMessageProfile,
 	onSendQuickMessage,
+	onSendProfilePhotoReply,
 	onTriangleProfile,
 	onBlockProfile,
 	onUnblockProfile,
@@ -892,6 +895,21 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 		[carouselHashes, photoCreatedAtByHash, t],
 	);
 
+	const renderPhotoFooter = useCallback(
+		(index: number) => {
+			const hash = carouselHashes[index];
+			if (hash === RIGHT_NOW_SLIDE_HASH || !onSendProfilePhotoReply || !messageProfileId || isOwnProfile) {
+				return null;
+			}
+			return (
+				<PhotoActionBar
+					onSendText={(text) => onSendProfilePhotoReply(String(messageProfileId), hash, text)}
+				/>
+			);
+		},
+		[carouselHashes, onSendProfilePhotoReply, messageProfileId, isOwnProfile],
+	);
+
 	const openPhotoViewer = (index: number) => {
 		setSelectedPhotoIndex(index);
 	};
@@ -907,6 +925,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 			photos={photoUrls}
 			initialIndex={selectedPhotoIndex}
 			renderExtraInfo={renderPhotoExtraInfo}
+			renderFooter={renderPhotoFooter}
 		/>
 	);
 

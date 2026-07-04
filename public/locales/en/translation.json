@@ -777,6 +777,41 @@
             "inbox": "Inbox",
             "albums": "Albums"
         },
+        "slash_commands": {
+            "block": {
+                "description": "Blocks a profile. Uses current chat if no ID given."
+            },
+            "unblock": {
+                "description": "Unblocks a profile. Uses current chat if no ID given."
+            },
+            "open": {
+                "description": "Opens a profile. Uses current chat if no ID given."
+            },
+            "chat": {
+                "description": "Opens a chat with the given ID."
+            },
+            "clear": {
+                "description": "Clears this chat by blocking then unblocking the profile."
+            },
+            "mute": {
+                "description": "Toggles mute status."
+            },
+            "pin": {
+                "description": "Toggles pin status."
+            },
+            "favourite": {
+                "description": "Toggles favourite status."
+            },
+            "id": {
+                "description": "Displays the internal ID of the current chat partner.",
+                "result": "Profile ID: {{id}}"
+            },
+            "errors": {
+                "no_target": "Open a chat or provide an ID",
+                "no_chat_id": "Provide a chat ID",
+                "no_conversation": "Open a chat first"
+            }
+        },
         "your_conversations": "Your conversations",
         "pinned": "Pinned",
         "muted": "Muted",

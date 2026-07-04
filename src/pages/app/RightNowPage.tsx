@@ -684,12 +684,8 @@ export function RightNowPage() {
 							} as React.CSSProperties : undefined}
 						>
 							<SlidersHorizontal className="h-3.5 w-3.5" />
-							{t("right_now.filters")}
+							{hasAdvancedFilters ? filterSummary : t("right_now.filters")}
 						</button>
-
-						<span className="text-xs text-[var(--text-muted)] sm:text-sm">
-							{filterSummary}
-						</span>
 					</div>
 				</div>
 			</header>

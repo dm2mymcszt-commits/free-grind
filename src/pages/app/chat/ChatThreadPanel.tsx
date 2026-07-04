@@ -87,6 +87,7 @@ import { GiphyPickerSheet } from "./GiphyPickerSheet";
 import type { ArchivedReason } from "../../../types/chat-db";
 import { useAvatarCache } from "../../../hooks/useAvatarCache";
 import { resolveAvatarSrc } from "../../../services/avatarStore";
+import { matchSlashCommandsByPrefix, type SlashCommandDef } from "./slashCommands";
 import { getForbiddenWords, setForbiddenWords } from "../../../utils/autoblock";
 import {
 	SKIP_BLOCK_CONFIRM_KEY,
@@ -161,7 +162,7 @@ type ChatThreadPanelProps = {
 	endMessageLongPress: () => void;
 	messageLongPressTriggeredRef: { current: boolean };
 	openFullScreenImage: (imageUrl: string, meta?: { takenOnGrindr: boolean; createdAtLabel: string | null; timestamp: number }, mediaType?: "image" | "video") => void;
-	openAlbumViewerById: (albumId: number) => void | Promise<void>;
+	openAlbumViewerById: (albumId: number, isOwnAlbum?: boolean) => void | Promise<void>;
 	selectedThreadMessageMatches: Array<{ messageId: string }>;
 	activeThreadSearchIndex: number;
 	openMessageActionId: string | null;
@@ -266,6 +267,8 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 	const [phrasesExpanded, setPhrasesExpanded] = useState(false);
 	const [isGiphyPickerOpen, setIsGiphyPickerOpen] = useState(false);
 	const [newPhraseInput, setNewPhraseInput] = useState("");
+	const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
+	const [isComposerFocused, setIsComposerFocused] = useState(false);
 
 	const [isRecording, setIsRecording] = useState(false);
 	const [recordingMs, setRecordingMs] = useState(0);
@@ -704,6 +707,27 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
     const filteredPhrases = savedPhrases.filter((phrase) =>
         draft.trim() === "" || phrase.toLowerCase().startsWith(draft.toLowerCase()),
     );
+
+    const slashMenuMatch = draft.match(/^\/(\w*)$/);
+    const slashMatchCandidates = useMemo(
+        () => (slashMenuMatch ? matchSlashCommandsByPrefix(slashMenuMatch[1]) : []),
+        [draft],
+    );
+    const slashMatches = isComposerFocused ? slashMatchCandidates : [];
+
+    useEffect(() => {
+        setSlashSelectedIndex(0);
+    }, [slashMatches.length, slashMenuMatch?.[1]]);
+
+    const selectSlashCommand = (command: SlashCommandDef) => {
+        if (command.takesArg) {
+            setDraft(`/${command.name} `);
+            textareaRef.current?.focus();
+        } else {
+            setDraft(`/${command.name}`);
+            requestAnimationFrame(() => textareaRef.current?.form?.requestSubmit());
+        }
+    };
 
 	const albumCoverMap = useMemo(() => {
 		const map = new Map<number, string>();
@@ -1581,7 +1605,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 					<form
 						ref={composerRef}
 						onSubmit={onFormSubmit}
-						className={`${!isDesktop ? "fixed bottom-0 left-0 right-0 z-30 px-[var(--app-px)] py-3" : "mt-3 pt-3 -mx-3 sm:-mx-4 px-3 sm:px-4"} border-t border-[var(--border)] bg-[var(--surface)]`}
+						className={`relative ${!isDesktop ? "fixed bottom-0 left-0 right-0 z-30 px-[var(--app-px)] py-3" : "mt-3 pt-3 -mx-3 sm:-mx-4 px-3 sm:px-4"} border-t border-[var(--border)] bg-[var(--surface)]`}
 						style={
 							!isDesktop
 								? {
@@ -1603,7 +1627,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 							</div>
 						)}
 						{/* --- QUICK PHRASE PILLS --- */}
-						{filteredPhrases.length > 0 && (
+						{!slashMenuMatch && filteredPhrases.length > 0 && (
 							<div className="mb-2 flex items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 								{filteredPhrases.map((phrase, idx) => {
 									const isExact = phrase.toLowerCase() === draft.trim().toLowerCase();
@@ -1719,7 +1743,72 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 								</button>
 							</div>
 						) : null}
-						{!props.pendingAudioBlob && <div className={`flex ${isRecording ? "items-center" : "items-end"} gap-2 rounded-xl border py-1.5 mb-2 transition-colors ${isRecording ? `pl-1 pr-1 ${recordingMs >= 50_000 ? "border-red-500" : "border-[var(--accent)]"} bg-[var(--surface-2)]` : "pl-3 pr-1 border-[var(--border)] bg-[var(--surface-2)] focus-within:border-[var(--accent)]"}`}>
+						<div className="relative">
+						{slashMatches.length > 0 && (
+							<div
+								onMouseDown={(event) => event.preventDefault()}
+								className="absolute bottom-full left-0 right-0 max-h-64 overflow-hidden rounded-t-2xl border-x border-t border-[var(--accent)] bg-[var(--surface)] shadow-xl z-40">
+								<div className="max-h-64 overflow-y-auto p-1.5">
+								<div className="flex flex-col gap-1">
+									{slashMatches.map((command, index) => {
+										const isSelected = index === slashSelectedIndex;
+										return (
+											<button
+												key={command.name}
+												type="button"
+												onClick={() => selectSlashCommand(command)}
+												onMouseEnter={() => setSlashSelectedIndex(index)}
+												className={`w-full rounded-xl text-left px-3 py-2 transition ${
+													isSelected
+														? "bg-[var(--accent)] text-[var(--accent-contrast)]"
+														: "bg-[var(--surface-2)] hover:bg-[color-mix(in_srgb,var(--surface-2)_80%,var(--text)_8%)]"
+												}`}
+											>
+												<div className="flex items-center gap-1.5 text-sm font-semibold">
+													/{command.name}
+													{command.argHint && (
+														<span
+															className={`inline-flex items-center leading-none rounded-md px-1.5 py-1 text-[10px] font-normal ${
+																isSelected
+																	? "bg-black/15 text-[var(--accent-contrast)]"
+																	: "bg-[var(--surface)] text-[var(--text-muted)]"
+															}`}
+														>
+															{command.argHint}
+														</span>
+													)}
+													{command.aliases && command.aliases.length > 0 && (
+														<span className="flex items-center gap-1">
+															{command.aliases.map((alias) => (
+																<span
+																	key={alias}
+																	className={`inline-flex items-center leading-none rounded-full px-1.5 py-1 text-[10px] font-medium ${
+																		isSelected
+																			? "bg-black/15 text-[var(--accent-contrast)]"
+																			: "bg-[var(--surface)] text-[var(--text-muted)]"
+																	}`}
+																>
+																	/{alias}
+																</span>
+															))}
+														</span>
+													)}
+												</div>
+												<div
+													className={`mt-0.5 text-xs ${isSelected ? "opacity-90" : "text-[var(--text-muted)]"}`}
+												>
+													{t(command.descriptionKey, { defaultValue: command.defaultDescription })}
+												</div>
+											</button>
+										);
+									})}
+								</div>
+								</div>
+								<div className="pointer-events-none absolute inset-x-0 bottom-0 h-4 bg-gradient-to-t from-black/30 to-transparent" />
+								<div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-[var(--border)]" />
+							</div>
+						)}
+						{!props.pendingAudioBlob && <div className={`flex ${isRecording ? "items-center" : "items-end"} gap-2 ${slashMatches.length > 0 ? "rounded-b-xl border-t-0" : "rounded-xl"} border py-1.5 mb-2 transition-colors ${isRecording ? `pl-1 pr-1 ${recordingMs >= 50_000 ? "border-red-500" : "border-[var(--accent)]"} bg-[var(--surface-2)]` : "pl-3 pr-1 border-[var(--border)] bg-[var(--surface-2)] focus-within:border-[var(--accent)]"}`}>
 							{isRecording ? (
 								<>
 									<button
@@ -1757,7 +1846,26 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 									ref={textareaRef}
 									value={draft}
 									onChange={(event) => setDraft(event.target.value)}
+									onFocus={() => setIsComposerFocused(true)}
+									onBlur={() => setIsComposerFocused(false)}
 									onKeyDown={(event) => {
+										if (slashMatches.length > 0) {
+											if (event.key === "ArrowDown") {
+												event.preventDefault();
+												setSlashSelectedIndex((prev) => (prev + 1) % slashMatches.length);
+												return;
+											}
+											if (event.key === "ArrowUp") {
+												event.preventDefault();
+												setSlashSelectedIndex((prev) => (prev - 1 + slashMatches.length) % slashMatches.length);
+												return;
+											}
+											if (event.key === "Enter" || event.key === "Tab") {
+												event.preventDefault();
+												selectSlashCommand(slashMatches[slashSelectedIndex]);
+												return;
+											}
+										}
 										if (isDesktop && event.key === "Enter" && !event.shiftKey) {
 											event.preventDefault();
 											event.currentTarget.form?.requestSubmit();
@@ -1848,6 +1956,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 								</button>
 							)}
 						</div>}
+						</div>
 
                         <div className="mb-2 mx-5 flex items-center justify-between gap-2">
 							<button

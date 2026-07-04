@@ -1,4 +1,4 @@
-import { Album, Ban, Copy, Download, Eye, Hourglass, Lock, MessageCircleQuestion, MessageSquarePlus, Mic, Play, Repeat2, Reply, ShieldCheck, Trash2, Undo2, VideoOff, ImageOff } from "lucide-react";
+import { Album, Ban, Copy, Download, Eye, Hourglass, Lock, MessageCircleQuestion, MessageSquarePlus, Mic, MoreVertical, Play, Repeat2, Reply, ShieldCheck, Trash2, Undo2, VideoOff, ImageOff } from "lucide-react";
 import { createPortal } from "react-dom";
 import { MapLocationPreview } from "../gridpage/components/MapLocationPreview";
 import { AudioMessagePlayer } from "./AudioMessagePlayer";
@@ -64,7 +64,7 @@ type ChatThreadMessagesProps = {
 	endMessageLongPress: () => void;
 	messageLongPressTriggeredRef: { current: boolean };
 	openFullScreenImage: (imageUrl: string, meta?: { takenOnGrindr: boolean; createdAtLabel: string | null; timestamp: number }, mediaType?: "image" | "video") => void;
-	openAlbumViewerById: (albumId: number) => void | Promise<void>;
+	openAlbumViewerById: (albumId: number, isOwnAlbum?: boolean) => void | Promise<void>;
 	selectedThreadMessageMatches: Array<{ messageId: string }>;
 	activeThreadSearchIndex: number;
 	openMessageActionId: string | null;
@@ -1290,19 +1290,18 @@ export function ChatThreadMessages({
                                                     GIF
                                                 </div>
                                             ) : null}
-                                            {!mine && (messageTakenOnGrindr || imageCreatedAtLabel) ? (
-                                                <div className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/65 px-2 py-1 text-[10px] font-semibold text-white ring-1 ring-white/25">
-                                                    {messageTakenOnGrindr ? (
-                                                        <img
-                                                            src={freegrindLogo}
-                                                            alt={t("chat.thread.taken_on_grindr")}
-                                                            className="h-3.5 w-3.5 rounded-full"
-                                                        />
-                                                    ) : null}
-                                                    {imageCreatedAtLabel ? (
-                                                        <span>{` ${imageCreatedAtLabel}`}</span>
-                                                    ) : null}
-                                                </div>
+                                            {messageTakenOnGrindr ? (
+                                                <>
+                                                    <style>{`
+                                                        @keyframes logo-shine { 0%, 100% { filter: drop-shadow(0 0 2px rgba(255,140,0,0.3)) brightness(1); } 50% { filter: drop-shadow(0 0 7px rgba(255,140,0,0.95)) brightness(1.25); } }
+                                                        .logo-shine { animation: logo-shine 2.8s ease-in-out infinite; }
+                                                    `}</style>
+                                                    <img
+                                                        src={freegrindLogo}
+                                                        alt={t("chat.thread.taken_on_grindr")}
+                                                        className="absolute bottom-3 left-3 h-4 w-4 rounded-full logo-shine"
+                                                    />
+                                                </>
                                             ) : null}
 
                                                 {isImageOnlyBubble ? (
@@ -1331,11 +1330,11 @@ export function ChatThreadMessages({
                                                                         type="button"
                                                                         onClick={(event) => {
                                                                             event.stopPropagation();
-                                                                            void handleReply(message);
+                                                                            setContextMenuState({ messageId: message.messageId, x: event.clientX, y: event.clientY });
                                                                         }}
                                                                         className="rounded-md p-1 hover:bg-white/10"
                                                                     >
-                                                                        <Reply className="h-3.5 w-3.5" />
+                                                                        <MoreVertical className="h-3.5 w-3.5" />
                                                                     </button>
                                                 ) : null}
                                                             </div>
@@ -1353,7 +1352,7 @@ export function ChatThreadMessages({
                                             onClick={(event) => {
                                                 event.stopPropagation();
                                                 if (isDesktop) {
-                                                    if (albumId && !isLocked) void openAlbumViewerById(albumId);
+                                                    if (albumId && !isLocked) void openAlbumViewerById(albumId, mine);
                                                     return;
                                                 }
                                                 if (messageLongPressTriggeredRef.current) {
@@ -1361,7 +1360,7 @@ export function ChatThreadMessages({
                                                     return;
                                                 }
                                                 scheduleMobileTap(message, () => {
-                                                    if (albumId && !isLocked) void openAlbumViewerById(albumId);
+                                                    if (albumId && !isLocked) void openAlbumViewerById(albumId, mine);
                                                 });
                                             }}
                                             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") e.currentTarget.click(); }}
@@ -1550,11 +1549,11 @@ export function ChatThreadMessages({
                                                                             type="button"
                                                                             onClick={(event) => {
                                                                                 event.stopPropagation();
-                                                                                void handleReply(message);
+                                                                                setContextMenuState({ messageId: message.messageId, x: event.clientX, y: event.clientY });
                                                                             }}
                                                                             className="rounded-md p-1 hover:bg-white/10"
                                                                         >
-                                                                            <Reply className="h-3.5 w-3.5" />
+                                                                            <MoreVertical className="h-3.5 w-3.5" />
                                                                         </button>
                                                                     ) : null}
                                                                 </div>
@@ -1600,9 +1599,9 @@ export function ChatThreadMessages({
                                                     onClick={(event) => {
                                                         event.stopPropagation();
                                                         if (!rxAlbumId) return;
-                                                        if (isDesktop) { void openAlbumViewerById(rxAlbumId); return; }
+                                                        if (isDesktop) { void openAlbumViewerById(rxAlbumId, mine); return; }
                                                         if (messageLongPressTriggeredRef.current) { messageLongPressTriggeredRef.current = false; return; }
-                                                        scheduleMobileTap(message, () => void openAlbumViewerById(rxAlbumId));
+                                                        scheduleMobileTap(message, () => void openAlbumViewerById(rxAlbumId, mine));
                                                     }}
                                                 >
                                                     {rxPreviewUrl ? (
@@ -1618,8 +1617,8 @@ export function ChatThreadMessages({
                                                             <div className="flex items-center gap-2">
                                                                 <span>{formatMessageTime(message.timestamp, nowTimestamp, t)}</span>
                                                                 {isDesktop && !pending && !isLocalClientMessageId(message.messageId) ? (
-                                                                    <button type="button" onClick={(e) => { e.stopPropagation(); void handleReply(message); }} className="rounded-md p-1 hover:bg-white/10">
-                                                                        <Reply className="h-3.5 w-3.5" />
+                                                                    <button type="button" onClick={(e) => { e.stopPropagation(); setContextMenuState({ messageId: message.messageId, x: e.clientX, y: e.clientY }); }} className="rounded-md p-1 hover:bg-white/10">
+                                                                        <MoreVertical className="h-3.5 w-3.5" />
                                                                     </button>
                                                                 ) : null}
                                                             </div>
@@ -1676,11 +1675,11 @@ export function ChatThreadMessages({
                                                                             type="button"
                                                                             onClick={(event) => {
                                                                                 event.stopPropagation();
-                                                                                void handleReply(message);
+                                                                                setContextMenuState({ messageId: message.messageId, x: event.clientX, y: event.clientY });
                                                                             }}
                                                                             className="rounded-md p-1 hover:bg-white/10"
                                                                         >
-                                                                            <Reply className="h-3.5 w-3.5" />
+                                                                            <MoreVertical className="h-3.5 w-3.5" />
                                                                         </button>
                                                                     </>
                                                                 ) : null}
@@ -1719,7 +1718,7 @@ export function ChatThreadMessages({
                                                     type="button"
                                                     onClick={(event) => {
                                                         event.stopPropagation();
-                                                        if (albumId) void openAlbumViewerById(albumId);
+                                                        if (albumId) void openAlbumViewerById(albumId, mine);
                                                     }}
                                                     className="rounded-md border border-black/20 px-2 py-1 text-[11px]"
                                                     disabled={!albumId || isLocked}
@@ -1833,10 +1832,13 @@ export function ChatThreadMessages({
                                             !isLocalClientMessageId(message.messageId) ? (
                                                 <button
                                                     type="button"
-                                                    onClick={() => void handleReply(message)}
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        setContextMenuState({ messageId: message.messageId, x: event.clientX, y: event.clientY });
+                                                    }}
                                                     className="rounded-md p-1 hover:bg-black/10"
                                                 >
-                                                    <Reply className="h-3.5 w-3.5" />
+                                                    <MoreVertical className="h-3.5 w-3.5" />
                                                 </button>
                                             ) : null}
                                         </div>
