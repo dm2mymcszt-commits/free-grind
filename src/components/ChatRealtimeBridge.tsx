@@ -24,6 +24,7 @@ import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { platform } from "@tauri-apps/plugin-os";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../contexts/useAuth";
 import { useApi } from "../hooks/useApi";
 import { ChatRealtimeManager, setActiveRealtimeManager } from "../services/chatRealtime";
@@ -38,6 +39,8 @@ import {
 	reconcileArchivedConversationForProfile,
 	reconcileBlockStateWithBlockedList,
 	CHAT_SYSTEM_MESSAGE_EVENT,
+	CHAT_ARCHIVE_STATE_EVENT,
+	type ChatArchiveStateChangeDetail,
 } from "../services/conversationArchive";
 import { messageSchema, type Message } from "../types/messages";
 import type { RealtimeEnvelope, RealtimeStatus } from "../types/chat-realtime";
@@ -221,6 +224,7 @@ export function ChatRealtimeBridge() {
 	const { userId, settingsReady } = useAuth();
 	const { callMethod } = useApi();
     const apiFunctions = useApiFunctions();
+	const queryClient = useQueryClient();
 	const location = useLocation();
 	const { t } = useTranslation();
 
@@ -270,6 +274,26 @@ export function ChatRealtimeBridge() {
 		}
 		void reconcileBlockStateWithBlockedList(blockedProfileIdsData);
 	}, [userId, settingsReady, blockedProfileIdsData]);
+
+	// A conversation getting unarchived anywhere (this component's own WS
+	// handling, ChatPage's foreground reappearance check, or inboxSync's
+	// background walk) can mean a block cleared on another device — refresh
+	// the blocked-profile-ids cache so the chat header's unblock button
+	// (isBlockedBySelf in ChatPage) doesn't keep showing stale state that
+	// nothing else would otherwise think to refetch for up to its 10-minute
+	// staleTime.
+	useEffect(() => {
+		const handleArchiveStateChange = (event: Event) => {
+			const detail = (event as CustomEvent<ChatArchiveStateChangeDetail>).detail;
+			if (detail?.archived === false) {
+				void queryClient.invalidateQueries({ queryKey: ["blocked-profile-ids"] });
+			}
+		};
+		window.addEventListener(CHAT_ARCHIVE_STATE_EVENT, handleArchiveStateChange);
+		return () => {
+			window.removeEventListener(CHAT_ARCHIVE_STATE_EVENT, handleArchiveStateChange);
+		};
+	}, [queryClient]);
 
 	// Boot the realtime manager whenever the user is authenticated.
 	// getToken is called fresh on every (re)connect so an expired token
@@ -341,6 +365,12 @@ export function ChatRealtimeBridge() {
 		const isBlockedByMe = async (profileId: string): Promise<boolean> => {
 			try {
 				const blockedIds = await apiFunctions.getBlockedProfileIds();
+				// Seed the "blocked-profile-ids" query cache with this fresh
+				// result — it's what ChatPage's unblock button (and every other
+				// consumer) reads, and its 10-minute staleTime would otherwise
+				// leave a block made on another device invisible here until the
+				// next unrelated refetch, even after reopening the inbox.
+				queryClient.setQueryData<string[]>(["blocked-profile-ids"], blockedIds);
 				return blockedIds.includes(profileId);
 			} catch {
 				return false;
@@ -647,6 +677,8 @@ export function ChatRealtimeBridge() {
 								conversationId: cid,
 								messageId: msg.messageId,
 								viewOnce: target.viewOnce,
+								isOwnMessage:
+									userIdRef.current != null && Number(msg.senderId) === Number(userIdRef.current),
 							});
 						}
 						captureAlbumsForMessages(msgs, cid, (id) => apiFunctions.getAlbum(id));

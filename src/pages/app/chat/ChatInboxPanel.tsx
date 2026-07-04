@@ -1,6 +1,7 @@
-import { Archive, EyeOff, MessageCircle, Pin, PinOff, Trash2 } from "lucide-react";
+import { Archive, EyeOff, Loader2, MessageCircle, Pin, PinOff, Trash2 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChatSearchPanel } from "./ChatSearchPanel";
 import { ChatInboxHeader, type ChatInboxHeaderProps } from "./ChatInboxHeader";
 import { useTranslation } from "react-i18next";
@@ -26,7 +27,55 @@ import {
 import { useRevealOnScroll } from "../../../hooks/useRevealOnScroll";
 import { useAvatarCache } from "../../../hooks/useAvatarCache";
 import { resolveAvatarSrc } from "../../../services/avatarStore";
+import { useInboxSyncStatus } from "../../../hooks/useInboxSyncStatus";
 import { FEED_HEADER_OFFSET, FEED_MASK_GRADIENT_STOP } from "../../../config/design-config";
+
+/** Fixed row pinned to the very top of the chat list (the list scrolls
+ * underneath it) — only rendered while a sync is actually in flight;
+ * idle/done/error states show nothing here (Settings > Data has those). */
+function ChatSyncProgressRow({ userId }: { userId: number | null }) {
+	const { t } = useTranslation();
+	const status = useInboxSyncStatus(userId);
+
+	if (status.phase !== "syncing_list" && status.phase !== "syncing_messages") {
+		return null;
+	}
+
+	const label =
+		status.phase === "syncing_list"
+			? t("chat.sync_progress.syncing_list", {
+					defaultValue: "Syncing chats… {{count}} checked",
+					count: status.conversationsSoFar,
+				})
+			: t("chat.sync_progress.syncing_messages", {
+					defaultValue: "Syncing messages… {{completed}}/{{total}}",
+					completed: status.completed,
+					total: status.total,
+				});
+	const progressPercent =
+		status.phase === "syncing_messages" && status.total > 0
+			? Math.round((status.completed / status.total) * 100)
+			: null;
+
+	return (
+		<div className="shrink-0 flex items-center gap-2 border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2.5">
+			<Loader2 className="h-3 w-3 shrink-0 animate-spin text-[var(--accent)]" />
+			<div className="min-w-0 flex-1">
+				<p className="truncate text-[11px] font-medium text-[var(--text-muted)]">{label}</p>
+				<div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-[var(--surface-2)]">
+					<div
+						className={
+							progressPercent == null
+								? "h-full w-2/5 animate-progress-indeterminate rounded-full bg-[var(--accent)]"
+								: "h-full rounded-full bg-[var(--accent)] transition-all duration-300"
+						}
+						style={progressPercent != null ? { width: `${progressPercent}%` } : undefined}
+					/>
+				</div>
+			</div>
+		</div>
+	);
+}
 
 type ChatInboxPanelProps = ChatInboxHeaderProps & {
 	isLoadingInbox: boolean;
@@ -508,7 +557,6 @@ export function ChatInboxPanel({
 }: ChatInboxPanelProps) {
 	const { t } = useTranslation();
 	useReadReceiptsChanged();
-	const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
 	const lastScrollAtRef = useRef(0);
 	const lastRequestedPageRef = useRef<number | null>(null);
 	const [contextMenuState, setContextMenuState] = useState<{
@@ -554,41 +602,41 @@ export function ChatInboxPanel({
 		};
 	}, []);
 
+	// Virtualized rows — the list can hold the user's entire local chat
+	// history (see inboxSync.ts's background sync), potentially thousands of
+	// conversations, so only what's actually in view (plus a small overscan
+	// buffer) is ever mounted. estimateSize is a rough guess at a row's
+	// resting height; measureElement (wired below, on each row's wrapper)
+	// corrects it once a row's real height is known, so variable-height rows
+	// (wrapping preview text, badges, etc.) still lay out correctly.
+	const rowVirtualizer = useVirtualizer({
+		count: filteredConversations.length,
+		getScrollElement: () => inboxListRef.current,
+		estimateSize: () => 78,
+		overscan: 8,
+		getItemKey: (index) => filteredConversations[index]?.data.conversationId ?? index,
+	});
+	const virtualItems = rowVirtualizer.getVirtualItems();
+	const lastVirtualItemIndex = virtualItems.length > 0 ? virtualItems[virtualItems.length - 1].index : -1;
+
+	// Load-more trigger — fires once virtualization has actually rendered a
+	// row at (or past) the end of what's currently loaded, i.e. the user has
+	// scrolled to the bottom, replacing the old IntersectionObserver+sentinel
+	// approach (a sentinel row's ref would otherwise only ever attach once
+	// virtualization decided to mount that row in the first place).
 	useEffect(() => {
-		const sentinel = loadMoreSentinelRef.current;
-		if (!sentinel || !nextPage) {
+		if (!nextPage || isLoadingMoreInbox) {
 			return;
 		}
-
-		const observer = new IntersectionObserver(
-			(entries) => {
-				const entry = entries[0];
-				if (!entry?.isIntersecting) {
-					return;
-				}
-
-				if (isLoadingMoreInbox) {
-					return;
-				}
-
-				if (lastRequestedPageRef.current === nextPage) {
-					return;
-				}
-
-				lastRequestedPageRef.current = nextPage;
-				onLoadMoreInbox();
-			},
-			{ root: null, rootMargin: "0px 0px 400px 0px", threshold: 0 },
-		);
-
-		observer.observe(sentinel);
-		return () => observer.disconnect();
-	}, [
-		filteredConversations.length,
-		isLoadingMoreInbox,
-		nextPage,
-		onLoadMoreInbox,
-	]);
+		if (lastVirtualItemIndex < filteredConversations.length - 1) {
+			return;
+		}
+		if (lastRequestedPageRef.current === nextPage) {
+			return;
+		}
+		lastRequestedPageRef.current = nextPage;
+		onLoadMoreInbox();
+	}, [lastVirtualItemIndex, filteredConversations.length, isLoadingMoreInbox, nextPage, onLoadMoreInbox]);
 
 	return (
 		<PullToRefreshContainer
@@ -627,6 +675,8 @@ export function ChatInboxPanel({
 					onToggleHideArchived={onToggleHideArchived}
 				/>
 			)}
+
+			{!isSearchOpen && <ChatSyncProgressRow userId={userId} />}
 
 			{isSearchOpen ? (
 				<ChatSearchPanel
@@ -689,38 +739,59 @@ export function ChatInboxPanel({
 								</div>
 							) : (
 								<>
-									{filteredConversations.map((conversation) => (
-										<ChatConversationRow
-											key={conversation.data.conversationId}
-											conversation={conversation}
-											userId={userId}
-											localNicknamesByProfileId={localNicknamesByProfileId}
-											chatContactIndexByProfileId={chatContactIndexByProfileId}
-											nowTimestamp={nowTimestamp}
-											presenceResults={presenceResults}
-											isSelected={conversation.data.conversationId === selectedConversationId}
-											isTyping={typingConversationIds?.has(conversation.data.conversationId) ?? false}
-											isArchived={archivedConversationIds.has(conversation.data.conversationId)}
-											isDesktop={isDesktop}
-											onSelectConversation={onSelectConversation}
-											onViewProfile={onViewProfile}
-											onOpenContextMenu={(c, isArchived, x, y) =>
-												setContextMenuState({ conversation: c, isArchived, x, y })
+									<div
+										style={{
+											position: "relative",
+											width: "100%",
+											height: rowVirtualizer.getTotalSize(),
+										}}
+									>
+										{virtualItems.map((virtualRow) => {
+											const conversation = filteredConversations[virtualRow.index];
+											if (!conversation) {
+												return null;
 											}
-											onSwipePin={(c) => void onTogglePinConversation(c.data.conversationId, c.data.pinned)}
-											onSwipeDeleteRequest={requestDeleteConversation}
-										/>
-									))}
+											return (
+												<div
+													key={virtualRow.key}
+													data-index={virtualRow.index}
+													ref={rowVirtualizer.measureElement}
+													style={{
+														position: "absolute",
+														top: 0,
+														left: 0,
+														width: "100%",
+														transform: `translateY(${virtualRow.start}px)`,
+													}}
+												>
+													<ChatConversationRow
+														conversation={conversation}
+														userId={userId}
+														localNicknamesByProfileId={localNicknamesByProfileId}
+														chatContactIndexByProfileId={chatContactIndexByProfileId}
+														nowTimestamp={nowTimestamp}
+														presenceResults={presenceResults}
+														isSelected={conversation.data.conversationId === selectedConversationId}
+														isTyping={typingConversationIds?.has(conversation.data.conversationId) ?? false}
+														isArchived={archivedConversationIds.has(conversation.data.conversationId)}
+														isDesktop={isDesktop}
+														onSelectConversation={onSelectConversation}
+														onViewProfile={onViewProfile}
+														onOpenContextMenu={(c, isArchived, x, y) =>
+															setContextMenuState({ conversation: c, isArchived, x, y })
+														}
+														onSwipePin={(c) => void onTogglePinConversation(c.data.conversationId, c.data.pinned)}
+														onSwipeDeleteRequest={requestDeleteConversation}
+													/>
+												</div>
+											);
+										})}
+									</div>
 
-									{nextPage ? (
-										<div className="px-3 py-2">
-											<div ref={loadMoreSentinelRef} className="h-8 w-full" aria-hidden="true" />
-											{isLoadingMoreInbox ? (
-												<p className="text-center text-xs text-[var(--text-muted)]">
-													{t("chat.loading")}
-												</p>
-											) : null}
-										</div>
+									{nextPage && isLoadingMoreInbox ? (
+										<p className="px-3 py-2 text-center text-xs text-[var(--text-muted)]">
+											{t("chat.loading")}
+										</p>
 									) : null}
 								</>
 							)}

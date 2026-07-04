@@ -567,6 +567,27 @@ export async function listConversations(options?: {
 	return rows.map(rowToStoredConversation);
 }
 
+/**
+ * Unarchived conversations recent (or pinned) enough that they'd belong on
+ * the same inbox page as `sinceTimestamp` — used to recover a conversation
+ * the server has permanently stopped listing (e.g. it was blocked and
+ * deleted there; the server only relists it once someone messages that
+ * profile afresh) without falling back to the *entire* local history, which
+ * would defeat pagination. `sinceTimestamp` should be the least-recent
+ * lastActivityTimestamp actually present in the current live response — a
+ * locally-known conversation newer than that would have to appear on this
+ * same page too, so its absence means the server can no longer produce it at
+ * all, not that it merely fell further down the pagination.
+ */
+export async function listConversationsSince(sinceTimestamp: number): Promise<StoredConversation[]> {
+	const db = await getDb();
+	const rows = await db.select<ConversationRow[]>(
+		"SELECT * FROM conversations WHERE archived = 0 AND (pinned = 1 OR last_activity_timestamp >= $1) ORDER BY pinned DESC, last_activity_timestamp DESC",
+		[sinceTimestamp],
+	);
+	return rows.map(rowToStoredConversation);
+}
+
 export async function findConversationByProfileId(
 	profileId: string,
 ): Promise<StoredConversation | null> {

@@ -24,6 +24,7 @@ import { useAuth } from "../../contexts/useAuth";
 import { ChatApiError } from "../../services/chatService";
 import { setConversationDirectory } from "../../services/conversationDirectory";
 import * as chatDb from "../../services/chatDb";
+import { isSafeToPageInboxLocally } from "../../services/inboxSync";
 import type { ArchivedReason } from "../../types/chat-db";
 import {
 	archiveConversation,
@@ -117,6 +118,16 @@ import { getThumbImageUrl, validateMediaHash } from "../../utils/media";
 // messagePageKeyRef the live API path already uses.
 const LOCAL_PAGE_KEY_PREFIX = "local:";
 const ARCHIVED_THREAD_PAGE_SIZE = 30;
+// Cap for the fully-offline inbox fallback below — chatDb's background sync
+// (inboxSync.ts) can hold the user's entire chat history locally, far more
+// than a single screen should ever render at once, and there's no server to
+// page from while offline anyway.
+const OFFLINE_INBOX_FALLBACK_LIMIT = 100;
+// Batch size for local-first "load more" pagination once the background
+// inbox sync has walked the whole chat list at least once — mirrors the
+// live API's actual page size (~190 conversations/page) so scrolling
+// behaves the same either way.
+const LOCAL_INBOX_PAGE_SIZE = 190;
 // Synthetic, locally-generated block/unblock markers (see
 // chatDb.insertSystemMessage) — never real chat activity, so excluded
 // wherever "the newest message" is used to drive a conversation's
@@ -150,7 +161,11 @@ function isSignedUrlExpired(url: string): boolean {
  * point a message's URL gets resolved (initial load, hydration fallbacks,
  * realtime arrival) so content survives signed-URL expiry / view-once limits.
  */
-function captureMediaForMessages(messages: UiMessage[], conversationId: string): void {
+function captureMediaForMessages(
+	messages: UiMessage[],
+	conversationId: string,
+	userId: number | null,
+): void {
 	for (const message of messages) {
 		const target = getMediaCaptureTarget(message);
 		if (target) {
@@ -161,6 +176,7 @@ function captureMediaForMessages(messages: UiMessage[], conversationId: string):
 				conversationId,
 				messageId: message.messageId,
 				viewOnce: target.viewOnce,
+				isOwnMessage: userId != null && message.senderId === userId,
 			});
 		} else if (message.type !== "Giphy") {
 			// No live URL on this message anymore (expired, archived
@@ -207,7 +223,7 @@ export function ChatPage() {
 	const service = useApiFunctions();
 	const { mutateAsync: blockProfileMutation } = useBlockProfile();
 	const { mutateAsync: unblockProfileMutation } = useUnblockProfile();
-	const { data: blockedProfileIdsData } = useBlockedProfileIds();
+	const { data: blockedProfileIdsData, refetch: refetchBlockedProfileIds } = useBlockedProfileIds();
 	const { userId, settingsReady } = useAuth();
 	const isDesktop = useDesktopBreakpoint();
 	const threadBottomRef = useRef<HTMLDivElement | null>(null);
@@ -1000,9 +1016,30 @@ export function ChatPage() {
 						return c;
 					}),
 				);
+				if (cancelled) {
+					return;
+				}
+				// Re-verify against chatDb one last time right before committing —
+				// `stored`'s archived flag was read before the withPreviews pass
+				// above (which awaits a per-conversation chatDb.getMessages call),
+				// so a live unblock reconciliation (a WS event, or another mounted
+				// page) landing during that window would already have correctly
+				// unarchived this conversation elsewhere, only for this hydration's
+				// now-stale snapshot to blindly re-add it here and hide it again.
+				const stillArchivedIds = new Set(
+					(await chatDb.listConversations({ includeArchived: true }).catch(() => stored))
+						.filter((c) => c.archived)
+						.map((c) => c.conversationId),
+				);
+				if (cancelled) {
+					return;
+				}
 				setArchivedConversations((previous) => {
 					const next = new Map(previous);
 					for (const c of withPreviews) {
+						if (!stillArchivedIds.has(c.conversationId)) {
+							continue;
+						}
 						next.set(c.conversationId, {
 							reason: c.archivedReason ?? "ws_delete",
 							entry: c.entry,
@@ -1035,9 +1072,51 @@ export function ChatPage() {
 			}
 
 			try {
+				const filters = activeInboxFiltersRef.current;
+				const hasActiveServerFilters =
+					filters.unreadOnly ||
+					filters.chemistryOnly ||
+					filters.favoritesOnly ||
+					filters.rightNowOnly ||
+					filters.onlineNowOnly ||
+					(filters.positions?.length ?? 0) > 0 ||
+					filters.distanceMeters != null;
+
+				// Local-first pagination: once the background inbox sync (see
+				// inboxSync.ts) has settled to "done" this session, chatDb is
+				// confirmed current and "load more" while scrolling can page
+				// straight through it instead of re-hitting the live /v4/inbox
+				// endpoint. isSafeToPageInboxLocally checks the *live* sync
+				// status rather than "ever completed" — if the app sat closed
+				// long enough that several pages of new/changed conversations
+				// piled up, the sync is busy catching up through all of them
+				// (not just the first page) and this correctly stays false
+				// until it settles, so scrolling during that window still goes
+				// live instead of serving an incomplete local batch. Active
+				// server-side filters (unreadOnly, chemistryOnly, etc.) also
+				// always go live — chatDb has no way to reproduce that
+				// filtering locally.
+				if (!replace && !hasActiveServerFilters && isSafeToPageInboxLocally(userId)) {
+					const stored = await chatDb.listConversations({ includeArchived: false });
+					const offset = conversationsRef.current.length;
+					const nextBatch = stored.slice(offset, offset + LOCAL_INBOX_PAGE_SIZE);
+
+					if (nextBatch.length > 0) {
+						setConversations((previous) => {
+							const seen = new Set(previous.map((entry) => entry.data.conversationId));
+							const additions = nextBatch
+								.map((c) => c.entry)
+								.filter((entry) => !seen.has(entry.data.conversationId));
+							return additions.length > 0 ? [...previous, ...additions] : previous;
+						});
+					}
+					setNextPage(offset + nextBatch.length < stored.length ? page + 1 : null);
+					return;
+				}
+
 				const response = await service.listConversations({
 					page,
-					filters: activeInboxFiltersRef.current,
+					filters,
 				});
 
 				if (userId != null) {
@@ -1147,44 +1226,35 @@ export function ChatPage() {
 					});
 				}
 
-				// Union in every chatDb-known, non-archived conversation the live
-				// response didn't include (e.g. one unarchived elsewhere while this
-				// page wasn't mounted, or the server's inbox hasn't caught up to a
-				// very recent change yet) so the list never loses something it
-				// already knew about locally, no matter how many more times this
-				// runs — a replace() on a filtered/searched view is the one
-				// exception, since that's the server's call to make on what
-				// belongs in it, not local cache's.
-				//
-				// Resolved *before* the setConversations call below (not as a
-				// separate, later setConversations of its own) so a poll doesn't
-				// visibly flicker: computing it after would mean this step's own
-				// state (previous, already containing a prior union) never quite
-				// matches this response's server-only entries, failing the replace
-				// branch's dedup check every single poll and wiping the union back
-				// out — which the union would then race to re-add, over and over.
-				const filters = activeInboxFiltersRef.current;
-				const hasActiveServerFilters =
-					filters.unreadOnly ||
-					filters.chemistryOnly ||
-					filters.favoritesOnly ||
-					filters.rightNowOnly ||
-					filters.onlineNowOnly ||
-					(filters.positions?.length ?? 0) > 0 ||
-					filters.distanceMeters != null;
-				let missingLocalEntries: ConversationEntry[] = [];
+				// A conversation the server has permanently dropped from its own
+				// inbox listing (blocked, then unarchived locally — the server
+				// only relists it once someone messages that profile afresh) needs
+				// to come from chatDb directly, since no future response will ever
+				// confirm it on its own. Bounded by recency instead of a blanket
+				// chatDb.listConversations() union (which would defeat pagination
+				// by dumping the user's entire local history in): anything locally
+				// known, unarchived, and at least as recent as the least-recent
+				// non-pinned entry the server actually returned would have to
+				// belong on this same page too, so if it's missing, the server
+				// isn't just paginating it further down — it genuinely can't
+				// produce it, and our local copy is the only record left.
+				// Recovered here (async, before the setConversations call below) so
+				// the union below can stay a single, synchronous pass over
+				// `previous` — see that block for why it's sourced from `previous`
+				// and not a ref.
+				let recoveredEntries: ConversationEntry[] = [];
 				if (replace && !hasActiveServerFilters) {
 					const responseIds = new Set(
 						response.entries.map((entry) => entry.data.conversationId),
 					);
-					try {
-						const stored = await chatDb.listConversations({ includeArchived: false });
-						missingLocalEntries = stored
-							.filter((c) => !responseIds.has(c.conversationId))
-							.map((c) => c.entry);
-					} catch (error) {
-						appLog.warn("[ChatPage] failed to union local conversations", error);
-					}
+					const nonPinnedTimestamps = response.entries
+						.filter((entry) => !entry.data.pinned)
+						.map((entry) => entry.data.lastActivityTimestamp ?? 0);
+					const cutoff = nonPinnedTimestamps.length > 0 ? Math.min(...nonPinnedTimestamps) : 0;
+					const localCandidates = await chatDb.listConversationsSince(cutoff).catch(() => []);
+					recoveredEntries = localCandidates
+						.filter((c) => !responseIds.has(c.conversationId))
+						.map((c) => c.entry);
 				}
 
 				setConversations((previous) => {
@@ -1217,34 +1287,66 @@ export function ChatPage() {
 						// there's nothing to preserve here — a plain replace is correct.
 
 						let combined = entriesWithUnreadFixed;
-						if (missingLocalEntries.length > 0) {
-							// Insert each missing entry at the position it belongs under
-							// the list's normal sort order (pinned, then
-							// lastActivityTimestamp desc), without touching the relative
-							// order of the server-provided entries — a full re-sort of the
-							// combined array risks reshuffling them relative to each other
-							// whenever the server's own ordering doesn't line up exactly
-							// with this comparator (precision, tie-breaking, etc.).
-							const comparePosition = (a: ConversationEntry, b: ConversationEntry) => {
-								if (a.data.pinned && !b.data.pinned) return -1;
-								if (b.data.pinned && !a.data.pinned) return 1;
-								return (
-									(b.data.lastActivityTimestamp ?? 0) -
-									(a.data.lastActivityTimestamp ?? 0)
-								);
-							};
-							const next = [...entriesWithUnreadFixed];
-							for (const entry of missingLocalEntries) {
-								let insertAt = next.length;
-								for (let i = 0; i < next.length; i += 1) {
-									if (comparePosition(entry, next[i]) < 0) {
-										insertAt = i;
-										break;
+						if (!hasActiveServerFilters) {
+							// Union in whatever was already paged into view but that this
+							// response didn't include (e.g. one unarchived elsewhere while
+							// this page wasn't mounted, or — for a block-related archive —
+							// one the server will *never* list again on its own, since it
+							// only relists a conversation once someone messages that
+							// profile afresh) so the list never loses something it was
+							// already showing. Sourced from `previous` (this update's own
+							// guaranteed-current state), not a ref snapshotted earlier in
+							// this async function: two overlapping loadInbox calls (e.g. a
+							// poll and a send-triggered refresh elsewhere) each reach this
+							// updater at their own pace, and only `previous` is guaranteed
+							// to already reflect whatever the other one just committed —
+							// a ref read earlier in either call's timeline could still be
+							// the pre-union snapshot, silently dropping the recovered entry
+							// the moment the other call's "replace" wins the race.
+							const responseIds = new Set(
+								entriesWithUnreadFixed.map((entry) => entry.data.conversationId),
+							);
+							const missingFromPrevious = previous.filter(
+								(entry) => !responseIds.has(entry.data.conversationId),
+							);
+							const missingIds = new Set(
+								missingFromPrevious.map((entry) => entry.data.conversationId),
+							);
+							const newlyRecovered = recoveredEntries.filter(
+								(entry) =>
+									!responseIds.has(entry.data.conversationId) &&
+									!missingIds.has(entry.data.conversationId),
+							);
+							const missingLocalEntries = [...missingFromPrevious, ...newlyRecovered];
+							if (missingLocalEntries.length > 0) {
+								// Insert each missing entry at the position it belongs under
+								// the list's normal sort order (pinned, then
+								// lastActivityTimestamp desc), without touching the relative
+								// order of the server-provided entries — a full re-sort of the
+								// combined array risks reshuffling them relative to each other
+								// whenever the server's own ordering doesn't line up exactly
+								// with this comparator (precision, tie-breaking, etc.).
+								const comparePosition = (a: ConversationEntry, b: ConversationEntry) => {
+									if (a.data.pinned && !b.data.pinned) return -1;
+									if (b.data.pinned && !a.data.pinned) return 1;
+									return (
+										(b.data.lastActivityTimestamp ?? 0) -
+										(a.data.lastActivityTimestamp ?? 0)
+									);
+								};
+								const next = [...entriesWithUnreadFixed];
+								for (const entry of missingLocalEntries) {
+									let insertAt = next.length;
+									for (let i = 0; i < next.length; i += 1) {
+										if (comparePosition(entry, next[i]) < 0) {
+											insertAt = i;
+											break;
+										}
 									}
+									next.splice(insertAt, 0, entry);
 								}
-								next.splice(insertAt, 0, entry);
+								combined = next;
 							}
-							combined = next;
 						}
 
 						// Polling re-fetches on a fixed interval regardless of whether
@@ -1346,7 +1448,9 @@ export function ChatPage() {
 				if (!(error instanceof ChatApiError) && replace) {
 					try {
 						const stored = await chatDb.listConversations({ includeArchived: true });
-						setConversations(stored.map((c) => c.entry));
+						setConversations(
+							stored.slice(0, OFFLINE_INBOX_FALLBACK_LIMIT).map((c) => c.entry),
+						);
 						setNextPage(null);
 						setInboxError(null);
 						return;
@@ -1572,7 +1676,7 @@ export function ChatPage() {
 					responseMessages,
 					older ? undefined : normalizedLastRead,
 				);
-				captureMediaForMessages(responseMessages, conversationId);
+				captureMediaForMessages(responseMessages, conversationId, userId);
 				captureAlbumsForMessages(responseMessages, conversationId, (id) =>
 					service.getAlbum(id),
 				);
@@ -1631,7 +1735,7 @@ export function ChatPage() {
 
 							if (hydratedMessages.length > 0) {
 								void chatLog.appendMessages(conversationId, hydratedMessages);
-								captureMediaForMessages(hydratedMessages, conversationId);
+								captureMediaForMessages(hydratedMessages, conversationId, userId);
 
 								if (selectedConversationIdRef.current !== conversationId) return;
 
@@ -1697,7 +1801,7 @@ export function ChatPage() {
 
 								if (resolvedMessages.length > 0) {
 									void chatLog.appendMessages(conversationId, resolvedMessages);
-									captureMediaForMessages(resolvedMessages, conversationId);
+									captureMediaForMessages(resolvedMessages, conversationId, userId);
 
 									if (selectedConversationIdRef.current !== conversationId) return;
 									setThreadMessages((previous) => {
@@ -1769,7 +1873,7 @@ export function ChatPage() {
 							if (updates.length === 0) return;
                             const nonExpiredUpdates = updates.filter((u) => !(u.body as any)?._videoExpired);
                             void chatLog.appendMessages(conversationId, nonExpiredUpdates);
-                            captureMediaForMessages(nonExpiredUpdates, conversationId);
+                            captureMediaForMessages(nonExpiredUpdates, conversationId, userId);
 							if (selectedConversationIdRef.current !== conversationId) return;
 							setThreadMessages((previous) => {
 								const map = new Map<string, UiMessage>();
@@ -2165,7 +2269,7 @@ export function ChatPage() {
 		}
 		for (const [cid, msgs] of byConv) {
 			void chatLog.appendMessages(cid, msgs);
-			captureMediaForMessages(msgs, cid);
+			captureMediaForMessages(msgs, cid, userId);
 			captureAlbumsForMessages(msgs, cid, (id) => service.getAlbum(id));
 		}
 
@@ -2230,6 +2334,7 @@ export function ChatPage() {
 				captureMediaForMessages(
 					nonExpiredImageUpdates,
 					incomingImagesWithoutUrl[0].conversationId,
+					userId,
 				);
 				setThreadMessages((prev) => {
 					const map = new Map<string, UiMessage>();
@@ -2274,6 +2379,7 @@ export function ChatPage() {
 					captureMediaForMessages(
 						nonExpiredVideoUpdates,
 						incomingVideosWithoutUrl[0].conversationId,
+						userId,
 					);
 				}
 				setThreadMessages((prev) => {
@@ -2622,6 +2728,21 @@ export function ChatPage() {
 		}
 		void loadInbox({ page: 1, replace: true });
 	}, [loadInbox, activeInboxFilters, settingsReady]);
+
+	// Re-verify the blocked-profile list fresh from the server every time the
+	// inbox screen opens, instead of trusting whatever's cached for up to its
+	// 10-minute staleTime — a block/unblock made on another device (while this
+	// device's WS was disconnected, or missed here for any other reason)
+	// would otherwise stay unreconciled until that staleTime happens to
+	// elapse. The refetched data flows into ChatRealtimeBridge's own
+	// reconcileBlockStateWithBlockedList effect (same "blocked-profile-ids"
+	// query key), which archives/unarchives every conversation to match.
+	useEffect(() => {
+		if (!settingsReady) {
+			return;
+		}
+		void refetchBlockedProfileIds();
+	}, [settingsReady, refetchBlockedProfileIds]);
 
 	useEffect(() => {
 		if (!isDesktop) {

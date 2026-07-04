@@ -273,10 +273,27 @@ export async function toggleArchiveOnConversationDelete(
 				return;
 			}
 
-			// 2. We already know we're the one who blocked them — any other
-			// delete event here (not our own unblock, handled above) is a stale
-			// echo of our own earlier block or an unrelated signal.
+			// 2. We already know we're the one who blocked them. A second delete
+			// event here isn't necessarily a stale echo of that same block — it's
+			// also exactly how an unblock made from *another* device arrives: that
+			// device's mutation never set our local self-action marker (only the
+			// device that ran the mutation gets one), so step 1 can't catch it.
+			// Verify live via isBlockedByMe first, same as the blocked_by_other
+			// branch below verifies via checkConversationAccessible, rather than
+			// assuming every repeat delivery here means nothing changed.
 			if (currentBlockState === "blocked_by_me") {
+				const stillBlockedByMe =
+					isBlockedByMe && otherProfileId
+						? await isBlockedByMe(otherProfileId).catch(() => true)
+						: true;
+				if (stillBlockedByMe) {
+					return;
+				}
+				if (await claimBlockStateTransition(conversationId, null)) {
+					await unarchiveConversation(conversationId);
+					unarchived.push(conversationId);
+					await insertBlockMessage(conversationId, "SystemUnblockedBySelf");
+				}
 				return;
 			}
 
@@ -397,6 +414,47 @@ export async function toggleArchiveOnConversationDelete(
 		}),
 	);
 	return { archived, unarchived, systemMessages };
+}
+
+/**
+ * A conversation showing up as new/changed in a fresh inbox-style response
+ * (the foreground `/v4/inbox` poll, or inboxSync's background walk) usually
+ * means the other party messaged again, or someone unblocked someone. Only
+ * trust that signal for a block-related archive (`ws_delete`) with a
+ * block_state still set — an archive for another reason (e.g. "not_found")
+ * isn't block-related, and a block_state already cleared means something
+ * else (most likely the matching WS event) already resolved this for real,
+ * so there's nothing left to reconcile. Returns the system message to
+ * broadcast, if any transition actually happened.
+ */
+export async function reconcileReappearedConversation(
+	conversationId: string,
+	archivedReason: ArchivedReason | null | undefined,
+): Promise<Message | null> {
+	if (archivedReason !== "ws_delete") {
+		return null;
+	}
+	const stored = await chatDb.getConversation(conversationId).catch(() => null);
+	if (!stored?.blockState) {
+		return null;
+	}
+	if (!(await claimBlockStateTransition(conversationId, null).catch(() => false))) {
+		return null;
+	}
+	await unarchiveConversation(conversationId);
+	const isSelf = consumeSelfBlockAction(conversationId, "unblock");
+	try {
+		return await chatDb.insertSystemMessage(
+			conversationId,
+			isSelf ? "SystemUnblockedBySelf" : "SystemUnblocked",
+		);
+	} catch (error) {
+		appLog.error(
+			`[conversation-archive] failed to insert unblocked system message for ${conversationId}`,
+			error,
+		);
+		return null;
+	}
 }
 
 /**
