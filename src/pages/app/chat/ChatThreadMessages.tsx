@@ -1799,11 +1799,13 @@ export function ChatThreadMessages({
                                                     <p className="opacity-60">{t("chat.thread.shared_image")}</p>
                                                 </div>
                                                 {photoUrl && (
-                                                    <img
-                                                        src={photoUrl}
-                                                        alt=""
-                                                        className="h-14 w-14 shrink-0 object-cover object-top"
-                                                    />
+                                                    <div className="relative w-14 shrink-0 self-stretch overflow-hidden">
+                                                        <img
+                                                            src={photoUrl}
+                                                            alt=""
+                                                            className="absolute inset-0 h-full w-full object-cover object-top"
+                                                        />
+                                                    </div>
                                                 )}
                                             </div>
                                         );
