@@ -25,6 +25,7 @@ import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { platform } from "@tauri-apps/plugin-os";
 import { useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 import { useAuth } from "../contexts/useAuth";
 import { useApi } from "../hooks/useApi";
 import { ChatRealtimeManager, setActiveRealtimeManager } from "../services/chatRealtime";
@@ -294,6 +295,48 @@ export function ChatRealtimeBridge() {
 			window.removeEventListener(CHAT_ARCHIVE_STATE_EVENT, handleArchiveStateChange);
 		};
 	}, [queryClient]);
+
+	// In-app toast whenever someone else blocks or unblocks us. Every
+	// reconciliation path that determines this (the live WS event, ChatPage's
+	// foreground reappearance check, inboxSync's background walk) funnels
+	// through inserting a "SystemBlocked"/"SystemUnblocked" message and
+	// dispatching this same event — listening once here, app-wide, catches
+	// all of them regardless of which screen is open. Deliberately skips the
+	// "...BySelf" variants: those are our own block/unblock action, already
+	// visible from the confirmation dialog and immediate UI change that
+	// triggered it, not something we need telling about again.
+	useEffect(() => {
+		const handleSystemMessage = (event: Event) => {
+			const messages = (event as CustomEvent<Message[]>).detail;
+			if (!Array.isArray(messages)) return;
+			for (const message of messages) {
+				if (message.type !== "SystemBlocked" && message.type !== "SystemUnblocked") {
+					continue;
+				}
+				const conv = getConversation(message.conversationId);
+				const name = conv?.data.name?.trim() || tRef.current("chat.notifications.someone");
+				if (message.type === "SystemBlocked") {
+					toast(
+						tRef.current("chat.block_toast.blocked_by_other", {
+							defaultValue: "{{name}} blocked you",
+							name,
+						}),
+					);
+				} else {
+					toast.success(
+						tRef.current("chat.block_toast.unblocked_by_other", {
+							defaultValue: "{{name}} unblocked you",
+							name,
+						}),
+					);
+				}
+			}
+		};
+		window.addEventListener(CHAT_SYSTEM_MESSAGE_EVENT, handleSystemMessage as EventListener);
+		return () => {
+			window.removeEventListener(CHAT_SYSTEM_MESSAGE_EVENT, handleSystemMessage as EventListener);
+		};
+	}, []);
 
 	// Boot the realtime manager whenever the user is authenticated.
 	// getToken is called fresh on every (re)connect so an expired token
