@@ -66,6 +66,7 @@ import { ChatInboxPanel } from "./chat/ChatInboxPanel";
 import { ChatInboxHeader } from "./chat/ChatInboxHeader";
 import { ChatFiltersOverlay } from "./chat/ChatFiltersOverlay";
 import { ChatThreadPanel } from "./chat/ChatThreadPanel";
+import { parseSlashCommand } from "./chat/slashCommands";
 import { ChatAlbumSheet } from "./chat/ChatAlbumSheet";
 import { ChatMediaSheet } from "./chat/ChatMediaSheet";
 import * as chatLog from "../../services/chatLog";
@@ -3666,6 +3667,95 @@ export function ChatPage() {
 		[isTogglingFavoriteProfileId, service, t],
 	);
 
+	const executeSlashCommand = useCallback(
+		async ({ command, arg }: NonNullable<ReturnType<typeof parseSlashCommand>>) => {
+			const targetId = arg
+				? Number(arg)
+				: selectedConversationOtherProfileId
+				? Number(selectedConversationOtherProfileId)
+				: null;
+			const needsTargetId = ["block", "unblock", "open", "clear", "favourite"].includes(command.name);
+			if (needsTargetId && (targetId == null || Number.isNaN(targetId))) {
+				toast.error(t("chat.slash_commands.errors.no_target", { defaultValue: "Open a chat or provide an ID" }));
+				return;
+			}
+
+			switch (command.name) {
+				case "block":
+					await blockProfileFromChat(targetId as number);
+					break;
+				case "unblock":
+					await unblockProfileFromChat(targetId as number);
+					break;
+				case "clear":
+					await blockProfileFromChat(targetId as number);
+					await unblockProfileFromChat(targetId as number);
+					break;
+				case "open": {
+					const returnTo = getProfileReturnToChatPath(targetId as number);
+					const nextParams = new URLSearchParams();
+					nextParams.set("returnTo", returnTo);
+					navigate(`/profile/${targetId}?${nextParams.toString()}`, { state: { returnTo } });
+					break;
+				}
+				case "chat":
+					if (!arg) {
+						toast.error(t("chat.slash_commands.errors.no_chat_id", { defaultValue: "Provide a chat ID" }));
+						break;
+					}
+					openConversationById(arg);
+					break;
+				case "mute":
+					if (!selectedConversation) {
+						toast.error(t("chat.slash_commands.errors.no_conversation", { defaultValue: "Open a chat first" }));
+						break;
+					}
+					await toggleMute();
+					break;
+				case "pin":
+					if (!selectedConversation) {
+						toast.error(t("chat.slash_commands.errors.no_conversation", { defaultValue: "Open a chat first" }));
+						break;
+					}
+					togglePin();
+					break;
+				case "favourite":
+					if (!selectedConversation) {
+						toast.error(t("chat.slash_commands.errors.no_conversation", { defaultValue: "Open a chat first" }));
+						break;
+					}
+					await toggleFavoriteFromChat(targetId as number, selectedConversation.data.favorite ?? false);
+					break;
+				case "id":
+					if (!selectedConversationOtherProfileId) {
+						toast.error(t("chat.slash_commands.errors.no_conversation", { defaultValue: "Open a chat first" }));
+						break;
+					}
+					toast.success(
+						t("chat.slash_commands.id.result", {
+							defaultValue: `Profile ID: ${selectedConversationOtherProfileId}`,
+							id: selectedConversationOtherProfileId,
+						}),
+					);
+					navigator.clipboard?.writeText(selectedConversationOtherProfileId).catch(() => {});
+					break;
+			}
+		},
+		[
+			selectedConversationOtherProfileId,
+			selectedConversation,
+			blockProfileFromChat,
+			unblockProfileFromChat,
+			getProfileReturnToChatPath,
+			navigate,
+			openConversationById,
+			toggleMute,
+			togglePin,
+			toggleFavoriteFromChat,
+			t,
+		],
+	);
+
 	const editLocalNicknameFromChat = useCallback(
 		async (profileId: number, defaultName: string) => {
 			const profileKey = String(profileId);
@@ -4317,6 +4407,12 @@ export function ChatPage() {
 
 	const handleSend = (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
+		const parsedCommand = parseSlashCommand(draft.trim());
+		if (parsedCommand) {
+			setDraft("");
+			void executeSlashCommand(parsedCommand);
+			return;
+		}
 		void sendTextMessage(draft);
 		scrollThreadToBottom();
 	};
