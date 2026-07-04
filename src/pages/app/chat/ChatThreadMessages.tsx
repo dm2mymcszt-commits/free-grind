@@ -80,6 +80,7 @@ type ChatThreadMessagesProps = {
 	threadBottomRef: { current: HTMLDivElement | null };
 	isPartnerTyping?: boolean;
 	isArchived?: boolean;
+	composerHeight?: number;
 };
 
 const getReactionEmoji = (type: number): string => {
@@ -287,6 +288,7 @@ export function ChatThreadMessages({
 	threadBottomRef,
 	isPartnerTyping = false,
 	isArchived = false,
+	composerHeight = 88,
 }: ChatThreadMessagesProps) {
 	const { t } = useTranslation();
 	useLocalMediaCache();
@@ -760,7 +762,8 @@ export function ChatThreadMessages({
 			ref={threadScrollContainerRef}
 			onScroll={handleThreadScroll}
 			data-lenis-prevent
-			className={`flex flex-1 flex-col overflow-x-hidden overflow-y-auto ${!isDesktop ? "pb-[160px] pt-[140px]" : ""}`}
+			className={`flex flex-1 flex-col overflow-x-hidden overflow-y-auto ${!isDesktop ? "pt-[140px]" : ""}`}
+			style={!isDesktop ? { paddingBottom: composerHeight + 16 } : undefined}
 		>
             {messagePageKey ? (
                 <button
@@ -1876,7 +1879,7 @@ export function ChatThreadMessages({
                     </div>
                 </div>
             )}
-            <div ref={threadBottomRef} className="h-24 shrink-0" />
+            <div ref={threadBottomRef} className="h-3 shrink-0" />
 			{reactionParticles && reactionParticles.items.map((p, i) => p.emoji ? (
 				<span
 					key={`rp-${reactionParticles.key}-${i}`}

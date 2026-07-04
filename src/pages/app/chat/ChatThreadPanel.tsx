@@ -88,7 +88,14 @@ import type { ArchivedReason } from "../../../types/chat-db";
 import { useAvatarCache } from "../../../hooks/useAvatarCache";
 import { resolveAvatarSrc } from "../../../services/avatarStore";
 import { getForbiddenWords, setForbiddenWords } from "../../../utils/autoblock";
-import { SKIP_BLOCK_CONFIRM_KEY, SKIP_UNBLOCK_CONFIRM_KEY } from "../../../utils/blockConfirm";
+import {
+	SKIP_BLOCK_CONFIRM_KEY,
+	SKIP_UNBLOCK_CONFIRM_KEY,
+	SKIP_DELETE_CONVERSATION_CONFIRM_KEY,
+	isBlockConfirmSkipped,
+	isUnblockConfirmSkipped,
+	isDeleteConversationConfirmSkipped,
+} from "../../../utils/blockConfirm";
 
 async function fixWebmDuration(blob: Blob, durationMs: number): Promise<Blob> {
 	if (!blob.type.includes("webm")) return blob;
@@ -415,24 +422,35 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 	const [isDraggingAttachmentCrop, setIsDraggingAttachmentCrop] = useState(false);
 	const attachmentImgRef = useRef<HTMLImageElement | null>(null);
 	const [mobileKeyboardInset, setMobileKeyboardInset] = useState(0);
+	const [composerHeight, setComposerHeight] = useState(88);
+	const composerHeightObserverRef = useRef<ResizeObserver | null>(null);
+	// Callback ref rather than a plain useRef: the composer bar and the
+	// archived-conversation banner occupy the same slot and never render
+	// together, so the underlying node is swapped/unmounted whenever
+	// isArchived flips — reconnecting the observer here (instead of in an
+	// effect keyed on a ref) keeps it attached to whichever one is current.
+	const composerRef = useCallback((node: HTMLElement | null) => {
+		composerHeightObserverRef.current?.disconnect();
+		composerHeightObserverRef.current = null;
+		if (!node) {
+			return;
+		}
+		const observer = new ResizeObserver((entries) => {
+			const entry = entries[0];
+			if (entry) {
+				setComposerHeight(entry.target.getBoundingClientRect().height);
+			}
+		});
+		observer.observe(node);
+		composerHeightObserverRef.current = observer;
+	}, []);
 	const [isBlockConfirmOpen, setIsBlockConfirmOpen] = useState(false);
 	const [isDeleteConversationConfirmOpen, setIsDeleteConversationConfirmOpen] =
 		useState(false);
+	const [dontAskDeleteConversationAgain, setDontAskDeleteConversationAgain] = useState(false);
 	const [dontAskBlockAgain, setDontAskBlockAgain] = useState(false);
-	const [skipBlockConfirm, setSkipBlockConfirm] = useState(() => {
-		if (typeof window === "undefined") {
-			return false;
-		}
-		return localStorage.getItem(SKIP_BLOCK_CONFIRM_KEY) === "true";
-	});
 	const [isUnblockConfirmOpen, setIsUnblockConfirmOpen] = useState(false);
 	const [dontAskUnblockAgain, setDontAskUnblockAgain] = useState(false);
-	const [skipUnblockConfirm, setSkipUnblockConfirm] = useState(() => {
-		if (typeof window === "undefined") {
-			return false;
-		}
-		return localStorage.getItem(SKIP_UNBLOCK_CONFIRM_KEY) === "true";
-	});
 
 	const {
 		navigate,
@@ -909,7 +927,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 					}
 
 					setIsHeaderActionsMenuOpen(false);
-					if (skipBlockConfirm) {
+					if (isBlockConfirmSkipped()) {
 						void onBlockProfile(otherParticipant.profileId);
 						return;
 					}
@@ -925,7 +943,6 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 
 					if (dontAskBlockAgain && typeof window !== "undefined") {
 						localStorage.setItem(SKIP_BLOCK_CONFIRM_KEY, "true");
-						setSkipBlockConfirm(true);
 					}
 
 					setIsBlockConfirmOpen(false);
@@ -938,7 +955,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 					}
 
 					setIsHeaderActionsMenuOpen(false);
-					if (skipUnblockConfirm) {
+					if (isUnblockConfirmSkipped()) {
 						void onUnblockProfile(otherParticipant.profileId);
 						return;
 					}
@@ -954,7 +971,6 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 
 					if (dontAskUnblockAgain && typeof window !== "undefined") {
 						localStorage.setItem(SKIP_UNBLOCK_CONFIRM_KEY, "true");
-						setSkipUnblockConfirm(true);
 					}
 
 					setIsUnblockConfirmOpen(false);
@@ -966,12 +982,20 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 						return;
 					}
 					setIsHeaderActionsMenuOpen(false);
+					if (isDeleteConversationConfirmSkipped()) {
+						void onDeleteConversation(selectedConversation.data.conversationId);
+						return;
+					}
+					setDontAskDeleteConversationAgain(false);
 					setIsDeleteConversationConfirmOpen(true);
 				};
 
 				const confirmDeleteConversation = () => {
 					if (!onDeleteConversation || isDeletingConversation) {
 						return;
+					}
+					if (dontAskDeleteConversationAgain && typeof window !== "undefined") {
+						localStorage.setItem(SKIP_DELETE_CONVERSATION_CONFIRM_KEY, "true");
 					}
 					setIsDeleteConversationConfirmOpen(false);
 					void onDeleteConversation(selectedConversation.data.conversationId);
@@ -1035,6 +1059,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 											getParticipantAvatarUrl(otherParticipant?.primaryMediaHash),
 										)}
 										alt={displayName}
+										className={isArchived ? "grayscale" : undefined}
 									/>
 								</button>
 								<div className="min-w-0">
@@ -1127,7 +1152,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                 </button>
             )}
 
-								{isDesktop && !isArchived && onOpenMediaSheet && (
+								{isDesktop && onOpenMediaSheet && (
 									<button
 										type="button"
 										onClick={onOpenMediaSheet}
@@ -1412,6 +1437,9 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 							onCancel={closeDeleteConversationConfirm}
 							isProcessing={isDeletingConversation}
 							confirmTone="danger"
+							dontAskAgainLabel={t("profile_details.dont_ask_again")}
+							dontAskAgainChecked={dontAskDeleteConversationAgain}
+							onDontAskAgainChange={setDontAskDeleteConversationAgain}
 						/>
 					</>
 				);
@@ -1504,6 +1532,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 						threadBottomRef={threadBottomRef}
 						isPartnerTyping={isPartnerTyping}
 						isArchived={isArchived}
+						composerHeight={composerHeight}
 				/>
 				)
 			) : (
@@ -1520,6 +1549,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 
 					{isArchived ? (
 						<div
+							ref={composerRef}
 							className={`${!isDesktop ? "fixed bottom-0 left-0 right-0 z-30 px-[var(--app-px)] py-3" : "mt-3 pt-3 -mx-3 sm:-mx-4 px-3 sm:px-4"} bg-[var(--surface)]`}
 							style={
 								!isDesktop
@@ -1549,6 +1579,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 						</div>
 					) : (
 					<form
+						ref={composerRef}
 						onSubmit={onFormSubmit}
 						className={`${!isDesktop ? "fixed bottom-0 left-0 right-0 z-30 px-[var(--app-px)] py-3" : "mt-3 pt-3 -mx-3 sm:-mx-4 px-3 sm:px-4"} border-t border-[var(--border)] bg-[var(--surface)]`}
 						style={
