@@ -32,6 +32,7 @@ import { SettingsAutomationPage } from "./pages/app/SettingsAutomationPage.tsx";
 import { SettingsDataPage } from "./pages/app/SettingsDataPage.tsx";
 import { SettingsPrivacyPage } from "./pages/app/SettingsPrivacyPage.tsx";
 import { SettingsSavedPhrasesPage } from "./pages/app/SettingsSavedPhrasesPage.tsx";
+import { SettingsNotificationsPage } from "./pages/app/SettingsNotificationsPage.tsx";
 import { PermissionsOnboarding } from "./components/PermissionsOnboarding";
 import { OutdatedVersionPrompt } from "./components/OutdatedVersionPrompt";
 import { PushNotificationBridge } from "./components/PushNotificationBridge";
@@ -191,6 +192,7 @@ export default function App() {
 								<Route path="/chat/:conversationId" element={<ChatPage />} />
 								<Route path="/profile/:profileId" element={<GridProfilePage />} />
 								<Route path="/settings" element={<SettingsPage />} />
+								<Route path="/settings/notifications" element={<SettingsNotificationsPage />} />
 								<Route path="/settings/automation" element={<SettingsAutomationPage />} />
 								<Route path="/settings/data" element={<SettingsDataPage />} />
 								<Route path="/settings/privacy" element={<SettingsPrivacyPage />} />

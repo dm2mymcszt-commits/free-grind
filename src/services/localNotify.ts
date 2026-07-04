@@ -93,6 +93,20 @@ export async function notifyLocal(options: LocalNotifyOptions): Promise<void> {
 		appLog.debug("[notify] suppressed", options.title);
 		return;
 	}
+
+	// Check user preferences in localStorage
+	if (options.group === "taps") {
+		if (window.localStorage.getItem("fg-notify-taps") === "false") {
+			appLog.debug("[notify] suppressed: taps notifications disabled by user settings");
+			return;
+		}
+	} else {
+		if (window.localStorage.getItem("fg-notify-chats") === "false") {
+			appLog.debug("[notify] suppressed: chats notifications disabled by user settings");
+			return;
+		}
+	}
+
 	if (!detectLocalNotifySupported()) {
 		return;
 	}

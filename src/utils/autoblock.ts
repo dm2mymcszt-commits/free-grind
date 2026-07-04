@@ -6,6 +6,11 @@ export async function notifyAutoBlock(profileName: string, reason: string) {
 
     if (!isTauriRuntime()) return;
 
+    if (window.localStorage.getItem("fg-notify-autoblock") === "false") {
+        console.log("[AutoBlock] Notification suppressed: auto-block notifications disabled by user settings");
+        return;
+    }
+
     try {
         let permissionGranted = await isPermissionGranted();
         if (!permissionGranted) {

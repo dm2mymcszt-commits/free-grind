@@ -290,9 +290,9 @@ export function SettingsPage() {
                     </div>
                 </div>
 
-                {/* Safety */}
+                {/* Safety & Notifications */}
                 <div>
-                    <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">Safety</p>
+                    <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">Safety & Notifications</p>
                     <div className="surface-card overflow-hidden divide-y divide-[var(--border)]">
                         {navRow(
                             () => navigate("/settings/blocked"),
@@ -307,6 +307,13 @@ export function SettingsPage() {
                             "bg-sky-500/15 text-sky-400",
                             t("settings.privacy", { defaultValue: "Privacy" }),
                             t("settings.privacy_desc", { defaultValue: "Manage read receipts and blocking behaviors." }),
+                        )}
+                        {navRow(
+                            () => navigate("/settings/notifications"),
+                            <Bell className="h-5 w-5" />,
+                            "bg-amber-500/15 text-amber-400",
+                            t("settings.notifications", { defaultValue: "Notifications" }),
+                            t("settings.notifications_desc", { defaultValue: "Choose which events trigger native alerts." }),
                         )}
                     </div>
                 </div>
