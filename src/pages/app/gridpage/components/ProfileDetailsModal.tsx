@@ -33,6 +33,7 @@ import {
 import { getProfileImageUrl } from "../../../../utils/media";
 import { ProfileImage } from "../../../../components/ui/profile-image";
 import freegrindLogo from "../../../../images/freegrind-logo.webp";
+import { FreeGrindBadge } from "../../../../components/FreeGrindBadge";
 import { usePreferences } from "../../../../contexts/PreferencesContext";
 import { formatDateTime24 } from "../../chat/chatUtils";
 import { formatRelativeTime } from "../../../../utils/relativeTime";
@@ -957,7 +958,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 						<div className="flex items-center gap-1.5 min-w-0">
 							<p className={`truncate text-base font-semibold leading-tight${inlineScrolled ? "" : " text-white"}`}>{activeProfileName}</p>
 							{usesFreegrind && (
-								<img src={freegrindLogo} alt="Free Grind user" title={t("profile_details.uses_free_grind")} className="h-4 w-4 shrink-0 rounded-full border border-[var(--border)]" />
+								<FreeGrindBadge size="sm" title={t("profile_details.uses_free_grind")} />
 							)}
 							{activeProfile?.age != null && Number.isFinite(activeProfile.age) && (
 								<span className={`shrink-0 text-sm${inlineScrolled ? " text-[var(--text-muted)]" : " text-white/70"}`}>{activeProfile.age}</span>

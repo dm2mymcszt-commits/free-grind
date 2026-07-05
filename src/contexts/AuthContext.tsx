@@ -20,10 +20,12 @@ import { appLog } from "../utils/logger";
 import { setActiveChatDbUser, migrateLegacySettingsIfNeeded } from "../services/chatDb";
 import { clearAllCaches } from "../pages/app/gridpage/cache";
 import { loadAutomationCache } from "../utils/autoblock";
+import { loadAutomationRulesCache } from "../utils/automationRules";
 import { loadMediaSettingsCache } from "../utils/mediaSettings";
 import { loadPrivacyCache } from "../utils/privacy";
 import { loadSeenCache } from "../services/seenStore";
 import { runInboxSync } from "../services/inboxSync";
+import { runTapsAutomationSync } from "../services/tapsSync";
 import { syncSavedPhrasesFromServer } from "../services/savedPhrases";
 
 const AUTH_USER_ID_STORAGE_KEY = "fg-user-id";
@@ -310,10 +312,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 					apiFunctions.getSavedPhrases,
 					() => currentUserIdRef.current === userId,
 				);
+				// Fire-and-forget: reconciles taps received while the app was closed
+				// against the "tap_received" automation trigger — guarded the same
+				// way, and safe to start before the automation cache below finishes
+				// loading (runAutomationRulesForSender no-ops until it has).
+				void runTapsAutomationSync(apiFunctions, () => currentUserIdRef.current === userId);
 			}
 
 			await Promise.all([
 				loadAutomationCache(),
+				loadAutomationRulesCache(),
 				loadMediaSettingsCache(),
 				loadPrivacyCache(),
 				loadSeenCache(),

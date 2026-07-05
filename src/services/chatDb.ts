@@ -1043,24 +1043,6 @@ export async function deleteMessageRow(messageId: string): Promise<void> {
 	});
 }
 
-export async function clearMessagesForConversation(
-	conversationId: string,
-): Promise<void> {
-	const db = await getDb();
-
-	await executeWithLockRetry(db, "clear-messages-for-conversation", async () => {
-		await db.execute("DELETE FROM messages WHERE conversation_id = $1", [
-			conversationId,
-		]);
-		await db.execute("DELETE FROM media_files WHERE conversation_id = $1", [
-			conversationId,
-		]);
-		await db.execute("DELETE FROM conversation_meta WHERE conversation_id = $1", [
-			conversationId,
-		]);
-	});
-}
-
 export async function exportAllMessages(): Promise<Record<string, Message[]>> {
 	const db = await getDb();
 	const rows = await db.select<MessageRow[]>(

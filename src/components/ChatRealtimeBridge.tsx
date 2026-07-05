@@ -25,6 +25,7 @@ import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { platform } from "@tauri-apps/plugin-os";
 import { useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 import { useAuth } from "../contexts/useAuth";
 import { useApi } from "../hooks/useApi";
 import { ChatRealtimeManager, setActiveRealtimeManager } from "../services/chatRealtime";
@@ -52,8 +53,9 @@ import {
 } from "../pages/app/chat/chatUtils";
 import { fetchAndStoreMedia } from "../services/mediaStore";
 import { captureAlbumsForMessages } from "../services/albumStore";
+import { captureReplyPreviewsForMessages } from "../services/replyMediaStore";
 import { getConversation } from "../services/conversationDirectory";
-import { shouldAutoBlock, getMatchedForbiddenWord, notifyAutoBlock } from "../utils/autoblock";
+import { runAutomationRulesForSender } from "../utils/automationRules";
 import { useApiFunctions } from "../hooks/useApiFunctions";
 import { useBlockedProfileIds } from "../hooks/queries/useProfileQueries";
 import { isReadReceiptsHidden } from "../utils/privacy";
@@ -295,6 +297,48 @@ export function ChatRealtimeBridge() {
 		};
 	}, [queryClient]);
 
+	// In-app toast whenever someone else blocks or unblocks us. Every
+	// reconciliation path that determines this (the live WS event, ChatPage's
+	// foreground reappearance check, inboxSync's background walk) funnels
+	// through inserting a "SystemBlocked"/"SystemUnblocked" message and
+	// dispatching this same event — listening once here, app-wide, catches
+	// all of them regardless of which screen is open. Deliberately skips the
+	// "...BySelf" variants: those are our own block/unblock action, already
+	// visible from the confirmation dialog and immediate UI change that
+	// triggered it, not something we need telling about again.
+	useEffect(() => {
+		const handleSystemMessage = (event: Event) => {
+			const messages = (event as CustomEvent<Message[]>).detail;
+			if (!Array.isArray(messages)) return;
+			for (const message of messages) {
+				if (message.type !== "SystemBlocked" && message.type !== "SystemUnblocked") {
+					continue;
+				}
+				const conv = getConversation(message.conversationId);
+				const name = conv?.data.name?.trim() || tRef.current("chat.notifications.someone");
+				if (message.type === "SystemBlocked") {
+					toast(
+						tRef.current("chat.block_toast.blocked_by_other", {
+							defaultValue: "{{name}} blocked you",
+							name,
+						}),
+					);
+				} else {
+					toast.success(
+						tRef.current("chat.block_toast.unblocked_by_other", {
+							defaultValue: "{{name}} unblocked you",
+							name,
+						}),
+					);
+				}
+			}
+		};
+		window.addEventListener(CHAT_SYSTEM_MESSAGE_EVENT, handleSystemMessage as EventListener);
+		return () => {
+			window.removeEventListener(CHAT_SYSTEM_MESSAGE_EVENT, handleSystemMessage as EventListener);
+		};
+	}, []);
+
 	// Boot the realtime manager whenever the user is authenticated.
 	// getToken is called fresh on every (re)connect so an expired token
 	// never blocks reconnection.
@@ -517,6 +561,7 @@ export function ChatRealtimeBridge() {
 						);
 						triggerTapNotification(tap);
 						maybeUnarchiveOnActivity(tap.profileId);
+						runAutomationRulesForSender(tap.profileId, "tap_received", apiFunctions).catch(() => {});
 					}
 				}
 
@@ -618,23 +663,37 @@ export function ChatRealtimeBridge() {
 				if (messages.length > 0) {
 					const byConv = new Map<string, Message[]>();
 					for (const m of messages) {
-						// --- LIVE AUTO BLOCK CHECK ---
 						let messageText = "";
 						const msgBody: any = m.body;
 						if (msgBody && typeof msgBody.text === "string") {
 							messageText = msgBody.text;
 						}
-						
-						const isIncoming = userIdRef.current != null && Number(m.senderId) !== Number(userIdRef.current);
-						const matchedWord = getMatchedForbiddenWord(messageText, "chat");
 
-						if (isIncoming && matchedWord) {
-							notifyAutoBlock("Spam Intercepted", `Keyword: "${matchedWord}"`);
-							
-							if (m.senderId) {
-								apiFunctions.blockProfile(String(m.senderId)).catch(() => {});
-							}
-							continue; // Skip processing this message entirely!
+						const isIncoming = userIdRef.current != null && Number(m.senderId) !== Number(userIdRef.current);
+
+						// --- CUSTOM AUTOMATION RULES ---
+						if (isIncoming && m.senderId) {
+							const { blocked: blockedByNewChat } = await runAutomationRulesForSender(
+								String(m.senderId),
+								"new_chat",
+								apiFunctions,
+								undefined,
+								messageText,
+							).catch(() => ({ blocked: false, matchedRuleNames: [] }));
+							if (blockedByNewChat) continue; // A rule blocked the sender — skip processing this message.
+
+							// Dedupes per messageId rather than per sender — the custom-rule
+							// equivalent of the forbidden keyword check above (e.g. a
+							// "message contains keyword" rule), evaluated once per message.
+							const { blocked: blockedByMessage } = await runAutomationRulesForSender(
+								String(m.senderId),
+								"message_received",
+								apiFunctions,
+								undefined,
+								messageText,
+								m.messageId,
+							).catch(() => ({ blocked: false, matchedRuleNames: [] }));
+							if (blockedByMessage) continue;
 						}
 						// -----------------------------
 
@@ -682,6 +741,7 @@ export function ChatRealtimeBridge() {
 							});
 						}
 						captureAlbumsForMessages(msgs, cid, (id) => apiFunctions.getAlbum(id));
+						captureReplyPreviewsForMessages(msgs, cid);
 					}
 				}
 

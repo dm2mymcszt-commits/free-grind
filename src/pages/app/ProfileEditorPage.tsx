@@ -2,14 +2,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
 	RefreshCw,
+	RotateCw,
 	Save,
+	SquareCenterlineDashedHorizontal,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 import z from "zod";
+import ReactCrop, { type Crop, type PixelCrop } from "react-image-crop";
+import "react-image-crop/dist/ReactCrop.css";
 import { useAuth } from "../../contexts/useAuth";
 import { usePreferences } from "../../contexts/PreferencesContext";
 import { useApiFunctions } from "../../hooks/useApiFunctions";
+import { useDesktopBreakpoint } from "../../hooks/useDesktopBreakpoint";
 import { useManagedGenders, useManagedPronouns } from "../../hooks/queries/useProfileQueries";
 import {
 	getVisitingModeTranslationKey,
@@ -18,6 +23,9 @@ import {
 import { getThumbImageUrl, validateMediaHash } from "../../utils/media";
 import { setCachedOwnProfilePhotoHash } from "./gridpage/cache";
 import { BackToSettings } from "../../components/BackToSettings";
+import { BottomDrawer } from "../../components/ui/bottom-drawer";
+import { ToggleRow } from "../../components/ui/toggle-row";
+import freegrindLogo from "../../images/freegrind-logo.webp";
 import {
 	getBodyTypeLabelMap,
 	getBodyTypeOptions,
@@ -76,6 +84,34 @@ export function ProfileEditorPage() {
 	const [isSaving, setIsSaving] = useState(false);
 	const [isSavingPhotos, setIsSavingPhotos] = useState(false);
 	const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+	const [pendingPhotoFile, setPendingPhotoFile] = useState<File | null>(null);
+	const [pendingPhotoTakenOnGrindr, setPendingPhotoTakenOnGrindr] = useState(false);
+	const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
+	const [photoCrop, setPhotoCrop] = useState<Crop | undefined>(undefined);
+	const [photoCompletedCrop, setPhotoCompletedCrop] = useState<PixelCrop | undefined>(undefined);
+	const [isDraggingPhotoCrop, setIsDraggingPhotoCrop] = useState(false);
+	const photoImgRef = useRef<HTMLImageElement | null>(null);
+	const isDesktop = useDesktopBreakpoint();
+
+	useEffect(() => {
+		if (!pendingPhotoFile) {
+			setPhotoPreviewUrl(null);
+			setPhotoCrop(undefined);
+			setPhotoCompletedCrop(undefined);
+			return;
+		}
+		const url = URL.createObjectURL(pendingPhotoFile);
+		setPhotoPreviewUrl(url);
+		setPhotoCrop(undefined);
+		setPhotoCompletedCrop(undefined);
+		return () => URL.revokeObjectURL(url);
+	}, [pendingPhotoFile]);
+
+	useEffect(() => {
+		if (!photoPreviewUrl) return;
+		setPhotoCrop({ unit: "%", x: 0, y: 0, width: 100, height: 100 });
+	}, [photoPreviewUrl]);
+
 	// Tracks each photo's last-seen moderation state across reloads, so a
 	// background poll can toast when one changes (e.g. pending -> approved)
 	// instead of just silently updating the UI. Null until the first load.
@@ -623,7 +659,7 @@ export function ProfileEditorPage() {
 		[apiFunctions, loadProfile, userId, t],
 	);
 
-	const handleUploadPhoto = async (
+	const handleUploadPhoto = (
 		event: React.ChangeEvent<HTMLInputElement>,
 	) => {
 		const file = event.currentTarget.files?.[0];
@@ -643,6 +679,42 @@ export function ProfileEditorPage() {
 			return;
 		}
 
+		setPendingPhotoTakenOnGrindr(false);
+		setPendingPhotoFile(file);
+	};
+
+	const cancelPendingPhotoUpload = () => {
+		if (isUploadingPhoto) {
+			return;
+		}
+		setPendingPhotoFile(null);
+	};
+
+	const applyPhotoTransform = useCallback(async (type: "flipH" | "rotateCw") => {
+		const img = photoImgRef.current;
+		if (!img || !img.complete || img.naturalWidth === 0) return;
+		const sw = img.naturalWidth;
+		const sh = img.naturalHeight;
+		const canvas = document.createElement("canvas");
+		canvas.width = type === "rotateCw" ? sh : sw;
+		canvas.height = type === "rotateCw" ? sw : sh;
+		const ctx = canvas.getContext("2d");
+		if (!ctx) return;
+		ctx.translate(canvas.width / 2, canvas.height / 2);
+		if (type === "flipH") ctx.scale(-1, 1);
+		if (type === "rotateCw") ctx.rotate(Math.PI / 2);
+		ctx.drawImage(img, -sw / 2, -sh / 2, sw, sh);
+		const blob = await new Promise<Blob | null>((resolve) =>
+			canvas.toBlob(resolve, "image/jpeg", 0.95),
+		);
+		if (!blob) return;
+		setPhotoPreviewUrl((prev) => {
+			if (prev) URL.revokeObjectURL(prev);
+			return URL.createObjectURL(blob);
+		});
+	}, []);
+
+	const uploadPhotoFile = async (file: File) => {
 		setIsUploadingPhoto(true);
 
 		try {
@@ -650,7 +722,7 @@ export function ProfileEditorPage() {
 			const thumbCoords = await buildSquareThumbCoords(file);
 
 			const uploadPaths = [
-				`/v4/media/upload?thumbCoords=${encodeURIComponent(thumbCoords)}&takenOnGrindr=false`,
+				`/v4/media/upload?thumbCoords=${encodeURIComponent(thumbCoords)}&takenOnGrindr=${pendingPhotoTakenOnGrindr}`,
 				"/v3/me/profile/images",
 			];
 
@@ -694,6 +766,7 @@ export function ProfileEditorPage() {
 			await persistProfilePhotos([...profilePhotoHashes, uploadedHash], {
 				successMessage: t("profile_editor.toasts.photo_uploaded"),
 			});
+			setPendingPhotoFile(null);
 		} catch (error) {
 			const message =
 				error instanceof Error
@@ -703,6 +776,51 @@ export function ProfileEditorPage() {
 		} finally {
 			setIsUploadingPhoto(false);
 		}
+	};
+
+	const confirmPendingPhotoUpload = async () => {
+		if (!pendingPhotoFile) return;
+		let fileToUpload: File = pendingPhotoFile;
+		const isFullImage =
+			!photoCompletedCrop ||
+			!photoImgRef.current ||
+			(photoCompletedCrop.x <= 1 &&
+				photoCompletedCrop.y <= 1 &&
+				Math.abs(photoCompletedCrop.width - photoImgRef.current.width) <= 2 &&
+				Math.abs(photoCompletedCrop.height - photoImgRef.current.height) <= 2);
+		if (!isFullImage && photoCompletedCrop?.width && photoCompletedCrop.height && photoImgRef.current) {
+			const img = photoImgRef.current;
+			const scaleX = img.naturalWidth / img.width;
+			const scaleY = img.naturalHeight / img.height;
+			const canvas = document.createElement("canvas");
+			canvas.width = Math.round(photoCompletedCrop.width * scaleX);
+			canvas.height = Math.round(photoCompletedCrop.height * scaleY);
+			const ctx = canvas.getContext("2d");
+			if (ctx) {
+				ctx.drawImage(
+					img,
+					photoCompletedCrop.x * scaleX,
+					photoCompletedCrop.y * scaleY,
+					photoCompletedCrop.width * scaleX,
+					photoCompletedCrop.height * scaleY,
+					0,
+					0,
+					canvas.width,
+					canvas.height,
+				);
+				fileToUpload = await new Promise<File>((resolve) => {
+					canvas.toBlob(
+						(blob) => {
+							if (!blob) { resolve(pendingPhotoFile); return; }
+							resolve(new File([blob], pendingPhotoFile.name, { type: pendingPhotoFile.type || "image/jpeg" }));
+						},
+						pendingPhotoFile.type || "image/jpeg",
+						0.92,
+					);
+				});
+			}
+		}
+		await uploadPhotoFile(fileToUpload);
 	};
 
 	const handleRemovePhoto = async (hash: string) => {
@@ -893,6 +1011,85 @@ export function ProfileEditorPage() {
 					</div>
 				)}
 			</div>
+			{pendingPhotoFile ? (
+				<BottomDrawer
+					title={t("profile_editor.photo_upload.title")}
+					onClose={cancelPendingPhotoUpload}
+					onConfirm={() => void confirmPendingPhotoUpload()}
+					confirmLabel={t("profile_editor.photo_upload.confirm")}
+					isProcessing={isUploadingPhoto}
+					isDesktop={isDesktop}
+				>
+					<div className="flex min-h-0 flex-1 flex-col">
+						<div className="min-h-0 flex-1 overflow-y-auto">
+							{photoPreviewUrl && (
+								<div className="px-3 pb-3">
+									<div className="flex justify-center">
+										<style>{`
+											@keyframes photo-logo-shine { 0%, 100% { filter: drop-shadow(0 0 2px rgba(255,140,0,0.3)) brightness(1); } 50% { filter: drop-shadow(0 0 7px rgba(255,140,0,0.95)) brightness(1.25); } }
+											.photo-logo-shine { animation: photo-logo-shine 2.8s ease-in-out infinite; }
+											.photo-crop .ReactCrop__crop-mask { display: none !important; } .photo-crop .ReactCrop__crop-selection { background-image: none !important; animation: none !important; outline: none !important; border: 3px solid rgba(255,255,255,0.6) !important; border-radius: 11px !important; box-shadow: 0 0 0 9999px rgba(0,0,0,0.5) !important; }
+											.photo-crop .ord-n, .photo-crop .ord-s, .photo-crop .ord-e, .photo-crop .ord-w { display: none !important; }
+											.photo-crop .ReactCrop__drag-handle { background: transparent !important; border: none !important; width: 15px !important; height: 15px !important; }
+											.photo-crop .ord-nw { transform: translate(4px, 4px) !important; border-top: 2px solid white !important; border-left: 2px solid white !important; border-top-left-radius: 4px !important; }
+											.photo-crop .ord-ne { transform: translate(-4px, 4px) !important; border-top: 2px solid white !important; border-right: 2px solid white !important; border-top-right-radius: 4px !important; }
+											.photo-crop .ord-sw { transform: translate(4px, -4px) !important; border-bottom: 2px solid white !important; border-left: 2px solid white !important; border-bottom-left-radius: 4px !important; }
+											.photo-crop .ord-se { transform: translate(-4px, -4px) !important; border-bottom: 2px solid white !important; border-right: 2px solid white !important; border-bottom-right-radius: 4px !important; }
+										`}</style>
+										<div className="relative rounded-xl border border-[var(--border)] overflow-hidden">
+											<ReactCrop
+												crop={photoCrop}
+												onChange={(c) => { setIsDraggingPhotoCrop(true); setPhotoCrop(c); }}
+												onComplete={(c) => { setIsDraggingPhotoCrop(false); setPhotoCompletedCrop(c); }}
+												ruleOfThirds={isDraggingPhotoCrop}
+												minWidth={150}
+												minHeight={150}
+												className="photo-crop ReactCrop--no-animate"
+												style={{ maxHeight: "45dvh", display: "block" }}
+											>
+												<img ref={photoImgRef} src={photoPreviewUrl} alt="Preview" className="block" style={{ maxHeight: "45dvh" }} />
+											</ReactCrop>
+											{pendingPhotoTakenOnGrindr && photoCrop && (
+												<div
+													className="absolute inline-flex items-center gap-1.5 pointer-events-none"
+													style={{
+														left: `calc(${photoCrop.unit === "%" ? photoCrop.x + "%" : photoCrop.x + "px"} + 10px)`,
+														top: `calc(${photoCrop.unit === "%" ? (photoCrop.y + photoCrop.height) + "%" : (photoCrop.y + photoCrop.height) + "px"} - 10px)`,
+														transform: "translateY(-100%)",
+													}}
+												>
+													<img src={freegrindLogo} alt="" className="h-5 w-5 rounded-full photo-logo-shine" />
+													<span className="inline-flex items-center gap-1 rounded-full bg-black/65 px-2 py-1 text-[10px] font-semibold text-white">
+														<span>{t("chat.time.just_now", { defaultValue: "just now" })}</span>
+													</span>
+												</div>
+											)}
+										</div>
+									</div>
+									<div className="mt-3 flex items-center justify-center gap-8">
+										<button type="button" onClick={() => void applyPhotoTransform("flipH")} className="text-[var(--text-muted)] transition hover:text-[var(--text)]" aria-label="Flip horizontal">
+											<SquareCenterlineDashedHorizontal className="h-6 w-6" />
+										</button>
+										<button type="button" onClick={() => void applyPhotoTransform("rotateCw")} className="text-[var(--text-muted)] transition hover:text-[var(--text)]" aria-label="Rotate clockwise">
+											<RotateCw className="h-6 w-6" />
+										</button>
+									</div>
+								</div>
+							)}
+						</div>
+						<div className="shrink-0 px-3 pb-3 pt-2">
+							<div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-2)]">
+								<ToggleRow
+									checked={pendingPhotoTakenOnGrindr}
+									onChange={setPendingPhotoTakenOnGrindr}
+									label={t("profile_editor.photo_upload.taken_on_grindr")}
+									description={t("profile_editor.photo_upload.taken_on_grindr_description")}
+								/>
+							</div>
+						</div>
+					</div>
+				</BottomDrawer>
+			) : null}
 		</section>
 	);
 }

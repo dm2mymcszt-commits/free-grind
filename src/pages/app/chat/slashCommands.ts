@@ -5,6 +5,8 @@ export interface SlashCommandDef {
 	argHint?: string;
 	descriptionKey: string;
 	defaultDescription: string;
+	/** Needs an existing conversation (not just a known profile) to do anything. */
+	requiresConversation?: boolean;
 }
 
 export const SLASH_COMMANDS: SlashCommandDef[] = [
@@ -47,12 +49,14 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 		takesArg: false,
 		descriptionKey: "chat.slash_commands.mute.description",
 		defaultDescription: "Toggles mute status.",
+		requiresConversation: true,
 	},
 	{
 		name: "pin",
 		takesArg: false,
 		descriptionKey: "chat.slash_commands.pin.description",
 		defaultDescription: "Toggles pin status.",
+		requiresConversation: true,
 	},
 	{
 		name: "favourite",

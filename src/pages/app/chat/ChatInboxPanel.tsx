@@ -10,7 +10,7 @@ import { ProfileImage } from "../../../components/ui/profile-image";
 import { ConfirmDialog } from "../../../components/ui/confirm-dialog";
 import type { ConversationEntry } from "../../../types/messages";
 import type { ChatContactIndexRecord } from "../../../types/chat-contact-index";
-import freegrindLogo from "../../../images/freegrind-logo.webp";
+import { FreeGrindBadge } from "../../../components/FreeGrindBadge";
 import { PullToRefreshContainer } from "../components/PullToRefreshContainer";
 import {
 	formatConversationTime,
@@ -465,12 +465,7 @@ function ChatConversationRow({
 									</span>
 								)}
 								{otherParticipant?.profileId && presenceResults[otherParticipant.profileId] ? (
-									<img
-										src={freegrindLogo}
-										alt="Free Grind user"
-										title={t("profile_details.uses_free_grind")}
-										className="h-3.5 w-3.5 shrink-0 rounded-full border border-[var(--border)]"
-									/>
+									<FreeGrindBadge size="xs" title={t("profile_details.uses_free_grind")} />
 								) : null}
 							</div>
 							<span className="shrink-0 text-xs text-[var(--text-muted)]">

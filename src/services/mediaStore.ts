@@ -103,10 +103,15 @@ export type FetchAndStoreMediaParams = {
 	// to the device's Downloads folder only ever mirrors media *received*
 	// from someone else, never the user's own outgoing photos/videos.
 	isOwnMessage: boolean;
+	// Set for captures of secondary preview content (reply-quote thumbnails,
+	// reaction bubbles) rather than the actual media a message is about —
+	// never worth mirroring to the device's Downloads folder even when
+	// received. Defaults to false.
+	skipAutoDownload?: boolean;
 };
 
 async function downloadAndStore(params: FetchAndStoreMediaParams): Promise<void> {
-	const { mediaKey, kind, url, conversationId, messageId, viewOnce, isOwnMessage } = params;
+	const { mediaKey, kind, url, conversationId, messageId, viewOnce, isOwnMessage, skipAutoDownload } = params;
 	const fetched = await fetchAndEncode(url);
 
 	if (!fetched) {
@@ -139,7 +144,7 @@ async function downloadAndStore(params: FetchAndStoreMediaParams): Promise<void>
 	});
 	setCachedMediaUri(mediaKey, toDataUri(fetched.mimeType, fetched.base64));
 
-	if (!isOwnMessage && (kind === "image" || kind === "video")) {
+	if (!isOwnMessage && !skipAutoDownload && (kind === "image" || kind === "video")) {
 		void maybeAutoDownloadToDevice(fetched.base64, fetched.mimeType, kind);
 	}
 }
