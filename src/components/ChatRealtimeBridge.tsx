@@ -55,7 +55,7 @@ import { fetchAndStoreMedia } from "../services/mediaStore";
 import { captureAlbumsForMessages } from "../services/albumStore";
 import { captureReplyPreviewsForMessages } from "../services/replyMediaStore";
 import { getConversation } from "../services/conversationDirectory";
-import { shouldAutoBlock, getMatchedForbiddenWord, notifyAutoBlock } from "../utils/autoblock";
+import { runAutomationRulesForSender } from "../utils/automationRules";
 import { useApiFunctions } from "../hooks/useApiFunctions";
 import { useBlockedProfileIds } from "../hooks/queries/useProfileQueries";
 import { isReadReceiptsHidden } from "../utils/privacy";
@@ -561,6 +561,7 @@ export function ChatRealtimeBridge() {
 						);
 						triggerTapNotification(tap);
 						maybeUnarchiveOnActivity(tap.profileId);
+						runAutomationRulesForSender(tap.profileId, "tap_received", apiFunctions).catch(() => {});
 					}
 				}
 
@@ -662,23 +663,37 @@ export function ChatRealtimeBridge() {
 				if (messages.length > 0) {
 					const byConv = new Map<string, Message[]>();
 					for (const m of messages) {
-						// --- LIVE AUTO BLOCK CHECK ---
 						let messageText = "";
 						const msgBody: any = m.body;
 						if (msgBody && typeof msgBody.text === "string") {
 							messageText = msgBody.text;
 						}
-						
-						const isIncoming = userIdRef.current != null && Number(m.senderId) !== Number(userIdRef.current);
-						const matchedWord = getMatchedForbiddenWord(messageText, "chat");
 
-						if (isIncoming && matchedWord) {
-							notifyAutoBlock("Spam Intercepted", `Keyword: "${matchedWord}"`);
-							
-							if (m.senderId) {
-								apiFunctions.blockProfile(String(m.senderId)).catch(() => {});
-							}
-							continue; // Skip processing this message entirely!
+						const isIncoming = userIdRef.current != null && Number(m.senderId) !== Number(userIdRef.current);
+
+						// --- CUSTOM AUTOMATION RULES ---
+						if (isIncoming && m.senderId) {
+							const { blocked: blockedByNewChat } = await runAutomationRulesForSender(
+								String(m.senderId),
+								"new_chat",
+								apiFunctions,
+								undefined,
+								messageText,
+							).catch(() => ({ blocked: false, matchedRuleNames: [] }));
+							if (blockedByNewChat) continue; // A rule blocked the sender — skip processing this message.
+
+							// Dedupes per messageId rather than per sender — the custom-rule
+							// equivalent of the forbidden keyword check above (e.g. a
+							// "message contains keyword" rule), evaluated once per message.
+							const { blocked: blockedByMessage } = await runAutomationRulesForSender(
+								String(m.senderId),
+								"message_received",
+								apiFunctions,
+								undefined,
+								messageText,
+								m.messageId,
+							).catch(() => ({ blocked: false, matchedRuleNames: [] }));
+							if (blockedByMessage) continue;
 						}
 						// -----------------------------
 

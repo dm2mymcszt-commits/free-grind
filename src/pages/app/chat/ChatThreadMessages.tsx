@@ -33,6 +33,7 @@ import {
 	formatDateHeader,
 	formatDateTime24,
 	formatMessageTime,
+	formatTakenOnGrindrTime,
 	getMessageAlbumCoverUrl,
 	getMessageAlbumId,
 	getMessageAudioUrl,
@@ -1335,11 +1336,18 @@ export function ChatThreadMessages({
                                                         @keyframes logo-shine { 0%, 100% { filter: drop-shadow(0 0 2px rgba(255,140,0,0.3)) brightness(1); } 50% { filter: drop-shadow(0 0 7px rgba(255,140,0,0.95)) brightness(1.25); } }
                                                         .logo-shine { animation: logo-shine 2.8s ease-in-out infinite; }
                                                     `}</style>
-                                                    <img
-                                                        src={freegrindLogo}
-                                                        alt={t("chat.thread.taken_on_grindr")}
-                                                        className="absolute bottom-3 left-3 h-4 w-4 rounded-full logo-shine"
-                                                    />
+                                                    <div className="absolute bottom-3 left-3 inline-flex items-center gap-1 rounded-full bg-black/65 px-2 py-0.5 ring-1 ring-white/25">
+                                                        <img
+                                                            src={freegrindLogo}
+                                                            alt={t("chat.thread.taken_on_grindr")}
+                                                            className="h-4 w-4 rounded-full logo-shine"
+                                                        />
+                                                        {imageCreatedAt != null ? (
+                                                            <span className="text-[10px] font-semibold text-white">
+                                                                {formatTakenOnGrindrTime(imageCreatedAt, nowTimestamp, t)}
+                                                            </span>
+                                                        ) : null}
+                                                    </div>
                                                 </>
                                             ) : null}
 

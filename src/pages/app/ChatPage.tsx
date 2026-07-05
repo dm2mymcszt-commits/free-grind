@@ -109,7 +109,7 @@ import {
 import type { ChatContactIndexRecord } from "../../types/chat-contact-index";
 import { markInboxSeen, getInboxLastSeen } from "../../services/seenStore";
 import { SCROLL_RESTORATION_TIMEOUT_MS } from "../../config/ui-constants";
-import { shouldAutoBlock, isOutsideAgeLimits } from "../../utils/autoblock";
+import { runAutomationRulesForSender } from "../../utils/automationRules";
 import { consumeSelfBlockAction } from "../../utils/selfBlockActions";
 import { isReadReceiptsHidden } from "../../utils/privacy";
 import freegrindLogo from "../../images/freegrind-logo.webp";
@@ -1921,70 +1921,75 @@ export function ChatPage() {
 					}
 				}
 
-// --- AUTO BLOCK CHECK (HISTORICAL CHAT SCANNER) ---
-				let shouldNukeThread = false;
-				let blockReason = "";
-
-				// 1. Check if their historical messages contain bad words
-				for (const m of responseMessages) {
-					let messageText = "";
-					const msgBody: any = m.body;
-					if (msgBody && typeof msgBody.text === "string") {
-						messageText = msgBody.text;
-					}
-					
-					const isIncoming = userId != null && Number(m.senderId) !== Number(userId);
-
-					if (isIncoming && shouldAutoBlock(messageText, "chat")) {
-						shouldNukeThread = true;
-						blockReason = "Keyword in message history";
-						break;
-					}
-				}
-
+// --- CUSTOM AUTOMATION RULES (HISTORICAL CHAT SCANNER) ---
 				const otherParticipant = getOtherParticipant(selectedConversation || { data: { participants: [] } } as any, userId);
 				const blockId = otherParticipant?.profileId || (responseMessages[0] && responseMessages[0].senderId);
 
-				if (shouldNukeThread) {
-					appLog.info(`[AutoBlock] Sweeping historical conversation. Reason: ${blockReason}`);
-					
-					if (blockId) {
-						blockProfileMutation(String(blockId)).catch(() => {});
-						removeProfileFromBrowseCache(String(blockId));
-					}
-
-					setThreadMessages([]);
-					setThreadConversationId(null);
-					if (isDesktop) {
-						setSelectedDesktopConversationId(null);
-					} else {
-						navigate("/chat", { replace: true });
-					}
-					toast.success(`Auto-blocked: ${blockReason}`);
-					return; // Stop loading the rest of the thread!
-				}
-
-				// 2. Fetch their profile in the background to check their Age AND Bio
 				if (blockId) {
 					service.getProfileDetail(String(blockId)).then((profile) => {
-						const matchedBioWord = shouldAutoBlock(profile.aboutMe, "chat");
-						const isBadAge = isOutsideAgeLimits(profile.age, "chat");
+						// Reuses the profile we just fetched so this doesn't cost a
+						// second request. Covers threads opened after
+						// being missed while the app was closed (see runAutomationRulesForSender).
+						// "new_chat" only fires when they messaged us, not when we started
+						// the conversation — gate on the most recent message being incoming.
+						const lastMessage = responseMessages.reduce<typeof responseMessages[number] | null>(
+							(latest, m) => (!latest || m.timestamp > latest.timestamp ? m : latest),
+							null,
+						);
+						const lastMessageIsIncoming =
+							lastMessage != null && userId != null && Number(lastMessage.senderId) !== Number(userId);
+						if (!lastMessageIsIncoming) return;
 
-						if (matchedBioWord || isBadAge) {
-							const reason = isBadAge ? `Age limit (${profile.age})` : `Keyword in Bio`;
-							appLog.info(`[AutoBlock] Sweeping conversation due to: ${reason}`);
-							
-							blockProfileMutation(String(blockId)).catch(() => {});
-							removeProfileFromBrowseCache(String(blockId));
+						const lastMessageText =
+							(lastMessage?.body as { text?: string } | undefined)?.text ?? null;
 
-							setThreadMessages([]);
-							setThreadConversationId(null);
-							if (isDesktop) {
-								setSelectedDesktopConversationId(null);
-							} else {
-								navigate("/chat", { replace: true });
+						runAutomationRulesForSender(
+							String(blockId),
+							"new_chat",
+							service,
+							profile,
+							lastMessageText,
+						).then(({ blocked }) => {
+							if (blocked) {
+								removeProfileFromBrowseCache(String(blockId));
+								setThreadMessages([]);
+								setThreadConversationId(null);
+								if (isDesktop) {
+									setSelectedDesktopConversationId(null);
+								} else {
+									navigate("/chat", { replace: true });
+								}
 							}
-							toast.success(`Auto-blocked: ${reason}`);
+						}).catch(() => {});
+
+						// "message_received" dedupes per messageId rather than per sender,
+						// so (unlike "new_chat" above) it's evaluated against every incoming
+						// message in this batch, not just the latest — each one only ever
+						// runs once across the app's lifetime regardless of how many times
+						// this thread gets reopened. Reuses the profile already fetched.
+						for (const m of responseMessages) {
+							const isIncoming = userId != null && Number(m.senderId) !== Number(userId);
+							if (!isIncoming) continue;
+							const text = (m.body as { text?: string } | undefined)?.text ?? null;
+							runAutomationRulesForSender(
+								String(blockId),
+								"message_received",
+								service,
+								profile,
+								text,
+								m.messageId,
+							).then(({ blocked }) => {
+								if (blocked) {
+									removeProfileFromBrowseCache(String(blockId));
+									setThreadMessages([]);
+									setThreadConversationId(null);
+									if (isDesktop) {
+										setSelectedDesktopConversationId(null);
+									} else {
+										navigate("/chat", { replace: true });
+									}
+								}
+							}).catch(() => {});
 						}
 					}).catch(() => {});
 				}
@@ -3533,22 +3538,25 @@ export function ChatPage() {
 					await service.deleteConversation(conversationId);
 				}
 
+				// Resolved once, up front, so both the album-revoke step below and
+				// the contact-index cleanup after the cascade can use it.
+				const entry =
+					archivedConversationsRef.current.get(conversationId)?.entry ??
+					conversationsRef.current.find((c) => c.data.conversationId === conversationId);
+				let recipientProfileId =
+					entry && userId != null
+						? getOtherParticipant(entry, userId)?.profileId ?? null
+						: null;
+				if (recipientProfileId == null) {
+					const stored = await chatDb.getConversation(conversationId).catch(() => null);
+					recipientProfileId = stored?.otherProfileId ? Number(stored.otherProfileId) : null;
+				}
+
 				// Deleting the conversation only removes it from our own inbox —
 				// it doesn't revoke albums we shared in it, so the recipient could
 				// still view them afterward. Read the shared-album list before the
 				// cascade below wipes it, and best-effort revoke our own albums.
 				try {
-					const entry =
-						archivedConversationsRef.current.get(conversationId)?.entry ??
-						conversationsRef.current.find((c) => c.data.conversationId === conversationId);
-					let recipientProfileId =
-						entry && userId != null
-							? getOtherParticipant(entry, userId)?.profileId ?? null
-							: null;
-					if (recipientProfileId == null) {
-						const stored = await chatDb.getConversation(conversationId);
-						recipientProfileId = stored?.otherProfileId ? Number(stored.otherProfileId) : null;
-					}
 					if (recipientProfileId != null) {
 						const sharedAlbums = await chatDb.getAlbumsForConversation(conversationId);
 						const ownAlbums = sharedAlbums.filter(
@@ -3567,6 +3575,27 @@ export function ChatPage() {
 				}
 
 				await chatDb.deleteConversationCascade(conversationId);
+
+				// The unread badge on the grid/profile tile lives in a separate
+				// local index (chat_contact_index), keyed by profile id rather than
+				// conversation id — deleteConversationCascade above only touches
+				// the conversations/messages tables, so without this the grid would
+				// keep showing unread messages from a profile whose chat we just
+				// deleted entirely.
+				if (recipientProfileId != null) {
+					const recipientProfileIdStr = String(recipientProfileId);
+					await clearUnreadCountForProfile(recipientProfileIdStr).catch(() => {});
+					setChatContactIndexByProfileId((previous) => {
+						const existing = previous[recipientProfileIdStr];
+						if (!existing || existing.unreadCount === 0) {
+							return previous;
+						}
+						return {
+							...previous,
+							[recipientProfileIdStr]: { ...existing, unreadCount: 0 },
+						};
+					});
+				}
 				setArchivedConversations((previous) => {
 					if (!previous.has(conversationId)) {
 						return previous;
@@ -5377,7 +5406,7 @@ export function ChatPage() {
 							{...sharedInboxHeaderProps}
 							isDesktop={true}
 						/>
-						<div className="flex-1 min-h-0 mx-auto w-full max-w-6xl px-3 pb-[calc(env(safe-area-inset-bottom,0px)+104px)] grid grid-cols-[360px_minmax(0,1fr)] gap-3">
+						<div className="flex-1 min-h-0 mx-auto w-full max-w-6xl px-3 pb-[calc(env(safe-area-inset-bottom,0px)+104px)] grid grid-cols-[360px_minmax(0,1fr)] grid-rows-[1fr] gap-3">
 							{renderInbox}
 							{renderThread}
 						</div>
@@ -5478,8 +5507,8 @@ export function ChatPage() {
 									className="h-3.5 w-3.5 rounded-full logo-shine"
 								/>
 							) : null}
-							{meta.timestamp ? (
-								<span>{formatDateTime24(meta.timestamp)}</span>
+							{meta.createdAtLabel ?? (meta.timestamp ? formatDateTime24(meta.timestamp) : null) ? (
+								<span>{meta.createdAtLabel ?? formatDateTime24(meta.timestamp)}</span>
 							) : null}
 						</p>
 					);

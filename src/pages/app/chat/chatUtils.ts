@@ -155,6 +155,49 @@ export function formatMessageTime(
 	});
 }
 
+export function formatTakenOnGrindrTime(
+	timestamp: number,
+	now: number,
+	t: TranslateFn,
+): string {
+	const diffMs = now - timestamp;
+	const minuteMs = 60 * 1000;
+
+	if (diffMs < minuteMs) {
+		return t("chat.time.now");
+	}
+
+	const msgDate = new Date(timestamp);
+	const nowDate = new Date(now);
+
+	const isSameDay = (d1: Date, d2: Date) =>
+		d1.getFullYear() === d2.getFullYear() &&
+		d1.getMonth() === d2.getMonth() &&
+		d1.getDate() === d2.getDate();
+
+	if (isSameDay(msgDate, nowDate)) {
+		return t("chat.today");
+	}
+
+	const yesterday = new Date(now);
+	yesterday.setDate(yesterday.getDate() - 1);
+	if (isSameDay(msgDate, yesterday)) {
+		return t("chat.yesterday");
+	}
+
+	const oneWeekAgo = new Date(now);
+	oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+	if (msgDate > oneWeekAgo) {
+		return t("chat.time.last_week");
+	}
+
+	const formatter = getDateTimeFormatter(i18n.language, {
+		month: "short",
+		year: "numeric",
+	});
+	return formatter.format(msgDate);
+}
+
 export function formatDateTime24(timestamp: number): string {
 	const date = new Date(timestamp);
 	const day = String(date.getDate()).padStart(2, "0");

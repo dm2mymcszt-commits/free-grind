@@ -458,17 +458,25 @@ export function PhotoViewer({
 											style={zoomStyle}
 										/>
 									)}
-									{isCurrent && renderExtraInfo && (
-										<div className="absolute left-1/2 top-3 flex -translate-x-1/2 items-center gap-2">
-											{renderExtraInfo(centerIdx)}
-										</div>
-									)}
 								</div>
 							</div>
 						);
 					})}
 				</div>
 			</div>
+
+			{renderExtraInfo && (
+				// Positioned against the viewer's full-width root rather than nested inside
+				// the per-slide image box — that box shrinks to the rendered image's width,
+				// which for narrow/portrait images is often narrower than this pill's natural
+				// width and was forcing the text to wrap.
+				<div
+					className="absolute left-1/2 top-3 z-[83] flex -translate-x-1/2 items-center gap-2"
+					onClick={(e) => e.stopPropagation()}
+				>
+					{renderExtraInfo(centerIdx)}
+				</div>
+			)}
 
 			{renderFooter && (
 				<div

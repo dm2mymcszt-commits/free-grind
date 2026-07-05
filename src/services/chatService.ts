@@ -35,7 +35,7 @@ import type {
 	UploadChatMediaResponse,
 } from "../types/chat-service";
 
-import { shouldAutoBlock, isOutsideAgeLimits, notifyAutoBlock } from "../utils/autoblock";
+import { runAutomationRulesForSender } from "../utils/automationRules";
 import { isReadReceiptsHidden } from "../utils/privacy";
 import { ApiFunctionError, assertSuccess, parseJsonSafe } from "./apiHelpers";
 import { appLog } from "../utils/logger";
@@ -191,36 +191,64 @@ export function createChatService(fetchRest: RestFetcher, t: (key: string) => st
 			});
 			await assertSuccess(response, t("chat.errors.load_inbox"));
 			const parsed = inboxResponseSchema.parse(await parseJsonSafe(response));
-			// --- AUTO BLOCK CHECK (INBOX) ---
 			const safeEntries: ConversationEntry[] = [];
 			for (const entry of parsed.entries) {
 				const data: any = entry.data;
-                // appLog.debug(`[Age Debug] Who is this?`, data.participants?.[0]);
-				
+
 				const displayName = data.name || (data.participants && data.participants[0]?.displayName) || "";
 				const aboutMe = data.participants?.[0]?.aboutMe || "";
 				const lastMessageText = data.previewText || (data.lastMessage?.body?.text) || "";
-				
-				// Grab their age!
 				const profileAge = data.participants?.[0]?.age;
 
-				// Check Keywords OR Age
-				const shouldBlock = 
-					shouldAutoBlock(displayName, "chat") || 
-					shouldAutoBlock(aboutMe, "chat") || 
-					shouldAutoBlock(lastMessageText, "chat") ||
-					isOutsideAgeLimits(profileAge, "chat");
+				// Custom automation rules — reconciles conversations that arrived
+				// while the app was closed, since inbox sync lands here on launch
+				// rather than through the live WS handler. Uses the age/photo
+				// hash already present on the preview, no extra profile request.
+				// "new_chat" (and "message_received") only fire when they messaged
+				// us, not when we started the conversation — gate on the preview's
+				// last message being theirs.
+				const previewProfileId = data.participants?.[0]?.profileId;
+				const lastMessageSenderId = data.preview?.senderId ?? data.lastMessage?.senderId;
+				const lastMessageIsIncoming =
+					lastMessageSenderId != null && String(lastMessageSenderId) === String(previewProfileId);
+				if (previewProfileId && lastMessageIsIncoming) {
+					const automationRunner = {
+						blockProfile: (profileId: string) =>
+							fetchRest(`/v3/me/blocks/${encodeURIComponent(profileId)}`, { method: "POST" }),
+						sendText: (payload: SendTextPayload) => this.sendText(payload),
+						shareAlbum: (payload: ShareAlbumPayload) => this.shareAlbum(payload),
+					};
+					const profileSnapshot = {
+						age: profileAge,
+						profileImageMediaHash: data.participants?.[0]?.primaryMediaHash ?? null,
+						aboutMe: aboutMe || null,
+						displayName: displayName || null,
+					};
+					const lastMessageId: string | undefined =
+						data.preview?.messageId ?? data.lastMessage?.messageId ?? undefined;
 
-				if (shouldBlock) {
-                    const profileId = data.participants?.[0]?.profileId;
-                    if (profileId) {
-                        const reason = isOutsideAgeLimits(profileAge, "chat") ? `Age Limit (${profileAge})` : "Keyword match";
-                        notifyAutoBlock(displayName || profileId, reason);
-                        fetchRest(`/v3/me/blocks/${encodeURIComponent(profileId)}`, { method: "POST" }).catch(() => {});
-                    }
-                    continue; // Do NOT show them in the inbox!
-                }
-				
+					const { blocked: blockedByNewChat } = await runAutomationRulesForSender(
+						String(previewProfileId),
+						"new_chat",
+						automationRunner,
+						profileSnapshot,
+						lastMessageText || null,
+					).catch(() => ({ blocked: false, matchedRuleNames: [] }));
+					if (blockedByNewChat) continue; // Do NOT show them in the inbox!
+
+					if (lastMessageId) {
+						const { blocked: blockedByMessage } = await runAutomationRulesForSender(
+							String(previewProfileId),
+							"message_received",
+							automationRunner,
+							profileSnapshot,
+							lastMessageText || null,
+							lastMessageId,
+						).catch(() => ({ blocked: false, matchedRuleNames: [] }));
+						if (blockedByMessage) continue;
+					}
+				}
+
 				safeEntries.push(entry);
 			}
 			// ---------------------------------
