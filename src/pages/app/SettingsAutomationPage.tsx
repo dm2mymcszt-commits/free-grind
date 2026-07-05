@@ -67,10 +67,12 @@ function describeCondition(c: AutomationRuleCondition, t: TFunc): string {
 function renderKeywordCondition(
 	t: TFunc,
 	kind: "bio" | "message" | "display_name",
-	c: { useForbiddenList?: boolean; keywords: string },
+	c: { useForbiddenList?: boolean; keywords: string; negate?: boolean },
 ): string {
-	const prefix = t(`settings_automation.phrase_${kind}_prefix`);
-	const suffix = t(`settings_automation.phrase_${kind}_suffix`).trim();
+	const variant = c.negate ? "prefix_not" : "prefix";
+	const suffixVariant = c.negate ? "suffix_not" : "suffix";
+	const prefix = t(`settings_automation.phrase_${kind}_${variant}`);
+	const suffix = t(`settings_automation.phrase_${kind}_${suffixVariant}`).trim();
 	const value = c.useForbiddenList ? t("settings_automation.keyword_source_forbidden") : `"${c.keywords}"`;
 	return suffix ? `${prefix} ${value} ${suffix}` : `${prefix} ${value}`;
 }

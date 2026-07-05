@@ -91,7 +91,7 @@ import {
     formatDateTime24,
 	type ChatFiltersDraft,
 } from "./chat/chatUtils";
-import { fetchAndStoreMedia, hydrateMediaByMessageId } from "../../services/mediaStore";
+import { fetchAndStoreMedia, hydrateMediaByMessageId, isSignedUrlExpired } from "../../services/mediaStore";
 import { captureAlbum, captureAlbumsForMessages, getLocalAlbum } from "../../services/albumStore";
 import { captureReplyPreviewsForMessages } from "../../services/replyMediaStore";
 import { useAvatarCache } from "../../hooks/useAvatarCache";
@@ -109,7 +109,7 @@ import {
 import type { ChatContactIndexRecord } from "../../types/chat-contact-index";
 import { markInboxSeen, getInboxLastSeen } from "../../services/seenStore";
 import { SCROLL_RESTORATION_TIMEOUT_MS } from "../../config/ui-constants";
-import { runAutomationRulesForSender } from "../../utils/automationRules";
+import { clearAutomationSeenHistoryForSender, runAutomationRulesForSender } from "../../utils/automationRules";
 import { consumeSelfBlockAction } from "../../utils/selfBlockActions";
 import { isReadReceiptsHidden } from "../../utils/privacy";
 import freegrindLogo from "../../images/freegrind-logo.webp";
@@ -143,21 +143,6 @@ const SYSTEM_MESSAGE_TYPES = new Set<string>([
 	"SystemBlockedBySelf",
 	"SystemUnblockedBySelf",
 ]);
-
-/**
- * Checks whether a CloudFront signed URL has expired by reading the
- * `Expires` query parameter (Unix epoch seconds).  No network request needed.
- * Returns false if the URL cannot be parsed or has no Expires param.
- */
-function isSignedUrlExpired(url: string): boolean {
-	try {
-		const expires = new URL(url).searchParams.get("Expires");
-		if (!expires) return false;
-		return Date.now() > Number(expires) * 1000;
-	} catch {
-		return false;
-	}
-}
 
 /**
  * Eagerly fetch-and-store every message's media bytes into chatDb, fire-and-
@@ -3585,6 +3570,7 @@ export function ChatPage() {
 				if (recipientProfileId != null) {
 					const recipientProfileIdStr = String(recipientProfileId);
 					await clearUnreadCountForProfile(recipientProfileIdStr).catch(() => {});
+					await clearAutomationSeenHistoryForSender(recipientProfileIdStr).catch(() => {});
 					setChatContactIndexByProfileId((previous) => {
 						const existing = previous[recipientProfileIdStr];
 						if (!existing || existing.unreadCount === 0) {
