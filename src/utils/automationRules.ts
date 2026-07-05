@@ -36,9 +36,9 @@ export type AutomationRuleCondition =
 	| { type: "profile_picture"; has: boolean }
 	| { type: "age_above"; value: number }
 	| { type: "age_below"; value: number }
-	| { type: "bio_contains_keyword"; keywords: string; useForbiddenList?: boolean }
-	| { type: "message_contains_keyword"; keywords: string; useForbiddenList?: boolean }
-	| { type: "display_name_contains_keyword"; keywords: string; useForbiddenList?: boolean };
+	| { type: "bio_contains_keyword"; keywords: string; useForbiddenList?: boolean; negate?: boolean }
+	| { type: "message_contains_keyword"; keywords: string; useForbiddenList?: boolean; negate?: boolean }
+	| { type: "display_name_contains_keyword"; keywords: string; useForbiddenList?: boolean; negate?: boolean };
 
 export type AutomationRuleAction =
 	| { type: "block" }
@@ -103,7 +103,7 @@ function createDefaultAgeLimitRule(): AutomationRule {
 	return {
 		id: crypto.randomUUID(),
 		enabled: false,
-		name: "Block anyone outside of this age range",
+		name: "Age limit block",
 		nameKey: "settings_automation.default_age_rule_name",
 		triggers: ["new_chat"],
 		matchMode: "any",
@@ -125,7 +125,7 @@ function createDefaultForbiddenKeywordsRule(): AutomationRule {
 	return {
 		id: crypto.randomUUID(),
 		enabled: false,
-		name: "Block Profiles based on forbidden keywords",
+		name: "Forbidden keywords block",
 		nameKey: "settings_automation.default_keywords_rule_name",
 		triggers: ["new_chat", "message_received", "tap_received"],
 		matchMode: "any",
@@ -243,6 +243,22 @@ async function markSeen(trigger: AutomationTrigger, senderId: string): Promise<v
 	await setSetting(AUTOMATION_SEEN_SENDERS_KEY, Array.from(seenSendersCache));
 }
 
+// "new_chat"/"tap_received" fire once ever per sender — deleting a
+// conversation should free that sender up again, otherwise re-contacting
+// someone you've deleted looks (from the user's perspective) like the
+// automation system is broken, since it silently never re-evaluates them.
+// Doesn't touch "message_received" entries (those are keyed by messageId,
+// not sender — deleting old messages doesn't invalidate them, and a new
+// conversation naturally has new messageIds anyway).
+export async function clearAutomationSeenHistoryForSender(senderId: string): Promise<void> {
+	let changed = false;
+	for (const trigger of ["new_chat", "tap_received"] as const) {
+		changed = seenSendersCache.delete(seenKey(trigger, senderId)) || changed;
+	}
+	if (!changed) return;
+	await setSetting(AUTOMATION_SEEN_SENDERS_KEY, Array.from(seenSendersCache));
+}
+
 // Same word-boundary, longest-keyword-first approach as autoblock.ts's
 // getMatchedForbiddenWord, just stateless — rule conditions carry their own
 // per-condition keyword list rather than the one global forbidden-words
@@ -270,16 +286,28 @@ function conditionMatches(
 	switch (condition.type) {
 		case "profile_picture":
 			return !!profile?.profileImageMediaHash === condition.has;
+		// !!profile?.age (not just != null) so a 0/unset age is never treated as
+		// "younger than X" — some profiles report age as 0 rather than null
+		// when it isn't set, and nobody's real age is 0.
 		case "age_above":
-			return profile?.age != null && profile.age > condition.value;
+			return !!profile?.age && profile.age > condition.value;
 		case "age_below":
-			return profile?.age != null && profile.age < condition.value;
+			return !!profile?.age && profile.age < condition.value;
 		case "bio_contains_keyword":
-			return textContainsKeyword(profile?.aboutMe, condition.useForbiddenList ? getForbiddenWords() : condition.keywords);
+			return (
+				textContainsKeyword(profile?.aboutMe, condition.useForbiddenList ? getForbiddenWords() : condition.keywords) !==
+				!!condition.negate
+			);
 		case "message_contains_keyword":
-			return textContainsKeyword(messageText, condition.useForbiddenList ? getForbiddenWords() : condition.keywords);
+			return (
+				textContainsKeyword(messageText, condition.useForbiddenList ? getForbiddenWords() : condition.keywords) !==
+				!!condition.negate
+			);
 		case "display_name_contains_keyword":
-			return textContainsKeyword(profile?.displayName, condition.useForbiddenList ? getForbiddenWords() : condition.keywords);
+			return (
+				textContainsKeyword(profile?.displayName, condition.useForbiddenList ? getForbiddenWords() : condition.keywords) !==
+				!!condition.negate
+			);
 	}
 }
 
@@ -341,8 +369,6 @@ export async function runAutomationRulesForSender(
 	let profileFetchAttempted = prefetchedProfile !== undefined;
 
 	for (const rule of rules) {
-		if (rule.conditions.length === 0) continue;
-
 		const needsProfile = rule.conditions.some((c) => c.type !== "message_contains_keyword");
 		if (needsProfile && !profileFetchAttempted) {
 			profileFetchAttempted = true;
@@ -354,10 +380,16 @@ export async function runAutomationRulesForSender(
 			}
 		}
 
+		// A rule with no conditions always matches (nothing to check) rather
+		// than being skipped — lets a rule be a plain "trigger -> action" with
+		// no filtering, e.g. "on message received, always send an auto-reply".
 		const matches =
-			rule.matchMode === "any"
-				? rule.conditions.some((condition) => conditionMatches(condition, profile, messageText ?? null))
-				: rule.conditions.every((condition) => conditionMatches(condition, profile, messageText ?? null));
+			rule.conditions.length === 0
+				? true
+				: rule.matchMode === "any"
+					? rule.conditions.some((condition) => conditionMatches(condition, profile, messageText ?? null))
+					: rule.conditions.every((condition) => conditionMatches(condition, profile, messageText ?? null));
+
 		if (!matches) continue;
 
 		result.matchedRuleNames.push(rule.name || rule.id);

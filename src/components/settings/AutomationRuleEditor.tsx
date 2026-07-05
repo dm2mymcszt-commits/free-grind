@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Ban, Bell, Calendar, FileText, Flame, ImageOff, Image as ImageIcon, MessageSquare, Plus, Search, Trash2, User } from "lucide-react";
+import { Ban, Calendar, FileText, Flame, ImageOff, Image as ImageIcon, MessageCirclePlus, MessageSquare, Plus, Search, Trash2, User, X } from "lucide-react";
 import toast from "react-hot-toast";
+import { AppToaster } from "../AppToaster";
 import { Slider } from "../ui/range-slider";
 import type { Album } from "../../types/albums";
 import type {
@@ -11,30 +12,56 @@ import type {
 	AutomationTrigger,
 } from "../../utils/automationRules";
 
-type ConditionKind = AutomationRuleCondition["type"];
+// The "doesn't contain" keyword conditions aren't a distinct entry in
+// AutomationRuleCondition — they're the same type with `negate: true`. But in
+// the editor's add-condition dropdown they're offered as separate picks (like
+// age_above/age_below already are), fixed at creation time rather than an
+// after-the-fact toggle, so a condition's title never has to change under you.
+type KeywordNotConditionKind = "bio_not_contains_keyword" | "message_not_contains_keyword" | "display_name_not_contains_keyword";
+type ConditionKind = AutomationRuleCondition["type"] | KeywordNotConditionKind;
 type ActionKind = AutomationRuleAction["type"];
 
-const TRIGGER_KINDS: AutomationTrigger[] = ["new_chat", "tap_received", "message_received"];
+const TRIGGER_KINDS: AutomationTrigger[] = ["new_chat", "message_received", "tap_received"];
 
 const CONDITION_KINDS: ConditionKind[] = [
 	"profile_picture",
 	"age_above",
 	"age_below",
 	"display_name_contains_keyword",
+	"display_name_not_contains_keyword",
 	"bio_contains_keyword",
+	"bio_not_contains_keyword",
 	"message_contains_keyword",
+	"message_not_contains_keyword",
 ];
 
 const ACTION_KINDS: ActionKind[] = ["block", "send_message", "share_album"];
 
+// Maps an add-dropdown `kind` to the actual stored condition type + negate
+// flag (several kinds share the same underlying type).
+function resolveConditionKind(kind: ConditionKind): { type: AutomationRuleCondition["type"]; negate: boolean } {
+	if (kind === "bio_not_contains_keyword") return { type: "bio_contains_keyword", negate: true };
+	if (kind === "message_not_contains_keyword") return { type: "message_contains_keyword", negate: true };
+	if (kind === "display_name_not_contains_keyword") return { type: "display_name_contains_keyword", negate: true };
+	return { type: kind, negate: false };
+}
+
+// Reverse of resolveConditionKind — used to look up the right label for an
+// existing condition's title based on its stored type + negate flag.
+function conditionKindOf(condition: AutomationRuleCondition): ConditionKind {
+	if (condition.type === "bio_contains_keyword") return condition.negate ? "bio_not_contains_keyword" : condition.type;
+	if (condition.type === "message_contains_keyword") return condition.negate ? "message_not_contains_keyword" : condition.type;
+	if (condition.type === "display_name_contains_keyword") {
+		return condition.negate ? "display_name_not_contains_keyword" : condition.type;
+	}
+	return condition.type;
+}
+
 function defaultCondition(kind: ConditionKind): AutomationRuleCondition {
 	if (kind === "age_above" || kind === "age_below") return { type: kind, value: 25 };
-	if (
-		kind === "bio_contains_keyword" ||
-		kind === "message_contains_keyword" ||
-		kind === "display_name_contains_keyword"
-	) {
-		return { type: kind, keywords: "" };
+	const { type, negate } = resolveConditionKind(kind);
+	if (type === "bio_contains_keyword" || type === "message_contains_keyword" || type === "display_name_contains_keyword") {
+		return { type, keywords: "", negate };
 	}
 	return { type: "profile_picture", has: false };
 }
@@ -66,12 +93,14 @@ export function AutomationRuleEditor({
 	albums,
 	onSave,
 	onCancel,
+	onDelete,
 }: {
 	isOpen: boolean;
 	rule: AutomationRule | null;
 	albums: Album[];
 	onSave: (rule: AutomationRule) => void;
 	onCancel: () => void;
+	onDelete?: () => void;
 }) {
 	const { t } = useTranslation();
 	const dialogRef = useRef<HTMLDialogElement | null>(null);
@@ -145,16 +174,27 @@ export function AutomationRuleEditor({
 
 	const hasMessageTextTrigger =
 		draft != null && (draft.triggers.includes("new_chat") || draft.triggers.includes("message_received"));
-	const availableConditionKinds = CONDITION_KINDS.filter(
-		(kind) =>
-			!draft?.conditions.some((c) => c.type === kind) &&
-			(kind !== "message_contains_keyword" || hasMessageTextTrigger),
-	);
+	const availableConditionKinds = CONDITION_KINDS.filter((kind) => {
+		const { type, negate } = resolveConditionKind(kind);
+		const alreadyPresent = draft?.conditions.some(
+			(c) => c.type === type && !!("negate" in c ? c.negate : false) === negate,
+		);
+		const needsMessageText = kind === "message_contains_keyword" || kind === "message_not_contains_keyword";
+		return !alreadyPresent && (!needsMessageText || hasMessageTextTrigger);
+	});
 
 	const handleSave = () => {
 		if (!draft) return;
+		if (!draft.name.trim()) {
+			toast.error(t("settings_automation.rule_needs_name"));
+			return;
+		}
 		if (draft.actions.length === 0) {
 			toast.error(t("settings_automation.rule_needs_action"));
+			return;
+		}
+		if (draft.actions.some((a) => a.type === "send_message" && !a.text.trim())) {
+			toast.error(t("settings_automation.action_needs_message_text"));
 			return;
 		}
 		onSave(draft);
@@ -168,9 +208,20 @@ export function AutomationRuleEditor({
 				if (event.target === dialogRef.current) onCancel();
 			}}
 		>
+			<AppToaster />
 			{draft && <div className="grid max-h-[85dvh] grid-rows-[auto_1fr_auto]">
 			<div className="border-b border-[var(--border)] p-5 pb-4">
-				<p className="text-base font-semibold">{t("settings_automation.edit_rule")}</p>
+				<div className="flex items-center justify-between gap-2">
+					<p className="text-base font-semibold">{t("settings_automation.edit_rule")}</p>
+					<button
+						type="button"
+						onClick={onCancel}
+						aria-label={t("settings_automation.cancel")}
+						className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--surface-2)] hover:text-[var(--text)]"
+					>
+						<X className="h-4 w-4" />
+					</button>
+				</div>
 
 				<input
 					type="text"
@@ -219,7 +270,7 @@ export function AutomationRuleEditor({
 								) : trigger === "message_received" ? (
 									<MessageSquare className="h-4 w-4" />
 								) : (
-									<Bell className="h-4 w-4" />
+									<MessageCirclePlus className="h-4 w-4" />
 								)}
 								<span>{triggerLabel(trigger)}</span>
 							</button>
@@ -310,7 +361,7 @@ export function AutomationRuleEditor({
 										)}
 									</div>
 									<div className="min-w-0 flex-1">
-										<p className="text-sm font-medium">{conditionLabel(condition.type)}</p>
+										<p className="text-sm font-medium">{conditionLabel(conditionKindOf(condition))}</p>
 										<div className="mt-2 flex overflow-hidden rounded-lg border border-[var(--border)]">
 											{(["custom", "forbidden"] as const).map((source, i) => {
 												const selected = !!condition.useForbiddenList === (source === "forbidden");
@@ -493,17 +544,20 @@ export function AutomationRuleEditor({
 			</div>
 
 			<div className="flex items-center gap-2 border-t border-[var(--border)] p-5 pt-4">
-				<button
-					type="button"
-					onClick={onCancel}
-					className="inline-flex h-11 flex-1 basis-1/2 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 text-sm font-medium text-[var(--text-muted)] transition hover:border-[var(--accent)] hover:text-[var(--text)]"
-				>
-					{t("settings_automation.cancel")}
-				</button>
+				{onDelete && (
+					<button
+						type="button"
+						onClick={onDelete}
+						className="inline-flex h-11 flex-1 basis-1/2 items-center justify-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 text-sm font-medium text-red-400 transition hover:border-red-500/50 hover:bg-red-500/15 hover:text-red-300"
+					>
+						<Trash2 className="h-4 w-4" />
+						{t("settings_automation.delete_rule")}
+					</button>
+				)}
 				<button
 					type="button"
 					onClick={handleSave}
-					className="btn-accent inline-flex flex-1 basis-1/2 items-center justify-center gap-2 px-4"
+					className={`btn-accent inline-flex h-11 items-center justify-center gap-2 px-4 ${onDelete ? "flex-1 basis-1/2" : "w-full"}`}
 				>
 					<Plus className="h-4 w-4" />
 					{t("settings_automation.save_rule")}

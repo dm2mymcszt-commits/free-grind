@@ -38,7 +38,6 @@ import type {
 import { runAutomationRulesForSender } from "../utils/automationRules";
 import { isReadReceiptsHidden } from "../utils/privacy";
 import { ApiFunctionError, assertSuccess, parseJsonSafe } from "./apiHelpers";
-import { appLog } from "../utils/logger";
 import { sendViaRealtime } from "./chatRealtime";
 
 export { ApiFunctionError as ChatApiError };

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Clock, Download, Lock, Pencil, Plus, RefreshCw, Save, Tag, Trash2, Upload, Workflow } from "lucide-react";
+import { Clock, Download, LockKeyhole, Plus, RefreshCw, Save, Tag, Upload, Workflow } from "lucide-react";
 import toast from "react-hot-toast";
 import { BackToSettings } from "../../components/BackToSettings";
 import { ToggleRow } from "../../components/ui/toggle-row";
@@ -13,25 +13,90 @@ import {
 	getAutomationRules,
 	setAutomationRules,
 	type AutomationRule,
+	type AutomationRuleCondition,
 } from "../../utils/automationRules";
 import { AutomationRuleEditor } from "../../components/settings/AutomationRuleEditor";
 import { useApiFunctions } from "../../hooks/useApiFunctions";
 import type { Album } from "../../types/albums";
 
-function Chip({ tone, children }: { tone: "trigger" | "condition" | "action" | "neutral"; children: React.ReactNode }) {
-	const toneClass =
-		tone === "trigger"
-			? "bg-blue-500/15 text-blue-300"
-			: tone === "condition"
-				? "bg-purple-500/15 text-purple-300"
-				: tone === "action"
-					? "bg-orange-500/15 text-orange-300"
-					: "bg-[var(--surface-2)] text-[var(--text-muted)]";
+type TFunc = (key: string, opts?: Record<string, unknown>) => string;
+
+// Only the three top-level structural words (when / and / then) are
+// highlighted bright; everything else — including the or/and used to join
+// multiple triggers, conditions, or actions — stays subtle/muted.
+function keyword(text: string, key: string): React.ReactNode {
 	return (
-		<span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-semibold leading-none ${toneClass}`}>
-			{children}
+		<span key={key} className="font-semibold text-[var(--text)]">
+			{text}
 		</span>
 	);
+}
+
+// Pushes `items` into `nodes`, comma-separated with a plain-text `conjunction`
+// before the last one (e.g. "a, b or c"). Only the three structural words
+// (when / and / then) get the bright highlight treatment, not these.
+function pushJoined(nodes: React.ReactNode[], items: string[], conjunction: string) {
+	items.forEach((item, i) => {
+		if (i > 0) {
+			nodes.push(", ");
+			if (i === items.length - 1) {
+				nodes.push(`${conjunction} `);
+			}
+		}
+		nodes.push(item);
+	});
+}
+
+function describeCondition(c: AutomationRuleCondition, t: TFunc): string {
+	switch (c.type) {
+		case "profile_picture":
+			return t(c.has ? "settings_automation.phrase_has_profile_picture" : "settings_automation.phrase_no_profile_picture");
+		case "age_above":
+			return t("settings_automation.phrase_age_above", { value: c.value });
+		case "age_below":
+			return t("settings_automation.phrase_age_below", { value: c.value });
+		case "bio_contains_keyword":
+			return renderKeywordCondition(t, "bio", c);
+		case "message_contains_keyword":
+			return renderKeywordCondition(t, "message", c);
+		case "display_name_contains_keyword":
+			return renderKeywordCondition(t, "display_name", c);
+	}
+}
+
+function renderKeywordCondition(
+	t: TFunc,
+	kind: "bio" | "message" | "display_name",
+	c: { useForbiddenList?: boolean; keywords: string; negate?: boolean },
+): string {
+	const variant = c.negate ? "prefix_not" : "prefix";
+	const suffixVariant = c.negate ? "suffix_not" : "suffix";
+	const prefix = t(`settings_automation.phrase_${kind}_${variant}`);
+	const suffix = t(`settings_automation.phrase_${kind}_${suffixVariant}`).trim();
+	const value = c.useForbiddenList ? t("settings_automation.keyword_source_forbidden") : `"${c.keywords}"`;
+	return suffix ? `${prefix} ${value} ${suffix}` : `${prefix} ${value}`;
+}
+
+function describeRule(rule: AutomationRule, t: TFunc): React.ReactNode[] {
+	const triggerPhrases = rule.triggers.map((trig) => t(`settings_automation.trigger_phrase_${trig}`));
+	const actionPhrases = rule.actions.map((a) => t(`settings_automation.action_phrase_${a.type}`));
+
+	const or = t("settings_automation.rule_or_label");
+	const and = t("settings_automation.rule_and_label");
+
+	const nodes: React.ReactNode[] = [keyword(t("settings_automation.phrase_when"), "when"), " "];
+	pushJoined(nodes, triggerPhrases, or);
+
+	if (rule.conditions.length > 0) {
+		const conditionPhrases = rule.conditions.map((c) => describeCondition(c, t));
+		const conditionConjunction = rule.matchMode === "any" ? or : and;
+		nodes.push(" ", keyword(and, "cond-lead"), " ");
+		pushJoined(nodes, conditionPhrases, conditionConjunction);
+	}
+
+	nodes.push(" ", keyword(t("settings_automation.phrase_then"), "then"), " ");
+	pushJoined(nodes, actionPhrases, and);
+	return nodes;
 }
 
 export function SettingsAutomationPage() {
@@ -86,6 +151,7 @@ export function SettingsAutomationPage() {
 		}
 		persistRules(rules.filter((r) => r.id !== deletingRuleId));
 		setDeletingRuleId(null);
+		setEditingRule(null);
 		toast.success(t("settings_automation.rule_deleted"));
 	};
 
@@ -140,15 +206,15 @@ export function SettingsAutomationPage() {
 				<p className="app-subtitle">{t("settings.automation_desc")}</p>
 			</header>
 
-			<div className="grid gap-6">
+			<div className="grid min-w-0 gap-6">
 				{/* CUSTOM RULES */}
-				<div>
-					<div className="mb-2 flex items-center justify-between px-1">
-						<div className="flex items-center gap-2">
-							<p className="text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+				<div className="min-w-0">
+					<div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
+						<div className="flex min-w-0 items-center gap-2">
+							<p className="truncate text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
 								{t("settings_automation.custom_rules_title")}
 							</p>
-							<span className="rounded-md bg-[var(--accent)] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[var(--accent-contrast)]">
+							<span className="shrink-0 rounded-md bg-[var(--accent)] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[var(--accent-contrast)]">
 								{t("settings_automation.experimental_badge")}
 							</span>
 						</div>
@@ -156,7 +222,7 @@ export function SettingsAutomationPage() {
 							type="button"
 							disabled={!settingsReady}
 							onClick={() => setEditingRule(createEmptyAutomationRule())}
-							className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-semibold text-[var(--accent)] transition hover:bg-[var(--surface-2)] disabled:pointer-events-none disabled:opacity-50"
+							className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-semibold text-[var(--accent)] transition hover:bg-[var(--surface-2)] disabled:pointer-events-none disabled:opacity-50"
 						>
 							<Plus className="h-3.5 w-3.5" />
 							{t("settings_automation.add_rule")}
@@ -177,116 +243,48 @@ export function SettingsAutomationPage() {
 							{rules.map((rule) => (
 								<div
 									key={rule.id}
-									className={`flex items-start gap-3 p-4 transition-opacity ${rule.enabled ? "" : "opacity-55"}`}
+									role="button"
+									tabIndex={0}
+									onClick={() => setEditingRule(rule)}
+									onKeyDown={(e) => {
+										if (e.key === "Enter" || e.key === " ") setEditingRule(rule);
+									}}
+									className="grid min-w-0 cursor-pointer gap-1.5 p-4 outline-none transition hover:bg-[var(--surface-2)]"
 								>
-									<div className="shrink-0 rounded-2xl bg-indigo-500/15 p-2.5 text-indigo-400">
-										<Workflow className="h-5 w-5" />
-									</div>
-									<div className="min-w-0 flex-1">
-										<div className="flex items-center gap-3">
-											<p className="min-w-0 flex-1 truncate text-sm font-semibold leading-snug">
-												{rule.nameKey ? t(rule.nameKey) : rule.name || t("settings_automation.unnamed_rule")}
+									<div className="flex min-w-0 items-center gap-3">
+										<div className="relative shrink-0 rounded-2xl bg-indigo-500/15 p-2.5 text-indigo-400">
+											<Workflow className="h-5 w-5" />
+											{rule.locked && (
+												<span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-[var(--surface)] bg-[var(--accent)] text-[var(--accent-contrast)]">
+													<LockKeyhole className="h-2.5 w-2.5" />
+												</span>
+											)}
+										</div>
+										<div className="min-w-0 flex-1">
+											<p className="truncate text-sm font-semibold leading-snug">
+												{rule.nameKey ? t(rule.nameKey) : rule.name}
 											</p>
-											<label className="relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center">
-												<input
-													type="checkbox"
-													checked={rule.enabled}
-													onChange={(e) => handleToggleRule(rule.id, e.target.checked)}
-													className="peer absolute inset-0 z-10 m-0 cursor-pointer opacity-0"
-												/>
-												<span className="absolute inset-0 rounded-full border border-[var(--border)] bg-[var(--surface-2)] transition-colors peer-checked:border-transparent peer-checked:bg-[var(--accent)]" />
-												<span className="absolute left-1 h-5 w-5 rounded-full bg-[var(--text)] transition-transform peer-checked:translate-x-5 peer-checked:bg-[var(--accent-contrast)]" />
-											</label>
+											<p className="truncate text-xs text-[var(--text-muted)]">
+												{t(rule.locked ? "settings_automation.rule_type_builtin" : "settings_automation.rule_type_custom")}
+											</p>
 										</div>
-
-										<div className="mt-2 grid gap-2">
-											<div className="grid gap-1">
-												<span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-													{t("settings_automation.rule_when_label")}
-													{rule.triggers.length > 1 && ` (${t("settings_automation.match_mode_any")})`}
-												</span>
-												<div className="flex flex-wrap gap-1.5">
-													{rule.triggers.map((trig) => (
-														<Chip key={trig} tone="trigger">
-															{t(`settings_automation.rule_trigger_${trig}`)}
-														</Chip>
-													))}
-												</div>
-											</div>
-
-											{rule.conditions.length > 0 && (
-												<div className="grid gap-1">
-													<span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-														{t("settings_automation.conditions_label")}
-														{rule.conditions.length > 1 &&
-															` (${t(`settings_automation.match_mode_${rule.matchMode}`)})`}
-													</span>
-													<div className="flex flex-wrap gap-1.5">
-													{rule.conditions.map((c, i) => (
-														<Chip key={i} tone="condition">
-															{c.type === "profile_picture"
-																? t(`settings_automation.condition_${c.has ? "has" : "no"}_profile_picture`)
-																: c.type === "bio_contains_keyword" ||
-																	  c.type === "message_contains_keyword" ||
-																	  c.type === "display_name_contains_keyword"
-																	? t(`settings_automation.condition_short_${c.type}`)
-																	: t(`settings_automation.condition_${c.type}`)}
-															{(c.type === "age_above" || c.type === "age_below") && ` ${c.value}`}
-															{(c.type === "bio_contains_keyword" ||
-																c.type === "message_contains_keyword" ||
-																c.type === "display_name_contains_keyword") &&
-																(c.useForbiddenList
-																	? `: ${t("settings_automation.keyword_source_forbidden")}`
-																	: c.keywords && `: ${c.keywords}`)}
-														</Chip>
-													))}
-													</div>
-												</div>
-											)}
-
-											<div className="grid gap-1">
-												<span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-													{t("settings_automation.rule_then_label")}
-												</span>
-												<div className="flex flex-wrap gap-1.5">
-													{rule.actions.map((a, i) => (
-														<Chip key={i} tone="action">
-															{t(`settings_automation.action_${a.type}`)}
-														</Chip>
-													))}
-												</div>
-											</div>
-										</div>
-
-										<div className="mt-2 flex items-center justify-end gap-4">
-											<button
-												type="button"
-												onClick={() => setEditingRule(rule)}
-												className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-muted)] transition hover:text-[var(--text)]"
-											>
-												<Pencil className="h-3.5 w-3.5" />
-												{t("settings_automation.edit_rule")}
-											</button>
-											{rule.locked ? (
-												<span
-													className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-muted)] opacity-60"
-													title={t("settings_automation.locked_rule_hint")}
-												>
-													<Lock className="h-3.5 w-3.5" />
-													{t("settings_automation.locked_rule")}
-												</span>
-											) : (
-											<button
-												type="button"
-												onClick={() => setDeletingRuleId(rule.id)}
-												className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-400 transition hover:text-red-300"
-											>
-												<Trash2 className="h-3.5 w-3.5" />
-												{t("settings_automation.delete_rule")}
-											</button>
-											)}
-										</div>
+										<label
+											onClick={(e) => e.stopPropagation()}
+											className="relative ml-1 inline-flex h-7 w-12 shrink-0 cursor-pointer items-center"
+										>
+											<input
+												type="checkbox"
+												checked={rule.enabled}
+												onChange={(e) => handleToggleRule(rule.id, e.target.checked)}
+												className="peer absolute inset-0 z-10 m-0 cursor-pointer opacity-0"
+											/>
+											<span className="absolute inset-0 rounded-full border border-[var(--border)] bg-[var(--surface-2)] transition-colors peer-checked:border-transparent peer-checked:bg-[var(--accent)]" />
+											<span className="absolute left-1 h-5 w-5 rounded-full bg-[var(--text)] transition-transform peer-checked:translate-x-5 peer-checked:bg-[var(--accent-contrast)]" />
+										</label>
 									</div>
+									<p className="break-words pl-[52px] text-xs leading-relaxed text-[var(--text-muted)]">
+										{describeRule(rule, t)}
+									</p>
 								</div>
 							))}
 						</div>
@@ -294,7 +292,7 @@ export function SettingsAutomationPage() {
 				</div>
 
 				{/* FORBIDDEN KEYWORDS */}
-				<div>
+				<div className="min-w-0">
 					<p className="mb-2 px-1 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
 						{t("settings_automation.forbidden_keywords_title")}
 					</p>
@@ -304,7 +302,7 @@ export function SettingsAutomationPage() {
 								<Tag className="h-5 w-5" />
 							</div>
 							<div className="min-w-0 flex-1">
-								<p className="mt-0.5 text-xs leading-relaxed text-[var(--text-muted)]">
+								<p className="mt-0.5 break-words text-xs leading-relaxed text-[var(--text-muted)]">
 									{t("settings_automation.forbidden_keywords_desc")}
 								</p>
 								<textarea
@@ -345,7 +343,7 @@ export function SettingsAutomationPage() {
 				</div>
 
 				{/* AUTO REFRESH */}
-				<div>
+				<div className="min-w-0">
 					<p className="mb-2 px-1 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
 						{t("settings_automation.auto_refresh_title")}
 					</p>
@@ -414,6 +412,7 @@ export function SettingsAutomationPage() {
 				albums={albums}
 				onSave={handleSaveRule}
 				onCancel={() => setEditingRule(null)}
+				onDelete={editingRule && !editingRule.locked ? () => setDeletingRuleId(editingRule.id) : undefined}
 			/>
 
 			<ConfirmDialog

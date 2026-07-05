@@ -918,6 +918,28 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 		};
 	}, [isDesktop]);
 
+	// On mobile the thread's header/composer are position:fixed against the
+	// document viewport, which native WebViews (Android/iOS) can misplace
+	// whenever the document itself is tall/short enough to rubber-band or
+	// scroll natively — most visible on short threads where nothing else
+	// forces the page to exactly viewport height. Locking document scroll
+	// here removes that possibility; all real scrolling happens in the
+	// thread's own overflow-y-auto container regardless.
+	useEffect(() => {
+		if (isDesktop || !(selectedConversation || targetProfileId)) {
+			return;
+		}
+		const { body, documentElement: html } = document;
+		const previousBodyOverflow = body.style.overflow;
+		const previousHtmlOverflow = html.style.overflow;
+		body.style.overflow = "hidden";
+		html.style.overflow = "hidden";
+		return () => {
+			body.style.overflow = previousBodyOverflow;
+			html.style.overflow = previousHtmlOverflow;
+		};
+	}, [isDesktop, selectedConversation, targetProfileId]);
+
 	const renderThread = (selectedConversation || targetProfileId) ? (
 		<div
 			className={`flex h-full flex-col ${!isDesktop ? "overflow-hidden p-0" : "overflow-hidden p-3 sm:p-4"} ${
@@ -956,7 +978,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 				const displayName =
 					localNickname ||
 					(selectedConversation ? selectedConversation.data.name : targetProfileDetail?.displayName) ||
-					t(selectedConversation ? "chat.conversation" : "chat.new_conversation.title");
+					t(selectedConversation ? "chat.conversation" : "chat.notifications.someone");
 
 				// Blocking a chat with a live conversation archives it — that's why
 				// the existing-conversation case keys off isArchived. There's no

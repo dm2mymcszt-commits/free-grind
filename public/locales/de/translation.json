@@ -82,7 +82,8 @@
         "rule_saved": "Automatisierung gespeichert!",
         "rule_deleted": "Automatisierung gelöscht.",
         "rule_needs_action": "Füge mindestens eine Aktion hinzu, bevor du speicherst.",
-        "rule_name_placeholder": "Name für diese Automatisierung (optional)",
+        "action_needs_message_text": "Gib eine zu sendende Nachricht ein, bevor du speicherst.",
+        "rule_name_placeholder": "Name für diese Automatisierung",
         "trigger_label": "Wenn (Auslöser)",
         "conditions_label": "Falls (Bedingungen)",
         "rule_no_conditions": "immer",
@@ -103,29 +104,64 @@
         "loading_rules": "Automatisierungen werden geladen…",
         "condition_profile_picture": "Profilbild",
         "rule_trigger_new_chat": "Neuer Chat gestartet",
-        "rule_when_label": "Wenn",
+        "rule_when_label": "Wenn ein beliebiger Trigger",
         "rule_then_label": "Dann",
         "rule_and_label": "und",
         "rule_trigger_tap_received": "Tap erhalten",
         "rule_trigger_message_received": "Nachricht erhalten",
         "condition_bio_contains_keyword": "Bio enthält Keyword",
+        "condition_bio_not_contains_keyword": "Bio enthält Keyword nicht",
         "condition_message_contains_keyword": "Nachricht enthält Keyword",
+        "condition_message_not_contains_keyword": "Nachricht enthält Keyword nicht",
         "condition_keywords_placeholder": "Keywords, mit Komma getrennt...",
         "match_mode_all": "Alle",
         "match_mode_any": "Eine",
         "rule_or_label": "oder",
         "locked_rule": "Fest",
         "locked_rule_hint": "Diese Automatisierung ersetzt eine feste App-Funktion und kann nicht gelöscht, nur bearbeitet oder deaktiviert werden.",
-        "default_age_rule_name": "Jeden außerhalb dieses Altersbereichs blockieren",
+        "default_age_rule_name": "Altersbegrenzung",
         "keyword_source_custom": "Eigene",
         "keyword_source_forbidden": "Forbidden Keywords",
         "keyword_source_forbidden_hint": "Nutzt die Keyword-Liste aus dem Forbidden-Keywords-Bereich in Einstellungen > Automatisierungen.",
-        "default_keywords_rule_name": "Profile anhand verbotener Keywords blockieren",
+        "default_keywords_rule_name": "Verbotene Keywords",
         "condition_display_name_contains_keyword": "Anzeigename enthält Keyword",
+        "condition_display_name_not_contains_keyword": "Anzeigename enthält Keyword nicht",
         "condition_short_bio_contains_keyword": "Bio enthält",
         "condition_short_message_contains_keyword": "Nachricht enthält",
         "condition_short_display_name_contains_keyword": "Anzeigename enthält",
-        "experimental_badge": "Experimentell"
+        "experimental_badge": "Experimentell",
+        "conditions_label_all": "Falls jede Bedingung",
+        "conditions_label_any": "Falls eine Bedingung",
+        "rule_trigger_noun": "Trigger",
+        "rule_condition_noun": "Bedingung",
+        "rule_action_noun": "Aktion",
+        "rule_needs_name": "Gib der Automatisierung einen Namen, bevor du speicherst.",
+        "phrase_when": "Wenn",
+        "phrase_then": "dann",
+        "trigger_phrase_new_chat": "ein neuer Chat startet",
+        "trigger_phrase_tap_received": "ein Tap eingeht",
+        "trigger_phrase_message_received": "eine Nachricht eingeht",
+        "phrase_has_profile_picture": "der Absender ein Profilbild hat",
+        "phrase_no_profile_picture": "der Absender kein Profilbild hat",
+        "phrase_age_above": "der Absender älter als {{value}} ist",
+        "phrase_age_below": "der Absender jünger als {{value}} ist",
+        "action_phrase_block": "den Absender blockieren",
+        "action_phrase_send_message": "dem Absender eine Nachricht senden",
+        "action_phrase_share_album": "ein Album mit dem Absender teilen",
+        "rule_type_builtin": "Feste Regel",
+        "rule_type_custom": "Eigene Regel",
+        "phrase_bio_prefix": "die Bio",
+        "phrase_bio_suffix": "enthält",
+        "phrase_bio_prefix_not": "die Bio",
+        "phrase_bio_suffix_not": "nicht enthält",
+        "phrase_message_prefix": "die Nachricht",
+        "phrase_message_suffix": "enthält",
+        "phrase_message_prefix_not": "die Nachricht",
+        "phrase_message_suffix_not": "nicht enthält",
+        "phrase_display_name_prefix": "der Anzeigename",
+        "phrase_display_name_suffix": "enthält",
+        "phrase_display_name_prefix_not": "der Anzeigename",
+        "phrase_display_name_suffix_not": "nicht enthält"
     },
     "shared_albums": {
         "title": "Geteilte Alben",
@@ -786,6 +822,41 @@
             "inbox": "Posteingang",
             "albums": "Alben"
         },
+        "slash_commands": {
+            "block": {
+                "description": "Blockiert ein Profil. Nutzt den aktuellen Chat, falls keine ID angegeben ist."
+            },
+            "unblock": {
+                "description": "Entblockiert ein Profil. Nutzt den aktuellen Chat, falls keine ID angegeben ist."
+            },
+            "open": {
+                "description": "Öffnet ein Profil. Nutzt den aktuellen Chat, falls keine ID angegeben ist."
+            },
+            "chat": {
+                "description": "Öffnet einen Chat mit der angegebenen ID."
+            },
+            "clear": {
+                "description": "Leert diesen Chat, indem das Profil blockiert und wieder entblockiert wird."
+            },
+            "mute": {
+                "description": "Schaltet den Stummschaltungs-Status um."
+            },
+            "pin": {
+                "description": "Schaltet den Pin-Status um."
+            },
+            "favourite": {
+                "description": "Schaltet den Favoriten-Status um."
+            },
+            "id": {
+                "description": "Zeigt die interne ID des aktuellen Chatpartners an.",
+                "result": "Profil-ID: {{id}}"
+            },
+            "errors": {
+                "no_target": "Öffne einen Chat oder gib eine ID an",
+                "no_chat_id": "Gib eine Chat-ID an",
+                "no_conversation": "Öffne zuerst einen Chat"
+            }
+        },
         "your_conversations": "Deine Konversationen",
         "pinned": "Angepinnt",
         "muted": "Stummgeschaltet",
@@ -904,6 +975,7 @@
             "shared_image": "Hat ein Bild geteilt",
             "shared_gif": "Hat ein GIF geteilt",
             "shared_video": "Hat ein Video geteilt",
+            "image_expired": "Abgelaufen",
             "video_expired": "Abgelaufen",
             "shared_audio": "Hat eine Sprachnachricht geteilt",
             "location_shared": "Standort geteilt",
@@ -915,7 +987,10 @@
             "album_share": "Album-Freigabe",
             "album_image": "Album-Bild",
             "replied_to_photo": "Auf dein Profilbild geantwortet",
-            "reacted_to_image": "Auf dein Album-Bild reagiert"
+            "reacted_to_image": "Auf dein Album-Bild reagiert",
+            "audio_label": "Audio",
+            "unsupported_message": "Nicht unterstützte Nachricht",
+            "unsupported_message_description": "Dieser Nachrichtentyp wird in dieser App-Version noch nicht unterstützt."
         },
         "actions": {
             "title": "Nachrichten-Aktionen",
@@ -927,7 +1002,22 @@
             "add_to_saved_phrases": "Zu gespeicherten Sätzen hinzufügen",
             "added_to_saved_phrases": "Zu gespeicherten Sätzen hinzugefügt",
             "open_media": "Medien öffnen",
-            "download_media": "Medien herunterladen"
+            "download_media": "Medien herunterladen",
+            "download": "Herunterladen",
+            "stop_sharing": "Freigabe beenden",
+            "ban_word": "Wort verbannen",
+            "ban_word_prompt": "Kürze diese Nachricht auf das konkrete Schlüsselwort, das du verbannen möchtest:",
+            "ban_word_added": "\"{{word}}\" zu den verbotenen Schlüsselwörtern hinzugefügt!"
+        },
+        "system": {
+            "blocked_by_self": "Du hast diese Person blockiert",
+            "blocked": "Du wurdest blockiert",
+            "unblocked_by_self": "Du hast diese Person entblockiert",
+            "unblocked": "Du wurdest entblockiert"
+        },
+        "block_toast": {
+            "blocked_by_other": "{{name}} hat dich blockiert",
+            "unblocked_by_other": "{{name}} hat dich entblockiert"
         },
         "realtime": {
             "connected": "Verbunden",
@@ -974,6 +1064,7 @@
             "rate_limited": "Zu schnelles Senden. Bitte kurz warten.",
             "attachment_upload_send_failed": "Hochladen/Senden des Anhangs fehlgeschlagen",
             "reupload_image": "Bitte lade dieses Bild erneut hoch.",
+            "reupload_video": "Bitte lade dieses Video erneut hoch.",
             "react_failed": "Reaktion fehlgeschlagen",
             "unsend_failed": "Zurückziehen fehlgeschlagen",
             "delete_failed": "Löschen fehlgeschlagen",
@@ -999,7 +1090,10 @@
             "copied": "In die Zwischenablage kopiert",
             "album_shared": "Album geteilt",
             "media_sent": "Medien gesendet",
-            "conversation_deleted": "Konversation gelöscht"
+            "conversation_deleted": "Konversation gelöscht",
+            "album_reaction_sent": "Reaktion gesendet",
+            "album_reply_sent": "Antwort gesendet",
+            "album_share_stopped": "Album-Freigabe beendet."
         },
         "new_conversation": {
             "title": "Neue Konversation",
@@ -1069,6 +1163,10 @@
         "profile_fallback": "Profil {{id}}",
         "last_online": "zuletzt online {{value}}",
         "close_photo_viewer": "Fotobetrachter schließen",
+        "save_to_gallery": "In Fotos speichern",
+        "save_to_gallery_success": "In deiner Fotobibliothek gespeichert",
+        "save_to_gallery_error": "Speichern in der Fotobibliothek fehlgeschlagen",
+        "save_to_gallery_unsupported": "Speichern in Fotos wird auf diesem Gerät nicht unterstützt",
         "previous_photo": "Vorheriges Foto",
         "next_photo": "Nächstes Foto",
         "photo_alt": "Foto von {{name}}",
