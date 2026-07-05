@@ -120,7 +120,7 @@
         "loading_rules": "Loading automations…",
         "condition_profile_picture": "Profile picture",
         "rule_trigger_new_chat": "New chat started",
-        "rule_when_label": "When",
+        "rule_when_label": "When any trigger",
         "rule_then_label": "Then",
         "rule_and_label": "and",
         "rule_trigger_tap_received": "Tap received",
@@ -142,7 +142,9 @@
         "condition_short_bio_contains_keyword": "Bio contains",
         "condition_short_message_contains_keyword": "Message contains",
         "condition_short_display_name_contains_keyword": "Display name contains",
-        "experimental_badge": "Experimental"
+        "experimental_badge": "Experimental",
+        "conditions_label_all": "If every condition",
+        "conditions_label_any": "If any condition"
     },
     "shared_albums": {
         "title": "Shared Albums",

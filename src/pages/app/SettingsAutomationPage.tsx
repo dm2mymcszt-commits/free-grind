@@ -203,7 +203,6 @@ export function SettingsAutomationPage() {
 											<div className="grid gap-1">
 												<span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
 													{t("settings_automation.rule_when_label")}
-													{rule.triggers.length > 1 && ` (${t("settings_automation.match_mode_any")})`}
 												</span>
 												<div className="flex flex-wrap gap-1.5">
 													{rule.triggers.map((trig) => (
@@ -217,9 +216,7 @@ export function SettingsAutomationPage() {
 											{rule.conditions.length > 0 && (
 												<div className="grid gap-1">
 													<span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-														{t("settings_automation.conditions_label")}
-														{rule.conditions.length > 1 &&
-															` (${t(`settings_automation.match_mode_${rule.matchMode}`)})`}
+														{t(`settings_automation.conditions_label_${rule.matchMode}`)}
 													</span>
 													<div className="flex flex-wrap gap-1.5">
 													{rule.conditions.map((c, i) => (

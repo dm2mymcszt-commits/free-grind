@@ -103,7 +103,7 @@
         "loading_rules": "Automatisierungen werden geladen…",
         "condition_profile_picture": "Profilbild",
         "rule_trigger_new_chat": "Neuer Chat gestartet",
-        "rule_when_label": "Wenn",
+        "rule_when_label": "Wenn ein beliebiger Trigger",
         "rule_then_label": "Dann",
         "rule_and_label": "und",
         "rule_trigger_tap_received": "Tap erhalten",
@@ -125,7 +125,9 @@
         "condition_short_bio_contains_keyword": "Bio enthält",
         "condition_short_message_contains_keyword": "Nachricht enthält",
         "condition_short_display_name_contains_keyword": "Anzeigename enthält",
-        "experimental_badge": "Experimentell"
+        "experimental_badge": "Experimentell",
+        "conditions_label_all": "Falls jede Bedingung",
+        "conditions_label_any": "Falls eine Bedingung"
     },
     "shared_albums": {
         "title": "Geteilte Alben",
