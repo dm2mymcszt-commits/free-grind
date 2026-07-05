@@ -103,7 +103,7 @@ function createDefaultAgeLimitRule(): AutomationRule {
 	return {
 		id: crypto.randomUUID(),
 		enabled: false,
-		name: "Block anyone outside of this age range",
+		name: "Age limit block",
 		nameKey: "settings_automation.default_age_rule_name",
 		triggers: ["new_chat"],
 		matchMode: "any",
@@ -125,7 +125,7 @@ function createDefaultForbiddenKeywordsRule(): AutomationRule {
 	return {
 		id: crypto.randomUUID(),
 		enabled: false,
-		name: "Block Profiles based on forbidden keywords",
+		name: "Forbidden keywords block",
 		nameKey: "settings_automation.default_keywords_rule_name",
 		triggers: ["new_chat", "message_received", "tap_received"],
 		matchMode: "any",

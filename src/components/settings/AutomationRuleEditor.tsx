@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Ban, Bell, Calendar, FileText, Flame, ImageOff, Image as ImageIcon, MessageSquare, Plus, Search, Trash2, User } from "lucide-react";
+import { Ban, Bell, Calendar, FileText, Flame, ImageOff, Image as ImageIcon, MessageSquare, Plus, Search, Trash2, User, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { Slider } from "../ui/range-slider";
 import type { Album } from "../../types/albums";
@@ -66,12 +66,14 @@ export function AutomationRuleEditor({
 	albums,
 	onSave,
 	onCancel,
+	onDelete,
 }: {
 	isOpen: boolean;
 	rule: AutomationRule | null;
 	albums: Album[];
 	onSave: (rule: AutomationRule) => void;
 	onCancel: () => void;
+	onDelete?: () => void;
 }) {
 	const { t } = useTranslation();
 	const dialogRef = useRef<HTMLDialogElement | null>(null);
@@ -153,6 +155,10 @@ export function AutomationRuleEditor({
 
 	const handleSave = () => {
 		if (!draft) return;
+		if (!draft.name.trim()) {
+			toast.error(t("settings_automation.rule_needs_name"));
+			return;
+		}
 		if (draft.actions.length === 0) {
 			toast.error(t("settings_automation.rule_needs_action"));
 			return;
@@ -170,7 +176,17 @@ export function AutomationRuleEditor({
 		>
 			{draft && <div className="grid max-h-[85dvh] grid-rows-[auto_1fr_auto]">
 			<div className="border-b border-[var(--border)] p-5 pb-4">
-				<p className="text-base font-semibold">{t("settings_automation.edit_rule")}</p>
+				<div className="flex items-center justify-between gap-2">
+					<p className="text-base font-semibold">{t("settings_automation.edit_rule")}</p>
+					<button
+						type="button"
+						onClick={onCancel}
+						aria-label={t("settings_automation.cancel")}
+						className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--surface-2)] hover:text-[var(--text)]"
+					>
+						<X className="h-4 w-4" />
+					</button>
+				</div>
 
 				<input
 					type="text"
@@ -493,17 +509,20 @@ export function AutomationRuleEditor({
 			</div>
 
 			<div className="flex items-center gap-2 border-t border-[var(--border)] p-5 pt-4">
-				<button
-					type="button"
-					onClick={onCancel}
-					className="inline-flex h-11 flex-1 basis-1/2 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 text-sm font-medium text-[var(--text-muted)] transition hover:border-[var(--accent)] hover:text-[var(--text)]"
-				>
-					{t("settings_automation.cancel")}
-				</button>
+				{onDelete && (
+					<button
+						type="button"
+						onClick={onDelete}
+						className="inline-flex h-11 flex-1 basis-1/2 items-center justify-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 text-sm font-medium text-red-400 transition hover:border-red-500/50 hover:bg-red-500/15 hover:text-red-300"
+					>
+						<Trash2 className="h-4 w-4" />
+						{t("settings_automation.delete_rule")}
+					</button>
+				)}
 				<button
 					type="button"
 					onClick={handleSave}
-					className="btn-accent inline-flex flex-1 basis-1/2 items-center justify-center gap-2 px-4"
+					className={`btn-accent inline-flex h-11 items-center justify-center gap-2 px-4 ${onDelete ? "flex-1 basis-1/2" : "w-full"}`}
 				>
 					<Plus className="h-4 w-4" />
 					{t("settings_automation.save_rule")}
