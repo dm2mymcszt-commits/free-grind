@@ -593,6 +593,12 @@
         "errors": {
             "display_name_length": "Display name cannot exceed 15 characters.",
             "about_me_length": "About Me must stay under 255 characters."
+        },
+        "photo_upload": {
+            "title": "Upload Picture",
+            "confirm": "Upload",
+            "taken_on_grindr": "Taken on Grindr watermark",
+            "taken_on_grindr_description": "Include the timestamp to certify the authenticity and recency of your photo"
         }
     },
     "privacy": {
@@ -964,7 +970,8 @@
         },
         "attachments": {
             "only_image_video": "Only image and video attachments are supported.",
-            "ready_to_send": "Ready to send: {{file}}",
+            "upload_picture": "Upload Picture",
+            "upload_video": "Upload Video",
             "looping": "Looping",
             "looping_description": "The video will play on repeat",
             "max_views": "Max views",

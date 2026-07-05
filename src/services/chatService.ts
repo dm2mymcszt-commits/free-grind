@@ -61,6 +61,25 @@ function sortMessages(messages: Message[]): Message[] {
 	return [...messages].sort((a, b) => a.timestamp - b.timestamp);
 }
 
+const drawerMediaItemSchema = z.object({
+	id: z.coerce.number().int(),
+	url: z.string(),
+	contentType: z.string(),
+	createdTs: z.coerce.number().int(),
+	used: z.boolean().optional().default(false),
+	takenOnGrindr: z.boolean().optional().default(false),
+});
+
+async function parseDrawerMediaResponse(
+	response: RestResponse,
+	t: (key: string) => string,
+): Promise<Array<z.infer<typeof drawerMediaItemSchema>>> {
+	await assertSuccess(response, t("chat.errors.load_drawer_media"));
+	const payload = await parseJsonSafe(response);
+	const parsed = z.array(drawerMediaItemSchema).safeParse(payload);
+	return parsed.success ? parsed.data : [];
+}
+
 export function createChatService(fetchRest: RestFetcher, t: (key: string) => string) {
 	return {
 		async searchProfiles(
@@ -592,19 +611,23 @@ export function createChatService(fetchRest: RestFetcher, t: (key: string) => st
 			const response = await fetchRest(
 				`/v4/chat/media/drawer/${conversationId}`,
 			);
-			await assertSuccess(response, t("chat.errors.load_drawer_media"));
-			const payload = await parseJsonSafe(response);
-			const itemSchema = z.object({
-				id: z.coerce.number().int(),
-				url: z.string(),
-				contentType: z.string(),
-				createdTs: z.coerce.number().int(),
-				used: z.boolean().optional().default(false),
-				takenOnGrindr: z.boolean().optional().default(false),
-			});
+			return parseDrawerMediaResponse(response, t);
+		},
 
-			const parsed = z.array(itemSchema).safeParse(payload);
-			return parsed.success ? parsed.data : [];
+		// Same drawer contents, without the "used in this conversation" flag —
+		// used before a conversation exists yet (e.g. starting a chat from a
+		// profile), since /v4/chat/media/drawer/{conversationId} has no
+		// conversation-less variant.
+		async getGlobalDrawerMedia(): Promise<Array<{
+			id: number;
+			url: string;
+			contentType: string;
+			createdTs: number;
+			used: boolean;
+			takenOnGrindr: boolean;
+		}>> {
+			const response = await fetchRest("/v4/chat/media/drawer");
+			return parseDrawerMediaResponse(response, t);
 		},
 
 		async addMediaToDrawer(mediaId: number): Promise<void> {
