@@ -1911,20 +1911,26 @@ export function ChatPage() {
 				const blockId = otherParticipant?.profileId || (responseMessages[0] && responseMessages[0].senderId);
 
 				if (blockId) {
-					service.getProfileDetail(String(blockId)).then((profile) => {
-						// Reuses the profile we just fetched so this doesn't cost a
-						// second request. Covers threads opened after
-						// being missed while the app was closed (see runAutomationRulesForSender).
-						// "new_chat" only fires when they messaged us, not when we started
-						// the conversation — gate on the most recent message being incoming.
-						const lastMessage = responseMessages.reduce<typeof responseMessages[number] | null>(
-							(latest, m) => (!latest || m.timestamp > latest.timestamp ? m : latest),
-							null,
-						);
-						const lastMessageIsIncoming =
-							lastMessage != null && userId != null && Number(lastMessage.senderId) !== Number(userId);
-						if (!lastMessageIsIncoming) return;
+					// No eager profile fetch here — runAutomationRulesForSender
+					// (see its own doc comment) already dedupes per
+					// (trigger, sender/messageId) and only fetches a profile
+					// itself, lazily, if some enabled rule's conditions actually
+					// need one. Prefetching it here unconditionally used to cost
+					// a GET /v7/profiles/:id on every poll of an open thread
+					// (this runs on every loadThread call, not just genuinely
+					// new messages), even though the dedupe below almost always
+					// short-circuits before a profile would ever be used.
 
+					// "new_chat" only fires when they messaged us, not when we started
+					// the conversation — gate on the most recent message being incoming.
+					const lastMessage = responseMessages.reduce<typeof responseMessages[number] | null>(
+						(latest, m) => (!latest || m.timestamp > latest.timestamp ? m : latest),
+						null,
+					);
+					const lastMessageIsIncoming =
+						lastMessage != null && userId != null && Number(lastMessage.senderId) !== Number(userId);
+
+					if (lastMessageIsIncoming) {
 						const lastMessageText =
 							(lastMessage?.body as { text?: string } | undefined)?.text ?? null;
 
@@ -1932,7 +1938,7 @@ export function ChatPage() {
 							String(blockId),
 							"new_chat",
 							service,
-							profile,
+							undefined,
 							lastMessageText,
 						).then(({ blocked }) => {
 							if (blocked) {
@@ -1946,37 +1952,37 @@ export function ChatPage() {
 								}
 							}
 						}).catch(() => {});
+					}
 
-						// "message_received" dedupes per messageId rather than per sender,
-						// so (unlike "new_chat" above) it's evaluated against every incoming
-						// message in this batch, not just the latest — each one only ever
-						// runs once across the app's lifetime regardless of how many times
-						// this thread gets reopened. Reuses the profile already fetched.
-						for (const m of responseMessages) {
-							const isIncoming = userId != null && Number(m.senderId) !== Number(userId);
-							if (!isIncoming) continue;
-							const text = (m.body as { text?: string } | undefined)?.text ?? null;
-							runAutomationRulesForSender(
-								String(blockId),
-								"message_received",
-								service,
-								profile,
-								text,
-								m.messageId,
-							).then(({ blocked }) => {
-								if (blocked) {
-									removeProfileFromBrowseCache(String(blockId));
-									setThreadMessages([]);
-									setThreadConversationId(null);
-									if (isDesktop) {
-										setSelectedDesktopConversationId(null);
-									} else {
-										navigate("/chat", { replace: true });
-									}
+					// "message_received" dedupes per messageId rather than per sender,
+					// so (unlike "new_chat" above) it's evaluated against every incoming
+					// message in this batch, not just the latest — each one only ever
+					// runs once across the app's lifetime regardless of how many times
+					// this thread gets reopened.
+					for (const m of responseMessages) {
+						const isIncoming = userId != null && Number(m.senderId) !== Number(userId);
+						if (!isIncoming) continue;
+						const text = (m.body as { text?: string } | undefined)?.text ?? null;
+						runAutomationRulesForSender(
+							String(blockId),
+							"message_received",
+							service,
+							undefined,
+							text,
+							m.messageId,
+						).then(({ blocked }) => {
+							if (blocked) {
+								removeProfileFromBrowseCache(String(blockId));
+								setThreadMessages([]);
+								setThreadConversationId(null);
+								if (isDesktop) {
+									setSelectedDesktopConversationId(null);
+								} else {
+									navigate("/chat", { replace: true });
 								}
-							}).catch(() => {});
-						}
-					}).catch(() => {});
+							}
+						}).catch(() => {});
+					}
 				}
 				// --------------------------------------------------
 
