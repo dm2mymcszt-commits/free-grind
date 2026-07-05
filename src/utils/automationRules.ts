@@ -270,10 +270,13 @@ function conditionMatches(
 	switch (condition.type) {
 		case "profile_picture":
 			return !!profile?.profileImageMediaHash === condition.has;
+		// !!profile?.age (not just != null) so a 0/unset age is never treated as
+		// "younger than X" — some profiles report age as 0 rather than null
+		// when it isn't set, and nobody's real age is 0.
 		case "age_above":
-			return profile?.age != null && profile.age > condition.value;
+			return !!profile?.age && profile.age > condition.value;
 		case "age_below":
-			return profile?.age != null && profile.age < condition.value;
+			return !!profile?.age && profile.age < condition.value;
 		case "bio_contains_keyword":
 			return textContainsKeyword(profile?.aboutMe, condition.useForbiddenList ? getForbiddenWords() : condition.keywords);
 		case "message_contains_keyword":
