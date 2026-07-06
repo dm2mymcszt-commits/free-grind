@@ -8,6 +8,8 @@ import {
 	Copy,
 	Download,
 	Ellipsis,
+	Eye,
+	EyeOff,
 	Star,
 	Hourglass,
 	ImagePlus,
@@ -135,6 +137,8 @@ type ChatThreadPanelProps = {
 	headerActionsMenuRef: { current: HTMLDivElement | null };
 	togglePin: () => void | Promise<void>;
 	toggleMute: () => void | Promise<void>;
+	isHidden: boolean;
+	toggleHide: () => void;
 	onDeleteConversation?: (conversationId: string) => void | Promise<void>;
 	isDeletingConversation?: boolean;
 	onBlockProfile?: (profileId: number) => void | Promise<void>;
@@ -472,6 +476,8 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 		headerActionsMenuRef,
 		togglePin,
 		toggleMute,
+		isHidden,
+		toggleHide,
 		onDeleteConversation,
 		isDeletingConversation = false,
 		onBlockProfile,
@@ -1347,6 +1353,20 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 													{selectedConversation?.data.pinned ? t("chat.unpin") : t("chat.pin")}
 												</button>
 											)}
+											<button
+												type="button"
+												disabled={!selectedConversation}
+												onClick={() => {
+													setIsHeaderActionsMenuOpen(false);
+													toggleHide();
+												}}
+												className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text)] transition hover:bg-[var(--surface-2)] disabled:opacity-40 disabled:cursor-not-allowed"
+											>
+												{isHidden ? <Eye className="mr-2 h-4 w-4 opacity-70" /> : <EyeOff className="mr-2 h-4 w-4 opacity-70" />}
+												{isHidden
+													? t("chat.unhide_conversation", { defaultValue: "Unhide" })
+													: t("chat.hide_conversation", { defaultValue: "Hide" })}
+											</button>
 											{!isArchived && (
 												<button
 													type="button"

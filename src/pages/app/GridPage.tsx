@@ -40,6 +40,7 @@ import {
 } from "./browse-filters-storage";
 import { PullToRefreshContainer } from "./components/PullToRefreshContainer";
 import { PageHeaderBackground } from "../../components/ui/PageHeaderBackground";
+import { FilterPill } from "../../components/ui/FilterPill";
 import { useBrowseFilters } from "./gridpage/hooks/useBrowseFilters";
 import { useTapProfile } from "./gridpage/hooks/useTapProfile";
 import { useDesktopBreakpoint } from "../../hooks/useDesktopBreakpoint";
@@ -1516,93 +1517,54 @@ export function GridPage() {
 										</select>
 									</div>
 
-									<button
-										type="button"
-										onClick={() =>
-											setBrowseFilters((prev: typeof browseFilters) => ({
-												...prev,
-												onlineOnly: !prev.onlineOnly,
-											}))
-										}
-										className={cn(
-											"inline-flex shrink-0 items-center gap-1.5 px-4 py-2 text-sm font-bold transition-all active:scale-95",
-											browseFilters.onlineOnly
-												? "rounded-full border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] shadow-lg shadow-[var(--accent)]/40"
-												: "glass-pill text-[var(--accent)]"
-										)}
-										style={!browseFilters.onlineOnly ? { "--pill-color": "var(--accent)" } as React.CSSProperties : undefined}
-									>
-										{t("browse_filters.options.online")}
-									</button>
-
-									<button
-										type="button"
+									<FilterPill
+										icon={<Star className={`h-3.5 w-3.5 ${browseFilters.favorites ? "fill-current" : ""}`} />}
+										label={t("browse_filters.options.favorites")}
+										active={Boolean(browseFilters.favorites)}
 										onClick={() =>
 											setBrowseFilters((prev: typeof browseFilters) => ({
 												...prev,
 												favorites: !prev.favorites,
 											}))
 										}
-										className={cn(
-											"inline-flex size-9 shrink-0 items-center justify-center text-sm font-bold transition-all active:scale-95",
-											browseFilters.favorites
-												? "rounded-full border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] shadow-lg shadow-[var(--accent)]/40"
-												: "glass-pill text-[var(--accent)]"
-										)}
-										style={!browseFilters.favorites ? { "--pill-color": "var(--accent)" } as React.CSSProperties : undefined}
-										aria-label={t("browse_filters.options.favorites")}
-										title={t("browse_filters.options.favorites")}
-									>
-										<Star
-											className={`h-4 w-4 ${browseFilters.favorites ? "fill-current" : ""}`}
-										/>
-									</button>
+									/>
 
-									<button
-										type="button"
+									<FilterPill
+										icon={<span className="h-2.5 w-2.5 shrink-0 rounded-full bg-green-500 shadow-sm" />}
+										label={t("browse_filters.options.online")}
+										active={Boolean(browseFilters.onlineOnly)}
 										onClick={() =>
 											setBrowseFilters((prev: typeof browseFilters) => ({
 												...prev,
-												rightNow: !prev.rightNow,
+												onlineOnly: !prev.onlineOnly,
 											}))
 										}
-										className={cn(
-											"inline-flex size-9 shrink-0 items-center justify-center text-sm font-bold transition-all active:scale-95",
-											browseFilters.rightNow
-												? "rounded-full border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] shadow-lg shadow-[var(--accent)]/40"
-												: "glass-pill text-[var(--accent)]"
-										)}
-										style={!browseFilters.rightNow ? { "--pill-color": "var(--accent)" } as React.CSSProperties : undefined}
-										aria-label={t("browse_filters.options.right_now")}
-										title={t("browse_filters.options.right_now")}
-									>
-										<Droplet
-											className={`h-4 w-4 ${browseFilters.rightNow ? "fill-current" : ""}`}
-										/>
-									</button>
+									/>
 
-									<button
-										type="button"
+									<FilterPill
+										icon={<Plane className={`h-3.5 w-3.5 ${browseFilters.isVisiting ? "fill-current" : ""}`} />}
+										label={t("profile_details.visiting")}
+										active={Boolean(browseFilters.isVisiting)}
 										onClick={() =>
 											setBrowseFilters((prev: typeof browseFilters) => ({
 												...prev,
 												isVisiting: !prev.isVisiting,
 											}))
 										}
-										className={cn(
-											"inline-flex size-9 shrink-0 items-center justify-center text-sm font-bold transition-all active:scale-95",
-											browseFilters.isVisiting
-												? "rounded-full border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] shadow-lg shadow-[var(--accent)]/40"
-												: "glass-pill text-[var(--accent)]"
-										)}
-										style={!browseFilters.isVisiting ? { "--pill-color": "var(--accent)" } as React.CSSProperties : undefined}
-										aria-label={t("profile_details.visiting")}
-										title={t("profile_details.visiting")}
-									>
-										<Plane
-											className={`h-4 w-4 ${browseFilters.isVisiting ? "fill-current" : ""}`}
-										/>
-									</button>
+									/>
+
+									<FilterPill
+										icon={<Droplet className={`h-3.5 w-3.5 ${browseFilters.rightNow ? "fill-current" : ""}`} />}
+										label={t("browse_filters.options.right_now")}
+										active={Boolean(browseFilters.rightNow)}
+										onClick={() =>
+											setBrowseFilters((prev: typeof browseFilters) => ({
+												...prev,
+												rightNow: !prev.rightNow,
+											}))
+										}
+										color="right-now"
+									/>
 
 									{hasActiveBrowseFilters ? (
 										<button
@@ -1615,14 +1577,12 @@ export function GridPage() {
 										</button>
 									) : null}
 
-									<button
-										type="button"
+									<FilterPill
+										icon={<Search className="h-3.5 w-3.5" />}
+										label={t("grid.open_profile_by_id", { defaultValue: "Open Profile by ID" })}
+										active={false}
 										onClick={() => { setProfileSearchInput(""); setIsProfileSearchOpen(true); }}
-										className="glass-pill inline-flex size-9 shrink-0 items-center justify-center text-[var(--accent)] transition-all active:scale-95"
-										style={{ "--pill-color": "var(--accent)" } as React.CSSProperties}
-									>
-										<Search className="h-3.5 w-3.5" />
-									</button>
+									/>
 								</div>
 							</div>
 						</div>

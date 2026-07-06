@@ -1275,7 +1275,14 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 								}}
 								className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border-none bg-transparent text-[var(--accent)] transition hover:brightness-110"
 							>
-								<MessageCircle className="h-5 w-5" strokeWidth={1.8} />
+								<span className="relative inline-flex">
+									<MessageCircle className="h-5 w-5" strokeWidth={1.8} />
+									{(chatContactStatus?.unreadCount ?? 0) > 0 && (
+										<span className="absolute -top-1.5 -right-2 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--accent)] px-1 text-[9px] font-bold text-[var(--accent-contrast)] shadow-sm">
+											{chatContactStatus?.unreadCount}
+										</span>
+									)}
+								</span>
 							</button>
 						)}
 					</div>
@@ -1604,7 +1611,14 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 										{(onMessageProfile || onSendQuickMessage) && (
 											<button type="button" onClick={() => { if (quickMessageDraft.trim()) { onSendQuickMessage?.(String(messageProfileId), quickMessageDraft.trim()); setQuickMessageDraft(""); } else { onMessageProfile?.(String(messageProfileId)); } }}
 												className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border-none bg-transparent text-[var(--accent)] transition hover:brightness-110">
-												<MessageCircle className="h-5 w-5" strokeWidth={1.8} />
+												<span className="relative inline-flex">
+													<MessageCircle className="h-5 w-5" strokeWidth={1.8} />
+													{(chatContactStatus?.unreadCount ?? 0) > 0 && (
+														<span className="absolute -top-1.5 -right-2 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--accent)] px-1 text-[9px] font-bold text-[var(--accent-contrast)] shadow-sm">
+															{chatContactStatus?.unreadCount}
+														</span>
+													)}
+												</span>
 											</button>
 										)}
 									</div>

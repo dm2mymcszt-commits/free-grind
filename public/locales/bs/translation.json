@@ -558,6 +558,17 @@
             "recent_empty": "Nema nedavno poslanih GIF-ova.",
             "recent_empty_hint": "GIF-ovi koje pošalješ će se prikazati ovdje.",
             "send_confirm": "Pošalji GIF?"
+        },
+        "filter": {
+            "state_all": "Prikaži sve",
+            "state_hide": "Sakrij",
+            "state_only": "Samo"
+        },
+        "hidden": {
+            "filter_label": "Skriveno"
+        },
+        "archived": {
+            "filter_label": "Arhivirano"
         }
     },
     "profile_details": {
@@ -652,7 +663,8 @@
         "options": {
             "unread": "",
             "chemistry": ""
-        }
+        },
+        "visibility": "Vidljivost"
     },
     "interest_page": {
         "empty_views": "No views yet",
@@ -676,5 +688,11 @@
         "cancel": "Otkaži",
         "save": "Sačuvaj",
         "edit": "Uredi"
+    },
+    "privacy": {
+        "read_receipts_grid_unread_note": "Ako su potvrde o čitanju isključene, server ne može znati da ste pročitali poruku — razgovor se stoga na Gridu i dalje može prikazivati kao nepročitan, čak i nakon što ste ga pročitali ili obrisali."
+    },
+    "grid": {
+        "open_profile_by_id": "Otvori profil putem ID-a"
     }
 }

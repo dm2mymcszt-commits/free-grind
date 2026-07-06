@@ -1,7 +1,7 @@
 import i18n from "../../../i18n";
 import { useEffect, useState } from "react";
 import type { ConversationEntry, InboxFilters, Message } from "../../../types/messages";
-import type { UiMessage } from "../../../types/chat-page";
+import type { InboxVisibilityFilter, UiMessage } from "../../../types/chat-page";
 import type { MediaKind } from "../../../types/chat-db";
 import {
 	getProfileImageUrl,
@@ -18,6 +18,25 @@ export type ChatFiltersDraft = {
 	onlineNowOnly: boolean;
 	distanceMeters: string;
 	positions: number[];
+	// Not part of InboxFilters (they never touch the server request) — these
+	// three ride along in the same draft/apply/clear cycle purely so the
+	// filter overlay can offer one unified "apply"/"clear all" experience.
+	pinnedFilter: InboxVisibilityFilter;
+	archivedFilter: InboxVisibilityFilter;
+	hiddenFilter: InboxVisibilityFilter;
+};
+
+export type ChatFiltersVisibilityState = {
+	pinnedFilter: InboxVisibilityFilter;
+	archivedFilter: InboxVisibilityFilter;
+	hiddenFilter: InboxVisibilityFilter;
+};
+
+export const defaultChatFiltersVisibilityState: ChatFiltersVisibilityState = {
+	pinnedFilter: "all",
+	archivedFilter: "all",
+	// Hidden chats default to actually being hidden — that's the point of the feature.
+	hiddenFilter: "hide",
 };
 
 export type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
@@ -26,7 +45,10 @@ export function isNumberArray(value: unknown): value is number[] {
 	return Array.isArray(value) && value.every((item) => typeof item === "number");
 }
 
-export function buildChatFiltersDraft(filters: InboxFilters): ChatFiltersDraft {
+export function buildChatFiltersDraft(
+	filters: InboxFilters,
+	visibility: ChatFiltersVisibilityState = defaultChatFiltersVisibilityState,
+): ChatFiltersDraft {
 	return {
 		unreadOnly: filters.unreadOnly === true,
 		chemistryOnly: filters.chemistryOnly === true,
@@ -38,6 +60,9 @@ export function buildChatFiltersDraft(filters: InboxFilters): ChatFiltersDraft {
 				? String(filters.distanceMeters)
 				: "",
 		positions: filters.positions ?? [],
+		pinnedFilter: visibility.pinnedFilter,
+		archivedFilter: visibility.archivedFilter,
+		hiddenFilter: visibility.hiddenFilter,
 	};
 }
 

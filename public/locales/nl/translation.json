@@ -544,7 +544,18 @@
             "cleared_local_history": "",
             "album_shared": ""
         },
-        "load_more": ""
+        "load_more": "",
+        "filter": {
+            "state_all": "Alles tonen",
+            "state_hide": "Verbergen",
+            "state_only": "Alleen"
+        },
+        "hidden": {
+            "filter_label": "Verborgen"
+        },
+        "archived": {
+            "filter_label": "Gearchiveerd"
+        }
     },
     "profile_details": {
         "loading": "",
@@ -651,7 +662,8 @@
         "options": {
             "unread": "",
             "chemistry": ""
-        }
+        },
+        "visibility": "Zichtbaarheid"
     },
     "interest_page": {
         "empty_views": "No views yet",
@@ -675,5 +687,11 @@
         "cancel": "Annuleren",
         "save": "Opslaan",
         "edit": "Bewerken"
+    },
+    "privacy": {
+        "read_receipts_grid_unread_note": "Als leesbevestigingen zijn uitgeschakeld, kan de server niet weten dat je een bericht hebt gelezen — een chat kan daardoor in het Grid nog steeds als ongelezen worden weergegeven, zelfs nadat je hem hebt gelezen of verwijderd."
+    },
+    "grid": {
+        "open_profile_by_id": "Profiel openen via ID"
     }
 }

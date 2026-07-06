@@ -577,6 +577,17 @@
         "toasts": {
             "cleared_local_history": "",
             "album_shared": ""
+        },
+        "filter": {
+            "state_all": "Prikaži vse",
+            "state_hide": "Skrij",
+            "state_only": "Samo"
+        },
+        "hidden": {
+            "filter_label": "Skrito"
+        },
+        "archived": {
+            "filter_label": "Arhivirano"
         }
     },
     "profile_details": {
@@ -659,7 +670,8 @@
         "options": {
             "unread": "",
             "chemistry": ""
-        }
+        },
+        "visibility": "Vidnost"
     },
     "interest_page": {
         "empty_views": "No views yet",
@@ -683,5 +695,11 @@
         "cancel": "Prekliči",
         "save": "Shrani",
         "edit": "Uredi"
+    },
+    "privacy": {
+        "read_receipts_grid_unread_note": "Če so potrdila o prebranju izklopljena, strežnik ne more vedeti, da ste prebrali sporočilo — pogovor lahko zato na Gridu še vedno prikazuje kot neprebran, tudi potem, ko ste ga prebrali ali izbrisali."
+    },
+    "grid": {
+        "open_profile_by_id": "Odpri profil po ID-ju"
     }
 }

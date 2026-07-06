@@ -66,6 +66,7 @@ type ConversationRow = {
 	archived: number;
 	archived_reason: string | null;
 	archived_at: number | null;
+	hidden: number;
 	block_state: string | null;
 	last_seen_in_inbox_at: number | null;
 	messages_synced_activity_timestamp: number | null;
@@ -200,6 +201,15 @@ async function getDb(): Promise<Database> {
 					await db.execute(
 						"ALTER TABLE conversations ADD COLUMN messages_synced_activity_timestamp INTEGER",
 					);
+				} catch {
+					// already migrated
+				}
+				// Added later: manual, local-only "hide this chat from the inbox"
+				// flag — unlike `archived` (server says the conversation is gone),
+				// hidden conversations still round-trip through /v4/inbox normally;
+				// this only affects the client-side filteredConversations view.
+				try {
+					await db.execute("ALTER TABLE conversations ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0");
 				} catch {
 					// already migrated
 				}
@@ -501,6 +511,7 @@ function rowToStoredConversation(row: ConversationRow): StoredConversation {
 		archived: Boolean(row.archived),
 		archivedReason: (row.archived_reason as ArchivedReason | null) ?? null,
 		archivedAt: row.archived_at,
+		hidden: Boolean(row.hidden),
 		blockState: (row.block_state as BlockState | null) ?? null,
 		lastSeenInInboxAt: row.last_seen_in_inbox_at,
 		messagesSyncedActivityTimestamp: row.messages_synced_activity_timestamp,
@@ -695,6 +706,32 @@ export async function setConversationArchived(
 			[conversationId, archived ? 1 : 0, archived ? reason : null, archived ? now : null, now],
 		);
 	});
+}
+
+export async function setConversationHidden(
+	conversationId: string,
+	hidden: boolean,
+): Promise<void> {
+	const db = await getDb();
+	const now = Date.now();
+
+	await executeWithLockRetry(db, "set-conversation-hidden", async () => {
+		await db.execute(
+			"UPDATE conversations SET hidden = $2, updated_at = $3 WHERE conversation_id = $1",
+			[conversationId, hidden ? 1 : 0, now],
+		);
+	});
+}
+
+/** All conversation ids currently flagged hidden — used to hydrate ChatPage's
+ * in-memory set once on mount, since hidden conversations are otherwise
+ * indistinguishable from any other row in a normal inbox fetch. */
+export async function listHiddenConversationIds(): Promise<string[]> {
+	const db = await getDb();
+	const rows = await db.select<{ conversation_id: string }[]>(
+		"SELECT conversation_id FROM conversations WHERE hidden = 1",
+	);
+	return rows.map((row) => row.conversation_id);
 }
 
 /**
@@ -1536,7 +1573,7 @@ const FULL_EXPORT_TABLES: {
 		columns: [
 			"conversation_id", "other_profile_id", "name", "participants_json",
 			"last_activity_timestamp", "unread_count", "pinned", "muted", "favorite",
-			"preview_json", "archived", "archived_reason", "archived_at",
+			"preview_json", "archived", "archived_reason", "archived_at", "hidden",
 			"last_seen_in_inbox_at", "created_at", "updated_at",
 		],
 	},

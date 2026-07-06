@@ -1,4 +1,4 @@
-import { Archive, EyeOff, Loader2, MessageCircle, Pin, PinOff, Trash2 } from "lucide-react";
+import { Archive, Eye, EyeOff, Loader2, MessageCircle, Pin, PinOff, Trash2 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -103,9 +103,10 @@ type ChatInboxPanelProps = ChatInboxHeaderProps & {
 	onSelectConversation: (conversation: ConversationEntry) => void;
 	onOpenConversationById: (conversationId: string) => void;
 	onViewProfile: (profileId: number) => void;
-	onClearInboxFilters: () => void;
 	typingConversationIds?: Set<string>;
 	onTogglePinConversation: (conversationId: string, isPinned: boolean) => void | Promise<void>;
+	hiddenConversationIds: Set<string>;
+	onToggleHideConversation: (conversationId: string, isHidden: boolean) => void;
 	onDeleteConversation: (conversationId: string) => void | Promise<void>;
 	onDeleteConversationLocal: (conversationId: string) => void | Promise<void>;
 	isDeletingConversationId: string | null;
@@ -135,18 +136,22 @@ type ChatConversationRowProps = {
 function ConversationContextMenu({
 	conversation,
 	isArchived,
+	isHidden,
 	x,
 	y,
 	onClose,
 	onTogglePin,
+	onToggleHide,
 	onDelete,
 }: {
 	conversation: ConversationEntry;
 	isArchived: boolean;
+	isHidden: boolean;
 	x: number;
 	y: number;
 	onClose: () => void;
 	onTogglePin: () => void;
+	onToggleHide: () => void;
 	onDelete: () => void;
 }) {
 	const { t } = useTranslation();
@@ -206,6 +211,16 @@ function ConversationContextMenu({
 					{isPinned ? t("chat.unpin") : t("chat.pin")}
 				</button>
 			)}
+			<button
+				type="button"
+				onClick={onToggleHide}
+				className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--text)] transition hover:bg-[var(--surface-2)]"
+			>
+				{isHidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+				{isHidden
+					? t("chat.unhide_conversation", { defaultValue: "Unhide" })
+					: t("chat.hide_conversation", { defaultValue: "Hide" })}
+			</button>
 			<button
 				type="button"
 				onClick={onDelete}
@@ -518,7 +533,7 @@ export function ChatInboxPanel({
 	isLoadingMoreInbox,
 	inboxError,
 	inboxFilters,
-	hidePinned,
+	pinnedFilter,
 	hasActiveInboxFilters,
 	activeFilterCount,
 	filteredConversations,
@@ -544,14 +559,17 @@ export function ChatInboxPanel({
 	onSelectConversation,
 	onOpenConversationById,
 	onViewProfile,
-	onClearInboxFilters: _onClearInboxFilters,
-	onToggleHidePinned,
+	onClearInboxFilters,
 	onToggleFavoritesOnly,
-	hideArchived,
-	archivedCount,
-	onToggleHideArchived,
+	onToggleUnreadOnly,
+	onToggleRightNowOnly,
+	onToggleOnlineNowOnly,
+	archivedFilter,
+	hiddenFilter,
 	typingConversationIds,
 	onTogglePinConversation,
+	hiddenConversationIds,
+	onToggleHideConversation,
 	onDeleteConversation,
 	onDeleteConversationLocal,
 	isDeletingConversationId,
@@ -661,7 +679,7 @@ export function ChatInboxPanel({
 					userId={userId}
 					realtimeStatusMeta={realtimeStatusMeta}
 					inboxFilters={inboxFilters}
-					hidePinned={hidePinned}
+					pinnedFilter={pinnedFilter}
 					hasActiveInboxFilters={hasActiveInboxFilters}
 					activeFilterCount={activeFilterCount}
 					isSearchOpen={isSearchOpen}
@@ -671,10 +689,12 @@ export function ChatInboxPanel({
 					onSetIsFiltersOpen={onSetIsFiltersOpen}
 					onSetFiltersDraft={onSetFiltersDraft}
 					onToggleFavoritesOnly={onToggleFavoritesOnly}
-					onToggleHidePinned={onToggleHidePinned}
-					hideArchived={hideArchived}
-					archivedCount={archivedCount}
-					onToggleHideArchived={onToggleHideArchived}
+					onToggleUnreadOnly={onToggleUnreadOnly}
+					onToggleRightNowOnly={onToggleRightNowOnly}
+					onToggleOnlineNowOnly={onToggleOnlineNowOnly}
+					onClearInboxFilters={onClearInboxFilters}
+					archivedFilter={archivedFilter}
+					hiddenFilter={hiddenFilter}
 				/>
 			)}
 
@@ -806,6 +826,7 @@ export function ChatInboxPanel({
 				<ConversationContextMenu
 					conversation={contextMenuState.conversation}
 					isArchived={contextMenuState.isArchived}
+					isHidden={hiddenConversationIds.has(contextMenuState.conversation.data.conversationId)}
 					x={contextMenuState.x}
 					y={contextMenuState.y}
 					onClose={() => setContextMenuState(null)}
@@ -813,6 +834,14 @@ export function ChatInboxPanel({
 						const { conversation } = contextMenuState;
 						setContextMenuState(null);
 						void onTogglePinConversation(conversation.data.conversationId, conversation.data.pinned);
+					}}
+					onToggleHide={() => {
+						const { conversation } = contextMenuState;
+						setContextMenuState(null);
+						onToggleHideConversation(
+							conversation.data.conversationId,
+							hiddenConversationIds.has(conversation.data.conversationId),
+						);
 					}}
 					onDelete={() => {
 						setContextMenuState(null);

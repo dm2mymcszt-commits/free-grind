@@ -439,7 +439,8 @@
         "options": {
             "unread": "Unread",
             "chemistry": "Chemistry"
-        }
+        },
+        "visibility": "Visibility"
     },
     "about_page": {
         "badge": "About Free Grind",
@@ -703,7 +704,8 @@
         "read_receipts_hidden_badge": "Read receipts hidden for this chat",
         "profile_views": "Profile Views",
         "record_profile_views": "Record Profile Views",
-        "record_profile_views_desc": "Let people see that you've viewed their profile. Turn this off to browse profiles without leaving a trace."
+        "record_profile_views_desc": "Let people see that you've viewed their profile. Turn this off to browse profiles without leaving a trace.",
+        "read_receipts_grid_unread_note": "With read receipts off, there's no way to tell the server you've read a message — so a chat can still show up as unread on the Grid even after you've read or deleted it."
     },
     "customizability": {
         "subtitle": "Personalize the look and feel of the app.",
@@ -1163,6 +1165,17 @@
             "albums_empty_desc": "Albums shared with you will appear here",
             "media_empty_title": "No media received yet",
             "media_empty_desc": "Photos sent to you will appear here"
+        },
+        "filter": {
+            "state_all": "Show all",
+            "state_hide": "Hide",
+            "state_only": "Only"
+        },
+        "hidden": {
+            "filter_label": "Hidden"
+        },
+        "archived": {
+            "filter_label": "Archived"
         }
     },
     "chat_drawer": {
@@ -1543,5 +1556,8 @@
         "cancel": "Cancel",
         "save": "Save",
         "edit": "Edit"
+    },
+    "grid": {
+        "open_profile_by_id": "Open Profile by ID"
     }
 }
