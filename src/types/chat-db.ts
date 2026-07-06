@@ -15,6 +15,10 @@ export type StoredConversation = {
 	archived: boolean;
 	archivedReason: ArchivedReason | null;
 	archivedAt: number | null;
+	// Manual, local-only "hide from inbox" flag — unlike `archived`, a hidden
+	// conversation still round-trips through /v4/inbox normally; this only
+	// gates the client-side filteredConversations view.
+	hidden: boolean;
 	blockState: BlockState | null;
 	lastSeenInInboxAt: number | null;
 	// The conversation's lastActivityTimestamp as of the last time its messages

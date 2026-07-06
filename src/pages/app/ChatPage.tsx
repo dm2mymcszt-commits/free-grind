@@ -36,6 +36,12 @@ import {
 	type ChatArchiveStateChangeDetail,
 } from "../../services/conversationArchive";
 import {
+	hideConversation,
+	unhideConversation,
+	CHAT_HIDE_STATE_EVENT,
+	type ChatHideStateChangeDetail,
+} from "../../services/conversationHide";
+import {
 	CHAT_REALTIME_EVENT,
 	CHAT_REALTIME_STATUS,
 	CHAT_SYSTEM_MESSAGE_EVENT,
@@ -55,6 +61,7 @@ import type { RealtimeEnvelope, RealtimeStatus } from "../../types/chat-realtime
 import type {
 	AlbumListItem,
 	AlbumViewerState,
+	InboxVisibilityFilter,
 	UiMessage,
 } from "../../types/chat-page";
 import type { DrawerMedia } from "./chat/ChatDrawerPanel";
@@ -75,6 +82,7 @@ import {
 	buildBinaryUpload,
 	buildChatFiltersDraft,
 	buildPreviewFromMessage,
+	draftToFilters,
 	extractImageHashFromSignedUrl,
 	getMediaCaptureTarget,
 	isPreviewUnhelpful,
@@ -91,6 +99,7 @@ import {
     formatDateTime24,
 	type ChatFiltersDraft,
 } from "./chat/chatUtils";
+import { loadChatFiltersDraft, saveChatFiltersDraft } from "./chat/chat-filters-storage";
 import { fetchAndStoreMedia, hydrateMediaByMessageId, isSignedUrlExpired } from "../../services/mediaStore";
 import { captureAlbum, captureAlbumsForMessages, getLocalAlbum } from "../../services/albumStore";
 import { captureReplyPreviewsForMessages } from "../../services/replyMediaStore";
@@ -257,12 +266,16 @@ export function ChatPage() {
 	const [selectedDesktopConversationId, setSelectedDesktopConversationId] =
 		useState<string | null>(null);
 
-	const [hidePinned, setHidePinned] = useState(false);
-	const [hideArchived, setHideArchived] = useState(false);
+	const [pinnedFilter, setPinnedFilter] = useState<InboxVisibilityFilter>("all");
+	const [archivedFilter, setArchivedFilter] = useState<InboxVisibilityFilter>("all");
+	// Hidden chats default to actually being hidden — that's the point of the
+	// feature — unlike pinned/archived, which default to a mixed-in view.
+	const [hiddenFilter, setHiddenFilter] = useState<InboxVisibilityFilter>("hide");
+	const [hiddenConversationIds, setHiddenConversationIds] = useState<Set<string>>(new Set());
 
 	useEffect(() => {
-		void chatDb.getSetting<boolean>("chatHidePinned").then((value) => {
-			if (value != null) setHidePinned(value);
+		void chatDb.listHiddenConversationIds().then((ids) => {
+			setHiddenConversationIds(new Set(ids));
 		});
 	}, []);
 
@@ -272,16 +285,35 @@ export function ChatPage() {
 	const [chatIsFiltersOpen, setChatIsFiltersOpen] = useState(false);
 	const [chatFiltersDraft, setChatFiltersDraft] = useState<ChatFiltersDraft>(() => buildChatFiltersDraft({}));
 
-	const hidePinnedLoadedRef = useRef(false);
+	// Persisted per-profile — chatDb's settings table lives in the per-account
+	// chatDb file swapped in by setActiveChatDbUser, same mechanism GridPage
+	// uses for browseFilters. Reload whenever the active account's chatDb is
+	// ready (settingsReady), so switching accounts from within the app also
+	// switches filters instead of leaking the previous account's into the
+	// newly active one (mirrors useBrowseFilters' own reload effect).
 	useEffect(() => {
-		if (!hidePinnedLoadedRef.current) {
-			// Skip the very first run (mount with the default `false`) so it
-			// can't race the async load above and overwrite a stored `true`.
-			hidePinnedLoadedRef.current = true;
+		if (!settingsReady) return;
+		void loadChatFiltersDraft().then((draft) => {
+			setInboxFilters(draftToFilters(draft));
+			setPinnedFilter(draft.pinnedFilter);
+			setArchivedFilter(draft.archivedFilter);
+			setHiddenFilter(draft.hiddenFilter);
+		});
+	}, [userId, settingsReady]);
+
+	// Persist on every change, skipping the very first run (mount, with
+	// whatever the initial defaults are) so it can't race the async load
+	// above and overwrite a stored value — same pattern as useBrowseFilters.
+	const chatFiltersMountedRef = useRef(false);
+	useEffect(() => {
+		if (!chatFiltersMountedRef.current) {
+			chatFiltersMountedRef.current = true;
 			return;
 		}
-		void chatDb.setSetting("chatHidePinned", hidePinned);
-	}, [hidePinned]);
+		void saveChatFiltersDraft(
+			buildChatFiltersDraft(inboxFilters, { pinnedFilter, archivedFilter, hiddenFilter }),
+		);
+	}, [inboxFilters, pinnedFilter, archivedFilter, hiddenFilter]);
 
 	useEffect(() => {
 		if (!userId) return;
@@ -339,6 +371,9 @@ export function ChatPage() {
 		return next;
 	}, [inboxFilters]);
 
+	// Pinned/archived/hidden never touch the server request (unlike the rest
+	// of inboxFilters), but they now live in the same filter overlay, so they
+	// count toward the same "active filters" badge on the Filters pill.
 	const hasActiveInboxFilters =
 		Boolean(inboxFilters.unreadOnly) ||
 		Boolean(inboxFilters.chemistryOnly) ||
@@ -346,7 +381,10 @@ export function ChatPage() {
 		Boolean(inboxFilters.rightNowOnly) ||
 		Boolean(inboxFilters.onlineNowOnly) ||
 		(inboxFilters.positions?.length ?? 0) > 0 ||
-		inboxFilters.distanceMeters != null;
+		inboxFilters.distanceMeters != null ||
+		pinnedFilter !== "all" ||
+		archivedFilter !== "all" ||
+		hiddenFilter !== "hide";
 
 	const chatActiveFilterCount = [
 		inboxFilters.unreadOnly,
@@ -356,6 +394,9 @@ export function ChatPage() {
 		inboxFilters.onlineNowOnly,
 		inboxFilters.distanceMeters !== null && inboxFilters.distanceMeters !== undefined,
 		(inboxFilters.positions?.length ?? 0) > 0,
+		pinnedFilter !== "all",
+		archivedFilter !== "all",
+		hiddenFilter !== "hide",
 	].filter(Boolean).length;
 
 	const activeInboxFiltersRef = useRef(activeInboxFilters);
@@ -363,12 +404,36 @@ export function ChatPage() {
 
 	const clearInboxFilters = useCallback(() => {
 		setInboxFilters({});
+		setPinnedFilter("all");
+		setArchivedFilter("all");
+		setHiddenFilter("hide");
 	}, []);
 
 	const toggleInboxFavoritesOnly = useCallback(() => {
 		setInboxFilters((previous) => ({
 			...previous,
 			favoritesOnly: previous.favoritesOnly ? undefined : true,
+		}));
+	}, []);
+
+	const toggleInboxUnreadOnly = useCallback(() => {
+		setInboxFilters((previous) => ({
+			...previous,
+			unreadOnly: previous.unreadOnly ? undefined : true,
+		}));
+	}, []);
+
+	const toggleInboxRightNowOnly = useCallback(() => {
+		setInboxFilters((previous) => ({
+			...previous,
+			rightNowOnly: previous.rightNowOnly ? undefined : true,
+		}));
+	}, []);
+
+	const toggleInboxOnlineNowOnly = useCallback(() => {
+		setInboxFilters((previous) => ({
+			...previous,
+			onlineNowOnly: previous.onlineNowOnly ? undefined : true,
 		}));
 	}, []);
 
@@ -843,6 +908,36 @@ export function ChatPage() {
 	// Shared by every archive trigger (ws-delete, 404-on-open): records the
 	// reason plus a displayable entry, sourced from whatever's already loaded
 	// and falling back to chatDb for anything not currently in memory.
+	// A conversation archived via chat.v1.conversation.delete (blocked, either
+	// direction) is done for good — the normal markRead path never reaches it
+	// again, so any unread count it happened to carry at the moment of
+	// archiving would otherwise stay stuck forever. Read receipts on a dead
+	// conversation are moot either way, so clear it right away instead of
+	// waiting for the user to open the (now-archived) thread.
+	const clearUnreadForArchivedEntry = useCallback(
+		(entry: ConversationEntry) => {
+			if (!entry.data.unreadCount) {
+				return entry;
+			}
+			const conversationId = entry.data.conversationId;
+			void chatDb.setConversationUnreadCount(conversationId, 0).catch(() => {});
+			const other = getOtherParticipant(entry, userId);
+			if (other?.profileId) {
+				const pid = String(other.profileId);
+				void clearUnreadCountForProfile(pid).catch(() => {});
+				setChatContactIndexByProfileId((prev) => {
+					const existing = prev[pid];
+					if (!existing) {
+						return prev;
+					}
+					return { ...prev, [pid]: { ...existing, unreadCount: 0 } };
+				});
+			}
+			return { ...entry, data: { ...entry.data, unreadCount: 0 } };
+		},
+		[userId],
+	);
+
 	const archiveConversationsLocally = useCallback(
 		(ids: string[], reason: ArchivedReason) => {
 			const unresolved: string[] = [];
@@ -862,7 +957,10 @@ export function ChatPage() {
 				setArchivedConversations((previous) => {
 					const next = new Map(previous);
 					for (const [id, entry] of resolved) {
-						next.set(id, { reason, entry });
+						next.set(
+							id,
+							{ reason, entry: reason === "ws_delete" ? clearUnreadForArchivedEntry(entry) : entry },
+						);
 					}
 					return next;
 				});
@@ -875,7 +973,13 @@ export function ChatPage() {
 							const next = new Map(previous);
 							for (const result of results) {
 								if (result) {
-									next.set(result.conversationId, { reason, entry: result.entry });
+									next.set(result.conversationId, {
+										reason,
+										entry:
+											reason === "ws_delete"
+												? clearUnreadForArchivedEntry(result.entry)
+												: result.entry,
+									});
 								}
 							}
 							return next;
@@ -884,7 +988,7 @@ export function ChatPage() {
 				);
 			}
 		},
-		[],
+		[clearUnreadForArchivedEntry],
 	);
 
 	useEffect(() => {
@@ -1272,7 +1376,18 @@ export function ChatPage() {
 					const localCandidates = await chatDb.listConversationsSince(cutoff).catch(() => []);
 					recoveredEntries = localCandidates
 						.filter((c) => !responseIds.has(c.conversationId))
-						.map((c) => c.entry);
+						.map((c) => {
+							// The server has permanently stopped listing this
+							// conversation (see listConversationsSince's own doc
+							// comment) — there's no live truth left to ever mark it
+							// read through the normal path, so a stale unread count
+							// from before it disappeared would otherwise stay stuck
+							// forever. Treat it as read instead.
+							if (!c.entry.data.unreadCount) {
+								return c.entry;
+							}
+							return { ...c.entry, data: { ...c.entry.data, unreadCount: 0 } };
+						});
 				}
 
 				setConversations((previous) => {
@@ -2887,11 +3002,30 @@ export function ChatPage() {
 				}
 			}
 		};
+		// A conversation's hidden flag changed somewhere that doesn't have this
+		// page's in-memory state (e.g. another mounted instance) — mirror it
+		// here the same way onArchiveStateChange does for archived.
+		const onHideStateChange = (event: Event) => {
+			const detail = (event as CustomEvent<ChatHideStateChangeDetail>).detail;
+			if (!detail) return;
+			setHiddenConversationIds((previous) => {
+				const alreadyMatches = previous.has(detail.conversationId) === detail.hidden;
+				if (alreadyMatches) return previous;
+				const next = new Set(previous);
+				if (detail.hidden) {
+					next.add(detail.conversationId);
+				} else {
+					next.delete(detail.conversationId);
+				}
+				return next;
+			});
+		};
 		window.addEventListener(CHAT_REALTIME_EVENT, onEvent as EventListener);
 		window.addEventListener(CHAT_REALTIME_STATUS, onStatus as EventListener);
 		window.addEventListener(TYPING_STATUS_EVENT, onTyping as EventListener);
 		window.addEventListener(CHAT_SYSTEM_MESSAGE_EVENT, onSystemMessage as EventListener);
 		window.addEventListener(CHAT_ARCHIVE_STATE_EVENT, onArchiveStateChange as EventListener);
+		window.addEventListener(CHAT_HIDE_STATE_EVENT, onHideStateChange as EventListener);
 		return () => {
 			window.removeEventListener(CHAT_REALTIME_EVENT, onEvent as EventListener);
 			window.removeEventListener(
@@ -2906,6 +3040,10 @@ export function ChatPage() {
 			window.removeEventListener(
 				CHAT_ARCHIVE_STATE_EVENT,
 				onArchiveStateChange as EventListener,
+			);
+			window.removeEventListener(
+				CHAT_HIDE_STATE_EVENT,
+				onHideStateChange as EventListener,
 			);
 		};
 	}, [handleRealtimeEvent, handleRealtimeStatus, archiveConversationsLocally]);
@@ -3207,48 +3345,82 @@ export function ChatPage() {
 	);
 
 	const filteredConversations = useMemo(() => {
-		// The normal view shows everything, including archived chats, mixed
-		// in by recency. The "Archived" pill, when active, hides them instead
-		// of narrowing down to only them — same idea as hidePinned hiding
-		// pinned chats rather than the reverse. Archived entries are sourced
-		// from archivedConversations directly (never from `conversations`,
-		// which only ever mirrors live /v4/inbox data and so can never
-		// contain something that's by definition gone from there).
+		// The normal ("all") view shows everything, including archived chats,
+		// mixed in by recency. "hide" excludes them; "only" shows exclusively
+		// them. Archived entries are sourced from archivedConversations
+		// directly (never from `conversations`, which only ever mirrors live
+		// /v4/inbox data and so can never contain something that's by
+		// definition gone from there).
 		const liveConversations = conversations.filter(
 			(c) => !archivedConversations.has(c.data.conversationId),
 		);
+		// chemistryOnly/rightNowOnly/onlineNowOnly/distance/positions are
+		// server-side filters with no equivalent field cached on a stored
+		// conversation entry (unlike favoritesOnly/unreadOnly, re-checked
+		// below against the real data.favorite/unreadCount) — an archived
+		// conversation never went through that filtered /v4/inbox request, so
+		// there's no way to know whether it'd actually match one of these.
+		// Excluding archived entries entirely while any are active (instead
+		// of blindly merging all of them back in) avoids e.g. the "Right Now"
+		// filter showing pinned/archived chats that aren't Right Now at all.
+		const hasUnverifiableServerFilters =
+			Boolean(activeInboxFilters.chemistryOnly) ||
+			Boolean(activeInboxFilters.rightNowOnly) ||
+			Boolean(activeInboxFilters.onlineNowOnly) ||
+			(activeInboxFilters.positions?.length ?? 0) > 0 ||
+			activeInboxFilters.distanceMeters != null;
+		const archivedEntries = hasUnverifiableServerFilters
+			? []
+			: [...archivedConversations.values()].map((info) => info.entry);
+		// Sort by pinned-then-recency instead of tacking archived entries onto
+		// the end, where a single archived chat among many active ones would
+		// be easy to miss without scrolling.
+		const byPinnedThenRecency = (a: ConversationEntry, b: ConversationEntry) => {
+			if (a.data.pinned && !b.data.pinned) return -1;
+			if (b.data.pinned && !a.data.pinned) return 1;
+			return (b.data.lastActivityTimestamp ?? 0) - (a.data.lastActivityTimestamp ?? 0);
+		};
 
 		let result: ConversationEntry[];
-		if (hideArchived) {
+		if (archivedFilter === "hide") {
 			result = liveConversations;
+		} else if (archivedFilter === "only") {
+			result = [...archivedEntries].sort(byPinnedThenRecency);
 		} else {
-			const archivedEntries = [...archivedConversations.values()].map(
-				(info) => info.entry,
-			);
-			// Sort archived entries back into their natural position (by
-			// recency) instead of always tacking them on at the very end,
-			// where a single archived chat among many active ones would be
-			// easy to miss without scrolling.
-			result = [...liveConversations, ...archivedEntries].sort((a, b) => {
-				if (a.data.pinned && !b.data.pinned) return -1;
-				if (b.data.pinned && !a.data.pinned) return 1;
-				return (b.data.lastActivityTimestamp ?? 0) - (a.data.lastActivityTimestamp ?? 0);
-			});
+			result = [...liveConversations, ...archivedEntries].sort(byPinnedThenRecency);
 		}
 
 		if (activeInboxFilters.favoritesOnly) {
 			result = result.filter((c) => c.data.favorite);
 		}
-		if (hidePinned) {
+		if (activeInboxFilters.unreadOnly) {
+			result = result.filter((c) => (c.data.unreadCount ?? 0) > 0);
+		}
+		if (pinnedFilter === "hide") {
 			result = result.filter((c) => !c.data.pinned);
+		} else if (pinnedFilter === "only") {
+			result = result.filter((c) => c.data.pinned);
+		}
+		if (hiddenFilter === "hide") {
+			result = result.filter((c) => !hiddenConversationIds.has(c.data.conversationId));
+		} else if (hiddenFilter === "only") {
+			result = result.filter((c) => hiddenConversationIds.has(c.data.conversationId));
 		}
 		return result;
 	}, [
 		conversations,
-		hidePinned,
+		pinnedFilter,
 		activeInboxFilters.favoritesOnly,
+		activeInboxFilters.unreadOnly,
+		activeInboxFilters.chemistryOnly,
+		activeInboxFilters.rightNowOnly,
+		activeInboxFilters.onlineNowOnly,
+		activeInboxFilters.positions,
+		activeInboxFilters.distanceMeters,
 		archivedConversations,
-		hideArchived,
+		archivedFilter,
+		hiddenFilter,
+		hiddenConversationIds,
 	]);
 
 	// Scroll memory: save position on scroll (re-attaches when list mounts/unmounts)
@@ -3489,6 +3661,38 @@ export function ChatPage() {
 		return togglePinConversation(selectedConversation.data.conversationId, selectedConversation.data.pinned);
 	}, [selectedConversation, togglePinConversation]);
 
+	// Purely local preference — no server round-trip, so this updates
+	// optimistically and durably in one step (unlike togglePinConversation,
+	// which has to wait on the server call before it can flip local state).
+	const toggleHideConversation = useCallback((conversationId: string, isHidden: boolean) => {
+		setHiddenConversationIds((previous) => {
+			const next = new Set(previous);
+			if (isHidden) {
+				next.delete(conversationId);
+			} else {
+				next.add(conversationId);
+			}
+			return next;
+		});
+		void (isHidden ? unhideConversation(conversationId) : hideConversation(conversationId));
+		toast.success(
+			isHidden
+				? t("chat.toasts.conversation_unhidden", { defaultValue: "Chat unhidden" })
+				: t("chat.toasts.conversation_hidden", { defaultValue: "Chat hidden" }),
+		);
+	}, [t]);
+
+	const isSelectedConversationHidden = selectedConversation
+		? hiddenConversationIds.has(selectedConversation.data.conversationId)
+		: false;
+
+	const toggleHide = useCallback(() => {
+		if (!selectedConversation) {
+			return;
+		}
+		toggleHideConversation(selectedConversation.data.conversationId, isSelectedConversationHidden);
+	}, [selectedConversation, isSelectedConversationHidden, toggleHideConversation]);
+
 	const toggleMute = async () => {
 		if (!selectedConversation || isUpdatingConversationState) {
 			return;
@@ -3536,6 +3740,26 @@ export function ChatPage() {
 				// other", inserting a false "You were blocked" system message.
 				markConversationDeleteHandled(conversationId);
 
+				// Resolved once, up front, so both the read-clearing step
+				// immediately below, the album-revoke step further down, and the
+				// contact-index cleanup after the cascade can all use it.
+				const entry =
+					archivedConversationsRef.current.get(conversationId)?.entry ??
+					conversationsRef.current.find((c) => c.data.conversationId === conversationId);
+
+				// Deleting only removes the conversation from our own inbox — it
+				// doesn't tell the server we've read it, so its own unread count
+				// for this profile survives the delete and keeps showing up on
+				// the grid/profile tile (Math.max(local, server) in
+				// BrowseCardTile.tsx) even though the chat itself is gone. Mark it
+				// read first, while the conversation (and a message id to mark
+				// read up to) still exists server-side to do that against.
+				if (!localOnly && entry && entry.data.unreadCount > 0 && entry.data.preview?.messageId) {
+					await service
+						.markRead(conversationId, entry.data.preview.messageId)
+						.catch(() => {});
+				}
+
 				// Conversations already archived locally (block/404/inbox absence)
 				// have nothing server-side left worth deleting for us — and the
 				// server may already 404 on them — so those purges stay local-only.
@@ -3543,11 +3767,6 @@ export function ChatPage() {
 					await service.deleteConversation(conversationId);
 				}
 
-				// Resolved once, up front, so both the album-revoke step below and
-				// the contact-index cleanup after the cascade can use it.
-				const entry =
-					archivedConversationsRef.current.get(conversationId)?.entry ??
-					conversationsRef.current.find((c) => c.data.conversationId === conversationId);
 				let recipientProfileId =
 					entry && userId != null
 						? getOtherParticipant(entry, userId)?.profileId ?? null
@@ -5216,7 +5435,7 @@ export function ChatPage() {
 		userId,
 		realtimeStatusMeta,
 		inboxFilters,
-		hidePinned,
+		pinnedFilter,
 		hasActiveInboxFilters,
 		activeFilterCount: chatActiveFilterCount,
 		isSearchOpen: chatIsSearchOpen,
@@ -5226,10 +5445,12 @@ export function ChatPage() {
 		onSetIsFiltersOpen: setChatIsFiltersOpen,
 		onSetFiltersDraft: setChatFiltersDraft,
 		onToggleFavoritesOnly: toggleInboxFavoritesOnly,
-		onToggleHidePinned: () => setHidePinned((prev) => !prev),
-		hideArchived,
-		archivedCount: archivedConversations.size,
-		onToggleHideArchived: () => setHideArchived((prev) => !prev),
+		onToggleUnreadOnly: toggleInboxUnreadOnly,
+		onToggleRightNowOnly: toggleInboxRightNowOnly,
+		onToggleOnlineNowOnly: toggleInboxOnlineNowOnly,
+		onClearInboxFilters: clearInboxFilters,
+		archivedFilter,
+		hiddenFilter,
 	} as const;
 
 	const renderInbox = (
@@ -5260,9 +5481,10 @@ export function ChatPage() {
 				nextParams.set("returnTo", returnTo);
 				navigate(`/profile/${profileId}?${nextParams.toString()}`, { state: { returnTo } });
 			}}
-			onClearInboxFilters={clearInboxFilters}
 			typingConversationIds={typingConversationIds}
 			onTogglePinConversation={togglePinConversation}
+			hiddenConversationIds={hiddenConversationIds}
+			onToggleHideConversation={toggleHideConversation}
 			onDeleteConversation={deleteConversationFromChat}
 			onDeleteConversationLocal={deleteConversationLocalOnly}
 			isDeletingConversationId={isDeletingConversationId}
@@ -5285,6 +5507,8 @@ export function ChatPage() {
 			headerActionsMenuRef={headerActionsMenuRef}
 			togglePin={togglePin}
 			toggleMute={toggleMute}
+			isHidden={isSelectedConversationHidden}
+			toggleHide={toggleHide}
 			onDeleteConversation={deleteConversationFromChat}
 			isDeletingConversation={isDeletingConversationId !== null}
 			onBlockProfile={blockProfileFromChat}
@@ -5430,7 +5654,14 @@ export function ChatPage() {
 					draft={chatFiltersDraft}
 					onChangeDraft={setChatFiltersDraft}
 					onClose={() => setChatIsFiltersOpen(false)}
-					onApply={setInboxFilters}
+					archivedCount={archivedConversations.size}
+					hiddenCount={hiddenConversationIds.size}
+					onApply={(draft) => {
+						setInboxFilters(draftToFilters(draft));
+						setPinnedFilter(draft.pinnedFilter);
+						setArchivedFilter(draft.archivedFilter);
+						setHiddenFilter(draft.hiddenFilter);
+					}}
 				/>
 			)}
 

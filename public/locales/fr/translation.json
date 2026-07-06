@@ -746,7 +746,18 @@
         "favorite": "Favori",
         "share_album_label": "Partager l'album",
         "share_location_label": "Partager la localisation",
-        "share_location_confirm": "Partager cette localisation ?"
+        "share_location_confirm": "Partager cette localisation ?",
+        "filter": {
+            "state_all": "Tout afficher",
+            "state_hide": "Masquer",
+            "state_only": "Uniquement"
+        },
+        "hidden": {
+            "filter_label": "Masqué"
+        },
+        "archived": {
+            "filter_label": "Archivé"
+        }
     },
     "profile_details": {
         "title": "Détails du profil",
@@ -985,7 +996,8 @@
         "options": {
             "unread": "Non lus",
             "chemistry": "Alchimie"
-        }
+        },
+        "visibility": "Visibilité"
     },
     "interest_page": {
         "empty_views": "Aucune vue pour l'instant",
@@ -1272,6 +1284,10 @@
         "read_receipts_hidden_badge": "Accusés de lecture masqués pour cette conversation",
         "profile_views": "Visites de profil",
         "record_profile_views": "Enregistrer les visites de profil",
-        "record_profile_views_desc": "Permet aux autres de voir que vous avez consulté leur profil. Désactivez ceci pour parcourir les profils sans laisser de trace."
+        "record_profile_views_desc": "Permet aux autres de voir que vous avez consulté leur profil. Désactivez ceci pour parcourir les profils sans laisser de trace.",
+        "read_receipts_grid_unread_note": "Si les accusés de lecture sont désactivés, le serveur ne peut pas savoir que vous avez lu un message — une conversation peut donc encore apparaître comme non lue sur Grid, même après l'avoir lue ou supprimée."
+    },
+    "grid": {
+        "open_profile_by_id": "Ouvrir le profil par ID"
     }
 }

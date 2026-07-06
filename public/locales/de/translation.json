@@ -422,7 +422,8 @@
         "options": {
             "unread": "Ungelesen",
             "chemistry": "Chemie"
-        }
+        },
+        "visibility": "Sichtbarkeit"
     },
     "about_page": {
         "badge": "Über Free Grind",
@@ -680,7 +681,8 @@
         "read_receipts_hidden_badge": "Lesebestätigungen für diesen Chat versteckt",
         "profile_views": "Profilaufrufe",
         "record_profile_views": "Profilaufrufe aufzeichnen",
-        "record_profile_views_desc": "Lässt andere sehen, dass du ihr Profil besucht hast. Schalte dies aus, um Profile ohne Spuren zu durchstöbern."
+        "record_profile_views_desc": "Lässt andere sehen, dass du ihr Profil besucht hast. Schalte dies aus, um Profile ohne Spuren zu durchstöbern.",
+        "read_receipts_grid_unread_note": "Wenn Lesebestätigungen deaktiviert sind, kann der Server nicht wissen, dass du eine Nachricht gelesen hast — ein Chat kann daher im Grid weiterhin als ungelesen angezeigt werden, selbst nachdem du ihn gelesen oder gelöscht hast."
     },
     "customizability": {
         "subtitle": "Personalisiere das Aussehen der App.",
@@ -1110,6 +1112,17 @@
             "albums_empty_desc": "Mit dir geteilte Alben erscheinen hier",
             "media_empty_title": "Noch keine Medien empfangen",
             "media_empty_desc": "Dir gesendete Fotos erscheinen hier"
+        },
+        "filter": {
+            "state_all": "Alle anzeigen",
+            "state_hide": "Ausblenden",
+            "state_only": "Nur"
+        },
+        "hidden": {
+            "filter_label": "Versteckt"
+        },
+        "archived": {
+            "filter_label": "Archiviert"
         }
     },
     "chat_drawer": {
@@ -1484,5 +1497,8 @@
         "cancel": "Abbrechen",
         "save": "Speichern",
         "edit": "Bearbeiten"
+    },
+    "grid": {
+        "open_profile_by_id": "Profil per ID öffnen"
     }
 }
