@@ -1604,7 +1604,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 					<form
 						ref={composerRef}
 						onSubmit={onFormSubmit}
-						className={`relative ${!isDesktop ? "fixed bottom-0 left-0 right-0 z-30 px-[var(--app-px)] py-3" : "mt-3 pt-3 -mx-3 sm:-mx-4 px-3 sm:px-4"} border-t border-[var(--border)] bg-[var(--surface)]`}
+                        className={`${!isDesktop ? "fixed bottom-0 left-0 right-0 z-30 px-[var(--app-px)] py-3" : "relative mt-3 pt-3 -mx-3 sm:-mx-4 px-3 sm:px-4"} border-t border-[var(--border)] bg-[var(--surface)]`}
 						style={
 							!isDesktop
 								? {
