@@ -318,8 +318,8 @@
                 "about_me": "À propos de moi",
                 "about_me_placeholder": "Jusqu'à 255 caractères",
                 "my_tags": "Mes tags",
-                "my_tags_placeholder": "Mots-clés, séparés par des virgules",
-                "no_tags_added": "Aucun tag ajouté pour le moment."
+                "my_tags_manage": "Gérer les tags",
+                "no_tags_added": "Ajouter des tags"
             },
             "visiting_mode": {
                 "title": "Mode",
@@ -381,6 +381,10 @@
                 "description": "Gérer les champs d'identité",
                 "gender": "Genre",
                 "gender_unavailable": "Les options de genre ne sont pas disponibles pour le moment.",
+                "gender_more": "Plus de genres",
+                "gender_dialog_title": "Choisir des genres",
+                "gender_search_placeholder": "Rechercher des genres...",
+                "gender_no_matches": "Aucun genre ne correspond à votre recherche.",
                 "pronouns": "Pronoms",
                 "pronouns_unavailable": "Les options de pronoms ne sont pas disponibles pour le moment."
             },
@@ -427,7 +431,15 @@
         },
         "errors": {
             "display_name_length": "Le nom d'affichage ne peut pas dépasser 15 caractères.",
-            "about_me_length": "La description doit comporter moins de 255 caractères."
+            "about_me_length": "La description doit comporter moins de 255 caractères.",
+            "max_selection": "Vous pouvez sélectionner jusqu'à {{count}}."
+        },
+        "tags_dialog": {
+            "title": "Choisir des tags",
+            "unavailable": "Les tags ne sont pas disponibles pour le moment.",
+            "see_more": "Voir {{count}} de plus",
+            "search_placeholder": "Rechercher des tags...",
+            "no_matches": "Aucun tag ne correspond à votre recherche."
         }
     },
     "customizability": {
@@ -1140,7 +1152,9 @@
             "liveness_failed": "Échec de la vérification Liveness3d",
             "enrollment_failed": "Échec de l'inscription à la vérification",
             "document_failed": "Échec de la vérification du document",
-            "load_right_now": "Erreur lors du chargement de la page Right Now"
+            "load_right_now": "Erreur lors du chargement de la page Right Now",
+            "load_tags": "Échec du chargement des tags",
+            "invalid_tags_response": "Réponse de tags invalide"
         }
     },
     "errors": {

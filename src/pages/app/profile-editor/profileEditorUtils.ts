@@ -14,6 +14,8 @@ function isImperialHeight(unitsPreset: UnitsPreset): boolean {
 }
 
 export const MAX_PROFILE_PHOTOS = 5;
+export const MAX_PROFILE_TAGS = 10;
+export const MAX_GENDERS = 3;
 
 /** Media moderation review state, as returned per-item in a profile's `medias` array. */
 export const MEDIA_MODERATION_STATE = {
@@ -172,6 +174,16 @@ export function normalizeTagList(value: string): string[] {
 		.split(",")
 		.map((item) => item.trim())
 		.filter(Boolean);
+}
+
+/** Adds/removes a tag (case-insensitively) from a comma-separated tag text, for the tag picker dialog. */
+export function toggleProfileTagText(currentText: string, tag: string): string {
+	const list = normalizeTagList(currentText);
+	const exists = list.some((item) => item.toLowerCase() === tag.toLowerCase());
+	const next = exists
+		? list.filter((item) => item.toLowerCase() !== tag.toLowerCase())
+		: [...list, tag];
+	return next.join(", ");
 }
 
 import { calculateSquareCrop } from "../../../utils/media";

@@ -258,7 +258,7 @@
                 "about_me": "",
                 "about_me_placeholder": "",
                 "my_tags": "",
-                "my_tags_placeholder": "",
+                "my_tags_manage": "",
                 "no_tags_added": ""
             },
             "visiting_mode": {
@@ -319,6 +319,10 @@
                 "description": "",
                 "gender": "",
                 "gender_unavailable": "",
+                "gender_more": "",
+                "gender_dialog_title": "",
+                "gender_search_placeholder": "",
+                "gender_no_matches": "",
                 "pronouns": "",
                 "pronouns_unavailable": ""
             },
@@ -365,7 +369,15 @@
         },
         "errors": {
             "display_name_length": "",
-            "about_me_length": ""
+            "about_me_length": "",
+            "max_selection": ""
+        },
+        "tags_dialog": {
+            "title": "",
+            "unavailable": "",
+            "see_more": "",
+            "search_placeholder": "",
+            "no_matches": ""
         }
     },
     "browse_page": {

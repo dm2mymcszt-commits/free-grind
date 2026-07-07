@@ -106,24 +106,40 @@ export function useUnblockProfile() {
 /**
  * Hook to fetch managed genders.
  */
-export function useManagedGenders() {
+export function useManagedGenders(enabled: boolean = true) {
 	const api = useApiFunctions();
 	return useQuery({
 		queryKey: ["managed-genders"],
 		queryFn: () => api.getManagedGenders(),
 		staleTime: Infinity, // These rarely change
+		enabled,
 	});
 }
 
 /**
  * Hook to fetch managed pronouns.
  */
-export function useManagedPronouns() {
+export function useManagedPronouns(enabled: boolean = true) {
 	const api = useApiFunctions();
 	return useQuery({
 		queryKey: ["managed-pronouns"],
 		queryFn: () => api.getManagedPronouns(),
 		staleTime: Infinity, // These rarely change
+		enabled,
+	});
+}
+
+/**
+ * Hook to fetch the managed tag catalog (categories + selectable tags), used
+ * both by the profile editor's tag picker and the grid tag-search filter.
+ */
+export function useManagedTagCategories(locale: string, enabled: boolean = true) {
+	const api = useApiFunctions();
+	return useQuery({
+		queryKey: ["managed-tag-categories", locale],
+		queryFn: () => api.getManagedTagCategories(locale),
+		staleTime: Infinity, // These rarely change
+		enabled,
 	});
 }
 

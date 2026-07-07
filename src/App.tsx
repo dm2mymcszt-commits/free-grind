@@ -41,6 +41,7 @@ import { PushNotificationBridge } from "./components/PushNotificationBridge";
 import { ChatRealtimeBridge } from "./components/ChatRealtimeBridge";
 import { ActiveRouteBridge } from "./components/ActiveRouteBridge";
 import { EntitlementsBridge } from "./components/EntitlementsBridge";
+import { ManagedOptionsCacheBridge } from "./components/ManagedOptionsCacheBridge";
 import { SplashReadyBridge } from "./components/SplashReadyBridge";
 import { SmoothScroll } from "./components/SmoothScroll";
 import { usePreferences } from "./contexts/PreferencesContext";
@@ -179,6 +180,7 @@ export default function App() {
 					) : (<>
 					{renderPhase >= 1 && <ManagerModeRedirect />}
 					{renderPhase >= 2 && <PushNotificationBridge />}
+					{renderPhase >= 2 && <ManagedOptionsCacheBridge />}
 					{renderPhase >= 3 && <ChatRealtimeBridge />}
 					{renderPhase >= 4 && <ActiveRouteBridge />}
 					{renderPhase >= 5 && (

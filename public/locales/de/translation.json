@@ -556,8 +556,8 @@
                 "about_me": "Über mich",
                 "about_me_placeholder": "Bis zu 255 Zeichen",
                 "my_tags": "Meine Tags",
-                "my_tags_placeholder": "Schlüsselwörter, durch Kommas getrennt",
-                "no_tags_added": "Noch keine Tags hinzugefügt."
+                "my_tags_manage": "Tags verwalten",
+                "no_tags_added": "Tags hinzufügen"
             },
             "visiting_mode": {
                 "title": "Modus",
@@ -619,6 +619,10 @@
                 "description": "Verwaltete Identitätsfelder",
                 "gender": "Geschlecht",
                 "gender_unavailable": "Geschlechtsoptionen sind momentan nicht verfügbar.",
+                "gender_more": "Weitere Geschlechter",
+                "gender_dialog_title": "Geschlechter auswählen",
+                "gender_search_placeholder": "Geschlechter suchen...",
+                "gender_no_matches": "Keine Geschlechter gefunden.",
                 "pronouns": "Pronomen",
                 "pronouns_unavailable": "Pronomenoptionen sind momentan nicht verfügbar."
             },
@@ -668,7 +672,15 @@
         },
         "errors": {
             "display_name_length": "Der Anzeigename darf nicht länger als 15 Zeichen sein.",
-            "about_me_length": "Über mich muss unter 255 Zeichen bleiben."
+            "about_me_length": "Über mich muss unter 255 Zeichen bleiben.",
+            "max_selection": "Du kannst maximal {{count}} auswählen."
+        },
+        "tags_dialog": {
+            "title": "Tags auswählen",
+            "unavailable": "Tags sind gerade nicht verfügbar.",
+            "see_more": "{{count}} weitere anzeigen",
+            "search_placeholder": "Tags suchen...",
+            "no_matches": "Keine Tags gefunden."
         }
     },
     "privacy": {
@@ -1439,7 +1451,9 @@
             "enrollment_failed": "Registrierung fehlgeschlagen",
             "document_failed": "Dokumentenprüfung fehlgeschlagen",
             "load_right_now": "Right Now Feed konnte nicht geladen werden",
-            "session_right_now": "Session konnte nicht gestartet werden"
+            "session_right_now": "Session konnte nicht gestartet werden",
+            "load_tags": "Tags konnten nicht geladen werden",
+            "invalid_tags_response": "Ungültige Antwort für Tags"
         }
     },
     "errors": {

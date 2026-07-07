@@ -424,8 +424,8 @@
                 "about_me": "Sobre mim",
                 "about_me_placeholder": "Até 255 caracteres",
                 "my_tags": "Minhas etiquetas",
-                "my_tags_placeholder": "Etiquetas de palavras-chave, separadas por vírgulas",
-                "no_tags_added": "Nenhuma etiqueta adicionada ainda."
+                "my_tags_manage": "Gerenciar etiquetas",
+                "no_tags_added": "Adicionar etiquetas"
             },
             "states": {
                 "title": "Stats",
@@ -465,6 +465,10 @@
                 "description": "Campos de identidade gerenciados",
                 "gender": "Gênero",
                 "gender_unavailable": "As opções de gênero não estão disponíveis no momento.",
+                "gender_more": "Mais gêneros",
+                "gender_dialog_title": "Escolher gêneros",
+                "gender_search_placeholder": "Pesquisar gêneros...",
+                "gender_no_matches": "Nenhum gênero corresponde à sua pesquisa.",
                 "pronouns": "Pronomes",
                 "pronouns_unavailable": "As opções de pronomes não estão disponíveis no momento."
             },
@@ -531,7 +535,15 @@
         },
         "errors": {
             "display_name_length": "O nome de exibição deve ter no máximo 15 caracteres.",
-            "about_me_length": "A seção \"Sobre mim\" deve ter no máximo 255 caracteres."
+            "about_me_length": "A seção \"Sobre mim\" deve ter no máximo 255 caracteres.",
+            "max_selection": "Você pode selecionar até {{count}}."
+        },
+        "tags_dialog": {
+            "title": "Escolher etiquetas",
+            "unavailable": "As etiquetas não estão disponíveis no momento.",
+            "see_more": "Ver mais {{count}}",
+            "search_placeholder": "Pesquisar etiquetas...",
+            "no_matches": "Nenhuma etiqueta corresponde à sua pesquisa."
         }
     },
     "customizability": {
@@ -1129,7 +1141,9 @@
             "load_visiting_mode": "Falha ao carregar o modo de perfil",
             "invalid_visiting_mode_response": "Resposta do modo de perfil inválida",
             "save_visiting_mode": "Falha ao salvar o modo de perfil",
-            "session_right_now": "Falha ao iniciar a sessão"
+            "session_right_now": "Falha ao iniciar a sessão",
+            "load_tags": "Falha ao carregar as etiquetas",
+            "invalid_tags_response": "Resposta de etiquetas inválida"
         }
     },
     "errors": {

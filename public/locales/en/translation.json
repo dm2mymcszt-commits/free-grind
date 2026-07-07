@@ -587,8 +587,8 @@
                 "about_me": "About Me",
                 "about_me_placeholder": "Up to 255 characters",
                 "my_tags": "My Tags",
-                "my_tags_placeholder": "Keyword tags, separated by commas",
-                "no_tags_added": "No tags added yet."
+                "my_tags_manage": "Manage tags",
+                "no_tags_added": "Add tags"
             },
             "visiting_mode": {
                 "title": "Mode",
@@ -650,6 +650,10 @@
                 "description": "Managed identity fields",
                 "gender": "Gender",
                 "gender_unavailable": "Gender options are unavailable right now.",
+                "gender_more": "More genders",
+                "gender_dialog_title": "Choose genders",
+                "gender_search_placeholder": "Search genders...",
+                "gender_no_matches": "No genders match your search.",
                 "pronouns": "Pronouns",
                 "pronouns_unavailable": "Pronoun options are unavailable right now."
             },
@@ -699,13 +703,21 @@
         },
         "errors": {
             "display_name_length": "Display name cannot exceed 15 characters.",
-            "about_me_length": "About Me must stay under 255 characters."
+            "about_me_length": "About Me must stay under 255 characters.",
+            "max_selection": "You can select up to {{count}}."
         },
         "photo_upload": {
             "title": "Upload Picture",
             "confirm": "Upload",
             "taken_on_grindr": "Taken on Grindr watermark",
             "taken_on_grindr_description": "Include the timestamp to certify the authenticity and recency of your photo"
+        },
+        "tags_dialog": {
+            "title": "Choose tags",
+            "unavailable": "Tags aren't available right now.",
+            "see_more": "See {{count}} more",
+            "search_placeholder": "Search tags...",
+            "no_matches": "No tags match your search."
         }
     },
     "privacy": {
@@ -1512,7 +1524,9 @@
             "enrollment_failed": "Enrollment verification failed",
             "document_failed": "Document verification failed",
             "load_right_now": "Failed to load Right Now feed",
-            "session_right_now": "Failed to start session"
+            "session_right_now": "Failed to start session",
+            "load_tags": "Failed to load tags",
+            "invalid_tags_response": "Invalid tags response"
         }
     },
     "errors": {

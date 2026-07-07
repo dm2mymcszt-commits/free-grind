@@ -49,14 +49,9 @@ export const VERSION_ANNOUNCEMENTS: VersionAnnouncement[] = [
 				description: "Type / in a conversation to trigger quick actions.",
 			},
 			{
-				icon: Ban,
-				title: "Ban Logs within Chats",
-				description: "See a record of bans and unbans right inside the conversation.",
-			},
-			{
 				icon: History,
 				title: "Block Activity",
-				description: "Review who's blocked or unblocked you, and when, from a dedicated Settings page.",
+				description: "See who's blocked or unblocked you, and when, from a dedicated Settings page and withing the conversation.",
 			},
 			{
 				icon: Zap,
@@ -73,15 +68,15 @@ export const VERSION_ANNOUNCEMENTS: VersionAnnouncement[] = [
 				title: "Reply to Media",
 				description: "Reply directly to someone's profile photo from their profile or photos and videos shared in albums.",
 			},
+            {
+				icon: Sticker,
+				title: "Send Gifs",
+				description: "Search and send GIFs straight from the chat composer.",
+			},
 			{
 				icon: Share2,
 				title: "Album Share Management",
 				description: "Manage who you've shared albums with, and revoke access anytime.",
-			},
-			{
-				icon: Sticker,
-				title: "Send Gifs",
-				description: "Search and send GIFs straight from the chat composer.",
 			},
 			{
 				icon: ArrowUpDown,

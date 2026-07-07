@@ -16,6 +16,8 @@ import {
 	Sparkles,
 	Tag,
 	Trash2,
+	Users,
+	X,
 } from "lucide-react";
 import {
 	DndContext,
@@ -40,9 +42,18 @@ import {
 } from "../../../types/visiting";
 import { getThumbImageUrl } from "../../../utils/media";
 import { type UnitsPreset } from "../../../utils/units";
+import { Chip } from "../../../components/ui/chip";
 import { CategoryHeader, ChipGroup, ToggleRow } from "./ProfileEditorComponents";
 import { TravelPlansSection } from "./TravelPlansSection";
-import { MAX_PROFILE_PHOTOS, MEDIA_MODERATION_STATE, type ProfileDraft } from "./profileEditorUtils";
+import { TagsPickerDialog } from "./TagsPickerDialog";
+import { ManagedOptionsPickerDialog } from "./ManagedOptionsPickerDialog";
+import {
+	MAX_GENDERS,
+	MAX_PROFILE_PHOTOS,
+	MEDIA_MODERATION_STATE,
+	toggleProfileTagText,
+	type ProfileDraft,
+} from "./profileEditorUtils";
 
 export type PhotoModeration = { state: number | null; reason: string | null };
 
@@ -152,7 +163,7 @@ function SortablePhotoSlot({
 
 type Option = { value: number; label: string };
 
-type ToggleMultiValueKey =
+export type ToggleMultiValueKey =
 	| "lookingFor"
 	| "meetAt"
 	| "grindrTribes"
@@ -169,11 +180,13 @@ type ProfileEditorFormSectionsProps = {
 	onToggleMultiValue: (key: ToggleMultiValueKey, value: number) => void;
 	displayNameError: string | null;
 	aboutMeError: string | null;
+	tagsError: string | null;
 	tagList: string[];
 	profilePhotoHashes: string[];
 	photoModerationByHash?: Map<string, PhotoModeration>;
 	isSavingPhotos: boolean;
 	isUploadingPhoto: boolean;
+	isDesktop: boolean;
 	onUploadPhoto: (event: React.ChangeEvent<HTMLInputElement>) => void;
 	onRemovePhoto: (hash: string) => void;
 	onReorderPhotos: (newHashes: string[]) => void;
@@ -191,6 +204,7 @@ type ProfileEditorFormSectionsProps = {
 	meetAtOptions: Option[];
 	nsfwOptions: Option[];
 	genderOptions: Option[];
+	defaultGenderIds: number[];
 	pronounOptions: Option[];
 	hivStatusOptions: Option[];
 	sexualHealthOptions: Option[];
@@ -204,11 +218,13 @@ export function ProfileEditorFormSections({
 	onToggleMultiValue,
 	displayNameError,
 	aboutMeError,
+	tagsError,
 	tagList,
 	profilePhotoHashes,
 	photoModerationByHash,
 	isSavingPhotos,
 	isUploadingPhoto,
+	isDesktop,
 	onUploadPhoto,
 	onRemovePhoto,
 	onReorderPhotos,
@@ -226,6 +242,7 @@ export function ProfileEditorFormSections({
 	meetAtOptions,
 	nsfwOptions,
 	genderOptions,
+	defaultGenderIds,
 	pronounOptions,
 	hivStatusOptions,
 	sexualHealthOptions,
@@ -237,6 +254,8 @@ export function ProfileEditorFormSections({
 	const visitingModeDisabled = isLoadingVisitingMode || Boolean(visitingModeError);
 	const [activeId, setActiveId] = useState<string | null>(null);
 	const [overId, setOverId] = useState<string | null>(null);
+	const [isTagsDialogOpen, setIsTagsDialogOpen] = useState(false);
+	const [isGenderDialogOpen, setIsGenderDialogOpen] = useState(false);
 
 	const sensors = useSensors(
 		useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -329,7 +348,7 @@ export function ProfileEditorFormSections({
 						onDragCancel={() => { setActiveId(null); setOverId(null); }}
 					>
 						<SortableContext items={profilePhotoHashes} strategy={rectSortingStrategy}>
-							<div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+							<div className={`grid gap-3 ${isDesktop ? "grid-cols-3" : "grid-cols-2 sm:grid-cols-3"}`}>
 								{profilePhotoHashes.map((hash) => (
 									<SortablePhotoSlot
 										key={hash}
@@ -365,8 +384,6 @@ export function ProfileEditorFormSections({
 					) : null}
 				</div>
 			</div>
-
-			<TravelPlansSection profileId={profileId} />
 
 			{/* Profile / Basic Info */}
 			<div className="surface-card p-4 sm:p-5">
@@ -421,119 +438,50 @@ export function ProfileEditorFormSections({
 						<label className="mb-2 block text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
 							{t("profile_editor.sections.profile.my_tags")}
 						</label>
-						<input
-							type="text"
-							value={draft.profileTagsText}
-							onChange={(event) =>
-								onDraftChange("profileTagsText", event.target.value)
-							}
-							className="input-field"
-							placeholder={t("profile_editor.sections.profile.my_tags_placeholder")}
-						/>
-						<div className="mt-3 flex flex-wrap gap-2.5">
+						{tagsError && (
+							<p className="mb-2 text-xs text-red-400 sm:text-sm">{tagsError}</p>
+						)}
+						<div className="flex flex-wrap gap-2.5">
 							{tagList.length > 0 ? (
-								tagList.map((tag) => (
-									<span
-										key={tag}
-										className="rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-3 py-1 text-sm font-medium"
+								<>
+									{tagList.map((tag) => (
+										<button
+											key={tag}
+											type="button"
+											onClick={() =>
+												onDraftChange(
+													"profileTagsText",
+													toggleProfileTagText(draft.profileTagsText, tag),
+												)
+											}
+											className="group inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-3 py-1 text-sm font-medium transition-colors hover:border-[var(--accent)]"
+										>
+											{tag}
+											<X className="h-3 w-3 text-[var(--text-muted)] transition-colors group-hover:text-[var(--text)]" />
+										</button>
+									))}
+									<button
+										type="button"
+										onClick={() => setIsTagsDialogOpen(true)}
+										className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-[var(--border)] px-3 py-1 text-sm font-medium text-[var(--text-muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text)]"
 									>
-										{tag}
-									</span>
-								))
+										<Tag className="h-3.5 w-3.5" />
+										{t("profile_editor.sections.profile.my_tags_manage")}
+									</button>
+								</>
 							) : (
-								<div className="flex w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-[var(--border)] py-6 text-center">
-									<div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--surface-2)] text-[var(--text-muted)]">
-										<Tag className="h-4 w-4" />
-									</div>
-									<p className="text-sm text-[var(--text-muted)]">
-										{t("profile_editor.sections.profile.no_tags_added")}
-									</p>
-								</div>
+								<button
+									type="button"
+									onClick={() => setIsTagsDialogOpen(true)}
+									className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-[var(--border)] px-3 py-1 text-sm font-medium text-[var(--text-muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text)]"
+								>
+									<Plus className="h-3.5 w-3.5" />
+									{t("profile_editor.sections.profile.no_tags_added")}
+								</button>
 							)}
 						</div>
 					</div>
 				</div>
-			</div>
-
-			{/* Visiting Mode */}
-			<div className="surface-card p-4 sm:p-5">
-				<CategoryHeader
-					title={t("profile_editor.sections.visiting_mode.title")}
-					description={t("profile_editor.sections.visiting_mode.description")}
-					icon={MapPin}
-				/>
-				<div
-					role="radiogroup"
-					aria-label={t("profile_editor.sections.visiting_mode.title")}
-					className="divide-y divide-[var(--border)] overflow-hidden rounded-2xl border border-[var(--border)]"
-				>
-					{visitingModeOptions.map((option) => {
-						const active = option.value === visitingMode;
-						const Icon = option.icon;
-						const modeKey = getVisitingModeTranslationKey(option.value);
-
-						return (
-							<button
-								key={option.value}
-								type="button"
-								role="radio"
-								aria-checked={active}
-								disabled={visitingModeDisabled}
-								onClick={() => onVisitingModeChange(option.value)}
-								className={`flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60 ${
-									active
-										? "bg-[var(--accent)] text-[var(--accent-contrast)]"
-										: "hover:bg-[var(--surface-2)]"
-								}`}
-							>
-								<span
-									className={`shrink-0 rounded-2xl p-2.5 ${
-										active
-											? "bg-[var(--surface)] text-[var(--accent)]"
-											: "bg-[var(--surface-2)] text-[var(--text-muted)]"
-									}`}
-								>
-									<Icon className="h-5 w-5" strokeWidth={2.1} />
-								</span>
-								<span className="min-w-0 flex-1">
-									<span className="block text-sm font-semibold leading-snug">
-										{t(`profile_editor.sections.visiting_mode.options.${modeKey}.label`)}
-									</span>
-									<span
-										className={`mt-0.5 block text-xs leading-relaxed ${
-											active
-												? "text-[var(--accent-contrast)]/75"
-												: "text-[var(--text-muted)]"
-										}`}
-									>
-										{t(`profile_editor.sections.visiting_mode.options.${modeKey}.description`)}
-									</span>
-								</span>
-								<span
-									className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
-										active
-											? "border-[var(--accent-contrast)] bg-[var(--accent-contrast)]"
-											: "border-[var(--border)]"
-									}`}
-								>
-									{active && (
-										<span className="h-2 w-2 rounded-full bg-[var(--accent)]" />
-									)}
-								</span>
-							</button>
-						);
-					})}
-				</div>
-				{isLoadingVisitingMode || visitingModeError ? (
-					<p
-						className={`mt-3 text-xs leading-relaxed ${
-							visitingModeError ? "text-red-300" : "text-[var(--text-muted)]"
-						}`}
-					>
-						{visitingModeError ??
-							t("profile_editor.sections.visiting_mode.loading")}
-					</p>
-				) : null}
 			</div>
 
 			{/* Stats / States */}
@@ -731,6 +679,89 @@ export function ProfileEditorFormSections({
 				</div>
 			</div>
 
+			<TravelPlansSection profileId={profileId} />
+
+			{/* Visiting Mode */}
+			<div className="surface-card p-4 sm:p-5">
+				<CategoryHeader
+					title={t("profile_editor.sections.visiting_mode.title")}
+					description={t("profile_editor.sections.visiting_mode.description")}
+					icon={MapPin}
+				/>
+				<div
+					role="radiogroup"
+					aria-label={t("profile_editor.sections.visiting_mode.title")}
+					className="divide-y divide-[var(--border)] overflow-hidden rounded-2xl border border-[var(--border)]"
+				>
+					{visitingModeOptions.map((option) => {
+						const active = option.value === visitingMode;
+						const Icon = option.icon;
+						const modeKey = getVisitingModeTranslationKey(option.value);
+
+						return (
+							<button
+								key={option.value}
+								type="button"
+								role="radio"
+								aria-checked={active}
+								disabled={visitingModeDisabled}
+								onClick={() => onVisitingModeChange(option.value)}
+								className={`flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60 ${
+									active
+										? "bg-[var(--accent)] text-[var(--accent-contrast)]"
+										: "hover:bg-[var(--surface-2)]"
+								}`}
+							>
+								<span
+									className={`shrink-0 rounded-2xl p-2.5 ${
+										active
+											? "bg-[var(--surface)] text-[var(--accent)]"
+											: "bg-[var(--surface-2)] text-[var(--text-muted)]"
+									}`}
+								>
+									<Icon className="h-5 w-5" strokeWidth={2.1} />
+								</span>
+								<span className="min-w-0 flex-1">
+									<span className="block text-sm font-semibold leading-snug">
+										{t(`profile_editor.sections.visiting_mode.options.${modeKey}.label`)}
+									</span>
+									<span
+										className={`mt-0.5 block text-xs leading-relaxed ${
+											active
+												? "text-[var(--accent-contrast)]/75"
+												: "text-[var(--text-muted)]"
+										}`}
+									>
+										{t(`profile_editor.sections.visiting_mode.options.${modeKey}.description`)}
+									</span>
+								</span>
+								<span
+									className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
+										active
+											? "border-[var(--accent-contrast)] bg-[var(--accent-contrast)]"
+											: "border-[var(--border)]"
+									}`}
+								>
+									{active && (
+										<span className="h-2 w-2 rounded-full bg-[var(--accent)]" />
+									)}
+								</span>
+							</button>
+						);
+					})}
+				</div>
+				{isLoadingVisitingMode || visitingModeError ? (
+					<p
+						className={`mt-3 text-xs leading-relaxed ${
+							visitingModeError ? "text-red-300" : "text-[var(--text-muted)]"
+						}`}
+					>
+						{visitingModeError ??
+							t("profile_editor.sections.visiting_mode.loading")}
+					</p>
+				) : null}
+			</div>
+
 			{/* Expectations */}
 			<div className="surface-card p-4 sm:p-5">
 				<CategoryHeader
@@ -792,11 +823,33 @@ export function ProfileEditorFormSections({
 							{t("profile_editor.sections.identity.gender")}
 						</p>
 						{genderOptions.length > 0 ? (
-							<ChipGroup
-								options={genderOptions}
-								selected={draft.genders}
-								onToggle={(value) => onToggleMultiValue("genders", value)}
-							/>
+							<div className="flex flex-wrap gap-2.5">
+								{[
+									...defaultGenderIds,
+									...draft.genders.filter((value) => !defaultGenderIds.includes(value)),
+								].map((value) => {
+									const option = genderOptions.find((item) => item.value === value);
+									if (!option) return null;
+									const active = draft.genders.includes(value);
+									return (
+										<Chip
+											key={value}
+											selected={active}
+											onClick={() => onToggleMultiValue("genders", value)}
+										>
+											{option.label}
+										</Chip>
+									);
+								})}
+								<button
+									type="button"
+									onClick={() => setIsGenderDialogOpen(true)}
+									className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-[var(--border)] px-3.5 py-2 text-sm font-medium text-[var(--text-muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text)]"
+								>
+									<Users className="h-3.5 w-3.5" />
+									{t("profile_editor.sections.identity.gender_more")}
+								</button>
+							</div>
 						) : (
 							<p className="text-sm text-[var(--text-muted)]">
 								{t("profile_editor.sections.identity.gender_unavailable")}
@@ -949,6 +1002,28 @@ export function ProfileEditorFormSections({
 					</div>
 				</div>
 			</div>
+
+			{isTagsDialogOpen && (
+				<TagsPickerDialog
+					tagsText={draft.profileTagsText}
+					onChange={(next) => onDraftChange("profileTagsText", next)}
+					onClose={() => setIsTagsDialogOpen(false)}
+				/>
+			)}
+
+			{isGenderDialogOpen && (
+				<ManagedOptionsPickerDialog
+					title={t("profile_editor.sections.identity.gender_dialog_title")}
+					searchPlaceholder={t("profile_editor.sections.identity.gender_search_placeholder")}
+					noMatchesLabel={t("profile_editor.sections.identity.gender_no_matches")}
+					options={genderOptions}
+					selected={draft.genders}
+					max={MAX_GENDERS}
+					maxMessage={t("profile_editor.errors.max_selection", { count: MAX_GENDERS })}
+					onToggle={(value) => onToggleMultiValue("genders", value)}
+					onClose={() => setIsGenderDialogOpen(false)}
+				/>
+			)}
 		</div>
 	);
 }
