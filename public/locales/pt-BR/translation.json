@@ -424,8 +424,8 @@
                 "about_me": "Sobre mim",
                 "about_me_placeholder": "Até 255 caracteres",
                 "my_tags": "Minhas etiquetas",
-                "my_tags_placeholder": "Etiquetas de palavras-chave, separadas por vírgulas",
-                "no_tags_added": "Nenhuma etiqueta adicionada ainda."
+                "my_tags_manage": "Gerenciar etiquetas",
+                "no_tags_added": "Adicionar etiquetas"
             },
             "states": {
                 "title": "Stats",
@@ -462,9 +462,13 @@
             },
             "identity": {
                 "title": "Identidade",
-                "description": "Campos de identidade gerenciados",
+                "description": "Gênero e pronomes",
                 "gender": "Gênero",
                 "gender_unavailable": "As opções de gênero não estão disponíveis no momento.",
+                "gender_more": "Mais gêneros",
+                "gender_dialog_title": "Escolher gêneros",
+                "gender_search_placeholder": "Pesquisar gêneros...",
+                "gender_no_matches": "Nenhum gênero corresponde à sua pesquisa.",
                 "pronouns": "Pronomes",
                 "pronouns_unavailable": "As opções de pronomes não estão disponíveis no momento."
             },
@@ -474,7 +478,8 @@
                 "hiv_status": "Estado de HIV",
                 "last_tested": "Último teste realizado",
                 "health_practices": "Exames",
-                "vaccinations": "Vacinação"
+                "vaccinations": "Vacinação",
+                "test_reminder": "Já se passaram mais de 3 meses desde o seu último teste — considere fazer outro."
             },
             "social": {
                 "title": "Social",
@@ -531,7 +536,15 @@
         },
         "errors": {
             "display_name_length": "O nome de exibição deve ter no máximo 15 caracteres.",
-            "about_me_length": "A seção \"Sobre mim\" deve ter no máximo 255 caracteres."
+            "about_me_length": "A seção \"Sobre mim\" deve ter no máximo 255 caracteres.",
+            "max_selection": "Você pode selecionar até {{count}}."
+        },
+        "tags_dialog": {
+            "title": "Escolher etiquetas",
+            "unavailable": "As etiquetas não estão disponíveis no momento.",
+            "see_more": "Ver mais {{count}}",
+            "search_placeholder": "Pesquisar etiquetas...",
+            "no_matches": "Nenhuma etiqueta corresponde à sua pesquisa."
         }
     },
     "customizability": {
@@ -1129,7 +1142,9 @@
             "load_visiting_mode": "Falha ao carregar o modo de perfil",
             "invalid_visiting_mode_response": "Resposta do modo de perfil inválida",
             "save_visiting_mode": "Falha ao salvar o modo de perfil",
-            "session_right_now": "Falha ao iniciar a sessão"
+            "session_right_now": "Falha ao iniciar a sessão",
+            "load_tags": "Falha ao carregar as etiquetas",
+            "invalid_tags_response": "Resposta de etiquetas inválida"
         }
     },
     "errors": {
@@ -1281,5 +1296,14 @@
     },
     "grid": {
         "open_profile_by_id": "Abrir perfil por ID"
+    },
+    "test_reminder": {
+        "title": "Hora de um teste?",
+        "description": "Já se passaram mais de 3 meses desde o seu último teste. Escolha quando foi seu último teste, ou atualize depois no seu perfil.",
+        "save": "Salvar",
+        "saving": "Salvando...",
+        "skip": "Pular por agora",
+        "saved": "Data do teste atualizada",
+        "save_failed": "Não foi possível atualizar a data do teste."
     }
 }

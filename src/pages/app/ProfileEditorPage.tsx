@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import z from "zod";
 import ReactCrop, { type Crop, type PixelCrop } from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
@@ -21,7 +22,6 @@ import {
 	type VisitingMode,
 } from "../../types/visiting";
 import { getThumbImageUrl, validateMediaHash } from "../../utils/media";
-import { setCachedOwnProfilePhotoHash } from "./gridpage/cache";
 import { BackToSettings } from "../../components/BackToSettings";
 import { BottomDrawer } from "../../components/ui/bottom-drawer";
 import { ToggleRow } from "../../components/ui/toggle-row";
@@ -41,14 +41,16 @@ import {
 	getTribeOptions,
 	getVaccineOptions,
 } from "./profile-option-builders";
-import { ProfileEditorFormSections } from "./profile-editor/ProfileEditorFormSections";
+import { ProfileEditorFormSections, type ToggleMultiValueKey } from "./profile-editor/ProfileEditorFormSections";
 import {
+	MAX_GENDERS,
 	MAX_PROFILE_PHOTOS,
+	MAX_PROFILE_TAGS,
 	MEDIA_MODERATION_STATE,
 	type ProfileDraft,
 	buildSquareThumbCoords,
 	emptyDraft,
-	parseDateInput,
+	parseMonthInput,
 	parseNullableInteger,
 	parseNullableHeightToCm,
 	parseNullableWeightToGrams,
@@ -57,10 +59,25 @@ import {
 	profileToDraft,
 } from "./profile-editor/profileEditorUtils";
 
+// Grindr caps how many of each of these a profile can carry — enforced
+// client-side here since the multi-select toggle is the only way to add one.
+const MULTI_VALUE_MAX: Partial<Record<ToggleMultiValueKey, number>> = {
+	genders: MAX_GENDERS,
+	pronouns: 3,
+	grindrTribes: 3,
+	tribesImInto: 3,
+};
+
+// The curated inline quick-pick order (man, cis man, trans man, woman, cis
+// woman, trans woman, non-binary) — genderId is stable across the API, unlike
+// displayGroup ordering, which the server doesn't otherwise rank.
+const DEFAULT_GENDER_ORDER = [1, 4, 5, 2, 6, 7, 3];
+
 export function ProfileEditorPage() {
 	const { t } = useTranslation();
 	const { userId, logout } = useAuth();
 	const apiFunctions = useApiFunctions();
+	const queryClient = useQueryClient();
 	const navigate = useNavigate();
 	const { unitsPreset } = usePreferences();
 	const [profile, setProfile] = useState<z.infer<typeof profileSchema> | null>(
@@ -120,8 +137,26 @@ export function ProfileEditorPage() {
 	const { data: managedGenders } = useManagedGenders();
 	const { data: managedPronouns } = useManagedPronouns();
 
+	// sortFilter ranks most genders (ascending = intended order); the rest
+	// (sortFilter === null) just sort to the end, no special grouping.
 	const genderOptions = useMemo(() => {
-		return managedGenders?.map((item) => ({ value: item.genderId, label: item.gender })) ?? [];
+		const sorted = [...(managedGenders ?? [])].sort((a, b) => {
+			const left = a.sortFilter ?? Number.POSITIVE_INFINITY;
+			const right = b.sortFilter ?? Number.POSITIVE_INFINITY;
+			return left - right;
+		});
+		return sorted.map((item) => ({ value: item.genderId, label: item.gender }));
+	}, [managedGenders]);
+
+	const defaultGenderIds = useMemo(() => {
+		const groupOneIds = new Set(
+			(managedGenders ?? [])
+				.filter((item) => item.displayGroup === 1)
+				.map((item) => item.genderId),
+		);
+		const ordered = DEFAULT_GENDER_ORDER.filter((id) => groupOneIds.has(id));
+		const extra = [...groupOneIds].filter((id) => !DEFAULT_GENDER_ORDER.includes(id));
+		return [...ordered, ...extra];
 	}, [managedGenders]);
 
 	const pronounOptions = useMemo(() => {
@@ -345,6 +380,13 @@ export function ProfileEditorPage() {
 		[draft.profileTagsText],
 	);
 
+	const tagsError = useMemo(() => {
+		if (tagList.length > MAX_PROFILE_TAGS) {
+			return t("profile_editor.errors.max_selection", { count: MAX_PROFILE_TAGS });
+		}
+		return null;
+	}, [tagList, t]);
+
 	const profilePhotoHashes = useMemo(() => {
 		const fromMedias = (profile?.medias ?? [])
 			.map((item) => item.mediaHash ?? "")
@@ -459,7 +501,7 @@ export function ProfileEditorPage() {
 		return null;
 	}, [draft.aboutMe, t]);
 
-	const canSave = hasChanges && !isSaving && !displayNameError && !aboutMeError;
+	const canSave = hasChanges && !isSaving && !displayNameError && !aboutMeError && !tagsError;
 
 	const handleDraftChange = <K extends keyof ProfileDraft>(
 		key: K,
@@ -468,24 +510,22 @@ export function ProfileEditorPage() {
 		setDraft((current) => ({ ...current, [key]: value }));
 	};
 
-	const toggleMultiValue = (
-		key:
-			| "lookingFor"
-			| "meetAt"
-			| "grindrTribes"
-			| "tribesImInto"
-			| "genders"
-			| "pronouns"
-			| "sexualHealth"
-			| "vaccines",
-		value: number,
-	) => {
-		setDraft((current) => ({
-			...current,
-			[key]: (current[key] as number[]).includes(value)
-				? (current[key] as number[]).filter((item) => item !== value)
-				: [...(current[key] as number[]), value].sort((left, right) => left - right),
-		}));
+	const toggleMultiValue = (key: ToggleMultiValueKey, value: number) => {
+		setDraft((current) => {
+			const currentValues = current[key] as number[];
+			const isSelected = currentValues.includes(value);
+			const max = MULTI_VALUE_MAX[key];
+			if (!isSelected && max != null && currentValues.length >= max) {
+				toast.error(t("profile_editor.errors.max_selection", { count: max }));
+				return current;
+			}
+			return {
+				...current,
+				[key]: isSelected
+					? currentValues.filter((item) => item !== value)
+					: [...currentValues, value].sort((left, right) => left - right),
+			};
+		});
 	};
 
 	const handleSaveProfile = async () => {
@@ -529,7 +569,7 @@ export function ProfileEditorPage() {
 				addIfChanged("genders", "genders");
 				addIfChanged("pronouns", "pronouns");
 				addIfChanged("hivStatus", "hivStatus", parseNullableInteger);
-				addIfChanged("lastTestedDate", "lastTestedDate", parseDateInput);
+				addIfChanged("lastTestedDate", "lastTestedDate", parseMonthInput);
 				addIfChanged("sexualHealth", "sexualHealth");
 				addIfChanged("vaccines", "vaccines");
 
@@ -591,6 +631,11 @@ export function ProfileEditorPage() {
 				setSavedVisitingMode(draftVisitingMode);
 			}
 
+			// Keeps the grid/chat header avatar, account switcher, and the HIV
+			// test reminder in sync with whatever just changed here, instead of
+			// waiting out useMyOwnProfile's 5-minute staleTime.
+			void queryClient.invalidateQueries({ queryKey: ["my-own-profile"] });
+
 			toast.success(t("profile_editor.toasts.updated"));
 		} catch (error) {
 			const message =
@@ -637,10 +682,11 @@ export function ProfileEditorPage() {
 					await apiFunctions.deleteMyProfileImages(deletedHashes);
 				}
 
-				// The grid/chat header avatar reads this session-lifetime cache
-				// instead of re-fetching on every render — without updating it
-				// here it would keep showing a deleted/old photo until app restart.
-				setCachedOwnProfilePhotoHash(primaryImageHash ?? null);
+				// The grid/chat header avatar and account switcher read
+				// useMyOwnProfile's shared cache — without invalidating it here
+				// they'd keep showing a deleted/old photo until its 5-minute
+				// staleTime lapses.
+				void queryClient.invalidateQueries({ queryKey: ["my-own-profile"] });
 
 				await loadProfile();
 				toast.success(
@@ -945,11 +991,13 @@ export function ProfileEditorPage() {
 								onToggleMultiValue={toggleMultiValue}
 								displayNameError={displayNameError}
 								aboutMeError={aboutMeError}
+								tagsError={tagsError}
 								tagList={tagList}
 								profilePhotoHashes={profilePhotoHashes}
 								photoModerationByHash={photoModerationByHash}
 								isSavingPhotos={isSavingPhotos}
 								isUploadingPhoto={isUploadingPhoto}
+								isDesktop={isDesktop}
 								onUploadPhoto={handleUploadPhoto}
 								onRemovePhoto={handleRemovePhoto}
 								onReorderPhotos={handleReorderPhotos}
@@ -967,6 +1015,7 @@ export function ProfileEditorPage() {
 								meetAtOptions={meetAtOptions}
 								nsfwOptions={nsfwOptions}
 								genderOptions={genderOptions}
+								defaultGenderIds={defaultGenderIds}
 								pronounOptions={pronounOptions}
 								hivStatusOptions={hivStatusOptions}
 								sexualHealthOptions={sexualHealthOptions}

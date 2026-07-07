@@ -556,8 +556,8 @@
                 "about_me": "Über mich",
                 "about_me_placeholder": "Bis zu 255 Zeichen",
                 "my_tags": "Meine Tags",
-                "my_tags_placeholder": "Schlüsselwörter, durch Kommas getrennt",
-                "no_tags_added": "Noch keine Tags hinzugefügt."
+                "my_tags_manage": "Tags verwalten",
+                "no_tags_added": "Tags hinzufügen"
             },
             "visiting_mode": {
                 "title": "Modus",
@@ -616,9 +616,13 @@
             },
             "identity": {
                 "title": "Identität",
-                "description": "Verwaltete Identitätsfelder",
+                "description": "Geschlecht und Pronomen",
                 "gender": "Geschlecht",
                 "gender_unavailable": "Geschlechtsoptionen sind momentan nicht verfügbar.",
+                "gender_more": "Weitere Geschlechter",
+                "gender_dialog_title": "Geschlechter auswählen",
+                "gender_search_placeholder": "Geschlechter suchen...",
+                "gender_no_matches": "Keine Geschlechter gefunden.",
                 "pronouns": "Pronomen",
                 "pronouns_unavailable": "Pronomenoptionen sind momentan nicht verfügbar."
             },
@@ -628,7 +632,8 @@
                 "hiv_status": "HIV-Status",
                 "last_tested": "Zuletzt getestet",
                 "health_practices": "Gesundheitspraktiken",
-                "vaccinations": "Impfungen"
+                "vaccinations": "Impfungen",
+                "test_reminder": "Dein letzter Test liegt über 3 Monate zurück — Zeit für einen neuen Test."
             },
             "social": {
                 "title": "Soziales",
@@ -668,7 +673,15 @@
         },
         "errors": {
             "display_name_length": "Der Anzeigename darf nicht länger als 15 Zeichen sein.",
-            "about_me_length": "Über mich muss unter 255 Zeichen bleiben."
+            "about_me_length": "Über mich muss unter 255 Zeichen bleiben.",
+            "max_selection": "Du kannst maximal {{count}} auswählen."
+        },
+        "tags_dialog": {
+            "title": "Tags auswählen",
+            "unavailable": "Tags sind gerade nicht verfügbar.",
+            "see_more": "{{count}} weitere anzeigen",
+            "search_placeholder": "Tags suchen...",
+            "no_matches": "Keine Tags gefunden."
         }
     },
     "privacy": {
@@ -1439,7 +1452,9 @@
             "enrollment_failed": "Registrierung fehlgeschlagen",
             "document_failed": "Dokumentenprüfung fehlgeschlagen",
             "load_right_now": "Right Now Feed konnte nicht geladen werden",
-            "session_right_now": "Session konnte nicht gestartet werden"
+            "session_right_now": "Session konnte nicht gestartet werden",
+            "load_tags": "Tags konnten nicht geladen werden",
+            "invalid_tags_response": "Ungültige Antwort für Tags"
         }
     },
     "errors": {
@@ -1500,5 +1515,14 @@
     },
     "grid": {
         "open_profile_by_id": "Profil per ID öffnen"
+    },
+    "test_reminder": {
+        "title": "Zeit für einen Test?",
+        "description": "Dein letzter Test liegt über 3 Monate zurück. Wähle, wann du zuletzt getestet wurdest, oder aktualisiere es später im Profil.",
+        "save": "Speichern",
+        "saving": "Wird gespeichert...",
+        "skip": "Erstmal überspringen",
+        "saved": "Testdatum aktualisiert",
+        "save_failed": "Testdatum konnte nicht aktualisiert werden."
     }
 }

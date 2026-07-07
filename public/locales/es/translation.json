@@ -318,8 +318,8 @@
                 "about_me": "Sobre mí",
                 "about_me_placeholder": "Hasta 255 caracteres",
                 "my_tags": "Mis etiquetas",
-                "my_tags_placeholder": "Etiquetas clave, separadas por comas",
-                "no_tags_added": "No se han añadido etiquetas todavía."
+                "my_tags_manage": "Gestionar etiquetas",
+                "no_tags_added": "Añadir etiquetas"
             },
             "visiting_mode": {
                 "title": "Modo",
@@ -378,9 +378,13 @@
             },
             "identity": {
                 "title": "Identidad",
-                "description": "Gestionar campos de identidad",
+                "description": "Género y pronombres",
                 "gender": "Género",
                 "gender_unavailable": "Opciones de género no están disponibles ahora mismo.",
+                "gender_more": "Más géneros",
+                "gender_dialog_title": "Elegir géneros",
+                "gender_search_placeholder": "Buscar géneros...",
+                "gender_no_matches": "Ningún género coincide con tu búsqueda.",
                 "pronouns": "Pronombres",
                 "pronouns_unavailable": "Las opciones de pronombre no están disponibles ahora mismo."
             },
@@ -390,7 +394,8 @@
                 "hiv_status": "Estado de VIH",
                 "last_tested": "Último análisis",
                 "health_practices": "Prácticas saludables",
-                "vaccinations": "Vacunas"
+                "vaccinations": "Vacunas",
+                "test_reminder": "Han pasado más de 3 meses desde tu última prueba — considera hacerte otra."
             },
             "social": {
                 "title": "Redes sociales",
@@ -427,7 +432,15 @@
         },
         "errors": {
             "display_name_length": "El nombre en pantalla no puede tener más de 15 caracteres.",
-            "about_me_length": "Sobre mí tiene que tener menos de 255 caracteres."
+            "about_me_length": "Sobre mí tiene que tener menos de 255 caracteres.",
+            "max_selection": "Puedes seleccionar hasta {{count}}."
+        },
+        "tags_dialog": {
+            "title": "Elegir etiquetas",
+            "unavailable": "Las etiquetas no están disponibles en este momento.",
+            "see_more": "Ver {{count}} más",
+            "search_placeholder": "Buscar etiquetas...",
+            "no_matches": "No hay etiquetas que coincidan con tu búsqueda."
         }
     },
     "browse_page": {
@@ -1148,7 +1161,9 @@
             "enrollment_failed": "Error en la verificación de inscripción",
             "document_failed": "Error en la verificación de documentación",
             "load_right_now": "Error al cargar la página de Right Now",
-            "session_right_now": "Error al iniciar sesión"
+            "session_right_now": "Error al iniciar sesión",
+            "load_tags": "Error al cargar las etiquetas",
+            "invalid_tags_response": "Respuesta de etiquetas no válida"
         }
     },
     "errors": {
@@ -1323,5 +1338,14 @@
     },
     "grid": {
         "open_profile_by_id": "Abrir perfil por ID"
+    },
+    "test_reminder": {
+        "title": "¿Hora de hacerte una prueba?",
+        "description": "Han pasado más de 3 meses desde tu última prueba. Indica cuándo te hiciste la última, o actualízalo más tarde en tu perfil.",
+        "save": "Guardar",
+        "saving": "Guardando...",
+        "skip": "Omitir por ahora",
+        "saved": "Fecha de prueba actualizada",
+        "save_failed": "No se pudo actualizar la fecha de la prueba."
     }
 }

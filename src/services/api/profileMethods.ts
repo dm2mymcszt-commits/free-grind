@@ -92,9 +92,13 @@ export function createProfileMethods(fetchRest: RestFetcher, t: (key: string) =>
 						typeof (entry as { genderId?: unknown }).genderId === "number" &&
 						typeof (entry as { gender?: unknown }).gender === "string"
 					) {
+						const displayGroup = (entry as { displayGroup?: unknown }).displayGroup;
+						const sortFilter = (entry as { sortFilter?: unknown }).sortFilter;
 						return {
 							genderId: (entry as { genderId: number }).genderId,
 							gender: (entry as { gender: string }).gender,
+							displayGroup: typeof displayGroup === "number" ? displayGroup : 0,
+							sortFilter: typeof sortFilter === "number" ? sortFilter : null,
 						};
 					}
 					return null;

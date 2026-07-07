@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Download, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download } from "lucide-react";
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -21,6 +21,8 @@ export type PhotoViewerProps = {
 	renderExtraInfo?: (index: number) => React.ReactNode;
 	/** Full-width bar anchored to the bottom (e.g. a reply/react bar) — pushes the page-count pill and renderExtraInfo up out of its way when present. */
 	renderFooter?: (index: number) => React.ReactNode;
+	/** Chat conversation this media belongs to, if any — saved media is filed under a matching device subfolder instead of a flat Downloads folder. */
+	conversationId?: string | null;
 };
 
 function getMediaInfo(photo: string | PhotoViewerMedia) {
@@ -36,6 +38,7 @@ export function PhotoViewer({
 	onIndexChange,
 	renderExtraInfo,
 	renderFooter,
+	conversationId,
 }: PhotoViewerProps) {
 	const { t } = useTranslation();
 	const N = photos.length;
@@ -307,7 +310,7 @@ export function PhotoViewer({
 
 		setIsSaving(true);
 		try {
-			const saved = await saveMediaToDevice(url, type);
+			const saved = await saveMediaToDevice(url, type, conversationId);
 			if (saved) {
 				toast.success(t("profile_details.save_to_gallery_success"));
 			} else {
@@ -342,10 +345,10 @@ export function PhotoViewer({
 				onClick={(e) => { e.stopPropagation(); onClose(); }}
 				onTouchStart={(e) => { e.stopPropagation(); gestureMovedRef.current = false; }}
 				onTouchEnd={(e) => handleButtonTouchEnd(e, onClose)}
-				className="absolute right-3 top-[calc(env(safe-area-inset-top,0px)+2rem)] z-[83] inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/40 text-white shadow-lg backdrop-blur-md transition active:scale-90 sm:right-5 sm:top-5"
+				className="absolute left-3 top-[calc(env(safe-area-inset-top,0px)+2rem)] z-[83] inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md transition active:scale-90 sm:left-5 sm:top-5"
 				aria-label={t("profile_details.close_photo_viewer")}
 			>
-				<X className="h-5 w-5" />
+				<ChevronLeft className="h-5 w-5" />
 			</button>
 
 			<button
@@ -353,7 +356,7 @@ export function PhotoViewer({
 				onClick={(e) => { e.stopPropagation(); void handleSave(); }}
 				onTouchEnd={(e) => handleButtonTouchEnd(e, () => void handleSave())}
 				disabled={isSaving}
-				className="absolute left-3 top-[calc(env(safe-area-inset-top,0px)+2rem)] z-[83] inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/40 text-white shadow-lg backdrop-blur-md transition active:scale-90 disabled:opacity-50 sm:left-5 sm:top-5"
+				className="absolute right-3 top-[calc(env(safe-area-inset-top,0px)+2rem)] z-[83] inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md transition active:scale-90 disabled:opacity-50 sm:right-5 sm:top-5"
 				aria-label={t("profile_details.save_to_gallery")}
 			>
 				<Download className="h-5 w-5" />
@@ -471,7 +474,7 @@ export function PhotoViewer({
 				// which for narrow/portrait images is often narrower than this pill's natural
 				// width and was forcing the text to wrap.
 				<div
-					className="absolute left-1/2 top-3 z-[83] flex -translate-x-1/2 items-center gap-2"
+					className="absolute left-1/2 top-[calc(env(safe-area-inset-top,0px)+2rem)] z-[83] flex -translate-x-1/2 items-center gap-2"
 					onClick={(e) => e.stopPropagation()}
 				>
 					{renderExtraInfo(centerIdx)}

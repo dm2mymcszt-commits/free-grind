@@ -14,22 +14,10 @@ import { FeedScrollContainer } from "../../components/ui/FeedScrollContainer";
 import { ProfileDetailsModal } from "./gridpage/components/ProfileDetailsModal";
 import {
 	getCachedBrowseCards,
-	getCachedGenderOptions,
 	getCachedProfileDetail,
-	getCachedPronounOptions,
-	getCachedBlockedProfileIds,
-	getCachedOwnProfilePhotoHash,
-	getCachedOwnDisplayName,
-	getCachedOwnShowDistance,
 	removeProfileFromBrowseCache,
 	setCachedBrowseCards,
-	setCachedGenderOptions,
 	setCachedProfileDetail,
-	setCachedPronounOptions,
-	setCachedBlockedProfileIds,
-	setCachedOwnProfilePhotoHash,
-	setCachedOwnDisplayName,
-	setCachedOwnShowDistance,
 } from "./gridpage/cache";
 import { setSavedAccountDisplayName, setSavedAccountPhotoHash, getSavedAccountProfile, removeSavedAccountProfile } from "../../services/savedAccountProfiles";
 import { Avatar } from "../../components/ui/avatar";
@@ -44,7 +32,9 @@ import { FilterPill } from "../../components/ui/FilterPill";
 import { useBrowseFilters } from "./gridpage/hooks/useBrowseFilters";
 import { useTapProfile } from "./gridpage/hooks/useTapProfile";
 import { useDesktopBreakpoint } from "../../hooks/useDesktopBreakpoint";
-import { useManagedGenders, useManagedPronouns, useBlockedProfileIds, useBlockProfile, useUnblockProfile } from "../../hooks/queries/useProfileQueries";
+import { useManagedGenders, useManagedPronouns, useBlockedProfileIds, useBlockProfile, useUnblockProfile, useMyOwnProfile } from "../../hooks/queries/useProfileQueries";
+import { useQueryClient } from "@tanstack/react-query";
+import { getProfilePhotoHash } from "./profile-editor/profileEditorUtils";
 import {
 	getChatContactIndexForProfiles,
 	indexChatContactRecordsByProfileId,
@@ -120,8 +110,6 @@ export function GridPage() {
 		}
 	}, []);
 	const [isLocationMissing, setIsLocationMissing] = useState(false);
-	const [profileImageHash, setProfileImageHash] = useState<string | null>(null);
-	const [ownDisplayName, setOwnDisplayName] = useState<string | null>(() => getCachedOwnDisplayName() ?? null);
 	const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
 	const [activeProfile, setActiveProfile] = useState<ProfileDetail | null>(null);
 	const [isLoadingActiveProfile, setIsLoadingActiveProfile] = useState(false);
@@ -144,6 +132,12 @@ export function GridPage() {
 	const { data: blockedProfileIdsData } = useBlockedProfileIds();
 	const { mutateAsync: blockProfileMutation, isPending: isBlockingProfile } = useBlockProfile();
 	const { mutateAsync: unblockProfileMutation, isPending: isUnblockingProfile } = useUnblockProfile();
+	const { data: myProfile } = useMyOwnProfile();
+	const queryClient = useQueryClient();
+
+	const profileImageHash = useMemo(() => getProfilePhotoHash(myProfile), [myProfile]);
+	const ownDisplayName = myProfile?.displayName ?? null;
+	const showDistance = myProfile?.showDistance ?? true;
 
 	const genderOptions = useMemo(() => {
 		return managedGenders?.map((item) => ({
@@ -184,7 +178,6 @@ export function GridPage() {
 	const [favoriteNotes, setFavoriteNotes] = useState<Array<{ notes: string; phoneNumber: string; counterpartyId: string }>>([]);
 	const [isFetchingNotes, setIsFetchingNotes] = useState(false);
 	const [hasAttemptedFetchNotes, setHasAttemptedFetchNotes] = useState(false);
-	const [showDistance, setShowDistance] = useState<boolean>(() => getCachedOwnShowDistance() ?? true);
 	const [isTogglingDistance, setIsTogglingDistance] = useState(false);
 
 	const isDesktop = useDesktopBreakpoint();
@@ -309,88 +302,34 @@ export function GridPage() {
 		};
 	}, []);
 
+	// Keeps the account switcher's per-account avatar/name in sync with
+	// whatever useMyOwnProfile currently holds — runs on every change (initial
+	// load, a photo edit elsewhere, or the optimistic update below), not just
+	// once on first fetch, so the switcher can't go stale after an edit.
 	useEffect(() => {
-		if (!userId) {
-			setProfileImageHash(null);
-			return;
-		}
-
-		const cachedHash = getCachedOwnProfilePhotoHash();
-		if (cachedHash !== undefined) {
-			setProfileImageHash(cachedHash);
-			return;
-		}
-
-		let cancelled = false;
-
-		void (async () => {
-			try {
-				const parsed = await apiFunctions.getBrowseProfileMedia(userId);
-				const mediaHashFromList = parsed.medias
-					?.map((item) => item.mediaHash ?? "")
-					.find((hash) => validateMediaHash(hash));
-				const mediaHashFromProfile = parsed.profileImageMediaHash;
-				const firstHash =
-					mediaHashFromList ??
-					(mediaHashFromProfile && validateMediaHash(mediaHashFromProfile)
-						? mediaHashFromProfile
-						: null);
-				if (!cancelled) {
-					const nextHash = firstHash ?? null;
-					setProfileImageHash(nextHash);
-					setCachedOwnProfilePhotoHash(nextHash);
-					setSavedAccountPhotoHash(String(userId), nextHash);
-				}
-			} catch {
-				if (!cancelled) setProfileImageHash(null);
-			}
-		})();
-
-		return () => {
-			cancelled = true;
-		};
-	}, [apiFunctions, userId]);
-
-	useEffect(() => {
-		if (!userId) return;
-		let cancelled = false;
-		void (async () => {
-			try {
-				const raw = await apiFunctions.getRawProfile(userId) as Record<string, unknown>;
-				const profiles = Array.isArray(raw?.profiles) ? raw.profiles : [];
-				const profile = profiles[0] as Record<string, unknown> | undefined;
-				if (!cancelled) {
-					const sd = typeof profile?.showDistance === "boolean" ? profile.showDistance : true;
-					setShowDistance(sd);
-					setCachedOwnShowDistance(sd);
-					const name = typeof profile?.displayName === "string" ? profile.displayName : null;
-					setOwnDisplayName(name);
-					setCachedOwnDisplayName(name);
-					setSavedAccountDisplayName(String(userId), name);
-				}
-			} catch {
-				// non-critical
-			}
-		})();
-		return () => { cancelled = true; };
-	}, [apiFunctions, userId]);
+		if (!userId || !myProfile) return;
+		setSavedAccountPhotoHash(String(userId), profileImageHash);
+		setSavedAccountDisplayName(String(userId), ownDisplayName);
+	}, [userId, myProfile, profileImageHash, ownDisplayName]);
 
 	const handleToggleDistance = useCallback(async () => {
 		if (isTogglingDistance) return;
 		const next = !showDistance;
-		setShowDistance(next);
-		setCachedOwnShowDistance(next);
+		queryClient.setQueryData(["my-own-profile"], (current: typeof myProfile) =>
+			current ? { ...current, showDistance: next } : current,
+		);
 		setIsTogglingDistance(true);
 		try {
 			await apiFunctions.updateMyProfile({ showDistance: next });
 		} catch {
-			setShowDistance(!next);
-			setCachedOwnShowDistance(!next);
+			queryClient.setQueryData(["my-own-profile"], (current: typeof myProfile) =>
+				current ? { ...current, showDistance: !next } : current,
+			);
 			toast.error(t("browse_page.errors.toggle_distance_failed", { defaultValue: "Could not update distance setting." }));
 		} finally {
 			setIsTogglingDistance(false);
 		}
-	}, [apiFunctions, isTogglingDistance, showDistance, t]);
+	}, [apiFunctions, isTogglingDistance, showDistance, queryClient, t]);
 
 	useEffect(() => {
 		if (!isAccountSwitcherOpen) return;

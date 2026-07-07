@@ -3,7 +3,9 @@ import {
 	Ban,
 	Database,
 	DatabaseBackup,
+	EyeOff,
 	Eye,
+	History,
 	LayoutGrid,
 	MapPin,
 	NotebookPen,
@@ -12,6 +14,7 @@ import {
 	Sticker,
 	Terminal,
 	Users,
+	Zap,
 	type LucideIcon,
 } from "lucide-react";
 
@@ -46,24 +49,34 @@ export const VERSION_ANNOUNCEMENTS: VersionAnnouncement[] = [
 				description: "Type / in a conversation to trigger quick actions.",
 			},
 			{
-				icon: Ban,
-				title: "Ban Logs within Chats",
-				description: "See a record of bans and unbans right inside the conversation.",
+				icon: History,
+				title: "Block Activity",
+				description: "See who's blocked or unblocked you, and when, from a dedicated Settings page and withing the conversation.",
+			},
+			{
+				icon: Zap,
+				title: "Automation Rules",
+				description: "Build custom chat automation rules that react to messages, taps, and more.",
+			},
+			{
+				icon: EyeOff,
+				title: "Hide Conversations",
+				description: "Hide individual chats from your inbox without archiving or deleting them.",
 			},
 			{
 				icon: Reply,
 				title: "Reply to Media",
 				description: "Reply directly to someone's profile photo from their profile or photos and videos shared in albums.",
 			},
+            {
+				icon: Sticker,
+				title: "Send Gifs",
+				description: "Search and send GIFs straight from the chat composer.",
+			},
 			{
 				icon: Share2,
 				title: "Album Share Management",
 				description: "Manage who you've shared albums with, and revoke access anytime.",
-			},
-			{
-				icon: Sticker,
-				title: "Send Gifs",
-				description: "Search and send GIFs straight from the chat composer.",
 			},
 			{
 				icon: ArrowUpDown,

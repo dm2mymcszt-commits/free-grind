@@ -243,6 +243,7 @@ export function SharedAlbumsPanel({ isDesktop }: Props) {
 						albumName: local.albumName ?? item.album.albumName ?? null,
 						profileId: item.profileId,
 						profileName: item.profileName,
+						conversationId: item.conversationId,
 						content: local.content,
 					});
 				} else {
@@ -253,6 +254,7 @@ export function SharedAlbumsPanel({ isDesktop }: Props) {
 						albumName: details.albumName,
 						profileId: item.profileId,
 						profileName: item.profileName,
+						conversationId: item.conversationId,
 						content: details.content,
 					});
 
@@ -521,6 +523,7 @@ export function SharedAlbumsPanel({ isDesktop }: Props) {
 					photos={viewerPhotos}
 					initialIndex={fullScreenIndex}
 					onIndexChange={handleIndexChange}
+					conversationId={viewer.conversationId}
 				/>
 			)}
 		</div>

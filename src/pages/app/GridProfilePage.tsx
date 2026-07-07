@@ -16,16 +16,11 @@ import { validateMediaHash } from "../../utils/media";
 import { ProfileDetailsModal } from "./gridpage/components/ProfileDetailsModal";
 import { useTapProfile } from "./gridpage/hooks/useTapProfile";
 import {
-	getCachedGenderOptions,
 	getCachedProfileDetail,
-	getCachedPronounOptions,
 	removeProfileFromBrowseCache,
-	setCachedGenderOptions,
 	setCachedProfileDetail,
-	setCachedPronounOptions,
 } from "./gridpage/cache";
 import {
-	type ManagedOption,
 	type ProfileDetail,
 } from "./GridPage.types";
 import { getChatContactIndexForProfiles } from "../../services/chatContactIndex";

@@ -1,4 +1,4 @@
-import { Archive, Eye, EyeOff, Loader2, MessageCircle, Pin, PinOff, Trash2 } from "lucide-react";
+import { Archive, BellOff, Eye, EyeOff, Home, Loader2, MessageCircle, Pin, PinOff, Star, Trash2, Zap } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -480,6 +480,26 @@ function ChatConversationRow({
 								<p className="truncate text-sm font-semibold text-[var(--text)]">
 									{displayName}
 								</p>
+								{conversation.data.muted && (
+									<span title={t("chat.muted")}>
+										<BellOff className="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
+									</span>
+								)}
+								{conversation.data.favorite && (
+									<span title={t("chat.favorite")}>
+										<Star className="h-3.5 w-3.5 shrink-0 fill-current text-[var(--accent)]" />
+									</span>
+								)}
+								{conversation.data.rightNow === "HOSTING" && (
+									<span title={t("right_now.hosting")}>
+										<Home className="h-3.5 w-3.5 shrink-0 text-[var(--right-now)]" />
+									</span>
+								)}
+								{conversation.data.rightNow === "NOT_HOSTING" && (
+									<span title={t("right_now.not_hosting", { defaultValue: "Right Now" })}>
+										<Zap className="h-3.5 w-3.5 shrink-0 text-[var(--right-now)]" />
+									</span>
+								)}
 								{readReceiptsHidden && (
 									<span title={t("privacy.read_receipts_hidden_badge")}>
 										<EyeOff className="h-3.5 w-3.5 shrink-0 text-purple-400" />
@@ -515,12 +535,6 @@ function ChatConversationRow({
 								</span>
 							) : null}
 						</div>
-
-						{conversation.data.muted ? (
-							<span className="mt-1 inline-block rounded-md bg-[var(--surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
-								{t("chat.muted")}
-							</span>
-						) : null}
 					</div>
 				</div>
 			</div>

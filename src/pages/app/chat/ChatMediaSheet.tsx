@@ -98,6 +98,7 @@ export function ChatMediaSheet({
 						id: toastId,
 					});
 				},
+				conversationId,
 			);
 
 			if (result.failed === 0) {
@@ -512,6 +513,7 @@ export function ChatMediaSheet({
 				onClose={() => setViewerIndex(null)}
 				photos={viewerPhotos}
 				initialIndex={viewerIndex}
+				conversationId={conversationId}
 			/>,
 			document.body,
 		)}

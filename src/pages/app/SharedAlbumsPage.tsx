@@ -412,6 +412,7 @@ export function SharedAlbumsPage() {
 						albumName: local.albumName ?? item.album.albumName ?? null,
 						profileId: item.profileId,
 						profileName: item.profileName,
+						conversationId: item.conversationId,
 						content: local.content,
 					});
 					setViewerIndex(0);
@@ -430,6 +431,7 @@ export function SharedAlbumsPage() {
 					albumName: details.albumName,
 					profileId: item.profileId,
 					profileName: item.profileName,
+					conversationId: item.conversationId,
 					content: details.content,
 				});
 				setViewerIndex(0);
@@ -869,6 +871,7 @@ export function SharedAlbumsPage() {
 					photos={viewerPhotos}
 					initialIndex={fullScreenIndex}
 					onIndexChange={handleIndexChange}
+					conversationId={viewer.conversationId}
 					renderFooter={(idx) => {
 						const item = viewer.content[idx];
 						if (!item || viewer.profileId === userId) return null;
