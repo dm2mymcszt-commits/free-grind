@@ -15,6 +15,7 @@ import { decodeGeohash, encodeGeohash } from "../../utils/geohash";
 import { validateMediaHash } from "../../utils/media";
 import { ProfileDetailsModal } from "./gridpage/components/ProfileDetailsModal";
 import { useTapProfile } from "./gridpage/hooks/useTapProfile";
+import { loadBrowseFiltersDraft } from "./browse-filters-storage";
 import {
 	getCachedProfileDetail,
 	removeProfileFromBrowseCache,
@@ -626,6 +627,14 @@ export function GridProfilePage() {
         }
     };
 
+	const handleTagClick = async (tag: string) => {
+		const persistedDraft = await loadBrowseFiltersDraft();
+		navigate("/", {
+			state: { browseFiltersDraft: { ...persistedDraft, tags: [tag] } },
+		});
+		toast.success(t("browse_page.toasts.tag_filter_applied", { tag }));
+	};
+
 	return (
 		<>
 			<ProfileDetailsModal
@@ -637,6 +646,7 @@ export function GridProfilePage() {
 				onPrevProfile={handlePrevProfile}
 				onNextProfile={handleNextProfile}
 				onMessageProfile={handleMessageProfile}
+				onTagClick={handleTagClick}
 				onSendQuickMessage={handleSendQuickMessage}
 				onSendProfilePhotoReply={handleSendProfilePhotoReply}
 				onTriangleProfile={handleTriangleProfile}

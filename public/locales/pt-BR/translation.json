@@ -279,7 +279,8 @@
             "tap_limit": "Você já interagiu com este perfil nas últimas 24 horas",
             "tap_mutual": "Toque enviado. É recíproco.",
             "tap_sent": "Toque enviado",
-            "tap_failed": "Falha ao enviar toque"
+            "tap_failed": "Falha ao enviar toque",
+            "tag_filter_applied": "Filtrado pela tag \"{{tag}}\""
         },
         "chatted": "Conversamos"
     },

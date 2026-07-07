@@ -998,7 +998,8 @@
             "tap_limit": "Vous avez déjà envoyé un Tap à ce profil au cours des dernières 24h",
             "tap_mutual": "Tap envoyé. C'est mutuel.",
             "tap_sent": "Tap envoyé",
-            "tap_failed": "Erreur lors de l'envoi du Tap"
+            "tap_failed": "Erreur lors de l'envoi du Tap",
+            "tag_filter_applied": "Filtré par tag « {{tag}} »"
         }
     },
     "chat_filters": {
