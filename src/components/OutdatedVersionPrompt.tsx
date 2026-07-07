@@ -1,5 +1,5 @@
 import { ChevronRight, Download } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 const DEFAULT_RELEASES_URL = "https://github.com/imaoreo/free-grind/releases";
 const DEFAULT_LATEST_VERSION = "0.5.3";
@@ -180,7 +180,14 @@ export function OutdatedVersionPromptView({
 	);
 }
 
-export function OutdatedVersionPrompt() {
+/**
+ * Gates the routed app behind the outdated-version prompt — same slot in the
+ * tree as onboarding/VersionAnnouncement/TestReminderGate in App.tsx, not a
+ * floating overlay on top of the grid. That overlay approach left the card
+ * transparent on mobile (fs-card-inner only gets a background at the 640px+
+ * breakpoint), showing the grid bleeding through behind it.
+ */
+export function OutdatedVersionGate({ children }: { children: ReactNode }) {
     const appVersion = import.meta.env.VITE_APP_VERSION ?? "unknown";
     const normalizedAppVersion = normalizeVersion(appVersion);
     const dismissStorageKey = useMemo(
@@ -225,17 +232,19 @@ export function OutdatedVersionPrompt() {
     }, [isDismissed, releaseInfo, normalizedAppVersion]);
 
     if (!isVisible || !releaseInfo) {
-        return null;
+        return <>{children}</>;
     }
 
 	return (
-		<OutdatedVersionPromptView
-			appVersion={normalizedAppVersion}
-			releaseInfo={releaseInfo}
-			onDismiss={() => {
-				writeDismissedFlag(dismissStorageKey, 5);
-				setIsDismissed(true);
-			}}
-		/>
+		<div className="app-shell">
+			<OutdatedVersionPromptView
+				appVersion={normalizedAppVersion}
+				releaseInfo={releaseInfo}
+				onDismiss={() => {
+					writeDismissedFlag(dismissStorageKey, 5);
+					setIsDismissed(true);
+				}}
+			/>
+		</div>
 	);
 }

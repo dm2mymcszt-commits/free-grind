@@ -342,7 +342,8 @@
                 "hiv_status": "",
                 "last_tested": "",
                 "health_practices": "",
-                "vaccinations": ""
+                "vaccinations": "",
+                "test_reminder": ""
             },
             "social": {
                 "title": "",
@@ -713,5 +714,14 @@
     },
     "grid": {
         "open_profile_by_id": "Odpri profil po ID-ju"
+    },
+    "test_reminder": {
+        "title": "",
+        "description": "",
+        "save": "",
+        "saving": "",
+        "skip": "",
+        "saved": "",
+        "save_failed": ""
     }
 }

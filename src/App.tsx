@@ -36,7 +36,8 @@ import { SettingsPrivacyPage } from "./pages/app/SettingsPrivacyPage.tsx";
 import { SettingsSavedPhrasesPage } from "./pages/app/SettingsSavedPhrasesPage.tsx";
 import { PermissionsOnboarding } from "./components/PermissionsOnboarding";
 import { VersionAnnouncement } from "./components/VersionAnnouncement";
-import { OutdatedVersionPrompt } from "./components/OutdatedVersionPrompt";
+import { OutdatedVersionGate } from "./components/OutdatedVersionPrompt";
+import { TestReminderGate } from "./components/TestReminderPrompt";
 import { PushNotificationBridge } from "./components/PushNotificationBridge";
 import { ChatRealtimeBridge } from "./components/ChatRealtimeBridge";
 import { ActiveRouteBridge } from "./components/ActiveRouteBridge";
@@ -177,7 +178,7 @@ export default function App() {
 						<div className="app-shell">
 							<VersionAnnouncement announcement={PENDING_ANNOUNCEMENT} onClose={handleAnnouncementClose} />
 						</div>
-					) : (<>
+					) : (<OutdatedVersionGate><TestReminderGate>
 					{renderPhase >= 1 && <ManagerModeRedirect />}
 					{renderPhase >= 2 && <PushNotificationBridge />}
 					{renderPhase >= 2 && <ManagedOptionsCacheBridge />}
@@ -186,7 +187,6 @@ export default function App() {
 					{renderPhase >= 5 && (
 						<>
 							<EntitlementsBridge />
-							<OutdatedVersionPrompt />
 						</>
 					)}
 					<Routes>
@@ -273,7 +273,7 @@ export default function App() {
 							<Route path="*" element={<ErrorPage />} />
 						</Route>
 					</Routes>
-					</>)}
+					</TestReminderGate></OutdatedVersionGate>)}
 				</SmoothScroll>
 			</PreferencesProvider>
 		</AuthProvider>

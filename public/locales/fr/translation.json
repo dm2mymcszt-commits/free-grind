@@ -378,7 +378,7 @@
             },
             "identity": {
                 "title": "Identité",
-                "description": "Gérer les champs d'identité",
+                "description": "Genre et pronoms",
                 "gender": "Genre",
                 "gender_unavailable": "Les options de genre ne sont pas disponibles pour le moment.",
                 "gender_more": "Plus de genres",
@@ -394,7 +394,8 @@
                 "hiv_status": "Statut VIH",
                 "last_tested": "Dernier test",
                 "health_practices": "Pratiques de prévention",
-                "vaccinations": "Vaccins"
+                "vaccinations": "Vaccins",
+                "test_reminder": "Cela fait plus de 3 mois depuis votre dernier test — pensez à en refaire un."
             },
             "social": {
                 "title": "Réseaux sociaux",
@@ -1303,5 +1304,14 @@
     },
     "grid": {
         "open_profile_by_id": "Ouvrir le profil par ID"
+    },
+    "test_reminder": {
+        "title": "L'heure d'un test ?",
+        "description": "Cela fait plus de 3 mois depuis votre dernier test. Indiquez quand vous avez été testé pour la dernière fois, ou mettez-le à jour plus tard dans votre profil.",
+        "save": "Enregistrer",
+        "saving": "Enregistrement...",
+        "skip": "Ignorer pour l'instant",
+        "saved": "Date du test mise à jour",
+        "save_failed": "Impossible de mettre à jour la date du test."
     }
 }

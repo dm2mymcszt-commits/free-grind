@@ -43,6 +43,7 @@ import {
 import { getThumbImageUrl } from "../../../utils/media";
 import { type UnitsPreset } from "../../../utils/units";
 import { Chip } from "../../../components/ui/chip";
+import { LastTestedMonthPicker } from "../../../components/LastTestedMonthPicker";
 import { CategoryHeader, ChipGroup, ToggleRow } from "./ProfileEditorComponents";
 import { TravelPlansSection } from "./TravelPlansSection";
 import { TagsPickerDialog } from "./TagsPickerDialog";
@@ -297,6 +298,18 @@ export function ProfileEditorFormSections({
 		{ value: "ON", icon: MapPin },
 	];
 
+	const TEST_REMINDER_THRESHOLD_MONTHS = 3;
+
+	const monthsSinceLastTested = useMemo(() => {
+		if (!draft.lastTestedDate) return null;
+		const timestamp = new Date(draft.lastTestedDate).getTime();
+		if (Number.isNaN(timestamp)) return null;
+		return (Date.now() - timestamp) / (1000 * 60 * 60 * 24 * 30.44);
+	}, [draft.lastTestedDate]);
+
+	const isTestOverdue =
+		monthsSinceLastTested != null && monthsSinceLastTested >= TEST_REMINDER_THRESHOLD_MONTHS;
+
 	return (
 		<div className="grid gap-5">
 			{/* Pictures */}
@@ -418,20 +431,24 @@ export function ProfileEditorFormSections({
 						<label className="mb-2 block text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
 							{t("profile_editor.sections.profile.about_me")}
 						</label>
-						<textarea
-							value={draft.aboutMe}
-							maxLength={255}
-							onChange={(event) => onDraftChange("aboutMe", event.target.value)}
-							className="input-field min-h-32 resize-y"
-							placeholder={t("profile_editor.sections.profile.about_me_placeholder")}
-						/>
-						<p className="mt-2 text-xs text-[var(--text-muted)] sm:text-sm">
-							{aboutMeError ??
-								t("profile_editor.sections.profile.char_count", {
+						<div className="relative">
+							<textarea
+								value={draft.aboutMe}
+								maxLength={255}
+								onChange={(event) => onDraftChange("aboutMe", event.target.value)}
+								className="input-field min-h-32 resize-y pb-6"
+								placeholder={t("profile_editor.sections.profile.about_me_placeholder")}
+							/>
+							<div className="pointer-events-none absolute bottom-2.5 right-3 text-[10px] font-medium text-[var(--text-muted)] opacity-70">
+								{t("profile_editor.sections.profile.char_count", {
 									count: draft.aboutMe.length,
 									total: 255,
 								})}
-						</p>
+							</div>
+						</div>
+						{aboutMeError && (
+							<p className="mt-2 text-xs text-red-400 sm:text-sm">{aboutMeError}</p>
+						)}
 					</div>
 
 					<div>
@@ -492,37 +509,37 @@ export function ProfileEditorFormSections({
 					icon={Ruler}
 				/>
 				<div className="grid gap-4">
-					{/* Distance — standalone toggle */}
-					<div className="overflow-hidden rounded-2xl border border-[var(--border)]">
-						<ToggleRow
-							checked={draft.showDistance}
-							onChange={(checked) => onDraftChange("showDistance", checked)}
-							label={t("profile_editor.sections.states.show_distance")}
-							description={t("profile_editor.sections.states.show_distance_desc")}
-						/>
-					</div>
+					{/* Distance — standalone toggle, plain row like the fields below */}
+					<ToggleRow
+						checked={draft.showDistance}
+						onChange={(checked) => onDraftChange("showDistance", checked)}
+						label={t("profile_editor.sections.states.show_distance")}
+						description={t("profile_editor.sections.states.show_distance_desc")}
+						labelClassName="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]"
+						padding=""
+					/>
 
-					{/* Age — input + toggle */}
-					<div className="overflow-hidden rounded-2xl border border-[var(--border)]">
-						<ToggleRow
-							checked={draft.showAge}
-							onChange={(checked) => onDraftChange("showAge", checked)}
-							label={t("profile_editor.sections.states.show_age")}
-							description={t("profile_editor.sections.states.show_age_desc")}
+					{/* Age toggle + field — separate plain rows, no shared box */}
+					<ToggleRow
+						checked={draft.showAge}
+						onChange={(checked) => onDraftChange("showAge", checked)}
+						label={t("profile_editor.sections.states.show_age")}
+						description={t("profile_editor.sections.states.show_age_desc")}
+						labelClassName="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]"
+						padding=""
+					/>
+					<div>
+						<label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+							{t("profile_editor.sections.states.age")}
+						</label>
+						<input
+							type="number"
+							inputMode="numeric"
+							value={draft.age}
+							onChange={(event) => onDraftChange("age", event.target.value)}
+							className="input-field"
+							placeholder="—"
 						/>
-						<div className="border-t border-[var(--border)] px-4 py-3">
-							<label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-								{t("profile_editor.sections.states.age")}
-							</label>
-							<input
-								type="number"
-								inputMode="numeric"
-								value={draft.age}
-								onChange={(event) => onDraftChange("age", event.target.value)}
-								className="input-field"
-								placeholder="—"
-							/>
-						</div>
 					</div>
 
 					{/* Height + Weight */}
@@ -601,33 +618,6 @@ export function ProfileEditorFormSections({
 						</div>
 					</div>
 
-					{/* Position — select + toggle */}
-					<div className="overflow-hidden rounded-2xl border border-[var(--border)]">
-						<ToggleRow
-							checked={draft.showPosition}
-							onChange={(checked) => onDraftChange("showPosition", checked)}
-							label={t("profile_editor.sections.states.show_position")}
-							description={t("profile_editor.sections.states.show_position_desc")}
-						/>
-						<div className="border-t border-[var(--border)] px-4 py-3">
-							<label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-								{t("profile_editor.sections.states.position")}
-							</label>
-							<select
-								value={draft.sexualPosition}
-								onChange={(event) => onDraftChange("sexualPosition", event.target.value)}
-								className="input-field"
-							>
-								<option value="">{t("profile_editor.sections.states.not_set")}</option>
-								{positionOptions.map((option) => (
-									<option key={option.value} value={option.value}>
-										{option.label}
-									</option>
-								))}
-							</select>
-						</div>
-					</div>
-
 					{/* Relationship Status */}
 					<div>
 						<label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
@@ -647,15 +637,46 @@ export function ProfileEditorFormSections({
 						</select>
 					</div>
 
-					{/* Tribes — chips + toggle */}
-					<div className="overflow-hidden rounded-2xl border border-[var(--border)]">
+					{/* Role/Position — separated from the stats above by a thin divider, not its own box */}
+					<div className="grid gap-4 border-t border-[var(--border)] pt-4">
+						<ToggleRow
+							checked={draft.showPosition}
+							onChange={(checked) => onDraftChange("showPosition", checked)}
+							label={t("profile_editor.sections.states.show_position")}
+							description={t("profile_editor.sections.states.show_position_desc")}
+							labelClassName="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]"
+							padding=""
+						/>
+						<div>
+							<label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+								{t("profile_editor.sections.states.position")}
+							</label>
+							<select
+								value={draft.sexualPosition}
+								onChange={(event) => onDraftChange("sexualPosition", event.target.value)}
+								className="input-field"
+							>
+								<option value="">{t("profile_editor.sections.states.not_set")}</option>
+								{positionOptions.map((option) => (
+									<option key={option.value} value={option.value}>
+										{option.label}
+									</option>
+								))}
+							</select>
+						</div>
+					</div>
+
+					{/* Tribes — separated by a thin divider, not its own box */}
+					<div className="grid gap-4 border-t border-[var(--border)] pt-4">
 						<ToggleRow
 							checked={draft.showTribes}
 							onChange={(checked) => onDraftChange("showTribes", checked)}
 							label={t("profile_editor.sections.states.show_tribes")}
 							description={t("profile_editor.sections.states.show_tribes_desc")}
+							labelClassName="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]"
+							padding=""
 						/>
-						<div className="border-t border-[var(--border)] px-4 py-3">
+						<div>
 							<p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
 								{t("profile_editor.sections.states.tribes")}
 							</p>
@@ -665,7 +686,7 @@ export function ProfileEditorFormSections({
 								onToggle={(value) => onToggleMultiValue("grindrTribes", value)}
 							/>
 						</div>
-						<div className="border-t border-[var(--border)] px-4 py-3">
+						<div>
 							<p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
 								{t("profile_editor.sections.states.tribes_im_into")}
 							</p>
@@ -905,16 +926,22 @@ export function ProfileEditorFormSections({
 							<label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
 								{t("profile_editor.sections.health.last_tested")}
 							</label>
-							<input
-								type="date"
+							<LastTestedMonthPicker
 								value={draft.lastTestedDate}
-								onChange={(event) =>
-									onDraftChange("lastTestedDate", event.target.value)
-								}
-								className="input-field"
+								onChange={(next) => onDraftChange("lastTestedDate", next)}
+								notSetLabel={t("profile_editor.sections.states.not_set")}
 							/>
 						</div>
 					</div>
+
+					{isTestOverdue && (
+						<div className="flex items-start gap-2.5 rounded-xl border border-amber-500/40 bg-amber-500/15 px-3.5 py-3">
+							<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+							<p className="text-xs leading-relaxed text-amber-400 sm:text-sm">
+								{t("profile_editor.sections.health.test_reminder")}
+							</p>
+						</div>
+					)}
 
 					<div>
 						<p className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">

@@ -7,6 +7,7 @@ import {
 	applySelfBlockAction,
 	markConversationDeleteHandled,
 } from "../../services/conversationArchive";
+import { profileSchema } from "../../pages/app/profile-editor/profileEditorUtils";
 
 // chat.v1.conversation.delete fires identically for "we blocked/unblocked
 // them" and "they blocked/unblocked us" — mark the conversation right after
@@ -140,6 +141,28 @@ export function useManagedTagCategories(locale: string, enabled: boolean = true)
 		queryFn: () => api.getManagedTagCategories(locale),
 		staleTime: Infinity, // These rarely change
 		enabled,
+	});
+}
+
+/**
+ * Hook to fetch the current user's own profile (read through /v4/me/profile,
+ * same endpoint the profile editor uses) — used by app-level checks like the
+ * HIV test reminder that need a profile field without opening the editor.
+ */
+export function useMyOwnProfile(enabled: boolean = true) {
+	const api = useApiFunctions();
+	return useQuery({
+		queryKey: ["my-own-profile"],
+		queryFn: async () => {
+			const raw = await api.getMyOwnProfile();
+			const rawProfileObject =
+				raw && typeof raw === "object" && Array.isArray((raw as { profiles?: unknown }).profiles)
+					? ((raw as { profiles: Record<string, unknown>[] }).profiles[0] ?? null)
+					: (raw as Record<string, unknown> | null);
+			return profileSchema.parse(rawProfileObject);
+		},
+		enabled,
+		staleTime: 1000 * 60 * 5,
 	});
 }
 

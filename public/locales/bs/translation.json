@@ -337,7 +337,8 @@
                 "hiv_status": "",
                 "last_tested": "",
                 "health_practices": "",
-                "vaccinations": ""
+                "vaccinations": "",
+                "test_reminder": ""
             },
             "social": {
                 "title": "",
@@ -706,5 +707,14 @@
     },
     "grid": {
         "open_profile_by_id": "Otvori profil putem ID-a"
+    },
+    "test_reminder": {
+        "title": "",
+        "description": "",
+        "save": "",
+        "saving": "",
+        "skip": "",
+        "saved": "",
+        "save_failed": ""
     }
 }

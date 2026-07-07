@@ -616,7 +616,7 @@
             },
             "identity": {
                 "title": "Identität",
-                "description": "Verwaltete Identitätsfelder",
+                "description": "Geschlecht und Pronomen",
                 "gender": "Geschlecht",
                 "gender_unavailable": "Geschlechtsoptionen sind momentan nicht verfügbar.",
                 "gender_more": "Weitere Geschlechter",
@@ -632,7 +632,8 @@
                 "hiv_status": "HIV-Status",
                 "last_tested": "Zuletzt getestet",
                 "health_practices": "Gesundheitspraktiken",
-                "vaccinations": "Impfungen"
+                "vaccinations": "Impfungen",
+                "test_reminder": "Dein letzter Test liegt über 3 Monate zurück — Zeit für einen neuen Test."
             },
             "social": {
                 "title": "Soziales",
@@ -1514,5 +1515,14 @@
     },
     "grid": {
         "open_profile_by_id": "Profil per ID öffnen"
+    },
+    "test_reminder": {
+        "title": "Zeit für einen Test?",
+        "description": "Dein letzter Test liegt über 3 Monate zurück. Wähle, wann du zuletzt getestet wurdest, oder aktualisiere es später im Profil.",
+        "save": "Speichern",
+        "saving": "Wird gespeichert...",
+        "skip": "Erstmal überspringen",
+        "saved": "Testdatum aktualisiert",
+        "save_failed": "Testdatum konnte nicht aktualisiert werden."
     }
 }

@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import z from "zod";
 import ReactCrop, { type Crop, type PixelCrop } from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
@@ -21,7 +22,6 @@ import {
 	type VisitingMode,
 } from "../../types/visiting";
 import { getThumbImageUrl, validateMediaHash } from "../../utils/media";
-import { setCachedOwnProfilePhotoHash } from "./gridpage/cache";
 import { BackToSettings } from "../../components/BackToSettings";
 import { BottomDrawer } from "../../components/ui/bottom-drawer";
 import { ToggleRow } from "../../components/ui/toggle-row";
@@ -50,7 +50,7 @@ import {
 	type ProfileDraft,
 	buildSquareThumbCoords,
 	emptyDraft,
-	parseDateInput,
+	parseMonthInput,
 	parseNullableInteger,
 	parseNullableHeightToCm,
 	parseNullableWeightToGrams,
@@ -77,6 +77,7 @@ export function ProfileEditorPage() {
 	const { t } = useTranslation();
 	const { userId, logout } = useAuth();
 	const apiFunctions = useApiFunctions();
+	const queryClient = useQueryClient();
 	const navigate = useNavigate();
 	const { unitsPreset } = usePreferences();
 	const [profile, setProfile] = useState<z.infer<typeof profileSchema> | null>(
@@ -568,7 +569,7 @@ export function ProfileEditorPage() {
 				addIfChanged("genders", "genders");
 				addIfChanged("pronouns", "pronouns");
 				addIfChanged("hivStatus", "hivStatus", parseNullableInteger);
-				addIfChanged("lastTestedDate", "lastTestedDate", parseDateInput);
+				addIfChanged("lastTestedDate", "lastTestedDate", parseMonthInput);
 				addIfChanged("sexualHealth", "sexualHealth");
 				addIfChanged("vaccines", "vaccines");
 
@@ -630,6 +631,11 @@ export function ProfileEditorPage() {
 				setSavedVisitingMode(draftVisitingMode);
 			}
 
+			// Keeps the grid/chat header avatar, account switcher, and the HIV
+			// test reminder in sync with whatever just changed here, instead of
+			// waiting out useMyOwnProfile's 5-minute staleTime.
+			void queryClient.invalidateQueries({ queryKey: ["my-own-profile"] });
+
 			toast.success(t("profile_editor.toasts.updated"));
 		} catch (error) {
 			const message =
@@ -676,10 +682,11 @@ export function ProfileEditorPage() {
 					await apiFunctions.deleteMyProfileImages(deletedHashes);
 				}
 
-				// The grid/chat header avatar reads this session-lifetime cache
-				// instead of re-fetching on every render — without updating it
-				// here it would keep showing a deleted/old photo until app restart.
-				setCachedOwnProfilePhotoHash(primaryImageHash ?? null);
+				// The grid/chat header avatar and account switcher read
+				// useMyOwnProfile's shared cache — without invalidating it here
+				// they'd keep showing a deleted/old photo until its 5-minute
+				// staleTime lapses.
+				void queryClient.invalidateQueries({ queryKey: ["my-own-profile"] });
 
 				await loadProfile();
 				toast.success(

@@ -647,7 +647,7 @@
             },
             "identity": {
                 "title": "Identity",
-                "description": "Managed identity fields",
+                "description": "Gender and pronouns",
                 "gender": "Gender",
                 "gender_unavailable": "Gender options are unavailable right now.",
                 "gender_more": "More genders",
@@ -663,7 +663,8 @@
                 "hiv_status": "HIV Status",
                 "last_tested": "Last Tested",
                 "health_practices": "Health Practices",
-                "vaccinations": "Vaccinations"
+                "vaccinations": "Vaccinations",
+                "test_reminder": "It's been over 3 months since your last test — consider getting tested again."
             },
             "social": {
                 "title": "Social",
@@ -1587,5 +1588,14 @@
     },
     "grid": {
         "open_profile_by_id": "Open Profile by ID"
+    },
+    "test_reminder": {
+        "title": "Time for a check-up?",
+        "description": "It's been over 3 months since your last test. Pick when you were last tested, or update it later in your profile.",
+        "save": "Save",
+        "saving": "Saving...",
+        "skip": "Skip for now",
+        "saved": "Test date updated",
+        "save_failed": "Could not update your test date."
     }
 }

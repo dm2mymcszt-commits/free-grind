@@ -462,7 +462,7 @@
             },
             "identity": {
                 "title": "Identidade",
-                "description": "Campos de identidade gerenciados",
+                "description": "Gênero e pronomes",
                 "gender": "Gênero",
                 "gender_unavailable": "As opções de gênero não estão disponíveis no momento.",
                 "gender_more": "Mais gêneros",
@@ -478,7 +478,8 @@
                 "hiv_status": "Estado de HIV",
                 "last_tested": "Último teste realizado",
                 "health_practices": "Exames",
-                "vaccinations": "Vacinação"
+                "vaccinations": "Vacinação",
+                "test_reminder": "Já se passaram mais de 3 meses desde o seu último teste — considere fazer outro."
             },
             "social": {
                 "title": "Social",
@@ -1295,5 +1296,14 @@
     },
     "grid": {
         "open_profile_by_id": "Abrir perfil por ID"
+    },
+    "test_reminder": {
+        "title": "Hora de um teste?",
+        "description": "Já se passaram mais de 3 meses desde o seu último teste. Escolha quando foi seu último teste, ou atualize depois no seu perfil.",
+        "save": "Salvar",
+        "saving": "Salvando...",
+        "skip": "Pular por agora",
+        "saved": "Data do teste atualizada",
+        "save_failed": "Não foi possível atualizar a data do teste."
     }
 }

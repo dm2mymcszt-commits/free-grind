@@ -18,7 +18,8 @@ import {
 } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useApiFunctions } from "../../hooks/useApiFunctions";
-import { useBlockProfile, useUnblockProfile, useBlockedProfileIds } from "../../hooks/queries/useProfileQueries";
+import { useBlockProfile, useUnblockProfile, useBlockedProfileIds, useMyOwnProfile } from "../../hooks/queries/useProfileQueries";
+import { getProfilePhotoHash } from "./profile-editor/profileEditorUtils";
 import { usePresenceCheckBatch } from "../../hooks/usePresenceCheck";
 import { useAuth } from "../../contexts/useAuth";
 import { ChatApiError } from "../../services/chatService";
@@ -121,7 +122,7 @@ import { clearAutomationSeenHistoryForSender, runAutomationRulesForSender } from
 import { consumeSelfBlockAction } from "../../utils/selfBlockActions";
 import { isReadReceiptsHidden } from "../../utils/privacy";
 import freegrindLogo from "../../images/freegrind-logo.webp";
-import { getCachedOwnProfilePhotoHash, removeProfileFromBrowseCache, setCachedOwnProfilePhotoHash, getCachedProfileDetail, setCachedProfileDetail } from "./gridpage/cache";
+import { removeProfileFromBrowseCache, getCachedProfileDetail, setCachedProfileDetail } from "./gridpage/cache";
 import type { ProfileDetail } from "../../types/grid";
 import { getThumbImageUrl, validateMediaHash } from "../../utils/media";
 
@@ -222,6 +223,8 @@ export function ChatPage() {
 	const { mutateAsync: blockProfileMutation } = useBlockProfile();
 	const { mutateAsync: unblockProfileMutation } = useUnblockProfile();
 	const { data: blockedProfileIdsData, refetch: refetchBlockedProfileIds } = useBlockedProfileIds();
+	const { data: myProfile } = useMyOwnProfile();
+	const profileImageHash = useMemo(() => getProfilePhotoHash(myProfile), [myProfile]);
 	const { userId, settingsReady } = useAuth();
 	const isDesktop = useDesktopBreakpoint();
 	const threadBottomRef = useRef<HTMLDivElement | null>(null);
@@ -315,28 +318,14 @@ export function ChatPage() {
 	}, [inboxFilters, pinnedFilter, archivedFilter, hiddenFilter]);
 
 	useEffect(() => {
-		if (!userId) return;
-		const cached = getCachedOwnProfilePhotoHash();
-		if (cached !== undefined) {
-			setOwnProfilePhotoUrl(resolveAvatarSrc(cached, cached ? getThumbImageUrl(cached, "75x75") : null));
+		if (!userId) {
+			setOwnProfilePhotoUrl(null);
 			return;
 		}
-		void (async () => {
-			try {
-				const parsed = await service.getBrowseProfileMedia(userId);
-				const hash =
-					parsed.medias?.map((m) => m.mediaHash ?? "").find((h) => validateMediaHash(h)) ??
-					(parsed.profileImageMediaHash && validateMediaHash(parsed.profileImageMediaHash)
-						? parsed.profileImageMediaHash
-						: null) ??
-					null;
-				setCachedOwnProfilePhotoHash(hash);
-				setOwnProfilePhotoUrl(resolveAvatarSrc(hash, hash ? getThumbImageUrl(hash, "75x75") : null));
-			} catch {
-				setOwnProfilePhotoUrl(null);
-			}
-		})();
-	}, [userId, service]);
+		setOwnProfilePhotoUrl(
+			resolveAvatarSrc(profileImageHash, profileImageHash ? getThumbImageUrl(profileImageHash, "75x75") : null),
+		);
+	}, [userId, profileImageHash]);
 
 	useEffect(() => {
 		const nextFilters = parseChatFiltersFromLocationState(location.state);
