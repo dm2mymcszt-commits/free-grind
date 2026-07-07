@@ -3,7 +3,9 @@ import {
 	Ban,
 	Database,
 	DatabaseBackup,
+	EyeOff,
 	Eye,
+	History,
 	LayoutGrid,
 	MapPin,
 	NotebookPen,
@@ -12,6 +14,7 @@ import {
 	Sticker,
 	Terminal,
 	Users,
+	Zap,
 	type LucideIcon,
 } from "lucide-react";
 
@@ -49,6 +52,21 @@ export const VERSION_ANNOUNCEMENTS: VersionAnnouncement[] = [
 				icon: Ban,
 				title: "Ban Logs within Chats",
 				description: "See a record of bans and unbans right inside the conversation.",
+			},
+			{
+				icon: History,
+				title: "Block Activity",
+				description: "Review who's blocked or unblocked you, and when, from a dedicated Settings page.",
+			},
+			{
+				icon: Zap,
+				title: "Automation Rules",
+				description: "Build custom chat automation rules that react to messages, taps, and more.",
+			},
+			{
+				icon: EyeOff,
+				title: "Hide Conversations",
+				description: "Hide individual chats from your inbox without archiving or deleting them.",
 			},
 			{
 				icon: Reply,

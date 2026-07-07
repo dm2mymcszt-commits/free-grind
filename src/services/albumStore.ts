@@ -32,6 +32,7 @@ async function maybeAutoDownloadToDevice(
 	base64: string,
 	mimeType: string | null,
 	contentType: string | null,
+	conversationId: string | null,
 ): Promise<void> {
 	if (!isAutoDownloadMediaEnabled()) {
 		return;
@@ -39,7 +40,7 @@ async function maybeAutoDownloadToDevice(
 	const isVideo = (contentType ?? mimeType ?? "").toLowerCase().startsWith("video/");
 	try {
 		const { saveMediaBytesToDeviceSilent } = await import("./saveMedia");
-		await saveMediaBytesToDeviceSilent(base64, mimeType ?? contentType, isVideo ? "video" : "image");
+		await saveMediaBytesToDeviceSilent(base64, mimeType ?? contentType, isVideo ? "video" : "image", conversationId);
 	} catch (error) {
 		appLog.warn("[album-store] auto-download to device failed", error);
 	}
@@ -344,6 +345,7 @@ async function captureAlbumContent(
 	existing: StoredAlbumMedia | undefined,
 	remainingViews: number | null,
 	isViewable: boolean | null,
+	conversationId: string | null,
 ): Promise<void> {
 	const compositeId = `${albumId}:${item.contentId}`;
 	try {
@@ -380,7 +382,7 @@ async function captureAlbumContent(
 		});
 
 		if (main?.base64) {
-			void maybeAutoDownloadToDevice(main.base64, main.mimeType, item.contentType);
+			void maybeAutoDownloadToDevice(main.base64, main.mimeType, item.contentType, conversationId);
 		}
 	} catch (error) {
 		appLog.warn(`[album-store] failed to capture album content ${compositeId}`, error);
@@ -419,6 +421,7 @@ export async function captureAlbum(params: CaptureAlbumParams): Promise<void> {
 				existingById.get(`${albumId}:${item.contentId}`),
 				remainingViews,
 				isViewable,
+				conversationId,
 			),
 		),
 	);

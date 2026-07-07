@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Flame, Loader2, SendHorizontal } from "lucide-react";
+import { Flame, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 type PhotoActionBarProps = {
@@ -57,7 +57,7 @@ export function PhotoActionBar({ onSendText, onReact, placeholder }: PhotoAction
 			<div className="mx-auto flex w-full max-w-lg items-center gap-2">
 				<div className="relative min-w-0 flex-1">
 					<div
-						className="pointer-events-none absolute inset-0 rounded-full backdrop-blur-md"
+						className="pointer-events-none absolute inset-0 rounded-xl backdrop-blur-md"
 						style={{
 							background: "rgba(0,0,0,0.4)",
 							border: "1px solid rgba(255,255,255,0.15)",
@@ -73,8 +73,9 @@ export function PhotoActionBar({ onSendText, onReact, placeholder }: PhotoAction
 								void handleSend();
 							}
 						}}
+						disabled={isSending}
 						placeholder={placeholder ?? t("photo_viewer.reply_placeholder", { defaultValue: "Reply…" })}
-						className="relative h-11 w-full rounded-full bg-transparent px-4 text-sm text-white placeholder:text-white/55 outline-none"
+						className="relative h-11 w-full rounded-xl bg-transparent px-4 text-sm text-white placeholder:text-white/55 outline-none disabled:opacity-50"
 					/>
 				</div>
 				{onReact && (
@@ -83,7 +84,7 @@ export function PhotoActionBar({ onSendText, onReact, placeholder }: PhotoAction
 						onClick={() => void handleReact()}
 						disabled={isReacting}
 						aria-label={t("photo_viewer.react", { defaultValue: "React" })}
-						className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/40 text-white shadow-lg backdrop-blur-md transition active:scale-90 disabled:opacity-50"
+						className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border-none bg-transparent text-white transition active:scale-90 disabled:opacity-50"
 					>
 						{isReacting ? (
 							<Loader2 className="h-5 w-5 animate-spin" />
@@ -95,15 +96,6 @@ export function PhotoActionBar({ onSendText, onReact, placeholder }: PhotoAction
 						)}
 					</button>
 				)}
-				<button
-					type="button"
-					onClick={() => void handleSend()}
-					disabled={!text.trim() || isSending}
-					aria-label={t("photo_viewer.send", { defaultValue: "Send" })}
-					className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-white shadow-lg transition active:scale-90 disabled:opacity-40"
-				>
-					{isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizontal className="h-4 w-4" />}
-				</button>
 			</div>
 		</div>
 	);

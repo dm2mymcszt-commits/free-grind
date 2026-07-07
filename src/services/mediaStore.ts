@@ -160,7 +160,7 @@ async function downloadAndStore(params: FetchAndStoreMediaParams): Promise<void>
 	setCachedMediaUri(mediaKey, toDataUri(fetched.mimeType, fetched.base64));
 
 	if (!isOwnMessage && !skipAutoDownload && (kind === "image" || kind === "video")) {
-		void maybeAutoDownloadToDevice(fetched.base64, fetched.mimeType, kind);
+		void maybeAutoDownloadToDevice(fetched.base64, fetched.mimeType, kind, conversationId);
 	}
 }
 
@@ -173,13 +173,14 @@ async function maybeAutoDownloadToDevice(
 	base64: string,
 	mimeType: string | null,
 	kind: "image" | "video",
+	conversationId: string | null,
 ): Promise<void> {
 	if (!isAutoDownloadMediaEnabled()) {
 		return;
 	}
 	try {
 		const { saveMediaBytesToDeviceSilent } = await import("./saveMedia");
-		await saveMediaBytesToDeviceSilent(base64, mimeType, kind);
+		await saveMediaBytesToDeviceSilent(base64, mimeType, kind, conversationId);
 	} catch (error) {
 		appLog.warn("[media-store] auto-download to device failed", error);
 	}

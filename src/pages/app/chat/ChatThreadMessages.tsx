@@ -665,7 +665,11 @@ export function ChatThreadMessages({
 					if (mediaUrl) {
 						void (async () => {
 							try {
-								const saved = await saveMediaToDevice(mediaUrl, videoUrl ? "video" : "image");
+								const saved = await saveMediaToDevice(
+									mediaUrl,
+									videoUrl ? "video" : "image",
+									selectedConversation.data.conversationId,
+								);
 								if (saved) {
 									toast.success(t("profile_details.save_to_gallery_success"));
 								} else {

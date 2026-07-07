@@ -5702,6 +5702,7 @@ export function ChatPage() {
 					}}
 					onOpenFullScreen={openAlbumMediaViewer}
 					isDesktop={isDesktop}
+					conversationId={selectedConversation?.data.conversationId ?? null}
 				/>
 			) : null}
 
@@ -5710,6 +5711,7 @@ export function ChatPage() {
 				onClose={closeAlbumMediaViewer}
 				photos={albumViewerPhotos}
 				initialIndex={albumViewerMediaIndex ?? 0}
+				conversationId={selectedConversation?.data.conversationId ?? null}
 				renderFooter={(idx) => {
 					const item = albumViewer?.content[idx];
 					if (!albumViewer || !item || albumViewer.isOwn) return null;
@@ -5730,6 +5732,7 @@ export function ChatPage() {
 				photos={fullScreenMediaList}
 				initialIndex={fullScreenMediaIndex}
 				onIndexChange={setFullScreenMediaIndex}
+				conversationId={selectedConversation?.data.conversationId ?? null}
 				renderExtraInfo={(idx) => {
 					const meta = fullScreenMediaList[idx]?.meta;
 					if (!meta) return null;

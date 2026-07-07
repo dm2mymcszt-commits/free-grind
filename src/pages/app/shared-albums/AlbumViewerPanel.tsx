@@ -66,7 +66,7 @@ export function AlbumViewerPanel({
 		try {
 			const result = await saveMediaBatch(items, (done, total) => {
 				toast.loading(t("profile_details.save_all_progress", { done, total }), { id: toastId });
-			});
+			}, viewer.conversationId);
 
 			if (result.failed === 0) {
 				toast.success(t("profile_details.save_all_success", { count: result.succeeded }), {

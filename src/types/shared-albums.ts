@@ -16,6 +16,7 @@ export type AlbumViewer = {
 	albumName: string | null;
 	profileId: number;
 	profileName: string;
+	conversationId: string | null;
 	content: Array<{
 		contentId: number;
 		contentType: string | null;
