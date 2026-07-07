@@ -17,6 +17,7 @@ import {
 	LogOut,
 	Megaphone,
 	MessageSquareWarning,
+	History,
 	Palette,
 	Radar,
 	RefreshCcw,
@@ -727,6 +728,15 @@ export function SettingsPage() {
 							"bg-red-500/15 text-red-400",
 							t("settings.blocked_accounts"),
 							t("settings.blocked_accounts_desc"),
+						)}
+						{navRow(
+							() => navigate("/settings/block-history"),
+							<History className="h-5 w-5" />,
+							"bg-orange-500/15 text-orange-400",
+							t("settings.block_history", { defaultValue: "Block Activity" }),
+							t("settings.block_history_desc", {
+								defaultValue: "See who has blocked or unblocked you, and when.",
+							}),
 						)}
 						{navRow(
 							() => navigate("/settings/privacy"),

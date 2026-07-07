@@ -24,7 +24,6 @@ import { useAuth } from "../../contexts/useAuth";
 import { ChatApiError } from "../../services/chatService";
 import { setConversationDirectory } from "../../services/conversationDirectory";
 import * as chatDb from "../../services/chatDb";
-import { isSafeToPageInboxLocally } from "../../services/inboxSync";
 import type { ArchivedReason } from "../../types/chat-db";
 import {
 	archiveConversation,
@@ -1204,38 +1203,15 @@ export function ChatPage() {
 					(filters.positions?.length ?? 0) > 0 ||
 					filters.distanceMeters != null;
 
-				// Local-first pagination: once the background inbox sync (see
-				// inboxSync.ts) has settled to "done" this session, chatDb is
-				// confirmed current and "load more" while scrolling can page
-				// straight through it instead of re-hitting the live /v4/inbox
-				// endpoint. isSafeToPageInboxLocally checks the *live* sync
-				// status rather than "ever completed" — if the app sat closed
-				// long enough that several pages of new/changed conversations
-				// piled up, the sync is busy catching up through all of them
-				// (not just the first page) and this correctly stays false
-				// until it settles, so scrolling during that window still goes
-				// live instead of serving an incomplete local batch. Active
-				// server-side filters (unreadOnly, chemistryOnly, etc.) also
-				// always go live — chatDb has no way to reproduce that
-				// filtering locally.
-				if (!replace && !hasActiveServerFilters && isSafeToPageInboxLocally(userId)) {
-					const stored = await chatDb.listConversations({ includeArchived: false });
-					const offset = conversationsRef.current.length;
-					const nextBatch = stored.slice(offset, offset + LOCAL_INBOX_PAGE_SIZE);
-
-					if (nextBatch.length > 0) {
-						setConversations((previous) => {
-							const seen = new Set(previous.map((entry) => entry.data.conversationId));
-							const additions = nextBatch
-								.map((c) => c.entry)
-								.filter((entry) => !seen.has(entry.data.conversationId));
-							return additions.length > 0 ? [...previous, ...additions] : previous;
-						});
-					}
-					setNextPage(offset + nextBatch.length < stored.length ? page + 1 : null);
-					return;
-				}
-
+				// Every page — including "load more" while scrolling — always goes
+				// live to /v4/inbox instead of paging through chatDb, so
+				// rightNow/online status on newly-scrolled-to rows is current
+				// rather than whatever was last synced. What chatDb still
+				// guarantees, on every page (see recoveredEntries below): a
+				// conversation the server has permanently stopped listing (e.g.
+				// after a block/unblock) but that's still known locally keeps
+				// showing up, sorted into place by lastActivityTimestamp, instead
+				// of silently disappearing just because pagination went live.
 				const response = await service.listConversations({
 					page,
 					filters,
@@ -1361,11 +1337,13 @@ export function ChatPage() {
 				// isn't just paginating it further down — it genuinely can't
 				// produce it, and our local copy is the only record left.
 				// Recovered here (async, before the setConversations call below) so
-				// the union below can stay a single, synchronous pass over
-				// `previous` — see that block for why it's sourced from `previous`
-				// and not a ref.
+				// the union below can stay a single, synchronous pass. Runs on
+				// every page, not just a full refresh — the same "permanently
+				// dropped" risk applies whether this is page 1 or a "load more"
+				// page, since pagination no longer falls back to chatDb on its
+				// own (see above).
 				let recoveredEntries: ConversationEntry[] = [];
-				if (replace && !hasActiveServerFilters) {
+				if (!hasActiveServerFilters) {
 					const responseIds = new Set(
 						response.entries.map((entry) => entry.data.conversationId),
 					);
@@ -1502,6 +1480,14 @@ export function ChatPage() {
 					for (const entry of entriesWithUnreadFixed) {
 						map.set(entry.data.conversationId, entry);
 					}
+					// Anything chatDb still has for this page's timestamp window
+					// that the server didn't return (see recoveredEntries above) —
+					// only fills gaps, never overrides a live or already-shown entry.
+					for (const entry of recoveredEntries) {
+						if (!map.has(entry.data.conversationId)) {
+							map.set(entry.data.conversationId, entry);
+						}
+					}
 					return [...map.values()].sort((a, b) => {
 						if (a.data.pinned && !b.data.pinned) {
 							return -1;
@@ -1578,13 +1564,28 @@ export function ChatPage() {
 				// A real HTTP error response (ChatApiError) should still surface as
 				// an error — only fall back to the local DB when the request never
 				// got an HTTP response at all (no connectivity).
-				if (!(error instanceof ChatApiError) && replace) {
+				if (!(error instanceof ChatApiError)) {
 					try {
 						const stored = await chatDb.listConversations({ includeArchived: true });
-						setConversations(
-							stored.slice(0, OFFLINE_INBOX_FALLBACK_LIMIT).map((c) => c.entry),
-						);
-						setNextPage(null);
+						if (replace) {
+							setConversations(
+								stored.slice(0, OFFLINE_INBOX_FALLBACK_LIMIT).map((c) => c.entry),
+							);
+							setNextPage(null);
+						} else {
+							const offset = conversationsRef.current.length;
+							const nextBatch = stored.slice(offset, offset + LOCAL_INBOX_PAGE_SIZE);
+							if (nextBatch.length > 0) {
+								setConversations((previous) => {
+									const seen = new Set(previous.map((entry) => entry.data.conversationId));
+									const additions = nextBatch
+										.map((c) => c.entry)
+										.filter((entry) => !seen.has(entry.data.conversationId));
+									return additions.length > 0 ? [...previous, ...additions] : previous;
+								});
+							}
+							setNextPage(offset + nextBatch.length < stored.length ? page + 1 : null);
+						}
 						setInboxError(null);
 						return;
 					} catch {

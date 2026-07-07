@@ -95,24 +95,6 @@ export function subscribeInboxSyncStatus(listener: () => void): () => void {
 	};
 }
 
-/**
- * Whether it's currently safe to page further through chatDb instead of the
- * live `/v4/inbox` endpoint (e.g. ChatPage's "load more" pagination).
- *
- * Deliberately checks the *live* in-memory status, not just "has this
- * profile ever finished a full sync" — a profile can be fully synced from a
- * prior session and still be mid-catch-up right now (e.g. the app sat
- * closed long enough that several pages' worth of new/changed conversations
- * piled up server-side; runInboxSync walks through all of them before
- * settling, not just the first page). Scrolling to load more *during* that
- * catch-up would otherwise serve an incomplete batch straight from a chatDb
- * that hasn't caught up yet. Only once this session's run has actually
- * settled to "done" is chatDb guaranteed current.
- */
-export function isSafeToPageInboxLocally(userId: number | null): boolean {
-	return getInboxSyncStatus(userId).phase === "done";
-}
-
 // Bumped every time a new sync starts, invalidating whatever run came before
 // it — guards against a still-running sync from a previous profile writing
 // into the newly active one after a fast account switch (chatDb always

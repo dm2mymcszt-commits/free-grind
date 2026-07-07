@@ -54,7 +54,7 @@ import {
 import { fetchAndStoreMedia } from "../services/mediaStore";
 import { captureAlbumsForMessages } from "../services/albumStore";
 import { captureReplyPreviewsForMessages } from "../services/replyMediaStore";
-import { getConversation } from "../services/conversationDirectory";
+import { getConversation, getDisplayName } from "../services/conversationDirectory";
 import { runAutomationRulesForSender } from "../utils/automationRules";
 import { useApiFunctions } from "../hooks/useApiFunctions";
 import { useBlockedProfileIds } from "../hooks/queries/useProfileQueries";
@@ -314,8 +314,13 @@ export function ChatRealtimeBridge() {
 				if (message.type !== "SystemBlocked" && message.type !== "SystemUnblocked") {
 					continue;
 				}
-				const conv = getConversation(message.conversationId);
-				const name = conv?.data.name?.trim() || tRef.current("chat.notifications.someone");
+				// getDisplayName falls back to the other participant's profile ID
+				// when the conversation has no name (e.g. never nicknamed/messaged
+				// enough to get one) — a bare "someone" is only shown when the
+				// conversation isn't even in the directory yet.
+				const name =
+					getDisplayName(message.conversationId, userIdRef.current) ??
+					tRef.current("chat.notifications.someone");
 				if (message.type === "SystemBlocked") {
 					toast(
 						tRef.current("chat.block_toast.blocked_by_other", {

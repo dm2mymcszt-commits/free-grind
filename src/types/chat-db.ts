@@ -36,6 +36,25 @@ export type StoredMessage = Message & {
 	localHistory: boolean;
 };
 
+// A durable, standalone record of a block/unblock initiated by the *other*
+// side — kept separate from the messages table (rather than derived from
+// SystemBlocked/SystemUnblocked messages on read) so the profile's name and
+// avatar are captured at the moment it happens and survive even if the
+// conversation itself later becomes unresolvable (e.g. the other profile is
+// deleted/banned, or the conversation ages out of the live inbox entirely).
+export type BlockEventType = "blocked" | "unblocked";
+
+export type StoredBlockEvent = {
+	id: string;
+	profileId: string | null;
+	conversationId: string;
+	eventType: BlockEventType;
+	timestamp: number;
+	displayName: string | null;
+	avatarMediaHash: string | null;
+	createdAt: number;
+};
+
 export type MediaKind = "image" | "video" | "audio";
 export type MediaFetchStatus = "pending" | "ok" | "failed";
 

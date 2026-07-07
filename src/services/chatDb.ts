@@ -26,6 +26,7 @@ import type {
 	AlbumMediaUpsertInput,
 	AlbumUpsertInput,
 	ArchivedReason,
+	BlockEventType,
 	BlockState,
 	DownloadedMediaEntry,
 	FullDbExport,
@@ -33,6 +34,7 @@ import type {
 	StoredAlbum,
 	StoredAlbumMedia,
 	StoredAvatar,
+	StoredBlockEvent,
 	StoredConversation,
 	StoredMediaFile,
 	StoredMessage,
@@ -130,6 +132,17 @@ type AvatarRow = {
 	data_base64: string;
 	mime_type: string | null;
 	fetched_at: number;
+};
+
+type BlockEventRow = {
+	id: string;
+	profile_id: string | null;
+	conversation_id: string;
+	event_type: string;
+	timestamp: number;
+	display_name: string | null;
+	avatar_media_hash: string | null;
+	created_at: number;
 };
 
 type DownloadedMediaRow = {
@@ -352,6 +365,22 @@ async function getDb(): Promise<Database> {
 						created_at INTEGER NOT NULL
 					)
 				`);
+
+				await db.execute(`
+					CREATE TABLE IF NOT EXISTS block_events (
+						id TEXT PRIMARY KEY,
+						profile_id TEXT,
+						conversation_id TEXT NOT NULL,
+						event_type TEXT NOT NULL,
+						timestamp INTEGER NOT NULL,
+						display_name TEXT,
+						avatar_media_hash TEXT,
+						created_at INTEGER NOT NULL
+					)
+				`);
+				await db.execute(
+					"CREATE INDEX IF NOT EXISTS idx_block_events_timestamp ON block_events(timestamp DESC)",
+				);
 			});
 
 			return db;
@@ -965,7 +994,87 @@ export async function insertSystemMessage(
 		replyPreview: null,
 	};
 	await upsertMessages(conversationId, [message]);
+
+	// Only the other side's own action gets a durable block_events row — our
+	// own block/unblock is already visible from the confirmation dialog and
+	// immediate UI change that triggered it (mirrors the toast in
+	// ChatRealtimeBridge.tsx, which skips the "...BySelf" variants the same way).
+	if (type === "SystemBlocked" || type === "SystemUnblocked") {
+		await recordBlockEvent(
+			conversationId,
+			type === "SystemBlocked" ? "blocked" : "unblocked",
+			timestamp,
+		);
+	}
+
 	return message;
+}
+
+/**
+ * Snapshots the other participant's name/avatar into a standalone row at the
+ * moment they block/unblock us — deliberately not derived from the
+ * SystemBlocked/SystemUnblocked messages on read, since a profile that
+ * blocked us can later become fully unresolvable (deleted/banned, or its
+ * conversation ages out of the live inbox), which would otherwise leave the
+ * history page unable to show who it even was.
+ */
+async function recordBlockEvent(
+	conversationId: string,
+	eventType: BlockEventType,
+	timestamp: number,
+): Promise<void> {
+	const conversation = await getConversation(conversationId);
+	const otherProfileId = conversation?.otherProfileId ?? null;
+	const otherParticipant =
+		conversation?.entry.data.participants.find(
+			(p) => String(p.profileId) === otherProfileId,
+		) ?? conversation?.entry.data.participants[0] ?? null;
+	const displayName = conversation?.entry.data.name?.trim() || null;
+	const avatarMediaHash = otherParticipant?.primaryMediaHash ?? null;
+
+	const id = `${conversationId}:${eventType}:${timestamp}`;
+	const db = await getDb();
+	const now = Date.now();
+	await executeWithLockRetry(db, "insert-block-event", async () => {
+		await db.execute(
+			`
+			INSERT INTO block_events (
+				id, profile_id, conversation_id, event_type, timestamp,
+				display_name, avatar_media_hash, created_at
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			ON CONFLICT(id) DO UPDATE SET
+				profile_id = excluded.profile_id,
+				display_name = excluded.display_name,
+				avatar_media_hash = excluded.avatar_media_hash
+			`,
+			[id, otherProfileId, conversationId, eventType, timestamp, displayName, avatarMediaHash, now],
+		);
+	});
+}
+
+function rowToStoredBlockEvent(row: BlockEventRow): StoredBlockEvent {
+	return {
+		id: row.id,
+		profileId: row.profile_id,
+		conversationId: row.conversation_id,
+		eventType: row.event_type as BlockEventType,
+		timestamp: row.timestamp,
+		displayName: row.display_name,
+		avatarMediaHash: row.avatar_media_hash,
+		createdAt: row.created_at,
+	};
+}
+
+/**
+ * All local block/unblock-by-other history, most recent first — backs the
+ * Settings block-history page.
+ */
+export async function listBlockEvents(): Promise<StoredBlockEvent[]> {
+	const db = await getDb();
+	const rows = await db.select<BlockEventRow[]>(
+		"SELECT * FROM block_events ORDER BY timestamp DESC",
+	);
+	return rows.map(rowToStoredBlockEvent);
 }
 
 export async function getMessages(conversationId: string): Promise<StoredMessage[]> {

@@ -21,6 +21,7 @@ import { GridProfilePage } from "./pages/app/GridProfilePage.tsx";
 import { AboutPage } from "./pages/app/AboutPage.tsx";
 import { SettingsAlbumsPage } from "./pages/app/SettingsAlbumsPage.tsx";
 import { SettingsBlockedPage } from "./pages/app/SettingsBlockedPage.tsx";
+import { SettingsBlockHistoryPage } from "./pages/app/SettingsBlockHistoryPage.tsx";
 import { AgeVerificationPage } from "./pages/app/AgeVerificationPage.tsx";
 import { SharedAlbumsPage } from "./pages/app/SharedAlbumsPage.tsx";
 import { ApiInspectorPage } from "./pages/app/ApiInspectorPage.tsx";
@@ -222,6 +223,7 @@ export default function App() {
 								<Route path="/settings/about" element={<AboutPage />} />
 								<Route path="/settings/albums" element={<SettingsAlbumsPage />} />
 								<Route path="/settings/blocked" element={<SettingsBlockedPage />} />
+								<Route path="/settings/block-history" element={<SettingsBlockHistoryPage />} />
 								<Route path="/settings/saved-phrases" element={<SettingsSavedPhrasesPage />} />
 								<Route
 									path="/settings/api-inspector"

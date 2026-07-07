@@ -28,6 +28,8 @@
         "my_albums_desc": "Create, rename, and delete private albums.",
         "blocked_accounts": "Blocked Accounts",
         "blocked_accounts_desc": "See who you blocked and unblock them anytime.",
+        "block_history": "Block Activity",
+        "block_history_desc": "See who has blocked or unblocked you, and when.",
         "export_chat": "Export Chat Data",
         "export_chat_desc": "Download all locally stored messages as a JSON file.",
         "check_updates": "Check for Updates",
@@ -58,6 +60,18 @@
         "profile_id": "Profile ID: {{id}}",
         "count_one": "{{count}} blocked account",
         "count_other": "{{count}} blocked accounts"
+    },
+    "settings_block_history": {
+        "title": "Block Activity",
+        "subtitle": "Profiles that have blocked or unblocked you, and when it happened.",
+        "refreshing": "Refreshing...",
+        "error_load": "Failed to load block activity",
+        "empty": "No block activity yet.",
+        "empty_desc": "When someone blocks or unblocks you, it'll show up here.",
+        "section_label": "History",
+        "blocked": "Blocked you",
+        "unblocked": "Unblocked you",
+        "name_fallback": "Someone"
     },
     "settings_automation": {
         "auto_block_title": "Message Auto-Block",
