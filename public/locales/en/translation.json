@@ -441,7 +441,8 @@
             "tap_limit": "You already tapped this profile in the last 24 hours",
             "tap_mutual": "Tap sent. It's mutual.",
             "tap_sent": "Tap sent",
-            "tap_failed": "Failed to send tap"
+            "tap_failed": "Failed to send tap",
+            "tag_filter_applied": "Filtered by tag \"{{tag}}\""
         },
         "chatted": "Chatted"
     },

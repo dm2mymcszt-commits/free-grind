@@ -72,7 +72,7 @@ export function TestReminderGate({ children }: { children: ReactNode }) {
 
 	return (
 		<div className="app-shell">
-		<div className="fs-card-outer no-touch-callout">
+		<div className="fs-card-outer fs-card-overlay no-touch-callout">
 			<div className="fs-card-inner fs-card-lg flex flex-col">
 				<div
 					className="flex flex-1 flex-col items-center justify-center px-8 text-center"

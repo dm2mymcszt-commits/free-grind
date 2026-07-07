@@ -82,6 +82,7 @@ type ProfileDetailsModalProps = {
 	isTappingProfile?: boolean;
 	isTapBlocked?: boolean;
 	tapVisualState?: { state: "none" | "single" | "mutual"; tapId: number };
+	onTagClick?: (tag: string) => void;
 	activeProfile: ProfileDetail | null;
 	selectedBrowseCard: BrowseCard | null;
 	isLoadingActiveProfile: boolean;
@@ -128,6 +129,7 @@ export function ProfileDetailsModal({
 	isTappingProfile = false,
 	isTapBlocked = false,
 	tapVisualState = { state: "none", tapId: 1 },
+	onTagClick,
 	activeProfile,
 	selectedBrowseCard,
 	isLoadingActiveProfile,
@@ -1150,6 +1152,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 							usesFreegrind={usesFreegrind ?? false}
 							onMessageProfile={variant === "page" && !isOwnProfile ? onMessageProfile : undefined}
 							onTapProfile={variant === "page" && !isOwnProfile ? onTapProfile : undefined}
+							onTagClick={onTagClick}
 							onPhotoIndexChange={setMobileCarouselPhotoIndex}
 							onDragDeltaChange={setCarouselDragDelta}
 							isTapDisabled={isTapDisabled}
@@ -1548,6 +1551,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 											usesFreegrind={usesFreegrind ?? false}
 											onMessageProfile={undefined}
 											onTapProfile={undefined}
+											onTagClick={onTagClick}
 											isTapDisabled={isTapDisabled}
 											isTapBlocked={isTapBlocked}
 											isTapActive={isTapActive}

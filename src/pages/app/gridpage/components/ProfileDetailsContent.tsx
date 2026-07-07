@@ -107,6 +107,7 @@ type ProfileDetailsContentProps = {
 	usesFreegrind: boolean;
 	onMessageProfile?: (profileId: string) => void;
 	onTapProfile?: (profileId: string, tapId?: number) => void;
+	onTagClick?: (tag: string) => void;
 	isTapDisabled: boolean;
 	isTapBlocked: boolean;
 	isTapActive: boolean;
@@ -157,6 +158,7 @@ export function ProfileDetailsContent({
 	usesFreegrind,
 	onMessageProfile,
 	onTapProfile,
+	onTagClick,
 	isTapDisabled,
 	isTapBlocked,
 	isTapActive,
@@ -596,16 +598,20 @@ export function ProfileDetailsContent({
 										(own) => own.toLowerCase() === tag.toLowerCase(),
 									);
 									return (
-                                        <span
-                                            key={tag}
-                                            className={`rounded-full border px-3 py-1.5 text-sm ${
-                                                isMatch
-                                                ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold"
-                                                : "border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)]"
-                                            }`}
-                                            >
-                                            {tag}
-                                        </span>
+										<button
+											key={tag}
+											type="button"
+											onClick={() => onTagClick?.(tag)}
+											className={`rounded-full border px-3 py-1.5 text-sm transition-opacity ${
+												onTagClick ? "cursor-pointer hover:opacity-80" : ""
+											} ${
+												isMatch
+												? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold"
+												: "border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)]"
+											}`}
+										>
+											{tag}
+										</button>
 									);
 								})}
 							</div>

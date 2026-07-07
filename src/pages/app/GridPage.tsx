@@ -253,6 +253,7 @@ export function GridPage() {
 		meetAt,
 		nsfwPics,
 		tags,
+		setTags,
 		sortBy,
 		setSortBy,
 		browseRequestFilters,
@@ -270,6 +271,17 @@ export function GridPage() {
 	// reload in PreferencesContext.tsx).
 	useEffect(() => {
 		if (!settingsReady) {
+			return;
+		}
+		// Skip if we just navigated in with an explicit filter draft (e.g. tag-click
+		// from a profile) — otherwise this clobbers it with the stale persisted draft
+		// once the async load resolves, right after it was applied.
+		const hasPendingDraft = Boolean(
+			typeof location.state === "object" &&
+				location.state !== null &&
+				(location.state as { browseFiltersDraft?: unknown }).browseFiltersDraft,
+		);
+		if (hasPendingDraft) {
 			return;
 		}
 		void loadBrowseFiltersDraft().then(applyDraft);
@@ -1028,6 +1040,12 @@ export function GridPage() {
 		navigate(`/chat?${nextParams.toString()}`);
 	};
 
+	const handleTagClick = (tag: string) => {
+		setTags([tag]);
+		setActiveProfileId(null);
+		toast.success(t("browse_page.toasts.tag_filter_applied", { tag }));
+	};
+
 	const handleTriangleProfile = (targetProfileId: string) => {
 		if (!geohash) {
 			toast.error(t("browse_page.errors.location_required"));
@@ -1426,13 +1444,18 @@ export function GridPage() {
 									<button
 										type="button"
 										onClick={() => setIsFiltersOpen(true)}
-										className="glass-pill inline-flex shrink-0 items-center gap-1.5 px-4 py-2 text-sm font-bold text-[var(--accent)] active:scale-95"
-										style={{ "--pill-color": "var(--accent)" } as React.CSSProperties}
+										className={cn(
+											"inline-flex shrink-0 items-center gap-1.5 px-4 py-2 text-sm font-bold transition-all active:scale-95",
+											hasActiveBrowseFilters
+												? "rounded-full border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] shadow-lg shadow-[var(--accent)]/40"
+												: "glass-pill text-[var(--accent)] hover:border-[var(--accent)]/60 hover:bg-[var(--accent)]/20",
+										)}
+										style={!hasActiveBrowseFilters ? { "--pill-color": "var(--accent)" } as React.CSSProperties : undefined}
 									>
 										<SlidersHorizontal className="h-3.5 w-3.5" />
 										{t("right_now.filters")}
 										{hasActiveBrowseFilters ? (
-											<span className="ml-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--accent)] px-1 text-[9px] font-bold text-[var(--accent-contrast)]">
+											<span className="ml-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--accent-contrast)] px-1 text-[9px] font-bold text-[var(--accent)]">
 												{activeFilterCount}
 											</span>
 										) : null}
@@ -1624,6 +1647,7 @@ export function GridPage() {
 				isOpen={Boolean(activeProfileId)}
 				onClose={() => setActiveProfileId(null)}
 				onMessageProfile={handleMessageProfile}
+				onTagClick={handleTagClick}
 				onTriangleProfile={handleTriangleProfile}
 				onBlockProfile={handleBlockProfile}
 				onUnblockProfile={handleUnblockProfile}

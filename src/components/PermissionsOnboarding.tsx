@@ -306,7 +306,7 @@ export function PermissionsOnboarding({ onComplete }: { onComplete: () => void }
 	// ── Welcome ──────────────────────────────────────────────────────────────
 	if (step === "welcome") {
 		return (
-			<div className="fs-card-outer z-[300] no-touch-callout">
+			<div className="fs-card-outer fs-card-overlay z-[300] no-touch-callout">
 				<div className="fs-card-inner fs-card-lg flex flex-col">
 					<div
 						className="flex flex-1 flex-col items-center justify-center px-8 text-center"
@@ -348,7 +348,7 @@ export function PermissionsOnboarding({ onComplete }: { onComplete: () => void }
 			{ value: "dark",   label: "Dark",   sub: "Always dark",         icon: Moon,    previewBg: "#1f2835",  previewFg: "#96a2b6" },
 		];
 		return (
-			<div className="fs-card-outer z-[300] no-touch-callout">
+			<div className="fs-card-outer fs-card-overlay z-[300] no-touch-callout">
 				<div className="fs-card-inner fs-card-lg flex flex-col">
 					<TopDots current="theme" />
 
@@ -422,7 +422,7 @@ export function PermissionsOnboarding({ onComplete }: { onComplete: () => void }
 	// ── Analytics ─────────────────────────────────────────────────────────────
 	if (step === "analytics") {
 		return (
-			<div className="fs-card-outer z-[300] no-touch-callout">
+			<div className="fs-card-outer fs-card-overlay z-[300] no-touch-callout">
 				<div className="fs-card-inner fs-card-lg flex flex-col">
 					<TopDots current="analytics" />
 
@@ -465,7 +465,7 @@ export function PermissionsOnboarding({ onComplete }: { onComplete: () => void }
 	// ── Scam Warning ──────────────────────────────────────────────────────────
 	if (step === "scam") {
 		return (
-			<div className="fs-card-outer z-[300] no-touch-callout">
+			<div className="fs-card-outer fs-card-overlay z-[300] no-touch-callout">
 				<div className="fs-card-inner fs-card-lg flex flex-col">
 					<TopDots current="scam" />
 
@@ -532,7 +532,7 @@ export function PermissionsOnboarding({ onComplete }: { onComplete: () => void }
 	const detail = "detail" in cfg ? cfg.detail : null;
 
 	return (
-		<div className="fs-card-outer z-[300] no-touch-callout">
+		<div className="fs-card-outer fs-card-overlay z-[300] no-touch-callout">
 			<div className="fs-card-inner fs-card-lg flex flex-col">
 				<TopDots current={step} />
 

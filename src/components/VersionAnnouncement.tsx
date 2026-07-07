@@ -66,7 +66,7 @@ export function VersionAnnouncement({
 	const Icon = item?.icon;
 
 	return (
-		<div className="fs-card-outer z-[300] no-touch-callout">
+		<div className="fs-card-outer fs-card-overlay z-[300] no-touch-callout">
 			<div className="fs-card-inner fs-card-lg flex flex-col">
 				{!isIntro && <Dots total={items.length} current={step} />}
 
