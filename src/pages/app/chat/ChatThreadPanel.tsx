@@ -431,28 +431,8 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 	const [isDraggingAttachmentCrop, setIsDraggingAttachmentCrop] = useState(false);
 	const attachmentImgRef = useRef<HTMLImageElement | null>(null);
 	const [mobileKeyboardInset, setMobileKeyboardInset] = useState(0);
-	const [composerHeight, setComposerHeight] = useState(88);
-	const composerHeightObserverRef = useRef<ResizeObserver | null>(null);
-	// Callback ref rather than a plain useRef: the composer bar and the
-	// archived-conversation banner occupy the same slot and never render
-	// together, so the underlying node is swapped/unmounted whenever
-	// isArchived flips — reconnecting the observer here (instead of in an
-	// effect keyed on a ref) keeps it attached to whichever one is current.
-	const composerRef = useCallback((node: HTMLElement | null) => {
-		composerHeightObserverRef.current?.disconnect();
-		composerHeightObserverRef.current = null;
-		if (!node) {
-			return;
-		}
-		const observer = new ResizeObserver((entries) => {
-			const entry = entries[0];
-			if (entry) {
-				setComposerHeight(entry.target.getBoundingClientRect().height);
-			}
-		});
-		observer.observe(node);
-		composerHeightObserverRef.current = observer;
-	}, []);
+	const fullLayoutHeightRef = useRef(0);
+	const restingOverlapRef = useRef<number | null>(null);
 	const [isBlockConfirmOpen, setIsBlockConfirmOpen] = useState(false);
 	const [isDeleteConversationConfirmOpen, setIsDeleteConversationConfirmOpen] =
 		useState(false);
@@ -907,11 +887,15 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 		const viewport = window.visualViewport;
 
 		const updateKeyboardInset = () => {
-			const layoutHeight = window.innerHeight;
+			fullLayoutHeightRef.current = Math.max(fullLayoutHeightRef.current, window.innerHeight);
+			const layoutHeight = fullLayoutHeightRef.current;
 			const visibleBottom = viewport.height + viewport.offsetTop;
 			const overlap = Math.max(0, Math.round(layoutHeight - visibleBottom));
-			// Ignore tiny viewport shifts from browser chrome changes.
-			setMobileKeyboardInset(overlap >= 60 ? overlap : 0);
+			if (restingOverlapRef.current === null || overlap < restingOverlapRef.current) {
+				restingOverlapRef.current = overlap;
+			}
+			const keyboardOverlap = overlap - restingOverlapRef.current;
+			setMobileKeyboardInset(keyboardOverlap >= 60 ? keyboardOverlap : 0);
 		};
 
 		updateKeyboardInset();
@@ -924,25 +908,45 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 		};
 	}, [isDesktop]);
 
-	// On mobile the thread's header/composer are position:fixed against the
-	// document viewport, which native WebViews (Android/iOS) can misplace
-	// whenever the document itself is tall/short enough to rubber-band or
-	// scroll natively — most visible on short threads where nothing else
-	// forces the page to exactly viewport height. Locking document scroll
-	// here removes that possibility; all real scrolling happens in the
-	// thread's own overflow-y-auto container regardless.
+	useEffect(() => {
+		if (isDesktop) return;
+		const onKeyboardInset = (event: Event) => {
+			const detail = (event as CustomEvent<{ height?: number }>).detail;
+			const height = detail?.height;
+			if (typeof height === "number" && Number.isFinite(height)) {
+				setMobileKeyboardInset(Math.max(0, Math.round(height)));
+			}
+		};
+		window.addEventListener("fg:keyboard-inset", onKeyboardInset);
+		return () => window.removeEventListener("fg:keyboard-inset", onKeyboardInset);
+	}, [isDesktop]);
+
 	useEffect(() => {
 		if (isDesktop || !(selectedConversation || targetProfileId)) {
 			return;
 		}
 		const { body, documentElement: html } = document;
-		const previousBodyOverflow = body.style.overflow;
+		const previousBodyPosition = body.style.position;
+		const previousBodyTop = body.style.top;
+		const previousBodyLeft = body.style.left;
+		const previousBodyRight = body.style.right;
+		const previousBodyWidth = body.style.width;
 		const previousHtmlOverflow = html.style.overflow;
-		body.style.overflow = "hidden";
+		window.scrollTo(0, 0);
 		html.style.overflow = "hidden";
+		body.style.position = "fixed";
+		body.style.top = "0";
+		body.style.left = "0";
+		body.style.right = "0";
+		body.style.width = "100%";
 		return () => {
-			body.style.overflow = previousBodyOverflow;
 			html.style.overflow = previousHtmlOverflow;
+			body.style.position = previousBodyPosition;
+			body.style.top = previousBodyTop;
+			body.style.left = previousBodyLeft;
+			body.style.right = previousBodyRight;
+			body.style.width = previousBodyWidth;
+			window.scrollTo(0, 0);
 		};
 	}, [isDesktop, selectedConversation, targetProfileId]);
 
@@ -954,8 +958,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 			style={
 				!isDesktop
 					? {
-						height:
-							"calc(100dvh - (env(safe-area-inset-top, 0px) + 16px) - (env(safe-area-inset-bottom, 0px) + 92px))",
+						height: `calc(100dvh - ${mobileKeyboardInset}px)`,
 					}
 					: undefined
 			}
@@ -1078,11 +1081,10 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 				return (
 					<>
 						<div
-							className={`mb-3 flex items-center justify-between gap-3 border-b border-[var(--border)] pb-3 ${!isDesktop ? "fixed inset-x-0 top-0 z-20 bg-[var(--surface)] py-3 px-[var(--app-px)]" : "-mx-3 sm:-mx-4 px-3 sm:px-4"}`}
+							className={`flex items-center justify-between gap-3 border-b border-[var(--border)] ${!isDesktop ? "shrink-0 bg-[var(--surface)] px-[var(--app-px)] pb-3" : "mb-3 pb-3 -mx-3 sm:-mx-4 px-3 sm:px-4"}`}
 							style={
 								!isDesktop
 									? {
-										top: 0,
 										paddingTop:
 											"calc(env(safe-area-inset-top, 0px) + clamp(14px, 2.2vw, 28px))",
 									}
@@ -1575,7 +1577,6 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 						threadBottomRef={threadBottomRef}
 						isPartnerTyping={isPartnerTyping}
 						isArchived={isArchived}
-						composerHeight={composerHeight}
 				/>
 				)
 			) : (
@@ -1592,11 +1593,10 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 
 					{isArchived ? (
 						<div
-							ref={composerRef}
-							className={`${!isDesktop ? "fixed bottom-0 left-0 right-0 z-30 px-[var(--app-px)] py-3" : "mt-3 pt-3 -mx-3 sm:-mx-4 px-3 sm:px-4"} bg-[var(--surface)]`}
+					className={`${!isDesktop ? "shrink-0 px-[var(--app-px)] py-3" : "mt-3 pt-3 -mx-3 sm:-mx-4 px-3 sm:px-4"} bg-[var(--surface)]`}
 							style={
 								!isDesktop
-									? { paddingBottom: "max(12px, env(safe-area-inset-bottom))" }
+									? { paddingBottom: mobileKeyboardInset > 0 ? "12px" : "max(12px, env(safe-area-inset-bottom))" }
 									: undefined
 							}
 						>
@@ -1622,15 +1622,11 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 						</div>
 					) : (
 					<form
-						ref={composerRef}
 						onSubmit={onFormSubmit}
-                        className={`${!isDesktop ? "fixed bottom-0 left-0 right-0 z-30 px-[var(--app-px)] py-3" : "relative mt-3 pt-3 -mx-3 sm:-mx-4 px-3 sm:px-4"} border-t border-[var(--border)] bg-[var(--surface)]`}
+						className={`relative ${!isDesktop ? "shrink-0 px-[var(--app-px)] py-3" : "mt-3 pt-3 -mx-3 sm:-mx-4 px-3 sm:px-4"} border-t border-[var(--border)] bg-[var(--surface)]`}
 						style={
 							!isDesktop
-								? {
-									bottom: `${mobileKeyboardInset}px`,
-									paddingBottom: "max(12px, env(safe-area-inset-bottom))",
-								}
+								? { paddingBottom: mobileKeyboardInset > 0 ? "12px" : "max(12px, env(safe-area-inset-bottom))" }
 								: undefined
 						}
 					>
@@ -1867,6 +1863,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 								<textarea
 									ref={textareaRef}
 									value={draft}
+									autoComplete="off"
 									onChange={(event) => setDraft(event.target.value)}
 									onFocus={() => setIsComposerFocused(true)}
 									onBlur={() => setIsComposerFocused(false)}
