@@ -219,7 +219,7 @@ export function createChatService(fetchRest: RestFetcher, t: (key: string) => st
 						nameMatch !== null || 
 						bioMatch !== null || 
 						msgMatch !== null ||
-						(profileAge !== undefined && isOutsideAgeLimits(profileAge)) ||
+						isOutsideAgeLimits(profileAge) ||
 						(distance !== undefined && isOutsideDistanceLimits(distance))
 					);
 
@@ -241,7 +241,7 @@ export function createChatService(fetchRest: RestFetcher, t: (key: string) => st
 				if (shouldBlock) {
 					if (profileId) {
 						let reason = "Keyword match";
-						if (profileAge !== undefined && isOutsideAgeLimits(profileAge)) {
+						if (isOutsideAgeLimits(profileAge)) {
 							reason = profileAge == null ? "No Age Set" : `Age Limit (${profileAge})`;
 						} else if (distance !== undefined && isOutsideDistanceLimits(distance)) {
 							reason = `Distance Limit (${Math.round(distance/1000)}km)`;
