@@ -258,6 +258,8 @@ function ChatConversationRow({
 	const { t } = useTranslation();
 	const { showDebugInfo } = usePreferences();
 	const { ref, revealClass } = useRevealOnScroll();
+	const { isActive, viewType: activeViewType } = useMultiSelect();
+	const isMultiSelectActive = isActive && activeViewType === "inbox";
 	useAvatarCache();
 
 	const contentRef = useRef<HTMLDivElement | null>(null);
@@ -412,7 +414,7 @@ function ChatConversationRow({
 	const readReceiptsHidden = isReadReceiptsHidden(conversation.data.conversationId);
 
 	return (
-		<div ref={ref} className={`relative overflow-hidden ${revealClass}`}>
+		<div ref={ref} className={`relative overflow-hidden h-[96px] ${revealClass}`}>
 			<div className="pointer-events-none absolute inset-0 flex items-center justify-between px-6">
 				<div
 					ref={pinIconRef}
@@ -440,10 +442,17 @@ function ChatConversationRow({
 				style={{
 					touchAction: "pan-y",
 					...(isSelected
-						? { borderLeft: "2px solid var(--accent)", paddingLeft: "14px" }
-						: { paddingLeft: "16px" }),
+						? {
+								borderColor: "color-mix(in srgb, var(--accent) 35%, transparent)",
+								backgroundImage: "linear-gradient(90deg, color-mix(in srgb, var(--accent) 14%, transparent) 0%, color-mix(in srgb, var(--accent) 3%, transparent) 100%)",
+								boxShadow: "0 8px 24px -4px rgba(0, 0, 0, 0.3), 0 0 12px color-mix(in srgb, var(--accent) 12%, transparent), inset 0 1px 0 0 rgba(255, 255, 255, 0.15)",
+								paddingLeft: "14px",
+						  }
+						: { borderColor: "transparent", paddingLeft: "16px" }),
 				}}
-				className="no-touch-callout relative flex cursor-pointer items-center gap-4 border-b border-[var(--surface-2)] py-3 pr-4 text-left transition"
+				className={`no-touch-callout relative flex h-full cursor-pointer items-center gap-4 rounded-2xl border pr-4 text-left transition-all duration-300 ${
+					isSelected ? "backdrop-blur-md" : "hover:bg-white/5"
+				}`}
 			>
 					<button
 						type="button"
@@ -536,7 +545,7 @@ function ChatConversationRow({
 									getPreviewText(conversation, t)
 								)}
 							</p>
-							{conversation.data.unreadCount > 0 ? (
+							{conversation.data.unreadCount > 0 && !isMultiSelectActive ? (
 								<span className={`flex min-w-[20px] shrink-0 flex-col items-center justify-center rounded-full bg-[var(--accent)] px-1.5 py-0.5 text-[11px] font-bold text-[var(--accent-contrast)] shadow-sm ${showDebugInfo ? "min-h-[28px]" : ""}`}>
 									<span>{conversation.data.unreadCount}</span>
 									{showDebugInfo && (
@@ -676,7 +685,7 @@ export function ChatInboxPanel({
 	const rowVirtualizer = useVirtualizer({
 		count: filteredConversations.length,
 		getScrollElement: () => inboxListRef.current,
-		estimateSize: () => 78,
+		estimateSize: () => 96,
 		overscan: 8,
 		getItemKey: (index: number) => filteredConversations[index]?.data.conversationId ?? index,
 	});
