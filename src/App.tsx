@@ -38,7 +38,7 @@ import { ChatSearchPage } from "./pages/app/ChatSearchPage";
 import { PermissionsOnboarding } from "./components/PermissionsOnboarding";
 import { VersionAnnouncement } from "./components/VersionAnnouncement";
 import { OutdatedVersionGate } from "./components/OutdatedVersionPrompt";
-import { TestReminderGate } from "./components/TestReminderPrompt";
+
 import { PushNotificationBridge } from "./components/PushNotificationBridge";
 import { ChatRealtimeBridge } from "./components/ChatRealtimeBridge";
 import { ActiveRouteBridge } from "./components/ActiveRouteBridge";
@@ -184,7 +184,6 @@ export default function App() {
 							</div>
 						) : (
 							<OutdatedVersionGate>
-								<TestReminderGate>
 									{renderPhase >= 1 && <ManagerModeRedirect />}
 									{renderPhase >= 2 && <PushNotificationBridge />}
 									{renderPhase >= 2 && <ManagedOptionsCacheBridge />}
@@ -274,7 +273,6 @@ export default function App() {
 										</Route>
 									</Routes>
 									<MultiSelectOverlay />
-								</TestReminderGate>
 							</OutdatedVersionGate>
 						)}
 					</MultiSelectProvider>
