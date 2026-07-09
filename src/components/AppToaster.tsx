@@ -17,6 +17,7 @@ export function AppToaster() {
 				// Offset the toast container to avoid overlapping with the device status bar or notch.
 				// We use a larger offset to ensure visibility even if env() is not populated.
 				top: "calc(env(safe-area-inset-top, 0px) + 54px)",
+				zIndex: 99999999,
 			}}
 			toastOptions={{
 				className:
@@ -26,6 +27,7 @@ export function AppToaster() {
 					background: "var(--surface)",
 					color: "var(--text)",
 					border: "1px solid var(--border)",
+					zIndex: 99999999,
 				},
 				success: {
 					icon: <CheckCircle2 className="w-5 h-5 text-green-500" />,

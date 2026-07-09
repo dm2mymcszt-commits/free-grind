@@ -649,20 +649,43 @@ export function ChatInboxPanel({
 	const [deleteConfirmState, setDeleteConfirmState] = useState<{
 		conversation: ConversationEntry;
 		isArchived: boolean;
+		complete?: () => void;
+		revert?: () => void;
 	} | null>(null);
 	const [dontAskDeleteAgain, setDontAskDeleteAgain] = useState(false);
 
-	const requestDeleteConversation = (conversation: ConversationEntry, isArchived: boolean) => {
+	const safeDelete = (
+		deleteFn: (id: string) => void | Promise<void>,
+		id: string,
+		revert?: () => void
+	) => {
+		try {
+			const res = deleteFn(id);
+			if (res instanceof Promise) {
+				res.catch(() => { if (revert) revert(); });
+			}
+		} catch {
+			if (revert) revert();
+		}
+	};
+
+	const requestDeleteConversation = (
+		conversation: ConversationEntry,
+		isArchived: boolean,
+		complete?: () => void,
+		revert?: () => void
+	) => {
 		if (isDeleteConversationConfirmSkipped()) {
+			if (complete) complete();
 			if (isArchived) {
-				void onDeleteConversationLocal(conversation.data.conversationId);
+				safeDelete(onDeleteConversationLocal, conversation.data.conversationId, revert);
 			} else {
-				void onDeleteConversation(conversation.data.conversationId);
+				safeDelete(onDeleteConversation, conversation.data.conversationId, revert);
 			}
 			return;
 		}
 		setDontAskDeleteAgain(false);
-		setDeleteConfirmState({ conversation, isArchived });
+		setDeleteConfirmState({ conversation, isArchived, complete, revert });
 	};
 
 	const markUserScroll = () => {
@@ -838,7 +861,8 @@ export function ChatInboxPanel({
 											const otherProfileId = otherParticipant?.profileId ? String(otherParticipant.profileId) : null;
 											const localNickname = otherProfileId ? localNicknamesByProfileId[otherProfileId] : null;
 											const displayName = localNickname || conversation.data.name || t("chat.unknown");
-
+											const isArchived = archivedConversationIds.has(conversation.data.conversationId);
+											const isSelected = selectedConversationId === conversation.data.conversationId;
 											return (
 												<div
 													key={virtualRow.key}
@@ -852,35 +876,41 @@ export function ChatInboxPanel({
 														transform: `translateY(${virtualRow.start}px)`,
 													}}
 												>
-													<SelectableItem
-														id={conversation.data.conversationId}
-														profileId={otherProfileId ?? undefined}
-														name={displayName}
-														viewType="inbox"
-														onNormalClick={() => onSelectConversation(conversation)}
-														roundedClassName="rounded-2xl"
+													<SwipeableRow
+														onDelete={(complete, revert) => requestDeleteConversation(conversation, isArchived, complete, revert)}
+														isDisabled={isMultiSelectActive}
+														isSelected={isSelected}
 													>
-														<ChatConversationRow
-															conversation={conversation}
-															userId={userId}
-															localNicknamesByProfileId={localNicknamesByProfileId}
-															chatContactIndexByProfileId={chatContactIndexByProfileId}
-															nowTimestamp={nowTimestamp}
-															presenceResults={presenceResults}
-															isSelected={conversation.data.conversationId === selectedConversationId}
-															isTyping={typingConversationIds?.has(conversation.data.conversationId) ?? false}
-															isArchived={archivedConversationIds.has(conversation.data.conversationId)}
-															isDesktop={isDesktop}
-															onSelectConversation={onSelectConversation}
-															onViewProfile={onViewProfile}
-															onOpenContextMenu={(c, isArchived, x, y) =>
-																setContextMenuState({ conversation: c, isArchived, x, y })
-															}
-															onSwipePin={(c) => void onTogglePinConversation(c.data.conversationId, c.data.pinned)}
-															onSwipeDeleteRequest={requestDeleteConversation}
-															isDisabledSwipe={isMultiSelectActive}
-														/>
-													</SelectableItem>
+														<SelectableItem
+															id={conversation.data.conversationId}
+															profileId={otherProfileId ?? undefined}
+															name={displayName}
+															viewType="inbox"
+															onNormalClick={() => onSelectConversation(conversation)}
+															roundedClassName="rounded-2xl"
+														>
+															<ChatConversationRow
+																conversation={conversation}
+																userId={userId}
+																localNicknamesByProfileId={localNicknamesByProfileId}
+																chatContactIndexByProfileId={chatContactIndexByProfileId}
+																nowTimestamp={nowTimestamp}
+																presenceResults={presenceResults}
+																isSelected={isSelected}
+																isTyping={typingConversationIds?.has(conversation.data.conversationId) ?? false}
+																isArchived={isArchived}
+																isDesktop={isDesktop}
+																onSelectConversation={onSelectConversation}
+																onViewProfile={onViewProfile}
+																onOpenContextMenu={(c, isArchived, x, y) =>
+																	setContextMenuState({ conversation: c, isArchived, x, y })
+																}
+																onSwipePin={(c) => void onTogglePinConversation(c.data.conversationId, c.data.pinned)}
+																onSwipeDeleteRequest={requestDeleteConversation}
+																isDisabledSwipe={true}
+															/>
+														</SelectableItem>
+													</SwipeableRow>
 												</div>
 											);
 										})}
@@ -936,18 +966,22 @@ export function ChatInboxPanel({
 				cancelLabel={t("chat.actions.cancel")}
 				onConfirm={() => {
 					if (!deleteConfirmState) return;
-					const { conversation, isArchived } = deleteConfirmState;
+					const { conversation, isArchived, complete, revert } = deleteConfirmState;
 					if (dontAskDeleteAgain && typeof window !== "undefined") {
 						localStorage.setItem(SKIP_DELETE_CONVERSATION_CONFIRM_KEY, "true");
 					}
 					setDeleteConfirmState(null);
+					if (complete) complete();
 					if (isArchived) {
-						void onDeleteConversationLocal(conversation.data.conversationId);
+						safeDelete(onDeleteConversationLocal, conversation.data.conversationId, revert);
 					} else {
-						void onDeleteConversation(conversation.data.conversationId);
+						safeDelete(onDeleteConversation, conversation.data.conversationId, revert);
 					}
 				}}
-				onCancel={() => setDeleteConfirmState(null)}
+				onCancel={() => {
+					if (deleteConfirmState?.revert) deleteConfirmState.revert();
+					setDeleteConfirmState(null);
+				}}
 				isProcessing={
 					deleteConfirmState != null &&
 					isDeletingConversationId === deleteConfirmState.conversation.data.conversationId
@@ -958,5 +992,127 @@ export function ChatInboxPanel({
 				onDontAskAgainChange={setDontAskDeleteAgain}
 			/>
 		</PullToRefreshContainer>
+	);
+}
+
+function SwipeableRow({
+	children,
+	onDelete,
+	isDisabled,
+	isSelected,
+}: {
+	children: React.ReactNode;
+	onDelete: (complete: () => void, revert: () => void) => void;
+	isDisabled?: boolean;
+	isSelected?: boolean;
+}) {
+	const [startX, setStartX] = useState<number | null>(null);
+	const [currentX, setCurrentX] = useState(0);
+	const [isSwiping, setIsSwiping] = useState(false);
+	const [isAnimatingOut, setIsAnimatingOut] = useState(false);
+
+	const handlePointerDown = (e: React.PointerEvent) => {
+		if (isDisabled) return;
+		if (e.button !== 0) return;
+		setStartX(e.clientX);
+		setIsSwiping(true);
+	};
+
+	const handlePointerMove = (e: React.PointerEvent) => {
+		if (!isSwiping || startX === null) return;
+		const deltaX = e.clientX - startX;
+
+		if (deltaX < 0) {
+			if (deltaX < -140) {
+				setCurrentX(-140 + (deltaX + 140) * 0.2);
+			} else {
+				setCurrentX(deltaX);
+			}
+		} else {
+			setCurrentX(0);
+		}
+	};
+
+	const handlePointerUp = (e: React.PointerEvent) => {
+		if (!isSwiping) return;
+		setIsSwiping(false);
+		setStartX(null);
+
+		if (currentX < -90) {
+			triggerDelete();
+		} else {
+			setCurrentX(0);
+		}
+
+		if (Math.abs(currentX) > 10) {
+			e.stopPropagation();
+			e.preventDefault();
+		}
+	};
+
+	const triggerDelete = () => {
+		onDelete(
+			() => {
+				setIsAnimatingOut(true);
+				setCurrentX(-500);
+			},
+			() => {
+				setIsAnimatingOut(false);
+				setCurrentX(0);
+			}
+		);
+	};
+
+	return (
+		<div
+			className={`relative overflow-hidden shrink-0 rounded-2xl transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] select-none touch-pan-y ${
+				isSelected ? "border border-white/5" : "border border-transparent"
+			}`}
+			style={{
+				height: isAnimatingOut ? "0px" : "96px",
+				opacity: isAnimatingOut ? 0 : 1,
+				transform: isAnimatingOut ? "scaleY(0.8)" : "none",
+				transformOrigin: "center top",
+			}}
+		>
+			{/* Crimson Liquid Glass Underlay Background (revealed on drag) */}
+			{currentX < 0 && (
+				<div
+					className="absolute inset-y-0 right-0 bg-gradient-to-r from-red-600/15 to-red-600/80 backdrop-blur-md z-0 cursor-pointer"
+					style={{ width: `${Math.abs(currentX)}px` }}
+					onClick={triggerDelete}
+				/>
+			)}
+
+			{/* Crimson Sharp Foreground Label (Z-20) */}
+			{currentX < -60 && (
+				<div
+					className="absolute inset-y-0 right-0 flex items-center justify-end px-6 text-white z-20 pointer-events-none transition-opacity duration-200"
+					style={{ width: `${Math.abs(currentX)}px` }}
+				>
+					<div className="flex flex-col items-center gap-1">
+						<Trash2 className="h-5 w-5 text-red-100 drop-shadow-[0_2px_8px_rgba(239,68,68,0.6)] animate-pulse" />
+						<span className="text-[10px] font-extrabold uppercase tracking-widest text-red-100">Delete</span>
+					</div>
+				</div>
+			)}
+
+			{/* Foreground Content Card with dynamic liquid glass blur */}
+			<div
+				onPointerDown={handlePointerDown}
+				onPointerMove={handlePointerMove}
+				onPointerUp={handlePointerUp}
+				onPointerLeave={handlePointerUp}
+				className="relative bg-transparent w-full h-full z-10 shrink-0 select-none cursor-grab active:cursor-grabbing"
+				style={{
+					transform: `translateX(${currentX}px)`,
+					filter: currentX < 0 ? `blur(${Math.min(6, Math.abs(currentX) / 25)}px)` : "none",
+					opacity: currentX < 0 ? Math.max(0.3, 1 - Math.abs(currentX) / 250) : 1,
+					transition: isSwiping ? "none" : "transform 0.25s cubic-bezier(0.25, 1, 0.5, 1), filter 0.25s ease, opacity 0.25s ease",
+				}}
+			>
+				{children}
+			</div>
+		</div>
 	);
 }
