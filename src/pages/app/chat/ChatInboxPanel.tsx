@@ -685,7 +685,7 @@ export function ChatInboxPanel({
 	const rowVirtualizer = useVirtualizer({
 		count: filteredConversations.length,
 		getScrollElement: () => inboxListRef.current,
-		estimateSize: () => 96,
+		estimateSize: () => 108,
 		overscan: 8,
 		getItemKey: (index: number) => filteredConversations[index]?.data.conversationId ?? index,
 	});
@@ -817,7 +817,7 @@ export function ChatInboxPanel({
 										style={{
 											position: "relative",
 											width: "100%",
-											height: rowVirtualizer.getTotalSize(),
+											height: rowVirtualizer.getTotalSize() + 12,
 										}}
 									>
 										{virtualItems.map((virtualRow: any) => {
@@ -835,12 +835,13 @@ export function ChatInboxPanel({
 													key={virtualRow.key}
 													data-index={virtualRow.index}
 													ref={rowVirtualizer.measureElement}
+													className="pb-3 px-[var(--app-px)]"
 													style={{
 														position: "absolute",
 														top: 0,
 														left: 0,
 														width: "100%",
-														transform: `translateY(${virtualRow.start}px)`,
+														transform: `translateY(${virtualRow.start + 12}px)`,
 													}}
 												>
 													<SelectableItem

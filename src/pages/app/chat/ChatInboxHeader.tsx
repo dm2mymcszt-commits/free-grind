@@ -1,4 +1,4 @@
-import { Droplet, Images, Loader2, Mail, Search, SlidersHorizontal, Star, X } from "lucide-react";
+import { Images, Loader2, Mail, Search, SlidersHorizontal, Star, X } from "lucide-react";
 import { type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -88,9 +88,9 @@ export function ChatInboxHeader({
 	onSetFiltersDraft,
 	onToggleFavoritesOnly,
 	onToggleUnreadOnly,
-	onToggleRightNowOnly,
-	onToggleOnlineNowOnly,
-	onClearInboxFilters,
+	onToggleRightNowOnly: _onToggleRightNowOnly,
+	onToggleOnlineNowOnly: _onToggleOnlineNowOnly,
+	onClearInboxFilters: _onClearInboxFilters,
 }: ChatInboxHeaderProps) {
 	const { t } = useTranslation();
 	const navigate = useNavigate();
@@ -185,30 +185,7 @@ export function ChatInboxHeader({
 									active={Boolean(inboxFilters.favoritesOnly)}
 									onClick={onToggleFavoritesOnly}
 								/>
-								<FilterPill
-									icon={<span className="h-2.5 w-2.5 shrink-0 rounded-full bg-green-500 shadow-sm" />}
-									label={t("browse_filters.options.online")}
-									active={Boolean(inboxFilters.onlineNowOnly)}
-									onClick={onToggleOnlineNowOnly}
-								/>
-								<FilterPill
-									icon={<Droplet className={`h-3.5 w-3.5 ${inboxFilters.rightNowOnly ? "fill-current" : ""}`} />}
-									label={t("browse_filters.options.right_now")}
-									active={Boolean(inboxFilters.rightNowOnly)}
-									onClick={onToggleRightNowOnly}
-									color="right-now"
-								/>
 
-								{hasActiveInboxFilters && (
-									<button
-										type="button"
-										onClick={onClearInboxFilters}
-										className="glass-pill inline-flex shrink-0 items-center gap-1.5 px-4 py-2 text-sm font-bold text-[var(--accent)] transition-all active:scale-95"
-										style={{ "--pill-color": "var(--accent)" } as CSSProperties}
-									>
-										{t("browse_filters.clear_all")}
-									</button>
-								)}
 							</div>
 						</div>
 					)}
