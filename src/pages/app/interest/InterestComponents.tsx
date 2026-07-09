@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, memo, type CSSProperties } from "react";
-import { Eye, Lock, History, MoveHorizontal } from "lucide-react";
+import { Eye, Lock, Ban, History, MoveHorizontal } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { getThumbImageUrl } from "../../../utils/media";
 import { ProfileImage } from "../../../components/ui/profile-image";
@@ -102,7 +102,7 @@ export const InterestTabs = memo(function InterestTabs({
 			{labels.map((label, i) => (
 				<button
 					key={label}
-					ref={(el) => (tabsRef.current[i] = el)}
+					ref={(el) => { tabsRef.current[i] = el; }}
 					type="button"
 					onClick={handlers[i]}
 					className={cn(
@@ -145,18 +145,21 @@ export const InterestRow = memo(function InterestRow({
 	onOpenProfile,
 	now,
 	isFirst,
+	isBlocked = false,
 }: {
 	item: InterestItem;
 	mode: InterestTab;
 	onOpenProfile: (profileId: string) => void;
 	now: number;
 	isFirst?: boolean;
+	isBlocked?: boolean;
 }) {
 	const { t } = useTranslation();
 	const { ref, revealClass } = useRevealOnScroll();
 	const imageSrc = item.imageHash ? getThumbImageUrl(item.imageHash, "320x320") : null;
 
 	const isPrivate = !item.canOpenProfile;
+	const isLocked = isPrivate || isBlocked;
 	const isRecovered = !!item.isFromCache && !isPrivate && !item.profileId.startsWith(PREVIEW_ID_PREFIX);
 	const isOnline = typeof item.onlineUntil === "number" && item.onlineUntil > now;
 
@@ -170,16 +173,16 @@ export const InterestRow = memo(function InterestRow({
 		<div
 			ref={ref}
 			className={cn(
-				"relative flex items-center gap-4 pl-5 pr-6 py-4 transition-colors",
-				isPrivate ? "opacity-75 grayscale-[0.3]" : "hover:bg-[var(--surface-2)]/40",
+				"relative flex items-center gap-4 pl-4 pr-4 py-3 transition-colors",
+				isLocked ? "opacity-75 grayscale-[0.3]" : "hover:bg-[var(--surface-2)]/40",
 				revealClass
 			)}
 		>
 			{/* Avatar */}
 			<button
 				type="button"
-				onClick={() => !isPrivate && onOpenProfile(item.profileId)}
-				disabled={isPrivate}
+				onClick={() => !isLocked && onOpenProfile(item.profileId)}
+				disabled={isLocked}
 				className="relative shrink-0"
 			>
 				<div className="h-15 w-15 squircle drop-shadow-sm bg-[var(--surface-2)]">
@@ -191,9 +194,9 @@ export const InterestRow = memo(function InterestRow({
 				{isOnline && (
 					<span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-[1.5px] border-[var(--bg)] bg-green-500 shadow-sm z-10" />
 				)}
-				{isPrivate && (
+				{isLocked && (
 					<div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--surface-2)] text-[var(--text-muted)] ring-1 ring-[var(--surface)] z-10">
-						<Lock className="h-3 w-3" />
+						{isPrivate ? <Lock className="h-3 w-3" /> : <span title={t("interest_page.blocked_profile")}><Ban className="h-3 w-3" /></span>}
 					</div>
 				)}
 			</button>
@@ -202,16 +205,16 @@ export const InterestRow = memo(function InterestRow({
 			<div className="min-w-0 flex-1">
 				<button
 					type="button"
-					onClick={() => !isPrivate && onOpenProfile(item.profileId)}
-					disabled={isPrivate}
+					onClick={() => !isLocked && onOpenProfile(item.profileId)}
+					disabled={isLocked}
 					className="w-full text-left"
 				>
 					<div className="flex items-center gap-1.5">
-						<p className={`truncate text-sm font-bold ${isPrivate ? "text-[var(--text-muted)]" : "text-[var(--text)]"}`}>
+						<p className={`truncate text-sm font-bold ${isLocked ? "text-[var(--text-muted)]" : "text-[var(--text)]"}`}>
 							{displayName}
 						</p>
 						{isRecovered && (
-							<History className="h-3 w-3 text-[var(--accent)]" title={t("interest_page.recovered_tooltip")} />
+							<span title={t("interest_page.recovered_tooltip")}><History className="h-3 w-3 text-[var(--accent)]" /></span>
 						)}
 					</div>
 					<p className="mt-0.5 truncate text-xs text-[var(--text-muted)] font-medium">
@@ -228,7 +231,7 @@ export const InterestRow = memo(function InterestRow({
 							<span
 								className="text-2xl leading-none select-none"
 								style={{
-									filter: `drop-shadow(0 0 3px rgba(${emojiColorMap[item.tapType] || "255, 200, 0"}, 0.55)) drop-shadow(0 0 7px rgba(${emojiColorMap[item.tapType] || "255, 200, 0"}, 0.3))`,
+									filter: `drop-shadow(0 0 3px rgba(${emojiColorMap[item.tapType ?? 0] || "255, 200, 0"}, 0.55)) drop-shadow(0 0 7px rgba(${emojiColorMap[item.tapType ?? 0] || "255, 200, 0"}, 0.3))`,
 								}}
 							>
 								{getTapEmoji(item.tapType)}
@@ -236,7 +239,7 @@ export const InterestRow = memo(function InterestRow({
 							{item.isMutual && (
 								<span
 									className="absolute -bottom-0.5 -right-0.5 flex h-4.5 w-4.5 items-center justify-center rounded-full text-white shadow-md"
-									style={{ backgroundColor: `rgb(${emojiColorMap[item.tapType] || "255, 200, 0"})` }}
+									style={{ backgroundColor: `rgb(${emojiColorMap[item.tapType ?? 0] || "255, 200, 0"})` }}
 									title={t("interest_page.mutual_tap_tooltip")}
 								>
 									<MoveHorizontal className="h-2.5 w-2.5" />

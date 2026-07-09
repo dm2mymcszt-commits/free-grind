@@ -62,12 +62,10 @@ type Props = {
 export function ChatMediaSheet({
 	conversationId,
 	senderProfileId,
-	userId,
 	isDesktop,
 	senderPhotoUrl,
 	onClose,
 	openAlbumViewerById,
-	openFullScreenImage,
 }: Props) {
 	const { t } = useTranslation();
 	const service = useApiFunctions();
@@ -98,6 +96,7 @@ export function ChatMediaSheet({
 						id: toastId,
 					});
 				},
+				conversationId,
 			);
 
 			if (result.failed === 0) {
@@ -512,6 +511,7 @@ export function ChatMediaSheet({
 				onClose={() => setViewerIndex(null)}
 				photos={viewerPhotos}
 				initialIndex={viewerIndex}
+				conversationId={conversationId}
 			/>,
 			document.body,
 		)}

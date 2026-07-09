@@ -7,6 +7,7 @@ export type SharedAlbumItem = {
 	conversationId: string | null;
 	album: SharedAlbum;
 	albumNumber: number;
+	totalAlbumsShared?: number;
 	localOnly?: boolean;
 };
 
@@ -15,6 +16,7 @@ export type AlbumViewer = {
 	albumName: string | null;
 	profileId: number;
 	profileName: string;
+	conversationId: string | null;
 	content: Array<{
 		contentId: number;
 		contentType: string | null;

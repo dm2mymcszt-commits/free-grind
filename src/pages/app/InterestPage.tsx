@@ -1,25 +1,17 @@
-import { RefreshCw, Eye, ArrowLeftRight } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition, type TouchEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { useApiFunctions } from "../../hooks/useApiFunctions";
 import { useInterestData } from "../../hooks/queries/useInterestQueries";
+import { useBlockedProfileIds } from "../../hooks/queries/useProfileQueries";
+import { getBlockStatesByProfileIds } from "../../services/chatDb";
 import { markInterestSeen, getInterestTabLastSeen, markInterestTabSeen } from "../../services/seenStore";
 import { EmptyState, ErrorState } from "../../components/ui/states";
 import { PullToRefreshContainer } from "./components/PullToRefreshContainer";
 import {
-	TAP_RECEIVED_EVENT,
-	type TapReceivedDetail,
-} from "../../components/ChatRealtimeBridge";
-import {
 	type InterestTab,
 	type InterestItem,
-	fromStoredView,
-	toStoredView,
-	toNumber,
-	asObject,
-	normalizeViews,
-	normalizeTaps,
+	PREVIEW_ID_PREFIX,
 } from "./interest/interestUtils";
 import { InterestTabs, InterestRow } from "./interest/InterestComponents";
 import { InterestOnboardingModal } from "./interest/InterestOnboardingModal";
@@ -29,7 +21,6 @@ import {
 import { cn } from "../../utils/cn";
 import { PageHeaderBackground } from "../../components/ui/PageHeaderBackground";
 import { FeedScrollContainer } from "../../components/ui/FeedScrollContainer";
-import { useDesktopBreakpoint } from "../../hooks/useDesktopBreakpoint";
 import { usePreferences } from "../../contexts/PreferencesContext";
 
 const ONBOARDING_KEY = "fg-interest-onboarding-seen";
@@ -43,7 +34,7 @@ let globalHasShownCount = false;
 
 function InterestSkeleton({ mode }: { mode: InterestTab }) {
 	return (
-		<div className="flex items-center gap-4 border-b border-[var(--surface-2)] py-3 pl-5 pr-6">
+		<div className="flex items-center gap-4 border-b border-[var(--surface-2)] py-3 pl-4 pr-4">
 			<div className="h-14 w-14 shrink-0 animate-pulse rounded-2xl bg-[var(--surface-2)]" />
 			<div className="flex flex-1 flex-col gap-2">
 				<div className="h-3 w-28 animate-pulse rounded-full bg-[var(--surface-2)]" />
@@ -60,10 +51,8 @@ function InterestSkeleton({ mode }: { mode: InterestTab }) {
 
 export function InterestPage() {
 	const { t } = useTranslation();
-	const api = useApiFunctions();
 	const navigate = useNavigate();
 	const location = useLocation();
-	const isDesktop = useDesktopBreakpoint();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const defaultSetting = window.localStorage.getItem("fg-interest-default-tab") === "views" ? "views" : "taps";
 	const activeTab: InterestTab = searchParams.get("tab") === "taps" || searchParams.get("tab") === "views"
@@ -133,6 +122,50 @@ export function InterestPage() {
 	}, [data?.taps, demoAddedTaps, demoMode]);
 
 	const viewedCount = demoMode !== 0 ? demoAddedViews.length : (data?.viewedCount ?? 0);
+
+	// Profiles we've blocked — same list ChatPage/GridPage use to gate their
+	// own block-aware UI.
+	const { data: blockedProfileIdsData } = useBlockedProfileIds();
+	const blockedByMeProfileIds = useMemo(
+		() => new Set(blockedProfileIdsData ?? []),
+		[blockedProfileIdsData],
+	);
+
+	// Profiles that blocked us. There's no server list for this direction —
+	// it's only knowable locally, from a conversation's block_state (set by
+	// ChatPage/GridProfilePage when a 403/WS event reveals it). Mirrors how
+	// chat itself gates profile navigation off conversation state instead of
+	// a dedicated "blocked by" check.
+	const [blockedByOtherProfileIds, setBlockedByOtherProfileIds] = useState<Set<string>>(new Set());
+	useEffect(() => {
+		const profileIds = [...new Set([...views, ...taps].map((item) => item.profileId))].filter(
+			(id) => !id.startsWith(PREVIEW_ID_PREFIX),
+		);
+		if (profileIds.length === 0) {
+			setBlockedByOtherProfileIds(new Set());
+			return;
+		}
+		let cancelled = false;
+		void getBlockStatesByProfileIds(profileIds)
+			.then((blockStates) => {
+				if (cancelled) return;
+				const blockedByOther = new Set(
+					[...blockStates.entries()]
+						.filter(([, state]) => state === "blocked_by_other")
+						.map(([profileId]) => profileId),
+				);
+				setBlockedByOtherProfileIds(blockedByOther);
+			})
+			.catch(() => {});
+		return () => {
+			cancelled = true;
+		};
+	}, [views, taps]);
+
+	const isProfileBlocked = useCallback(
+		(profileId: string) => blockedByMeProfileIds.has(profileId) || blockedByOtherProfileIds.has(profileId),
+		[blockedByMeProfileIds, blockedByOtherProfileIds],
+	);
 
 	const [lastSeenViews, setLastSeenViews] = useState(() => getInterestTabLastSeen("views"));
 	const [lastSeenTaps, setLastSeenTaps] = useState(() => getInterestTabLastSeen("taps"));
@@ -278,7 +311,7 @@ export function InterestPage() {
 		const saved = sessionStorage.getItem("interest-scroll-views");
 		if (saved) {
 			try {
-				const { limit, timestamp } = JSON.parse(saved);
+				const { limit, timestamp } = JSON.parse(saved) as { limit: number; timestamp: number };
 				if (limit && Date.now() - timestamp < SCROLL_RESTORATION_TIMEOUT_MS) {
 					return limit;
 				}
@@ -290,7 +323,7 @@ export function InterestPage() {
 		const saved = sessionStorage.getItem("interest-scroll-taps");
 		if (saved) {
 			try {
-				const { limit, timestamp } = JSON.parse(saved);
+				const { limit, timestamp } = JSON.parse(saved) as { limit: number; timestamp: number };
 				if (limit && Date.now() - timestamp < SCROLL_RESTORATION_TIMEOUT_MS) {
 					return limit;
 				}
@@ -315,9 +348,9 @@ export function InterestPage() {
 	const handleLoadMore = useCallback(() => {
 		startTransition(() => {
 			if (activeTab === "views") {
-				setViewsLimit((prev) => prev + ITEMS_PER_PAGE);
+				setViewsLimit((prev: number) => prev + ITEMS_PER_PAGE);
 			} else {
-				setTapsLimit((prev) => prev + ITEMS_PER_PAGE);
+				setTapsLimit((prev: number) => prev + ITEMS_PER_PAGE);
 			}
 		});
 	}, [activeTab]);
@@ -418,7 +451,7 @@ export function InterestPage() {
 			const saved = sessionStorage.getItem(storageKey);
 			if (saved) {
 				try {
-					const { top, timestamp } = JSON.parse(saved);
+					const { top, timestamp } = JSON.parse(saved) as { top: number; timestamp: number };
 
 					// Only restore if the scroll position is less than the timeout
 					if (Date.now() - timestamp < SCROLL_RESTORATION_TIMEOUT_MS) {
@@ -509,11 +542,14 @@ export function InterestPage() {
 
 	const handleOpenProfile = useCallback(
 		(profileId: string) => {
+			if (isProfileBlocked(profileId)) {
+				return;
+			}
 			navigate(`/profile/${profileId}`, {
 				state: { returnTo: `${location.pathname}${location.search}` },
 			});
 		},
-		[navigate, location.pathname, location.search],
+		[navigate, location.pathname, location.search, isProfileBlocked],
 	);
 
 	const handleTouchStart = useCallback((event: TouchEvent<HTMLDivElement>) => {
@@ -670,6 +706,7 @@ export function InterestPage() {
 											onOpenProfile={handleOpenProfile}
 											now={nowTimestamp}
 											isFirst={index === 0}
+											isBlocked={isProfileBlocked(item.profileId)}
 										/>
 									))}
 

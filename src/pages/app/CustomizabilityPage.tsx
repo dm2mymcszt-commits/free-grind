@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { Ban, Flame, Languages, LayoutGrid, Monitor, Moon, Ruler, Sparkles, Star, Sun, Trash2, RotateCcw } from "lucide-react";
+import { Flame, Languages, LayoutGrid, Monitor, Moon, Ruler, Sparkles, Star, Sun, RotateCcw } from "lucide-react";
 import toast from "react-hot-toast";
 import { usePreferences, ACCENT_PRESETS, type ColorScheme } from "../../contexts/PreferencesContext";
 import { BackToSettings } from "../../components/BackToSettings";
 import { ToggleRow } from "../../components/ui/toggle-row";
 import { useTranslation } from "react-i18next";
+import { SKIP_BLOCK_CONFIRM_KEY } from "../../utils/blockConfirm";
 import {
 	SUPPORTED_LOCALE_OPTIONS,
 	resolveSupportedLocale,
 } from "../../utils/locales";
 import { type UnitsPreset } from "../../utils/units";
-import { SKIP_BLOCK_CONFIRM_KEY, SKIP_DELETE_CONVERSATION_CONFIRM_KEY } from "../../utils/blockConfirm";
 
 function normalizeHex(value: string): string {
 	const cleaned = value.trim().replace(/^#/, "");
@@ -112,10 +112,6 @@ export function CustomizabilityPage() {
 	const [showRightNow, setShowRightNow] = useState(() => window.localStorage.getItem("fg-show-right-now") !== "false");
 	const [showInterest, setShowInterest] = useState(() => window.localStorage.getItem("fg-show-interest") !== "false");
 	const [defaultInterestTab, setDefaultInterestTab] = useState(() => window.localStorage.getItem("fg-interest-default-tab") || "taps");
-	const [confirmBeforeBlock, setConfirmBeforeBlock] = useState(() => window.localStorage.getItem(SKIP_BLOCK_CONFIRM_KEY) !== "true");
-	const [confirmBeforeDeleteConversation, setConfirmBeforeDeleteConversation] = useState(
-		() => window.localStorage.getItem(SKIP_DELETE_CONVERSATION_CONFIRM_KEY) !== "true",
-	);
 	const schemeOptions: {
 		value: ColorScheme;
 		label: string;
@@ -516,35 +512,6 @@ export function CustomizabilityPage() {
 								]}
 							/>
 						)}
-					</div>
-				</div>
-
-				{/* BEHAVIOR */}
-				<div>
-					<SectionLabel>{t("customizability.behavior")}</SectionLabel>
-					<div className="surface-card overflow-hidden divide-y divide-[var(--border)]">
-						<ToggleRow
-							icon={<Ban className="h-5 w-5" />}
-							iconClass="bg-red-500/15 text-red-400"
-							label={t("customizability.confirm_before_block")}
-							description={t("customizability.confirm_before_block_desc")}
-							checked={confirmBeforeBlock}
-							onChange={(checked) => {
-								setConfirmBeforeBlock(checked);
-								window.localStorage.setItem(SKIP_BLOCK_CONFIRM_KEY, String(!checked));
-							}}
-						/>
-						<ToggleRow
-							icon={<Trash2 className="h-5 w-5" />}
-							iconClass="bg-red-500/15 text-red-400"
-							label={t("customizability.confirm_before_delete_conversation")}
-							description={t("customizability.confirm_before_delete_conversation_desc")}
-							checked={confirmBeforeDeleteConversation}
-							onChange={(checked) => {
-								setConfirmBeforeDeleteConversation(checked);
-								window.localStorage.setItem(SKIP_DELETE_CONVERSATION_CONFIRM_KEY, String(!checked));
-							}}
-						/>
 					</div>
 				</div>
 

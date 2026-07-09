@@ -15,6 +15,7 @@ type ChatAlbumSheetProps = {
 	onClose: () => void;
 	onOpenFullScreen: (index: number) => void;
 	isDesktop: boolean;
+	conversationId: string | null;
 };
 
 export function ChatAlbumSheet({
@@ -24,6 +25,7 @@ export function ChatAlbumSheet({
 	onClose,
 	onOpenFullScreen,
 	isDesktop,
+	conversationId,
 }: ChatAlbumSheetProps) {
 	const { t } = useTranslation();
 	const [isSavingAll, setIsSavingAll] = useState(false);
@@ -48,7 +50,7 @@ export function ChatAlbumSheet({
 		try {
 			const result = await saveMediaBatch(items, (done, total) => {
 				toast.loading(t("profile_details.save_all_progress", { done, total }), { id: toastId });
-			});
+			}, conversationId);
 
 			if (result.failed === 0) {
 				toast.success(t("profile_details.save_all_success", { count: result.succeeded }), {

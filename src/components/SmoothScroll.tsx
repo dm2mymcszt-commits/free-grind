@@ -54,7 +54,7 @@ export function SmoothScroll({
 			content: content || document.documentElement,
 			duration: duration,
 			lerp: lerp,
-			easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+			easing: (t: number) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
 			orientation: "vertical",
 			gestureOrientation: "vertical",
 			smoothWheel: true,
@@ -62,7 +62,7 @@ export function SmoothScroll({
 			touchMultiplier: touchMultiplier,
 			smoothTouch: smoothTouch,
 			autoResize: true,
-		});
+		} as any);
 
 		lenisRef.current = lenis;
 		(window as any).lenis = lenis;

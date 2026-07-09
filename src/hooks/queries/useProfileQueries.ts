@@ -3,16 +3,32 @@ import { useApiFunctions } from "../useApiFunctions";
 import type { TravelPlanPayload } from "../../types/travel";
 import { findConversationByProfileId } from "../../services/chatDb";
 import { markSelfBlockAction } from "../../utils/selfBlockActions";
-import { applySelfBlockAction } from "../../services/conversationArchive";
+import {
+	applySelfBlockAction,
+	markConversationDeleteHandled,
+} from "../../services/conversationArchive";
+import { profileSchema } from "../../pages/app/profile-editor/profileEditorUtils";
 
 // chat.v1.conversation.delete fires identically for "we blocked/unblocked
 // them" and "they blocked/unblocked us" — mark the conversation right after
 // our own block/unblock call succeeds so that event can tell the two apart.
+//
+// Also claim the WS-echo dedup lock (markConversationDeleteHandled) here,
+// not just in applySelfBlockAction's onSuccess — that's a purely local DB
+// read with no network round trip, so it's guaranteed to land before the
+// chat.v1.conversation.delete event even *could* arrive (which needs the
+// outgoing request to reach the server and a broadcast to come back).
+// Claiming it only in applySelfBlockAction (after the mutation's own HTTP
+// round trip) left a real window where the WS-triggered path could win the
+// race, archive, and insert its own system message before
+// applySelfBlockAction's local state check could see it — producing a
+// duplicate "You blocked/unblocked this person".
 function markConversationSelfAction(profileId: string, action: "block" | "unblock") {
 	void findConversationByProfileId(profileId)
 		.then((conversation) => {
 			if (conversation) {
 				markSelfBlockAction(conversation.conversationId, action);
+				markConversationDeleteHandled(conversation.conversationId);
 			}
 		})
 		.catch(() => {});
@@ -91,24 +107,62 @@ export function useUnblockProfile() {
 /**
  * Hook to fetch managed genders.
  */
-export function useManagedGenders() {
+export function useManagedGenders(enabled: boolean = true) {
 	const api = useApiFunctions();
 	return useQuery({
 		queryKey: ["managed-genders"],
 		queryFn: () => api.getManagedGenders(),
 		staleTime: Infinity, // These rarely change
+		enabled,
 	});
 }
 
 /**
  * Hook to fetch managed pronouns.
  */
-export function useManagedPronouns() {
+export function useManagedPronouns(enabled: boolean = true) {
 	const api = useApiFunctions();
 	return useQuery({
 		queryKey: ["managed-pronouns"],
 		queryFn: () => api.getManagedPronouns(),
 		staleTime: Infinity, // These rarely change
+		enabled,
+	});
+}
+
+/**
+ * Hook to fetch the managed tag catalog (categories + selectable tags), used
+ * both by the profile editor's tag picker and the grid tag-search filter.
+ */
+export function useManagedTagCategories(locale: string, enabled: boolean = true) {
+	const api = useApiFunctions();
+	return useQuery({
+		queryKey: ["managed-tag-categories", locale],
+		queryFn: () => api.getManagedTagCategories(locale),
+		staleTime: Infinity, // These rarely change
+		enabled,
+	});
+}
+
+/**
+ * Hook to fetch the current user's own profile (read through /v4/me/profile,
+ * same endpoint the profile editor uses) — used by app-level checks like the
+ * HIV test reminder that need a profile field without opening the editor.
+ */
+export function useMyOwnProfile(enabled: boolean = true) {
+	const api = useApiFunctions();
+	return useQuery({
+		queryKey: ["my-own-profile"],
+		queryFn: async () => {
+			const raw = await api.getMyOwnProfile();
+			const rawProfileObject =
+				raw && typeof raw === "object" && Array.isArray((raw as { profiles?: unknown }).profiles)
+					? ((raw as { profiles: Record<string, unknown>[] }).profiles[0] ?? null)
+					: (raw as Record<string, unknown> | null);
+			return profileSchema.parse(rawProfileObject);
+		},
+		enabled,
+		staleTime: 1000 * 60 * 5,
 	});
 }
 

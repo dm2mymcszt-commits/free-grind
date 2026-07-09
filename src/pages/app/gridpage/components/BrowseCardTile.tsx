@@ -8,7 +8,7 @@ import {
 } from "../utils";
 import { cn } from "../../../../utils/cn";
 import { ProfileImage } from "../../../../components/ui/profile-image";
-import freegrindLogo from "../../../../images/freegrind-logo.webp";
+import { FreeGrindBadge } from "../../../../components/FreeGrindBadge";
 import { usePresenceCheck } from "../../../../hooks/usePresenceCheck";
 import { usePreferences } from "../../../../contexts/PreferencesContext";
 import type { ChatContactIndexRecord } from "../../../../types/chat-contact-index";
@@ -123,25 +123,28 @@ export function BrowseCardTile({
 							{(isRightNow || isVisiting || isPopular) && (
 								<div className="flex items-center gap-0.5">
 									{isPopular && (
-										<Zap
-											className="h-4 w-4 text-amber-400 drop-shadow-[0_1px_1.5px_rgba(0,0,0,1)] drop-shadow-[0_0_0.8px_rgba(0,0,0,1)]"
-											strokeWidth={2.5}
-											title="Popular"
-										/>
+										<span title="Popular">
+											<Zap
+												className="h-4 w-4 text-amber-400 drop-shadow-[0_1px_1.5px_rgba(0,0,0,1)] drop-shadow-[0_0_0.8px_rgba(0,0,0,1)]"
+												strokeWidth={2.5}
+											/>
+										</span>
 									)}
 									{isRightNow && (
-										<Droplet
-											className="h-4 w-4 text-[var(--right-now)] drop-shadow-[0_1px_1.5px_rgba(0,0,0,1)] drop-shadow-[0_0_0.8px_rgba(0,0,0,1)]"
-											strokeWidth={2.5}
-											title="Right Now"
-										/>
+										<span title="Right Now">
+											<Droplet
+												className="h-4 w-4 text-[var(--right-now)] drop-shadow-[0_1px_1.5px_rgba(0,0,0,1)] drop-shadow-[0_0_0.8px_rgba(0,0,0,1)]"
+												strokeWidth={2.5}
+											/>
+										</span>
 									)}
 									{isVisiting && (
-										<Plane
-											className="h-4 w-4 text-green-500 drop-shadow-[0_1px_1.5px_rgba(0,0,0,1)] drop-shadow-[0_0_0.8px_rgba(0,0,0,1)]"
-											strokeWidth={2.5}
-											title={t("profile_details.visiting")}
-										/>
+										<span title={t("profile_details.visiting")}>
+											<Plane
+												className="h-4 w-4 text-green-500 drop-shadow-[0_1px_1.5px_rgba(0,0,0,1)] drop-shadow-[0_0_0.8px_rgba(0,0,0,1)]"
+												strokeWidth={2.5}
+											/>
+										</span>
 									)}
 								</div>
 							)}
@@ -164,11 +167,7 @@ export function BrowseCardTile({
 						)}
 
 						{usesFreegrind && !isFavorite && (
-							<img
-								src={freegrindLogo}
-								alt="FreeGrind"
-								className="h-5 w-5 rounded-full border-2 border-black/50 shadow-lg"
-							/>
+							<FreeGrindBadge size="md" variant="onDark" title={t("profile_details.uses_free_grind")} />
 						)}
 
 						{unreadCount > 0 ? (

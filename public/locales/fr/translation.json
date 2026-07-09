@@ -8,6 +8,8 @@
         "profile_editor_desc": "Modifiez les détails de votre profil, votre identité et vos préférences.",
         "customizability": "Personnalisation",
         "customizability_desc": "Modifiez le thème et la couleur d'accentuation.",
+        "behavior": "Comportement",
+        "behavior_desc": "Invites de confirmation pour bloquer et supprimer des discussions.",
         "about": "À propos de Free Grind",
         "about_desc": "Objectifs du projet, crédits, licences et liens vers la documentation.",
         "api_inspector": "Inspecteur d'API",
@@ -316,8 +318,8 @@
                 "about_me": "À propos de moi",
                 "about_me_placeholder": "Jusqu'à 255 caractères",
                 "my_tags": "Mes tags",
-                "my_tags_placeholder": "Mots-clés, séparés par des virgules",
-                "no_tags_added": "Aucun tag ajouté pour le moment."
+                "my_tags_manage": "Gérer les tags",
+                "no_tags_added": "Ajouter des tags"
             },
             "visiting_mode": {
                 "title": "Mode",
@@ -376,9 +378,13 @@
             },
             "identity": {
                 "title": "Identité",
-                "description": "Gérer les champs d'identité",
+                "description": "Genre et pronoms",
                 "gender": "Genre",
                 "gender_unavailable": "Les options de genre ne sont pas disponibles pour le moment.",
+                "gender_more": "Plus de genres",
+                "gender_dialog_title": "Choisir des genres",
+                "gender_search_placeholder": "Rechercher des genres...",
+                "gender_no_matches": "Aucun genre ne correspond à votre recherche.",
                 "pronouns": "Pronoms",
                 "pronouns_unavailable": "Les options de pronoms ne sont pas disponibles pour le moment."
             },
@@ -388,7 +394,8 @@
                 "hiv_status": "Statut VIH",
                 "last_tested": "Dernier test",
                 "health_practices": "Pratiques de prévention",
-                "vaccinations": "Vaccins"
+                "vaccinations": "Vaccins",
+                "test_reminder": "Cela fait plus de 3 mois depuis votre dernier test — pensez à en refaire un."
             },
             "social": {
                 "title": "Réseaux sociaux",
@@ -425,7 +432,15 @@
         },
         "errors": {
             "display_name_length": "Le nom d'affichage ne peut pas dépasser 15 caractères.",
-            "about_me_length": "La description doit comporter moins de 255 caractères."
+            "about_me_length": "La description doit comporter moins de 255 caractères.",
+            "max_selection": "Vous pouvez sélectionner jusqu'à {{count}}."
+        },
+        "tags_dialog": {
+            "title": "Choisir des tags",
+            "unavailable": "Les tags ne sont pas disponibles pour le moment.",
+            "see_more": "Voir {{count}} de plus",
+            "search_placeholder": "Rechercher des tags...",
+            "no_matches": "Aucun tag ne correspond à votre recherche."
         }
     },
     "customizability": {
@@ -489,6 +504,9 @@
         },
         "preview_input": "Free Grind",
         "preview_badge": "NOUVEAU"
+    },
+    "behavior": {
+        "subtitle": "Gérez les invites de confirmation avant de bloquer des profils ou de supprimer des discussions."
     },
     "auth": {
         "common": {
@@ -741,7 +759,18 @@
         "favorite": "Favori",
         "share_album_label": "Partager l'album",
         "share_location_label": "Partager la localisation",
-        "share_location_confirm": "Partager cette localisation ?"
+        "share_location_confirm": "Partager cette localisation ?",
+        "filter": {
+            "state_all": "Tout afficher",
+            "state_hide": "Masquer",
+            "state_only": "Uniquement"
+        },
+        "hidden": {
+            "filter_label": "Masqué"
+        },
+        "archived": {
+            "filter_label": "Archivé"
+        }
     },
     "profile_details": {
         "title": "Détails du profil",
@@ -969,7 +998,8 @@
             "tap_limit": "Vous avez déjà envoyé un Tap à ce profil au cours des dernières 24h",
             "tap_mutual": "Tap envoyé. C'est mutuel.",
             "tap_sent": "Tap envoyé",
-            "tap_failed": "Erreur lors de l'envoi du Tap"
+            "tap_failed": "Erreur lors de l'envoi du Tap",
+            "tag_filter_applied": "Filtré par tag « {{tag}} »"
         }
     },
     "chat_filters": {
@@ -980,7 +1010,8 @@
         "options": {
             "unread": "Non lus",
             "chemistry": "Alchimie"
-        }
+        },
+        "visibility": "Visibilité"
     },
     "interest_page": {
         "empty_views": "Aucune vue pour l'instant",
@@ -1123,7 +1154,9 @@
             "liveness_failed": "Échec de la vérification Liveness3d",
             "enrollment_failed": "Échec de l'inscription à la vérification",
             "document_failed": "Échec de la vérification du document",
-            "load_right_now": "Erreur lors du chargement de la page Right Now"
+            "load_right_now": "Erreur lors du chargement de la page Right Now",
+            "load_tags": "Échec du chargement des tags",
+            "invalid_tags_response": "Réponse de tags invalide"
         }
     },
     "errors": {
@@ -1267,6 +1300,19 @@
         "read_receipts_hidden_badge": "Accusés de lecture masqués pour cette conversation",
         "profile_views": "Visites de profil",
         "record_profile_views": "Enregistrer les visites de profil",
-        "record_profile_views_desc": "Permet aux autres de voir que vous avez consulté leur profil. Désactivez ceci pour parcourir les profils sans laisser de trace."
+        "record_profile_views_desc": "Permet aux autres de voir que vous avez consulté leur profil. Désactivez ceci pour parcourir les profils sans laisser de trace.",
+        "read_receipts_grid_unread_note": "Si les accusés de lecture sont désactivés, le serveur ne peut pas savoir que vous avez lu un message — une conversation peut donc encore apparaître comme non lue sur Grid, même après l'avoir lue ou supprimée."
+    },
+    "grid": {
+        "open_profile_by_id": "Ouvrir le profil par ID"
+    },
+    "test_reminder": {
+        "title": "L'heure d'un test ?",
+        "description": "Cela fait plus de 3 mois depuis votre dernier test. Indiquez quand vous avez été testé pour la dernière fois, ou mettez-le à jour plus tard dans votre profil.",
+        "save": "Enregistrer",
+        "saving": "Enregistrement...",
+        "skip": "Ignorer pour l'instant",
+        "saved": "Date du test mise à jour",
+        "save_failed": "Impossible de mettre à jour la date du test."
     }
 }

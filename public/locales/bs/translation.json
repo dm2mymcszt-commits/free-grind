@@ -8,6 +8,8 @@
         "profile_editor_desc": "",
         "customizability": "",
         "customizability_desc": "",
+        "behavior": "Ponašanje",
+        "behavior_desc": "Potvrde prije blokiranja i brisanja razgovora.",
         "about": "",
         "about_desc": "",
         "api_inspector": "",
@@ -261,7 +263,7 @@
                 "about_me": "",
                 "about_me_placeholder": "",
                 "my_tags": "",
-                "my_tags_placeholder": "",
+                "my_tags_manage": "",
                 "no_tags_added": ""
             },
             "visiting_mode": {
@@ -322,6 +324,10 @@
                 "description": "",
                 "gender": "",
                 "gender_unavailable": "",
+                "gender_more": "",
+                "gender_dialog_title": "",
+                "gender_search_placeholder": "",
+                "gender_no_matches": "",
                 "pronouns": "",
                 "pronouns_unavailable": ""
             },
@@ -331,7 +337,8 @@
                 "hiv_status": "",
                 "last_tested": "",
                 "health_practices": "",
-                "vaccinations": ""
+                "vaccinations": "",
+                "test_reminder": ""
             },
             "social": {
                 "title": "",
@@ -368,7 +375,15 @@
         },
         "errors": {
             "display_name_length": "",
-            "about_me_length": ""
+            "about_me_length": "",
+            "max_selection": ""
+        },
+        "tags_dialog": {
+            "title": "",
+            "unavailable": "",
+            "see_more": "",
+            "search_placeholder": "",
+            "no_matches": ""
         }
     },
     "auth": {
@@ -556,6 +571,17 @@
             "recent_empty": "Nema nedavno poslanih GIF-ova.",
             "recent_empty_hint": "GIF-ovi koje pošalješ će se prikazati ovdje.",
             "send_confirm": "Pošalji GIF?"
+        },
+        "filter": {
+            "state_all": "Prikaži sve",
+            "state_hide": "Sakrij",
+            "state_only": "Samo"
+        },
+        "hidden": {
+            "filter_label": "Skriveno"
+        },
+        "archived": {
+            "filter_label": "Arhivirano"
         }
     },
     "profile_details": {
@@ -633,6 +659,9 @@
         "color_scheme": "",
         "accent_color": ""
     },
+    "behavior": {
+        "subtitle": "Upravljaj potvrdama prije blokiranja profila ili brisanja razgovora."
+    },
     "nav": {
         "browse": "",
         "right_now": "",
@@ -647,7 +676,8 @@
         "options": {
             "unread": "",
             "chemistry": ""
-        }
+        },
+        "visibility": "Vidljivost"
     },
     "interest_page": {
         "empty_views": "No views yet",
@@ -671,5 +701,20 @@
         "cancel": "Otkaži",
         "save": "Sačuvaj",
         "edit": "Uredi"
+    },
+    "privacy": {
+        "read_receipts_grid_unread_note": "Ako su potvrde o čitanju isključene, server ne može znati da ste pročitali poruku — razgovor se stoga na Gridu i dalje može prikazivati kao nepročitan, čak i nakon što ste ga pročitali ili obrisali."
+    },
+    "grid": {
+        "open_profile_by_id": "Otvori profil putem ID-a"
+    },
+    "test_reminder": {
+        "title": "",
+        "description": "",
+        "save": "",
+        "saving": "",
+        "skip": "",
+        "saved": "",
+        "save_failed": ""
     }
 }

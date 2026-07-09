@@ -6,12 +6,10 @@ import {
 	ArrowUpDown,
 	Clock,
 	Home,
-	Loader2,
 	MessageSquare,
 	Navigation,
 	SlidersHorizontal,
 } from "lucide-react";
-import { useApiFunctions } from "../../hooks/useApiFunctions";
 import { useRightNowFeed } from "../../hooks/queries/useRightNowQueries";
 import type { RightNowFeedItem } from "../../services/apiFunctions";
 import { getThumbImageUrl, validateMediaHash } from "../../utils/media";
@@ -239,7 +237,7 @@ function RightNowRow({
 		<div
 			ref={ref}
 			className={cn(
-				"flex items-center gap-4 pl-5 pr-6 py-4 border-b border-[var(--surface-2)]",
+				"flex items-center gap-4 pl-4 pr-4 py-3 border-b border-[var(--surface-2)]",
 				isFirst && "border-t",
 				revealClass
 			)}
@@ -325,7 +323,7 @@ function RightNowRow({
 
 function RightNowSkeleton() {
 	return (
-		<div className="flex items-center gap-4 border-b border-[var(--surface-2)] py-3 pl-5 pr-6">
+		<div className="flex items-center gap-4 border-b border-[var(--surface-2)] py-3 pl-4 pr-4">
 			<div className="h-14 w-14 shrink-0 animate-pulse rounded-2xl bg-[var(--surface-2)]" />
 			<div className="flex flex-1 flex-col gap-2">
 				<div className="flex items-center justify-between gap-3">
@@ -343,7 +341,6 @@ export function RightNowPage() {
 	const { t } = useTranslation();
 	const location = useLocation();
 	const navigate = useNavigate();
-	const isDesktop = useDesktopBreakpoint();
 	const persistedFilters = useMemo(() => loadRightNowFiltersDraft(), []);
 
 	const [sort, setSort] = useState<SortOption>(persistedFilters.sort);
@@ -542,7 +539,7 @@ export function RightNowPage() {
 					const parsed = JSON.parse(saved);
 					// Safety check: is it our new object format or just an old number?
 					if (parsed && typeof parsed === "object" && "top" in parsed) {
-						const { top, timestamp } = parsed;
+						const { top, timestamp } = parsed as { top: number; timestamp: number };
 						if (Date.now() - timestamp < SCROLL_RESTORATION_TIMEOUT_MS) {
 							feedContainerRef.current.scrollTop = top;
 						} else {
@@ -684,12 +681,8 @@ export function RightNowPage() {
 							} as React.CSSProperties : undefined}
 						>
 							<SlidersHorizontal className="h-3.5 w-3.5" />
-							{t("right_now.filters")}
+							{hasAdvancedFilters ? filterSummary : t("right_now.filters")}
 						</button>
-
-						<span className="text-xs text-[var(--text-muted)] sm:text-sm">
-							{filterSummary}
-						</span>
 					</div>
 				</div>
 			</header>

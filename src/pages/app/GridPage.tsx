@@ -8,30 +8,18 @@ import { useTranslation } from "react-i18next";
 import { decodeGeohash, encodeGeohash } from "../../utils/geohash";
 import { getThumbImageUrl, validateMediaHash } from "../../utils/media";
 import { usePreferences } from "../../contexts/PreferencesContext";
-import { type BrowseCard, type ManagedOption, type ProfileDetail } from "./GridPage.types";
+import { type BrowseCard, type ProfileDetail } from "./GridPage.types";
 import { BrowseGrid } from "./gridpage/components/BrowseGrid";
 import { FeedScrollContainer } from "../../components/ui/FeedScrollContainer";
 import { ProfileDetailsModal } from "./gridpage/components/ProfileDetailsModal";
 import {
 	getCachedBrowseCards,
-	getCachedGenderOptions,
 	getCachedProfileDetail,
-	getCachedPronounOptions,
-	getCachedBlockedProfileIds,
-	getCachedOwnProfilePhotoHash,
-	getCachedOwnDisplayName,
-	getCachedOwnShowDistance,
 	removeProfileFromBrowseCache,
 	setCachedBrowseCards,
-	setCachedGenderOptions,
 	setCachedProfileDetail,
-	setCachedPronounOptions,
-	setCachedBlockedProfileIds,
-	setCachedOwnProfilePhotoHash,
-	setCachedOwnDisplayName,
-	setCachedOwnShowDistance,
 } from "./gridpage/cache";
-import { setSavedAccountDisplayName, setSavedAccountPhotoHash, getSavedAccountProfile, removeSavedAccountProfile } from "../../services/savedAccountProfiles";
+import { setSavedAccountDisplayName, setSavedAccountPhotoHash, getSavedAccountProfile } from "../../services/savedAccountProfiles";
 import { Avatar } from "../../components/ui/avatar";
 import {
 	type BrowseSortOption,
@@ -40,10 +28,13 @@ import {
 } from "./browse-filters-storage";
 import { PullToRefreshContainer } from "./components/PullToRefreshContainer";
 import { PageHeaderBackground } from "../../components/ui/PageHeaderBackground";
+import { FilterPill } from "../../components/ui/FilterPill";
 import { useBrowseFilters } from "./gridpage/hooks/useBrowseFilters";
 import { useTapProfile } from "./gridpage/hooks/useTapProfile";
 import { useDesktopBreakpoint } from "../../hooks/useDesktopBreakpoint";
-import { useManagedGenders, useManagedPronouns, useBlockedProfileIds, useBlockProfile, useUnblockProfile } from "../../hooks/queries/useProfileQueries";
+import { useManagedGenders, useManagedPronouns, useBlockedProfileIds, useBlockProfile, useUnblockProfile, useMyOwnProfile } from "../../hooks/queries/useProfileQueries";
+import { useQueryClient } from "@tanstack/react-query";
+import { getProfilePhotoHash } from "./profile-editor/profileEditorUtils";
 import {
 	getChatContactIndexForProfiles,
 	indexChatContactRecordsByProfileId,
@@ -58,7 +49,12 @@ import { DEMO_CARDS, DEMO_CHAT_STATUS, SHOW_DEMO_DATA } from "./gridpage/demoDat
 import { BrowseFiltersOverlay } from "./BrowseFiltersOverlay";
 import { LocationOverlay, type ExploreLocation, EXPLORE_COLOR } from "./LocationOverlay";
 import type { BrowseFiltersDraft } from "./browse-filters-storage";
-import { SKIP_BLOCK_CONFIRM_KEY, SKIP_UNBLOCK_CONFIRM_KEY } from "../../utils/blockConfirm";
+import {
+	SKIP_BLOCK_CONFIRM_KEY,
+	SKIP_UNBLOCK_CONFIRM_KEY,
+	isBlockConfirmSkipped,
+	isUnblockConfirmSkipped,
+} from "../../utils/blockConfirm";
 
 const EXPLORE_LOCATION_STORAGE_KEY = "grid_explore_location_v1";
 
@@ -114,8 +110,6 @@ export function GridPage() {
 		}
 	}, []);
 	const [isLocationMissing, setIsLocationMissing] = useState(false);
-	const [profileImageHash, setProfileImageHash] = useState<string | null>(null);
-	const [ownDisplayName, setOwnDisplayName] = useState<string | null>(() => getCachedOwnDisplayName() ?? null);
 	const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
 	const [activeProfile, setActiveProfile] = useState<ProfileDetail | null>(null);
 	const [isLoadingActiveProfile, setIsLoadingActiveProfile] = useState(false);
@@ -138,6 +132,12 @@ export function GridPage() {
 	const { data: blockedProfileIdsData } = useBlockedProfileIds();
 	const { mutateAsync: blockProfileMutation, isPending: isBlockingProfile } = useBlockProfile();
 	const { mutateAsync: unblockProfileMutation, isPending: isUnblockingProfile } = useUnblockProfile();
+	const { data: myProfile } = useMyOwnProfile();
+	const queryClient = useQueryClient();
+
+	const profileImageHash = useMemo(() => getProfilePhotoHash(myProfile), [myProfile]);
+	const ownDisplayName = myProfile?.displayName ?? null;
+	const showDistance = myProfile?.showDistance ?? true;
 
 	const genderOptions = useMemo(() => {
 		return managedGenders?.map((item) => ({
@@ -167,18 +167,6 @@ export function GridPage() {
 		profileId: string;
 	} | null>(null);
 	const [dontAskAgainChecked, setDontAskAgainChecked] = useState(false);
-	const [skipBlockConfirm, setSkipBlockConfirm] = useState(() => {
-		if (typeof window === "undefined") {
-			return false;
-		}
-		return localStorage.getItem(SKIP_BLOCK_CONFIRM_KEY) === "true";
-	});
-	const [skipUnblockConfirm, setSkipUnblockConfirm] = useState(() => {
-		if (typeof window === "undefined") {
-			return false;
-		}
-		return localStorage.getItem(SKIP_UNBLOCK_CONFIRM_KEY) === "true";
-	});
 	const isMountedRef = useRef(true);
 	const feedContainerRef = useRef<HTMLDivElement | null>(null);
 	const headerRef = useRef<HTMLElement | null>(null);
@@ -190,7 +178,6 @@ export function GridPage() {
 	const [favoriteNotes, setFavoriteNotes] = useState<Array<{ notes: string; phoneNumber: string; counterpartyId: string }>>([]);
 	const [isFetchingNotes, setIsFetchingNotes] = useState(false);
 	const [hasAttemptedFetchNotes, setHasAttemptedFetchNotes] = useState(false);
-	const [showDistance, setShowDistance] = useState<boolean>(() => getCachedOwnShowDistance() ?? true);
 	const [isTogglingDistance, setIsTogglingDistance] = useState(false);
 
 	const isDesktop = useDesktopBreakpoint();
@@ -278,6 +265,7 @@ export function GridPage() {
 		meetAt,
 		nsfwPics,
 		tags,
+		setTags,
 		sortBy,
 		setSortBy,
 		browseRequestFilters,
@@ -295,6 +283,17 @@ export function GridPage() {
 	// reload in PreferencesContext.tsx).
 	useEffect(() => {
 		if (!settingsReady) {
+			return;
+		}
+		// Skip if we just navigated in with an explicit filter draft (e.g. tag-click
+		// from a profile) — otherwise this clobbers it with the stale persisted draft
+		// once the async load resolves, right after it was applied.
+		const hasPendingDraft = Boolean(
+			typeof location.state === "object" &&
+				location.state !== null &&
+				(location.state as { browseFiltersDraft?: unknown }).browseFiltersDraft,
+		);
+		if (hasPendingDraft) {
 			return;
 		}
 		void loadBrowseFiltersDraft().then(applyDraft);
@@ -343,88 +342,34 @@ export function GridPage() {
 		};
 	}, []);
 
+	// Keeps the account switcher's per-account avatar/name in sync with
+	// whatever useMyOwnProfile currently holds — runs on every change (initial
+	// load, a photo edit elsewhere, or the optimistic update below), not just
+	// once on first fetch, so the switcher can't go stale after an edit.
 	useEffect(() => {
-		if (!userId) {
-			setProfileImageHash(null);
-			return;
-		}
-
-		const cachedHash = getCachedOwnProfilePhotoHash();
-		if (cachedHash !== undefined) {
-			setProfileImageHash(cachedHash);
-			return;
-		}
-
-		let cancelled = false;
-
-		void (async () => {
-			try {
-				const parsed = await apiFunctions.getBrowseProfileMedia(userId);
-				const mediaHashFromList = parsed.medias
-					?.map((item) => item.mediaHash ?? "")
-					.find((hash) => validateMediaHash(hash));
-				const mediaHashFromProfile = parsed.profileImageMediaHash;
-				const firstHash =
-					mediaHashFromList ??
-					(mediaHashFromProfile && validateMediaHash(mediaHashFromProfile)
-						? mediaHashFromProfile
-						: null);
-				if (!cancelled) {
-					const nextHash = firstHash ?? null;
-					setProfileImageHash(nextHash);
-					setCachedOwnProfilePhotoHash(nextHash);
-					setSavedAccountPhotoHash(String(userId), nextHash);
-				}
-			} catch {
-				if (!cancelled) setProfileImageHash(null);
-			}
-		})();
-
-		return () => {
-			cancelled = true;
-		};
-	}, [apiFunctions, userId]);
-
-	useEffect(() => {
-		if (!userId) return;
-		let cancelled = false;
-		void (async () => {
-			try {
-				const raw = await apiFunctions.getRawProfile(userId) as Record<string, unknown>;
-				const profiles = Array.isArray(raw?.profiles) ? raw.profiles : [];
-				const profile = profiles[0] as Record<string, unknown> | undefined;
-				if (!cancelled) {
-					const sd = typeof profile?.showDistance === "boolean" ? profile.showDistance : true;
-					setShowDistance(sd);
-					setCachedOwnShowDistance(sd);
-					const name = typeof profile?.displayName === "string" ? profile.displayName : null;
-					setOwnDisplayName(name);
-					setCachedOwnDisplayName(name);
-					setSavedAccountDisplayName(String(userId), name);
-				}
-			} catch {
-				// non-critical
-			}
-		})();
-		return () => { cancelled = true; };
-	}, [apiFunctions, userId]);
+		if (!userId || !myProfile) return;
+		setSavedAccountPhotoHash(String(userId), profileImageHash);
+		setSavedAccountDisplayName(String(userId), ownDisplayName);
+	}, [userId, myProfile, profileImageHash, ownDisplayName]);
 
 	const handleToggleDistance = useCallback(async () => {
 		if (isTogglingDistance) return;
 		const next = !showDistance;
-		setShowDistance(next);
-		setCachedOwnShowDistance(next);
+		queryClient.setQueryData(["my-own-profile"], (current: typeof myProfile) =>
+			current ? { ...current, showDistance: next } : current,
+		);
 		setIsTogglingDistance(true);
 		try {
 			await apiFunctions.updateMyProfile({ showDistance: next });
 		} catch {
-			setShowDistance(!next);
-			setCachedOwnShowDistance(!next);
+			queryClient.setQueryData(["my-own-profile"], (current: typeof myProfile) =>
+				current ? { ...current, showDistance: !next } : current,
+			);
 			toast.error(t("browse_page.errors.toggle_distance_failed", { defaultValue: "Could not update distance setting." }));
 		} finally {
 			setIsTogglingDistance(false);
 		}
-	}, [apiFunctions, isTogglingDistance, showDistance, t]);
+	}, [apiFunctions, isTogglingDistance, showDistance, queryClient, t]);
 
 	useEffect(() => {
 		if (!isAccountSwitcherOpen) return;
@@ -1123,6 +1068,12 @@ export function GridPage() {
 		navigate(`/chat?${nextParams.toString()}`);
 	};
 
+	const handleTagClick = (tag: string) => {
+		setTags([tag]);
+		setActiveProfileId(null);
+		toast.success(t("browse_page.toasts.tag_filter_applied", { tag }));
+	};
+
 	const handleTriangleProfile = (targetProfileId: string) => {
 		if (!geohash) {
 			toast.error(t("browse_page.errors.location_required"));
@@ -1206,7 +1157,7 @@ export function GridPage() {
 				return;
 			}
 
-			if (skipBlockConfirm) {
+			if (isBlockConfirmSkipped()) {
 				await performBlockProfile(targetProfileId);
 				return;
 			}
@@ -1214,7 +1165,7 @@ export function GridPage() {
 			setDontAskAgainChecked(false);
 			setPendingProfileConfirm({ action: "block", profileId: targetProfileId });
 		},
-		[isBlockingProfile, isUnblockingProfile, performBlockProfile, skipBlockConfirm],
+		[isBlockingProfile, isUnblockingProfile, performBlockProfile],
 	);
 
 	const handleUnblockProfile = useCallback(
@@ -1223,7 +1174,7 @@ export function GridPage() {
 				return;
 			}
 
-			if (skipUnblockConfirm) {
+			if (isUnblockConfirmSkipped()) {
 				await performUnblockProfile(targetProfileId);
 				return;
 			}
@@ -1231,7 +1182,7 @@ export function GridPage() {
 			setDontAskAgainChecked(false);
 			setPendingProfileConfirm({ action: "unblock", profileId: targetProfileId });
 		},
-		[isBlockingProfile, isUnblockingProfile, performUnblockProfile, skipUnblockConfirm],
+		[isBlockingProfile, isUnblockingProfile, performUnblockProfile],
 	);
 
 	const handleToggleFavoriteProfile = useCallback(
@@ -1302,13 +1253,10 @@ export function GridPage() {
 
 		const { action, profileId } = pendingProfileConfirm;
 		if (dontAskAgainChecked && typeof window !== "undefined") {
-			if (action === "block") {
-				localStorage.setItem(SKIP_BLOCK_CONFIRM_KEY, "true");
-				setSkipBlockConfirm(true);
-			} else {
-				localStorage.setItem(SKIP_UNBLOCK_CONFIRM_KEY, "true");
-				setSkipUnblockConfirm(true);
-			}
+			localStorage.setItem(
+				action === "block" ? SKIP_BLOCK_CONFIRM_KEY : SKIP_UNBLOCK_CONFIRM_KEY,
+				"true",
+			);
 		}
 
 		setPendingProfileConfirm(null);
@@ -1524,13 +1472,18 @@ export function GridPage() {
 									<button
 										type="button"
 										onClick={() => setIsFiltersOpen(true)}
-										className="glass-pill inline-flex shrink-0 items-center gap-1.5 px-4 py-2 text-sm font-bold text-[var(--accent)] active:scale-95"
-										style={{ "--pill-color": "var(--accent)" } as React.CSSProperties}
+										className={cn(
+											"inline-flex shrink-0 items-center gap-1.5 px-4 py-2 text-sm font-bold transition-all active:scale-95",
+											hasActiveBrowseFilters
+												? "rounded-full border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] shadow-lg shadow-[var(--accent)]/40"
+												: "glass-pill text-[var(--accent)] hover:border-[var(--accent)]/60 hover:bg-[var(--accent)]/20",
+										)}
+										style={!hasActiveBrowseFilters ? { "--pill-color": "var(--accent)" } as React.CSSProperties : undefined}
 									>
 										<SlidersHorizontal className="h-3.5 w-3.5" />
 										{t("right_now.filters")}
 										{hasActiveBrowseFilters ? (
-											<span className="ml-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--accent)] px-1 text-[9px] font-bold text-[var(--accent-contrast)]">
+											<span className="ml-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--accent-contrast)] px-1 text-[9px] font-bold text-[var(--accent)]">
 												{activeFilterCount}
 											</span>
 										) : null}
@@ -1554,47 +1507,17 @@ export function GridPage() {
 										</select>
 									</div>
 
-									<button
-										type="button"
-										onClick={() =>
-											setBrowseFilters((prev: typeof browseFilters) => ({
-												...prev,
-												onlineOnly: !prev.onlineOnly,
-											}))
-										}
-										className={cn(
-											"inline-flex shrink-0 items-center gap-1.5 px-4 py-2 text-sm font-bold transition-all active:scale-95",
-											browseFilters.onlineOnly
-												? "rounded-full border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] shadow-lg shadow-[var(--accent)]/40"
-												: "glass-pill text-[var(--accent)]"
-										)}
-										style={!browseFilters.onlineOnly ? { "--pill-color": "var(--accent)" } as React.CSSProperties : undefined}
-									>
-										{t("browse_filters.options.online")}
-									</button>
-
-									<button
-										type="button"
+									<FilterPill
+										icon={<Star className={`h-3.5 w-3.5 ${browseFilters.favorites ? "fill-current" : ""}`} />}
+										label={t("browse_filters.options.favorites")}
+										active={Boolean(browseFilters.favorites)}
 										onClick={() =>
 											setBrowseFilters((prev: typeof browseFilters) => ({
 												...prev,
 												favorites: !prev.favorites,
 											}))
 										}
-										className={cn(
-											"inline-flex size-9 shrink-0 items-center justify-center text-sm font-bold transition-all active:scale-95",
-											browseFilters.favorites
-												? "rounded-full border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] shadow-lg shadow-[var(--accent)]/40"
-												: "glass-pill text-[var(--accent)]"
-										)}
-										style={!browseFilters.favorites ? { "--pill-color": "var(--accent)" } as React.CSSProperties : undefined}
-										aria-label={t("browse_filters.options.favorites")}
-										title={t("browse_filters.options.favorites")}
-									>
-										<Star
-											className={`h-4 w-4 ${browseFilters.favorites ? "fill-current" : ""}`}
-										/>
-									</button>
+									/>
 
 									<button
 										type="button"
@@ -1616,51 +1539,42 @@ export function GridPage() {
 										)}
 									</button>
 
-									<button
-										type="button"
+									<FilterPill
+										icon={<span className="h-2.5 w-2.5 shrink-0 rounded-full bg-green-500 shadow-sm" />}
+										label={t("browse_filters.options.online")}
+										active={Boolean(browseFilters.onlineOnly)}
 										onClick={() =>
 											setBrowseFilters((prev: typeof browseFilters) => ({
 												...prev,
-												rightNow: !prev.rightNow,
+												onlineOnly: !prev.onlineOnly,
 											}))
 										}
-										className={cn(
-											"inline-flex size-9 shrink-0 items-center justify-center text-sm font-bold transition-all active:scale-95",
-											browseFilters.rightNow
-												? "rounded-full border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] shadow-lg shadow-[var(--accent)]/40"
-												: "glass-pill text-[var(--accent)]"
-										)}
-										style={!browseFilters.rightNow ? { "--pill-color": "var(--accent)" } as React.CSSProperties : undefined}
-										aria-label={t("browse_filters.options.right_now")}
-										title={t("browse_filters.options.right_now")}
-									>
-										<Droplet
-											className={`h-4 w-4 ${browseFilters.rightNow ? "fill-current" : ""}`}
-										/>
-									</button>
+									/>
 
-									<button
-										type="button"
+									<FilterPill
+										icon={<Plane className={`h-3.5 w-3.5 ${browseFilters.isVisiting ? "fill-current" : ""}`} />}
+										label={t("profile_details.visiting")}
+										active={Boolean(browseFilters.isVisiting)}
 										onClick={() =>
 											setBrowseFilters((prev: typeof browseFilters) => ({
 												...prev,
 												isVisiting: !prev.isVisiting,
 											}))
 										}
-										className={cn(
-											"inline-flex size-9 shrink-0 items-center justify-center text-sm font-bold transition-all active:scale-95",
-											browseFilters.isVisiting
-												? "rounded-full border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] shadow-lg shadow-[var(--accent)]/40"
-												: "glass-pill text-[var(--accent)]"
-										)}
-										style={!browseFilters.isVisiting ? { "--pill-color": "var(--accent)" } as React.CSSProperties : undefined}
-										aria-label={t("profile_details.visiting")}
-										title={t("profile_details.visiting")}
-									>
-										<Plane
-											className={`h-4 w-4 ${browseFilters.isVisiting ? "fill-current" : ""}`}
-										/>
-									</button>
+									/>
+
+									<FilterPill
+										icon={<Droplet className={`h-3.5 w-3.5 ${browseFilters.rightNow ? "fill-current" : ""}`} />}
+										label={t("browse_filters.options.right_now")}
+										active={Boolean(browseFilters.rightNow)}
+										onClick={() =>
+											setBrowseFilters((prev: typeof browseFilters) => ({
+												...prev,
+												rightNow: !prev.rightNow,
+											}))
+										}
+										color="right-now"
+									/>
 
 									{hasActiveBrowseFilters ? (
 										<button
@@ -1673,14 +1587,12 @@ export function GridPage() {
 										</button>
 									) : null}
 
-									<button
-										type="button"
+									<FilterPill
+										icon={<Search className="h-3.5 w-3.5" />}
+										label={t("grid.open_profile_by_id", { defaultValue: "Open Profile by ID" })}
+										active={false}
 										onClick={() => { setProfileSearchInput(""); setIsProfileSearchOpen(true); }}
-										className="glass-pill inline-flex size-9 shrink-0 items-center justify-center text-[var(--accent)] transition-all active:scale-95"
-										style={{ "--pill-color": "var(--accent)" } as React.CSSProperties}
-									>
-										<Search className="h-3.5 w-3.5" />
-									</button>
+									/>
 								</div>
 							</div>
 						</div>
@@ -1784,6 +1696,7 @@ export function GridPage() {
 				isOpen={Boolean(activeProfileId)}
 				onClose={() => setActiveProfileId(null)}
 				onMessageProfile={handleMessageProfile}
+				onTagClick={handleTagClick}
 				onTriangleProfile={handleTriangleProfile}
 				onBlockProfile={handleBlockProfile}
 				onUnblockProfile={handleUnblockProfile}

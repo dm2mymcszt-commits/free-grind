@@ -11,9 +11,10 @@ interface SelectableItemProps {
     children: React.ReactNode;
     onNormalClick: () => void;
     roundedClassName?: string;
+    isDisabled?: boolean;
 }
 
-export function SelectableItem({ id, name, profileId, viewType, children, onNormalClick, roundedClassName = "rounded-xl" }: SelectableItemProps) {
+export function SelectableItem({ id, name, profileId, viewType, children, onNormalClick, roundedClassName = "rounded-xl", isDisabled = false }: SelectableItemProps) {
     const { isActive, viewType: activeViewType, activateMode, toggleSelection, isSelected } = useMultiSelect();
     const selected = isSelected(id);
     const wasLongPressedRef = useRef(false);
@@ -21,6 +22,7 @@ export function SelectableItem({ id, name, profileId, viewType, children, onNorm
     const isModeActiveForThisView = isActive && activeViewType === viewType;
 
     const handleActivate = () => {
+        if (isDisabled) return;
         if (!isActive) {
             wasLongPressedRef.current = true;
             activateMode(viewType, { id, name, profileId });
@@ -31,6 +33,7 @@ export function SelectableItem({ id, name, profileId, viewType, children, onNorm
     const longPressGestures = useLongPress(handleActivate, 400);
 
     const handleContextMenu = (e: React.MouseEvent) => {
+        if (isDisabled) return;
         e.preventDefault();
         handleActivate();
     };
@@ -42,7 +45,7 @@ export function SelectableItem({ id, name, profileId, viewType, children, onNorm
             return;
         }
 
-        if (isModeActiveForThisView) {
+        if (isModeActiveForThisView && !isDisabled) {
             e.preventDefault();
             e.stopPropagation();
             toggleSelection({ id, name, profileId });

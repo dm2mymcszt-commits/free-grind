@@ -1,8 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useApiFunctions } from "../useApiFunctions";
-import type { RightNowFeedItem } from "../../services/apiFunctions";
-
-import { SCROLL_RESTORATION_TIMEOUT_MS, DEFAULT_STALE_TIME_MS } from "../../config/ui-constants";
+import { DEFAULT_STALE_TIME_MS } from "../../config/ui-constants";
 
 interface RightNowQueryParams {
 	sort: string;
@@ -18,7 +16,7 @@ export function useRightNowFeed(params: RightNowQueryParams) {
 	return useQuery({
 		queryKey: ["rightnow", "feed", params],
 		queryFn: async () => {
-			const items = await api.getRightNowFeed(params);
+			const items = await api.getRightNowFeed(params as any);
 			// Deduplicate items by their ID to prevent React "duplicate key" errors
 			// if the API returns overlapping data during refreshes.
 			const seen = new Set();

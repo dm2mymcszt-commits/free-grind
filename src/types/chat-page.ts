@@ -1,5 +1,4 @@
 import type { Message } from "./messages";
-import type { SearchProfileResult } from "./chat-service";
 
 export type UiMessage = Message & {
 	clientState?: "pending" | "failed";
@@ -27,9 +26,9 @@ export type AlbumViewerState = {
 	albumId: number;
 	albumName: string | null;
 	content: AlbumContentItem[];
+	/** Whether the message that opened this album belongs to the current user — reacting/replying to your own album doesn't make sense, so callers use this to hide those controls. */
+	isOwn?: boolean;
 };
-
-export type SearchMode = "conversations" | "messages" | "profiles";
 
 export type InboxFilterKey =
 	| "unreadOnly"
@@ -38,4 +37,15 @@ export type InboxFilterKey =
 	| "rightNowOnly"
 	| "onlineNowOnly";
 
-export type ProfileSearchResult = SearchProfileResult;
+/** Three-way visibility filter for a conversation category (pinned/archived/hidden):
+ * "all" mixes it into the normal list, "hide" excludes it, "only" shows exclusively it. */
+export type InboxVisibilityFilter = "all" | "hide" | "only";
+
+export type SearchMode = "messages" | "conversations" | "profiles";
+
+export type ProfileSearchResult = {
+	profileId: string;
+	displayName: string | null;
+	profileImageMediaHash: string | null;
+	distance: number | null;
+};

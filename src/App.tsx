@@ -15,36 +15,43 @@ import { RightNowPage } from "./pages/app/RightNowPage";
 import { InterestPage } from "./pages/app/InterestPage";
 import { ChatPage } from "./pages/app/ChatPage";
 import { ChatFiltersPage } from "./pages/app/ChatFiltersPage";
-import { ChatSearchPage } from "./pages/app/ChatSearchPage";
 import { SettingsPage } from "./pages/app/SettingsPage.tsx";
 import { ProfileEditorPage } from "./pages/app/ProfileEditorPage.tsx";
 import { GridProfilePage } from "./pages/app/GridProfilePage.tsx";
 import { AboutPage } from "./pages/app/AboutPage.tsx";
 import { SettingsAlbumsPage } from "./pages/app/SettingsAlbumsPage.tsx";
 import { SettingsBlockedPage } from "./pages/app/SettingsBlockedPage.tsx";
+import { SettingsBlockHistoryPage } from "./pages/app/SettingsBlockHistoryPage.tsx";
 import { AgeVerificationPage } from "./pages/app/AgeVerificationPage.tsx";
 import { SharedAlbumsPage } from "./pages/app/SharedAlbumsPage.tsx";
 import { ApiInspectorPage } from "./pages/app/ApiInspectorPage.tsx";
 import { CustomizabilityPage } from "./pages/app/CustomizabilityPage.tsx";
+import { BehaviorPage } from "./pages/app/BehaviorPage.tsx";
+import { NotificationsPage } from "./pages/app/NotificationsPage.tsx";
 import { ReportIssuePage } from "./pages/app/ReportIssuePage.tsx";
 import { IssueSearchPage } from "./pages/app/IssueSearchPage.tsx";
 import { SettingsAutomationPage } from "./pages/app/SettingsAutomationPage.tsx";
 import { SettingsDataPage } from "./pages/app/SettingsDataPage.tsx";
 import { SettingsPrivacyPage } from "./pages/app/SettingsPrivacyPage.tsx";
 import { SettingsSavedPhrasesPage } from "./pages/app/SettingsSavedPhrasesPage.tsx";
-import { SettingsNotificationsPage } from "./pages/app/SettingsNotificationsPage.tsx";
+import { ChatSearchPage } from "./pages/app/ChatSearchPage";
 import { PermissionsOnboarding } from "./components/PermissionsOnboarding";
-import { OutdatedVersionPrompt } from "./components/OutdatedVersionPrompt";
+import { VersionAnnouncement } from "./components/VersionAnnouncement";
+import { OutdatedVersionGate } from "./components/OutdatedVersionPrompt";
+import { TestReminderGate } from "./components/TestReminderPrompt";
 import { PushNotificationBridge } from "./components/PushNotificationBridge";
 import { ChatRealtimeBridge } from "./components/ChatRealtimeBridge";
 import { ActiveRouteBridge } from "./components/ActiveRouteBridge";
 import { EntitlementsBridge } from "./components/EntitlementsBridge";
+import { ManagedOptionsCacheBridge } from "./components/ManagedOptionsCacheBridge";
 import { SplashReadyBridge } from "./components/SplashReadyBridge";
 import { SmoothScroll } from "./components/SmoothScroll";
 import { usePreferences } from "./contexts/PreferencesContext";
 import ManagerApp from "./ManagerApp";
 import { getRuntimeContext } from "./services/runtimeContext";
 import { hasCompletedOnboarding } from "./utils/onboardingStorage";
+import { getLastSeenAnnouncementVersion, markAnnouncementSeen } from "./utils/announcementStorage";
+import { VERSION_ANNOUNCEMENTS } from "./data/versionAnnouncements";
 import { useRenderPhase } from "./hooks/useRenderPhase";
 import { MultiSelectProvider } from "./contexts/MultiSelectContext";
 import { MultiSelectOverlay } from "./components/multi-select/MultiSelectOverlay";
@@ -134,14 +141,32 @@ function ManagerRoutePage() {
 	return <ManagerApp currentLabel={currentLabel} />;
 }
 
+const CURRENT_APP_VERSION = import.meta.env.VITE_APP_VERSION;
+const PENDING_ANNOUNCEMENT = VERSION_ANNOUNCEMENTS.find((a) => a.version === CURRENT_APP_VERSION) ?? null;
+
 export default function App() {
 	const [showOnboarding, setShowOnboarding] = useState(() => !hasCompletedOnboarding());
+	const [showAnnouncement, setShowAnnouncement] = useState(
+		() => !showOnboarding && !!PENDING_ANNOUNCEMENT && getLastSeenAnnouncementVersion() !== CURRENT_APP_VERSION,
+	);
 	// The routed page itself (below) always mounts on the first frame — only
 	// these non-visual startup bridges are staggered one per frame, so their
 	// setup (websocket connect, native push-notification registration, route
 	// tracking, entitlements fetch) doesn't all land in the same first commit
 	// as the initial route.
 	const renderPhase = useRenderPhase(5);
+
+	const handleOnboardingComplete = () => {
+		// A fresh install is already on the current version — it shouldn't
+		// immediately see a "what's new" screen for the version it just installed.
+		markAnnouncementSeen(CURRENT_APP_VERSION);
+		setShowOnboarding(false);
+	};
+
+	const handleAnnouncementClose = () => {
+		markAnnouncementSeen(CURRENT_APP_VERSION);
+		setShowAnnouncement(false);
+	};
 
 	return (
 		<AuthProvider>
@@ -151,98 +176,107 @@ export default function App() {
 					<MultiSelectProvider>
 						{showOnboarding ? (
 							<div className="app-shell">
-								<PermissionsOnboarding onComplete={() => setShowOnboarding(false)} />
+								<PermissionsOnboarding onComplete={handleOnboardingComplete} />
 							</div>
-						) : (<>
-						{renderPhase >= 1 && <ManagerModeRedirect />}
-						{renderPhase >= 2 && <PushNotificationBridge />}
-						{renderPhase >= 3 && <ChatRealtimeBridge />}
-						{renderPhase >= 4 && <ActiveRouteBridge />}
-						{renderPhase >= 5 && (
-							<>
-								<EntitlementsBridge />
-								<OutdatedVersionPrompt />
-							</>
+						) : showAnnouncement && PENDING_ANNOUNCEMENT ? (
+							<div className="app-shell">
+								<VersionAnnouncement announcement={PENDING_ANNOUNCEMENT} onClose={handleAnnouncementClose} />
+							</div>
+						) : (
+							<OutdatedVersionGate>
+								<TestReminderGate>
+									{renderPhase >= 1 && <ManagerModeRedirect />}
+									{renderPhase >= 2 && <PushNotificationBridge />}
+									{renderPhase >= 2 && <ManagedOptionsCacheBridge />}
+									{renderPhase >= 3 && <ChatRealtimeBridge />}
+									{renderPhase >= 4 && <ActiveRouteBridge />}
+									{renderPhase >= 5 && <EntitlementsBridge />}
+									<Routes>
+										<Route element={<RootLayout />}>
+											<Route path="/manager" element={<ManagerRoutePage />} />
+											{/* Auth Routes */}
+											<Route path="/auth/sign-in" element={<SignInPage />} />
+											<Route path="/auth/sign-up" element={<SignUpPage />} />
+											<Route
+												path="/auth/password-reset"
+												element={<PasswordResetPage />}
+											/>
+											<Route path="/report-issue" element={<ReportIssuePage />} />
+
+											{/* Protected Routes */}
+											<Route
+												element={
+													<ProtectedRoute>
+														<ProtectedLayout />
+													</ProtectedRoute>
+												}
+											>
+												<Route path="/" element={<GridPage />} />
+												<Route path="/browse/location" element={<BrowseLocationPage />} />
+												<Route path="/right-now" element={<RightNowPage />} />
+												<Route path="/interest" element={<InterestPage />} />
+												<Route path="/chat" element={<ChatPage />} />
+												<Route path="/chat/filters" element={<ChatFiltersPage />} />
+												<Route path="/chat/search" element={<ChatSearchPage />} />
+												<Route path="/chat/albums" element={<SharedAlbumsPage />} />
+												<Route path="/chat/:conversationId" element={<ChatPage />} />
+												<Route path="/profile/:profileId" element={<GridProfilePage />} />
+												<Route path="/settings" element={<SettingsPage />} />
+												<Route path="/settings/notifications" element={<NotificationsPage />} />
+												<Route path="/settings/automation" element={<SettingsAutomationPage />} />
+												<Route path="/settings/data" element={<SettingsDataPage />} />
+												<Route path="/settings/privacy" element={<SettingsPrivacyPage />} />
+												<Route path="/settings/about" element={<AboutPage />} />
+												<Route path="/settings/albums" element={<SettingsAlbumsPage />} />
+												<Route path="/settings/blocked" element={<SettingsBlockedPage />} />
+												<Route path="/settings/block-history" element={<SettingsBlockHistoryPage />} />
+												<Route path="/settings/saved-phrases" element={<SettingsSavedPhrasesPage />} />
+												<Route
+													path="/settings/api-inspector"
+													element={
+														<DeveloperModeRoute>
+															<ApiInspectorPage />
+														</DeveloperModeRoute>
+													}
+												/>
+												<Route
+													path="/settings/shared-albums"
+													element={<SharedAlbumsPage />}
+												/>
+												<Route
+													path="/settings/age-verification"
+													element={<AgeVerificationPage />}
+												/>
+												<Route
+													path="/settings/customizability"
+													element={<CustomizabilityPage />}
+												/>
+												<Route
+													path="/settings/behavior"
+													element={<BehaviorPage />}
+												/>
+												<Route
+													path="/settings/report-issue"
+													element={<ReportIssuePage />}
+												/>
+												<Route
+													path="/settings/issues"
+													element={<IssueSearchPage />}
+												/>
+												<Route
+													path="/settings/profile-editor"
+													element={<ProfileEditorPage />}
+												/>
+											</Route>
+
+											{/* Error Route */}
+											<Route path="*" element={<ErrorPage />} />
+										</Route>
+									</Routes>
+									<MultiSelectOverlay />
+								</TestReminderGate>
+							</OutdatedVersionGate>
 						)}
-						<Routes>
-							<Route element={<RootLayout />}>
-								<Route path="/manager" element={<ManagerRoutePage />} />
-								{/* Auth Routes */}
-								<Route path="/auth/sign-in" element={<SignInPage />} />
-								<Route path="/auth/sign-up" element={<SignUpPage />} />
-								<Route
-									path="/auth/password-reset"
-									element={<PasswordResetPage />}
-								/>
-								<Route path="/report-issue" element={<ReportIssuePage />} />
-
-								{/* Protected Routes */}
-								<Route
-									element={
-										<ProtectedRoute>
-											<ProtectedLayout />
-										</ProtectedRoute>
-									}
-								>
-									<Route path="/" element={<GridPage />} />
-									<Route path="/browse/location" element={<BrowseLocationPage />} />
-									<Route path="/right-now" element={<RightNowPage />} />
-									<Route path="/interest" element={<InterestPage />} />
-									<Route path="/chat" element={<ChatPage />} />
-									<Route path="/chat/filters" element={<ChatFiltersPage />} />
-									<Route path="/chat/search" element={<ChatSearchPage />} />
-									<Route path="/chat/albums" element={<SharedAlbumsPage />} />
-									<Route path="/chat/:conversationId" element={<ChatPage />} />
-									<Route path="/profile/:profileId" element={<GridProfilePage />} />
-									<Route path="/settings" element={<SettingsPage />} />
-									<Route path="/settings/notifications" element={<SettingsNotificationsPage />} />
-									<Route path="/settings/automation" element={<SettingsAutomationPage />} />
-									<Route path="/settings/data" element={<SettingsDataPage />} />
-									<Route path="/settings/privacy" element={<SettingsPrivacyPage />} />
-									<Route path="/settings/about" element={<AboutPage />} />
-									<Route path="/settings/albums" element={<SettingsAlbumsPage />} />
-									<Route path="/settings/blocked" element={<SettingsBlockedPage />} />
-									<Route path="/settings/saved-phrases" element={<SettingsSavedPhrasesPage />} />
-									<Route
-										path="/settings/api-inspector"
-										element={
-											<DeveloperModeRoute>
-												<ApiInspectorPage />
-											</DeveloperModeRoute>
-										}
-									/>
-									<Route
-										path="/settings/shared-albums"
-										element={<SharedAlbumsPage />}
-									/>
-									<Route
-										path="/settings/age-verification"
-										element={<AgeVerificationPage />}
-									/>
-									<Route
-										path="/settings/customizability"
-										element={<CustomizabilityPage />}
-									/>
-									<Route
-										path="/settings/report-issue"
-										element={<ReportIssuePage />}
-									/>
-									<Route
-										path="/settings/issues"
-										element={<IssueSearchPage />}
-									/>
-									<Route
-										path="/settings/profile-editor"
-										element={<ProfileEditorPage />}
-									/>
-								</Route>
-
-								{/* Error Route */}
-								<Route path="*" element={<ErrorPage />} />
-							</Route>
-						</Routes>
-						<MultiSelectOverlay />
-						</>)}
 					</MultiSelectProvider>
 				</SmoothScroll>
 			</PreferencesProvider>

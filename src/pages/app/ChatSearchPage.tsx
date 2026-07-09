@@ -117,13 +117,18 @@ export function ChatSearchPage() {
 				});
 
 				const needle = searchQuery.trim().toLowerCase();
-				const filtered = response.profiles.filter((profile) =>
-					profile.displayName.toLowerCase().includes(needle),
-				);
+				const filtered: ProfileSearchResult[] = response.profiles
+					.filter((profile) => profile.displayName.toLowerCase().includes(needle))
+					.map((profile) => ({
+						profileId: String(profile.profileId),
+						displayName: profile.displayName,
+						profileImageMediaHash: profile.profileImageMediaHash,
+						distance: profile.distance,
+					}));
 
 				setProfileResults((previous) => {
 					const merged = loadMore ? [...previous, ...filtered] : filtered;
-					const map = new Map<number, ProfileSearchResult>();
+					const map = new Map<string | number, ProfileSearchResult>();
 					for (const profile of merged) {
 						map.set(profile.profileId, profile);
 					}
@@ -422,7 +427,7 @@ export function ChatSearchPage() {
 											/>
 										</div>
 										<div className="min-w-0 flex-1">
-											<p className="truncate text-sm font-semibold">{highlight(profile.displayName, searchQuery)}</p>
+											<p className="truncate text-sm font-semibold">{highlight(profile.displayName ?? "", searchQuery)}</p>
 											<p className="text-xs text-[var(--text-muted)]">
 												{profile.distance != null
 													? formatDistance(profile.distance * 1000, t, unitsPreset)

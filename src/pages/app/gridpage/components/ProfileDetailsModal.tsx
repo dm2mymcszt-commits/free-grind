@@ -33,6 +33,7 @@ import {
 import { getProfileImageUrl } from "../../../../utils/media";
 import { ProfileImage } from "../../../../components/ui/profile-image";
 import freegrindLogo from "../../../../images/freegrind-logo.webp";
+import { FreeGrindBadge } from "../../../../components/FreeGrindBadge";
 import { usePreferences } from "../../../../contexts/PreferencesContext";
 import { formatDateTime24 } from "../../chat/chatUtils";
 import { formatRelativeTime } from "../../../../utils/relativeTime";
@@ -50,8 +51,7 @@ import {
 import { ProfileDetailsContent } from "./ProfileDetailsContent";
 import type { ChatContactIndexRecord } from "../../../../types/chat-contact-index";
 import { PhotoViewer } from "../../../../components/PhotoViewer";
-import { ConfirmDialog } from "../../../../components/ui/confirm-dialog";
-import { SKIP_BLOCK_CONFIRM_KEY } from "../../../../utils/blockConfirm";
+import { PhotoActionBar } from "../../../../components/PhotoActionBar";
 
 type OwnProfileData = { tags: string[] };
 const ownProfileDataCache = new Map<string, OwnProfileData>();
@@ -65,6 +65,7 @@ type ProfileDetailsModalProps = {
 	onClose: () => void;
 	onMessageProfile?: (profileId: string) => void;
 	onSendQuickMessage?: (profileId: string, text: string) => void;
+	onSendProfilePhotoReply?: (profileId: string, imageHash: string, text: string) => void | Promise<void>;
 	onTriangleProfile?: (profileId: string) => void;
 	onBlockProfile?: (profileId: string) => void;
 	onUnblockProfile?: (profileId: string) => void;
@@ -81,6 +82,7 @@ type ProfileDetailsModalProps = {
 	isTappingProfile?: boolean;
 	isTapBlocked?: boolean;
 	tapVisualState?: { state: "none" | "single" | "mutual"; tapId: number };
+	onTagClick?: (tag: string) => void;
 	activeProfile: ProfileDetail | null;
 	selectedBrowseCard: BrowseCard | null;
 	isLoadingActiveProfile: boolean;
@@ -113,6 +115,7 @@ export function ProfileDetailsModal({
 	onClose,
 	onMessageProfile,
 	onSendQuickMessage,
+	onSendProfilePhotoReply,
 	onTriangleProfile,
 	onBlockProfile,
 	onUnblockProfile,
@@ -126,6 +129,7 @@ export function ProfileDetailsModal({
 	isTappingProfile = false,
 	isTapBlocked = false,
 	tapVisualState = { state: "none", tapId: 1 },
+	onTagClick,
 	activeProfile,
 	selectedBrowseCard,
 	isLoadingActiveProfile,
@@ -343,14 +347,6 @@ export function ProfileDetailsModal({
 	const inlineScrolled = headerOpacity > 0.5;
 	const [carouselDragDelta, setCarouselDragDelta] = useState(0);
 	const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
-	const [showBlockConfirm, setShowBlockConfirm] = useState(false);
-	const requestBlock = () => {
-		if (typeof window !== "undefined" && window.localStorage.getItem(SKIP_BLOCK_CONFIRM_KEY) === "true") {
-			if (messageProfileId) onBlockProfile?.(String(messageProfileId));
-		} else {
-			setShowBlockConfirm(true);
-		}
-	};
 	const [quickMessageDraft, setQuickMessageDraft] = useState("");
 	const [barTapPickerOpen, setBarTapPickerOpen] = useState(false);
 	const [barInputVisible, setBarInputVisible] = useState(true);
@@ -902,6 +898,21 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 		[carouselHashes, photoCreatedAtByHash, t],
 	);
 
+	const renderPhotoFooter = useCallback(
+		(index: number) => {
+			const hash = carouselHashes[index];
+			if (hash === RIGHT_NOW_SLIDE_HASH || !onSendProfilePhotoReply || !messageProfileId || isOwnProfile) {
+				return null;
+			}
+			return (
+				<PhotoActionBar
+					onSendText={(text) => onSendProfilePhotoReply(String(messageProfileId), hash, text)}
+				/>
+			);
+		},
+		[carouselHashes, onSendProfilePhotoReply, messageProfileId, isOwnProfile],
+	);
+
 	const openPhotoViewer = (index: number) => {
 		setSelectedPhotoIndex(index);
 	};
@@ -917,6 +928,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 			photos={photoUrls}
 			initialIndex={selectedPhotoIndex}
 			renderExtraInfo={renderPhotoExtraInfo}
+			renderFooter={renderPhotoFooter}
 		/>
 	);
 
@@ -948,7 +960,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 						<div className="flex items-center gap-1.5 min-w-0">
 							<p className={`truncate text-base font-semibold leading-tight${inlineScrolled ? "" : " text-white"}`}>{activeProfileName}</p>
 							{usesFreegrind && (
-								<img src={freegrindLogo} alt="Free Grind user" title={t("profile_details.uses_free_grind")} className="h-4 w-4 shrink-0 rounded-full border border-[var(--border)]" />
+								<FreeGrindBadge size="sm" title={t("profile_details.uses_free_grind")} />
 							)}
 							{activeProfile?.age != null && Number.isFinite(activeProfile.age) && (
 								<span className={`shrink-0 text-sm${inlineScrolled ? " text-[var(--text-muted)]" : " text-white/70"}`}>{activeProfile.age}</span>
@@ -988,7 +1000,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 							{(onBlockProfile || onUnblockProfile) && (
 								<button
 									type="button"
-									onClick={() => isBlocked ? onUnblockProfile?.(String(messageProfileId)) : requestBlock()}
+									onClick={() => isBlocked ? onUnblockProfile?.(String(messageProfileId)) : (messageProfileId && onBlockProfile?.(String(messageProfileId)))}
 									disabled={isBlockingProfile}
 									className={`inline-flex shrink-0 items-center justify-center rounded-xl border p-2 transition-colors disabled:opacity-60 ${
 										isBlocked
@@ -1074,48 +1086,41 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 								/>
 							</div>
 						))}
-						{(activeProfile.lastReceivedTapTimestamp != null || hasRightNowSlide) && (
+						{activeProfile.lastReceivedTapTimestamp != null && (
 							<div className="pointer-events-none absolute bottom-3 left-3 z-20 flex flex-row items-center gap-1.5">
-								{activeProfile.lastReceivedTapTimestamp != null && (
-									<div className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
-										<Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" />
-										<span className="text-xs font-medium text-white">{formatRelativeTime(activeProfile.lastReceivedTapTimestamp)}</span>
-									</div>
-								)}
-								{hasRightNowSlide && (
-									<p
-										className="inline-flex items-center gap-1 rounded-full bg-black/65 px-3 py-1 text-xs font-semibold ring-1 ring-white/25"
-										style={{ color: "var(--right-now)" }}
-									>
-										<Zap className="h-3.5 w-3.5" />
-										<span>{t("profile_details.right_now")}</span>
-									</p>
-								)}
+								<div className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
+									<Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" />
+									<span className="text-xs font-medium text-white">{formatRelativeTime(activeProfile.lastReceivedTapTimestamp)}</span>
+								</div>
 							</div>
 						)}
 						{carouselHashes.length > 1 && (
 							<div className="pointer-events-none absolute inset-y-0 right-3 z-20 flex flex-col items-center justify-center">
 								<div className="flex flex-col items-center gap-1.5 rounded-full bg-black/30 px-[5px] py-[10px] backdrop-blur-sm">
-									{carouselHashes.map((hash, index) => (
-										<span
-											key={`${hash}-dot`}
-											className={`w-1.5 rounded-full transition-[height,background-color] duration-300 ease-out ${
-												hash === RIGHT_NOW_SLIDE_HASH
-													? (index === mobileCarouselPhotoIndex ? "h-3" : "h-1.5")
-													: (index === mobileCarouselPhotoIndex ? "h-3 bg-white" : "h-1.5 bg-white/40")
-											}`}
-											style={
-												hash === RIGHT_NOW_SLIDE_HASH
-													? {
-															backgroundColor: index === mobileCarouselPhotoIndex
-																? "var(--right-now)"
-																: "color-mix(in srgb, var(--right-now), transparent 55%)",
-														}
-													: undefined
-											}
-											aria-hidden="true"
-										/>
-									))}
+									{carouselHashes.map((hash, index) =>
+										hash === RIGHT_NOW_SLIDE_HASH ? (
+											<span
+												key={`${hash}-dot`}
+												className="flex w-1.5 shrink-0 items-center justify-center overflow-visible transition-[height] duration-300 ease-out"
+												style={{ height: index === mobileCarouselPhotoIndex ? "12px" : "6px" }}
+												aria-hidden="true"
+											>
+												<Zap
+													className="h-3 w-3 shrink-0 scale-[0.55] transition-colors duration-150 ease-out"
+													style={{ color: index === mobileCarouselPhotoIndex ? "var(--right-now)" : "rgba(255,255,255,0.4)" }}
+													fill="currentColor"
+												/>
+											</span>
+										) : (
+											<span
+												key={`${hash}-dot`}
+												className={`w-1.5 rounded-full transition-[height,background-color] duration-300 ease-out ${
+													index === mobileCarouselPhotoIndex ? "h-3 bg-white" : "h-1.5 bg-white/40"
+												}`}
+												aria-hidden="true"
+											/>
+										)
+									)}
 								</div>
 							</div>
 						)}
@@ -1147,6 +1152,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 							usesFreegrind={usesFreegrind ?? false}
 							onMessageProfile={variant === "page" && !isOwnProfile ? onMessageProfile : undefined}
 							onTapProfile={variant === "page" && !isOwnProfile ? onTapProfile : undefined}
+							onTagClick={onTagClick}
 							onPhotoIndexChange={setMobileCarouselPhotoIndex}
 							onDragDeltaChange={setCarouselDragDelta}
 							isTapDisabled={isTapDisabled}
@@ -1272,7 +1278,14 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 								}}
 								className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border-none bg-transparent text-[var(--accent)] transition hover:brightness-110"
 							>
-								<MessageCircle className="h-5 w-5" strokeWidth={1.8} />
+								<span className="relative inline-flex">
+									<MessageCircle className="h-5 w-5" strokeWidth={1.8} />
+									{(chatContactStatus?.unreadCount ?? 0) > 0 && (
+										<span className="absolute -top-1.5 -right-2 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--accent)] px-1 text-[9px] font-bold text-[var(--accent-contrast)] shadow-sm">
+											{chatContactStatus?.unreadCount}
+										</span>
+									)}
+								</span>
 							</button>
 						)}
 					</div>
@@ -1347,17 +1360,6 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 						</span>
 					</>
 				)}
-				<ConfirmDialog
-					isOpen={showBlockConfirm}
-					onCancel={() => setShowBlockConfirm(false)}
-					onConfirm={() => { setShowBlockConfirm(false); if (messageProfileId) onBlockProfile?.(String(messageProfileId)); }}
-					title={t("profile_details.block")}
-					message={t("profile_details.block_confirm")}
-					confirmLabel={t("profile_details.block")}
-					cancelLabel={t("common.cancel")}
-					confirmTone="danger"
-					isProcessing={isBlockingProfile}
-				/>
 				</div>
 			</div>
 		);
@@ -1369,7 +1371,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 			onClick={handleBackdropClose}
 		>
 			<div
-				className="surface-card flex w-full max-w-[80vw] overflow-hidden rounded-2xl"
+				className="surface-card flex w-full max-w-[min(80vw,1300px)] overflow-hidden rounded-2xl"
 				style={{
 					flexDirection: isModalSplit ? "row" : "column",
 					maxHeight: isModalSplit ? "calc(100dvh - 8rem)" : "calc(100dvh - 1.5rem)",
@@ -1381,7 +1383,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 				{isModalSplit && !isLoadingActiveProfile && !activeProfileError && activeProfile && (
 					<div
 						className="relative shrink-0 overflow-hidden bg-black"
-						style={{ width: "42%" }}
+						style={{ width: "54%" }}
 						onWheel={(e) => {
 							e.preventDefault();
 							if (e.deltaY > 0) setMobileCarouselPhotoIndex((i) => Math.min(i + 1, carouselHashes.length - 1));
@@ -1423,50 +1425,43 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 								/>
 							</div>
 						))}
-						{(activeProfile.lastReceivedTapTimestamp != null || hasRightNowSlide) && (
+						{activeProfile.lastReceivedTapTimestamp != null && (
 							<div className="pointer-events-none absolute bottom-3 left-3 z-20 flex flex-row items-center gap-1.5">
-								{activeProfile.lastReceivedTapTimestamp != null && (
-									<div className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
-										<Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" />
-										<span className="text-xs font-medium text-white">
-											{formatRelativeTime(activeProfile.lastReceivedTapTimestamp)}
-										</span>
-									</div>
-								)}
-								{hasRightNowSlide && (
-									<p
-										className="inline-flex items-center gap-1 rounded-full bg-black/65 px-3 py-1 text-xs font-semibold ring-1 ring-white/25"
-										style={{ color: "var(--right-now)" }}
-									>
-										<Zap className="h-3.5 w-3.5" />
-										<span>{t("profile_details.right_now")}</span>
-									</p>
-								)}
+								<div className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
+									<Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" />
+									<span className="text-xs font-medium text-white">
+										{formatRelativeTime(activeProfile.lastReceivedTapTimestamp)}
+									</span>
+								</div>
 							</div>
 						)}
 						{carouselHashes.length > 1 && (
 							<div className="pointer-events-none absolute inset-y-0 right-4 z-20 flex flex-col items-center justify-center">
 								<div className="flex flex-col items-center gap-2 rounded-full bg-black/30 px-[7px] py-[14px] backdrop-blur-sm">
-									{carouselHashes.map((hash, index) => (
-										<span
-											key={`${hash}-dot`}
-											className={`w-2 rounded-full transition-[height,background-color] duration-300 ease-out ${
-												hash === RIGHT_NOW_SLIDE_HASH
-													? (index === mobileCarouselPhotoIndex ? "h-4" : "h-2")
-													: (index === mobileCarouselPhotoIndex ? "h-4 bg-white" : "h-2 bg-white/40")
-											}`}
-											style={
-												hash === RIGHT_NOW_SLIDE_HASH
-													? {
-															backgroundColor: index === mobileCarouselPhotoIndex
-																? "var(--right-now)"
-																: "color-mix(in srgb, var(--right-now), transparent 55%)",
-														}
-													: undefined
-											}
-											aria-hidden="true"
-										/>
-									))}
+									{carouselHashes.map((hash, index) =>
+										hash === RIGHT_NOW_SLIDE_HASH ? (
+											<span
+												key={`${hash}-dot`}
+												className="flex w-2 shrink-0 items-center justify-center overflow-visible transition-[height] duration-300 ease-out"
+												style={{ height: index === mobileCarouselPhotoIndex ? "16px" : "8px" }}
+												aria-hidden="true"
+											>
+												<Zap
+													className="h-4 w-4 shrink-0 scale-[0.55] transition-colors duration-150 ease-out"
+													style={{ color: index === mobileCarouselPhotoIndex ? "var(--right-now)" : "rgba(255,255,255,0.4)" }}
+													fill="currentColor"
+												/>
+											</span>
+										) : (
+											<span
+												key={`${hash}-dot`}
+												className={`w-2 rounded-full transition-[height,background-color] duration-300 ease-out ${
+													index === mobileCarouselPhotoIndex ? "h-4 bg-white" : "h-2 bg-white/40"
+												}`}
+												aria-hidden="true"
+											/>
+										)
+									)}
 								</div>
 							</div>
 						)}
@@ -1484,15 +1479,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 										<ChevronLeft className="h-4 w-4" />
 									</button>
 									<div className="min-w-0 flex-1">
-										<div className="flex items-center gap-2">
-											<p className="truncate text-base font-semibold">{activeProfileName}</p>
-											{activeProfile?.age != null && Number.isFinite(activeProfile.age) && (
-												<span className="shrink-0 text-sm text-[var(--text-muted)]">{activeProfile.age}</span>
-											)}
-										</div>
-										<p className="mt-0.5 text-xs text-[var(--text-muted)]">
-											{[profileStatusLabel, profileDistance != null ? formatDistance(profileDistance, t, unitsPreset) : null].filter(Boolean).join(" · ")}
-										</p>
+										<p className="truncate text-base font-semibold">{activeProfileName}</p>
 									</div>
 									{isOwnProfile && (
 										<button type="button" onClick={() => navigate("/settings/profile-editor")} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors" aria-label={t("profile_editor.edit_profile")}>
@@ -1509,7 +1496,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 												</button>
 											)}
 											{(onBlockProfile || onUnblockProfile) && (
-												<button type="button" onClick={() => isBlocked ? onUnblockProfile?.(String(messageProfileId)) : requestBlock()} disabled={isBlockingProfile}
+												<button type="button" onClick={() => isBlocked ? onUnblockProfile?.(String(messageProfileId)) : (messageProfileId && onBlockProfile?.(String(messageProfileId)))} disabled={isBlockingProfile}
 													className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-colors disabled:opacity-60 ${isBlocked ? "border-red-500/50 bg-red-500/10 text-red-400" : "border-red-500/40 bg-red-500/8 text-red-400 hover:border-red-500/70 hover:bg-red-500/15"}`}
 													aria-label={isBlocked ? t("profile_details.unblock") : t("profile_details.block")}>
 													<Ban className="h-4 w-4" />
@@ -1564,6 +1551,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 											usesFreegrind={usesFreegrind ?? false}
 											onMessageProfile={undefined}
 											onTapProfile={undefined}
+											onTagClick={onTagClick}
 											isTapDisabled={isTapDisabled}
 											isTapBlocked={isTapBlocked}
 											isTapActive={isTapActive}
@@ -1627,7 +1615,14 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 										{(onMessageProfile || onSendQuickMessage) && (
 											<button type="button" onClick={() => { if (quickMessageDraft.trim()) { onSendQuickMessage?.(String(messageProfileId), quickMessageDraft.trim()); setQuickMessageDraft(""); } else { onMessageProfile?.(String(messageProfileId)); } }}
 												className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border-none bg-transparent text-[var(--accent)] transition hover:brightness-110">
-												<MessageCircle className="h-5 w-5" strokeWidth={1.8} />
+												<span className="relative inline-flex">
+													<MessageCircle className="h-5 w-5" strokeWidth={1.8} />
+													{(chatContactStatus?.unreadCount ?? 0) > 0 && (
+														<span className="absolute -top-1.5 -right-2 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--accent)] px-1 text-[9px] font-bold text-[var(--accent-contrast)] shadow-sm">
+															{chatContactStatus?.unreadCount}
+														</span>
+													)}
+												</span>
 											</button>
 										)}
 									</div>
@@ -1676,17 +1671,6 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 				</>
 			)}
 			{photoViewerOverlay}
-			<ConfirmDialog
-				isOpen={showBlockConfirm}
-				onCancel={() => setShowBlockConfirm(false)}
-				onConfirm={() => { setShowBlockConfirm(false); if (messageProfileId) onBlockProfile?.(String(messageProfileId)); }}
-				title={t("profile_details.block")}
-				message={t("profile_details.block_confirm")}
-				confirmLabel={t("profile_details.block")}
-				cancelLabel={t("common.cancel")}
-				confirmTone="danger"
-				isProcessing={isBlockingProfile}
-			/>
 		</div>
 	);
 }

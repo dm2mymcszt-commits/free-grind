@@ -15,27 +15,29 @@ import { decodeGeohash, encodeGeohash } from "../../utils/geohash";
 import { validateMediaHash } from "../../utils/media";
 import { ProfileDetailsModal } from "./gridpage/components/ProfileDetailsModal";
 import { useTapProfile } from "./gridpage/hooks/useTapProfile";
+import { loadBrowseFiltersDraft } from "./browse-filters-storage";
 import {
-	getCachedGenderOptions,
 	getCachedProfileDetail,
-	getCachedPronounOptions,
 	removeProfileFromBrowseCache,
-	setCachedGenderOptions,
 	setCachedProfileDetail,
-	setCachedPronounOptions,
 } from "./gridpage/cache";
 import {
-	type ManagedOption,
 	type ProfileDetail,
 } from "./GridPage.types";
 import { getChatContactIndexForProfiles } from "../../services/chatContactIndex";
 import type { ChatContactIndexRecord } from "../../types/chat-contact-index";
 import { findConversationByProfileId, insertSystemMessage } from "../../services/chatDb";
-import { unarchiveConversation } from "../../services/conversationArchive";
+import { unarchiveConversation, claimBlockStateTransition } from "../../services/conversationArchive";
 import { appLog } from "../../utils/logger";
 import { consumeSelfBlockAction } from "../../utils/selfBlockActions";
+import { classifyProfileAccess } from "../../utils/profileAccessStatus";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
-import { SKIP_BLOCK_CONFIRM_KEY, SKIP_UNBLOCK_CONFIRM_KEY } from "../../utils/blockConfirm";
+import {
+	SKIP_BLOCK_CONFIRM_KEY,
+	SKIP_UNBLOCK_CONFIRM_KEY,
+	isBlockConfirmSkipped,
+	isUnblockConfirmSkipped,
+} from "../../utils/blockConfirm";
 
 const profileRouteParamsSchema = z.object({
 	profileId: z.string().min(1),
@@ -47,17 +49,24 @@ const profileRouteParamsSchema = z.object({
 // connection drop) when an unblock actually happens.
 function unarchiveConversationIfArchived(profileId: string) {
 	void findConversationByProfileId(profileId)
-		.then((stored) => {
-			if (stored?.archived) {
-				void unarchiveConversation(stored.conversationId);
-				const isSelf = consumeSelfBlockAction(stored.conversationId, "unblock");
-				void insertSystemMessage(
-					stored.conversationId,
-					isSelf ? "SystemUnblockedBySelf" : "SystemUnblocked",
-				).catch((error) => {
-					appLog.error("[grid-profile] failed to insert system message", error);
-				});
+		.then(async (stored) => {
+			if (!stored?.archived) {
+				return;
 			}
+			const isSelf = consumeSelfBlockAction(stored.conversationId, "unblock");
+			const claimed = await claimBlockStateTransition(stored.conversationId, null).catch(
+				() => false,
+			);
+			if (!claimed) {
+				return;
+			}
+			void unarchiveConversation(stored.conversationId);
+			void insertSystemMessage(
+				stored.conversationId,
+				isSelf ? "SystemUnblockedBySelf" : "SystemUnblocked",
+			).catch((error) => {
+				appLog.error("[grid-profile] failed to insert system message", error);
+			});
 		})
 		.catch((error) => {
 			appLog.warn("[grid-profile] failed to check archived conversation", error);
@@ -114,18 +123,6 @@ export function GridProfilePage() {
 		profileId: string;
 	} | null>(null);
 	const [dontAskAgainChecked, setDontAskAgainChecked] = useState(false);
-	const [skipBlockConfirm, setSkipBlockConfirm] = useState(() => {
-		if (typeof window === "undefined") {
-			return false;
-		}
-		return localStorage.getItem(SKIP_BLOCK_CONFIRM_KEY) === "true";
-	});
-	const [skipUnblockConfirm, setSkipUnblockConfirm] = useState(() => {
-		if (typeof window === "undefined") {
-			return false;
-		}
-		return localStorage.getItem(SKIP_UNBLOCK_CONFIRM_KEY) === "true";
-	});
 
 	const [isDesktopLike, setIsDesktopLike] = useState(() =>
 		window.matchMedia("(hover: hover) and (pointer: fine)").matches
@@ -238,7 +235,13 @@ export function GridProfilePage() {
 				if (!cancelled) {
 					setActiveProfile(parsed);
 					setCachedProfileDetail(profileId, parsed);
-					unarchiveConversationIfArchived(profileId);
+					// GET /v7/profiles/:id always returns 200, even for a blocked or
+					// deleted profile — it comes back as a stub (see
+					// classifyProfileAccess). A successful fetch alone is therefore
+					// NOT evidence of being unblocked — only a real profile is.
+					if (classifyProfileAccess(parsed) === "accessible") {
+						unarchiveConversationIfArchived(profileId);
+					}
 				}
 			} catch (error) {
 				if (!cancelled) {
@@ -302,6 +305,19 @@ export function GridProfilePage() {
 		}
 	};
 
+	const handleSendProfilePhotoReply = async (targetProfileId: string, imageHash: string, text: string) => {
+		try {
+			await apiFunctions.sendMessage({
+				type: "ProfilePhotoReply",
+				target: { type: "Direct", targetId: Number(targetProfileId) },
+				body: { imageHash, photoContentReply: text },
+			});
+			toast.success(t("chat.toasts.photo_reply_sent", { defaultValue: "Reply sent" }));
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : t("chat.errors.send_failed"));
+		}
+	};
+
 	const performBlockProfile = async (targetProfileId: string) => {
 		try {
 			await blockProfileMutation(targetProfileId);
@@ -332,7 +348,7 @@ export function GridProfilePage() {
 		if (isBlockingProfile || isUnblockingProfile) {
 			return;
 		}
-		if (skipBlockConfirm) {
+		if (isBlockConfirmSkipped()) {
 			await performBlockProfile(targetProfileId);
 			return;
 		}
@@ -344,7 +360,7 @@ export function GridProfilePage() {
 		if (isBlockingProfile || isUnblockingProfile) {
 			return;
 		}
-		if (skipUnblockConfirm) {
+		if (isUnblockConfirmSkipped()) {
 			await performUnblockProfile(targetProfileId);
 			return;
 		}
@@ -408,13 +424,10 @@ export function GridProfilePage() {
 
 		const { action, profileId } = pendingProfileConfirm;
 		if (dontAskAgainChecked && typeof window !== "undefined") {
-			if (action === "block") {
-				localStorage.setItem(SKIP_BLOCK_CONFIRM_KEY, "true");
-				setSkipBlockConfirm(true);
-			} else {
-				localStorage.setItem(SKIP_UNBLOCK_CONFIRM_KEY, "true");
-				setSkipUnblockConfirm(true);
-			}
+			localStorage.setItem(
+				action === "block" ? SKIP_BLOCK_CONFIRM_KEY : SKIP_UNBLOCK_CONFIRM_KEY,
+				"true",
+			);
 		}
 
 		setPendingProfileConfirm(null);
@@ -614,6 +627,14 @@ export function GridProfilePage() {
         }
     };
 
+	const handleTagClick = async (tag: string) => {
+		const persistedDraft = await loadBrowseFiltersDraft();
+		navigate("/", {
+			state: { browseFiltersDraft: { ...persistedDraft, tags: [tag] } },
+		});
+		toast.success(t("browse_page.toasts.tag_filter_applied", { tag }));
+	};
+
 	return (
 		<>
 			<ProfileDetailsModal
@@ -625,7 +646,9 @@ export function GridProfilePage() {
 				onPrevProfile={handlePrevProfile}
 				onNextProfile={handleNextProfile}
 				onMessageProfile={handleMessageProfile}
+				onTagClick={handleTagClick}
 				onSendQuickMessage={handleSendQuickMessage}
+				onSendProfilePhotoReply={handleSendProfilePhotoReply}
 				onTriangleProfile={handleTriangleProfile}
 				onBlockProfile={handleBlockProfile}
 				onUnblockProfile={handleUnblockProfile}

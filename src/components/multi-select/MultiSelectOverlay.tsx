@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Trash2, MessageSquare, Ghost, CheckSquare, Send, Ban, Loader2 } from "lucide-react";
+import { X, Trash2, MessageSquare, CheckSquare, Send, Ban, Loader2 } from "lucide-react";
 import { useMultiSelect } from "../../contexts/MultiSelectContext";
 import { Button } from "../ui/button";
 import toast from "react-hot-toast";

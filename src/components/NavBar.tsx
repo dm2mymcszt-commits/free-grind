@@ -158,23 +158,32 @@ export function NavBar() {
                     0,
                 );
 
-                if (lastSeen === 0) {
+
+
+                if (lastSeen === 0 && newest > 0) {
                     // Initialize "last seen" on first run to avoid showing stale dots
-                    if (newest > 0) {
-                        window.localStorage.setItem("fg-inbox-last-seen", String(newest));
-                    }
-                    setInboxUnseen(false);
-                } else {
-                    // If we are currently on the inbox page, ensure our "last seen"
-                    // timestamp is at least as high as the newest message we just fetched.
-                    // This prevents the dot from reappearing immediately when switching away.
-                    if (isAtInbox && newest > lastSeen) {
-                        markInboxSeen(newest);
-                    }
-                    setInboxUnseen(!isAtInbox && newest > lastSeen);
+                    window.localStorage.setItem("fg-inbox-last-seen", String(newest));
                 }
+
+                // Keeps the "last seen" bookmark current while the user is looking
+                // at the inbox, so the dot doesn't reappear immediately when they
+                // switch away — unrelated to whether anything is actually unread.
+                if (isAtInbox && newest > lastSeen) {
+                    markInboxSeen(newest);
+                }
+
+                // A conversation only lights up the dot if it's both genuinely
+                // unread (server-reported unreadCount, the same signal the inbox
+                // rows themselves trust — not just "some activity happened") *and*
+                // that activity is newer than the last time the inbox list was
+                // actually viewed.
+                const hasUnseenUnread = response.entries.some(
+                    (entry) => (entry.data.unreadCount ?? 0) > 0 && (entry.data.lastActivityTimestamp ?? 0) > lastSeen,
+                );
+                setInboxUnseen(!isAtInbox && hasUnseenUnread);
             } catch {
                 if (!cancelled) {
+
                     setInboxUnseen(false);
                 }
             }
@@ -208,11 +217,15 @@ export function NavBar() {
                     // Show dot if the message is actually newer than our last visit
                     if (newest > lastSeen) {
                         setInboxUnseen(true);
+
                     }
                 }
             }
         };
-        const onSeen = () => setInboxUnseen(false);
+        const onSeen = () => {
+            setInboxUnseen(false);
+
+        };
 
         const onVisibilityChange = () => {
             if (!document.hidden) {
