@@ -36,7 +36,7 @@ import type {
 } from "../types/chat-service";
 
 
-import { shouldAutoBlock, isOutsideAgeLimits, isOutsideDistanceLimits, notifyAutoBlock } from "../utils/autoblock";
+import { isOutsideAgeLimits, isOutsideDistanceLimits, notifyAutoBlock, getMatchedForbiddenWord } from "../utils/autoblock";
 import { isProfileAutoblockWhitelisted } from "../utils/privacy";
 import * as chatLog from "./chatLog";
 
@@ -210,11 +210,15 @@ export function createChatService(fetchRest: RestFetcher, t: (key: string) => st
 				const userId = window.localStorage.getItem("fg-user-id");
 				const isWhitelisted = profileId ? isProfileAutoblockWhitelisted(String(profileId)) : false;
 
+				const nameMatch = !isWhitelisted ? getMatchedForbiddenWord(displayName, "name") : null;
+				const bioMatch = !isWhitelisted ? getMatchedForbiddenWord(aboutMe, "bio") : null;
+				const msgMatch = !isWhitelisted ? getMatchedForbiddenWord(lastMessageText, "message") : null;
+
 				let shouldBlock = 
 					!isWhitelisted && (
-						shouldAutoBlock(displayName, "name") || 
-						shouldAutoBlock(aboutMe, "bio") || 
-						shouldAutoBlock(lastMessageText, "message") ||
+						nameMatch !== null || 
+						bioMatch !== null || 
+						msgMatch !== null ||
 						(profileAge !== undefined && isOutsideAgeLimits(profileAge)) ||
 						(distance !== undefined && isOutsideDistanceLimits(distance))
 					);
@@ -237,8 +241,17 @@ export function createChatService(fetchRest: RestFetcher, t: (key: string) => st
 				if (shouldBlock) {
 					if (profileId) {
 						let reason = "Keyword match";
-						if (profileAge !== undefined && isOutsideAgeLimits(profileAge)) reason = profileAge == null ? "No Age Set" : `Age Limit (${profileAge})`;
-						else if (distance !== undefined && isOutsideDistanceLimits(distance)) reason = `Distance Limit (${Math.round(distance/1000)}km)`;
+						if (profileAge !== undefined && isOutsideAgeLimits(profileAge)) {
+							reason = profileAge == null ? "No Age Set" : `Age Limit (${profileAge})`;
+						} else if (distance !== undefined && isOutsideDistanceLimits(distance)) {
+							reason = `Distance Limit (${Math.round(distance/1000)}km)`;
+						} else if (nameMatch) {
+							reason = `Name Keyword: ${nameMatch}`;
+						} else if (bioMatch) {
+							reason = `Bio Keyword: ${bioMatch}`;
+						} else if (msgMatch) {
+							reason = `Message Keyword: ${msgMatch}`;
+						}
 						
 						notifyAutoBlock(displayName || profileId, reason);
 						fetchRest(`/v3/me/blocks/${encodeURIComponent(profileId)}`, { method: "POST" }).catch(() => {});

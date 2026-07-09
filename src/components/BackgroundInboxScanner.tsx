@@ -4,9 +4,9 @@ import { useAuth } from "../contexts/useAuth";
 import { 
     isOutsideAgeLimits, 
     isOutsideDistanceLimits, 
-    shouldAutoBlock, 
     isForbiddenLookingFor,
-    notifyAutoBlock 
+    notifyAutoBlock,
+    getMatchedForbiddenWord 
 } from "../utils/autoblock";
 import { getOtherParticipant } from "../pages/app/chat/chatUtils";
 
@@ -122,16 +122,19 @@ export function BackgroundInboxScanner() {
 
                             if (outgoingCount < 2) {
                                 if (isScannerEnabled) {
+                                    const matchedName = getMatchedForbiddenWord(name, "name");
+                                    const matchedBio = getMatchedForbiddenWord(bio, "bio");
+
                                     if (isOutsideAgeLimits(age)) {
                                         blockReason = age == null ? "No Age Set" : `Age limit (${age})`;
                                     } else if (isOutsideDistanceLimits(distance)) {
                                         blockReason = "Distance limit";
                                     } else if (isForbiddenLookingFor(lookingForTags)) {
                                         blockReason = "Forbidden 'Looking For' tag";
-                                    } else if (shouldAutoBlock(name, "name")) {
-                                        blockReason = "Name keyword";
-                                    } else if (shouldAutoBlock(bio, "bio")) {
-                                        blockReason = "Bio keyword";
+                                    } else if (matchedName) {
+                                        blockReason = `Name keyword: ${matchedName}`;
+                                    } else if (matchedBio) {
+                                        blockReason = `Bio keyword: ${matchedBio}`;
                                     }
                                 }
 
