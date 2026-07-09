@@ -297,7 +297,7 @@ export function ChatThreadMessages({
 	isArchived = false,
 	hasChattedBefore = false,
 	lastMessageTimestamp = null,
-	composerHeight = 88,
+	composerHeight: _composerHeight = 88,
 }: ChatThreadMessagesProps) {
 	const { t } = useTranslation();
 	useLocalMediaCache();
@@ -775,8 +775,7 @@ export function ChatThreadMessages({
 			ref={threadScrollContainerRef}
 			onScroll={handleThreadScroll}
 			data-lenis-prevent
-			className={`flex flex-1 flex-col overflow-x-hidden overflow-y-auto ${!isDesktop ? "pt-[140px]" : ""}`}
-			style={!isDesktop ? { paddingBottom: composerHeight + 16 } : undefined}
+			className="flex flex-1 flex-col overflow-x-hidden overflow-y-auto"
 		>
             {messagePageKey ? (
                 <button
