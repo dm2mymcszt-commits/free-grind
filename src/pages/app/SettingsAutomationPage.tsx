@@ -437,12 +437,12 @@ export function SettingsAutomationPage() {
                                           <MessageSquare className="h-5 w-5" />
                                       </div>
                                       <div className="min-w-0 flex-1">
-                                          <label className="flex items-start gap-2 cursor-pointer">
+                                          <label className="flex items-center gap-2 cursor-pointer">
                                               <input
                                                   type="checkbox"
                                                   checked={skipBlockAfterTwo}
                                                   onChange={(e) => setSkipBlockAfterTwo(e.target.checked)}
-                                                  className="mt-0.5 h-4 w-4 accent-[var(--accent)] shrink-0"
+                                                  className="h-4 w-4 accent-[var(--accent)] shrink-0"
                                               />
                                               <span className="text-xs text-[var(--text-muted)] leading-relaxed">
                                                   <strong className="text-[var(--text)]">Disable Auto-Block for Active Chats.</strong> Stops auto-blocking a profile once you have sent them 2 or more messages, protecting active conversations.
@@ -457,12 +457,12 @@ export function SettingsAutomationPage() {
                                           <EyeOff className="h-5 w-5" />
                                       </div>
                                       <div className="min-w-0 flex-1">
-                                          <label className="flex items-start gap-2 cursor-pointer">
+                                          <label className="flex items-center gap-2 cursor-pointer">
                                               <input
                                                   type="checkbox"
                                                   checked={blockSeenEnabled}
                                                   onChange={(e) => setBlockSeenEnabled(e.target.checked)}
-                                                  className="mt-0.5 h-4 w-4 accent-[var(--accent)] shrink-0"
+                                                  className="h-4 w-4 accent-[var(--accent)] shrink-0"
                                               />
                                               <span className="text-xs text-[var(--text-muted)] leading-relaxed">
                                                   <strong className="text-[var(--text)]">Block if Left on Seen / Read.</strong> Automatically blocks someone if they read your last message but don't reply within the set time.
