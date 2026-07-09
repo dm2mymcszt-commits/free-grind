@@ -130,6 +130,7 @@ type ChatConversationRowProps = {
 	onOpenContextMenu: (conversation: ConversationEntry, isArchived: boolean, x: number, y: number) => void;
 	onSwipePin: (conversation: ConversationEntry) => void;
 	onSwipeDeleteRequest: (conversation: ConversationEntry, isArchived: boolean) => void;
+	isDisabledSwipe?: boolean;
 };
 
 // Pinning is a server-side flag on a live conversation — it doesn't make
@@ -252,6 +253,7 @@ function ChatConversationRow({
 	onOpenContextMenu,
 	onSwipePin,
 	onSwipeDeleteRequest,
+	isDisabledSwipe = false,
 }: ChatConversationRowProps) {
 	const { t } = useTranslation();
 	const { showDebugInfo } = usePreferences();
@@ -290,7 +292,7 @@ function ChatConversationRow({
 	};
 
 	const handleTouchStart = (event: React.TouchEvent) => {
-		if (isDesktop || event.touches.length !== 1) {
+		if (isDesktop || isDisabledSwipe || event.touches.length !== 1) {
 			swipeStateRef.current = null;
 			return;
 		}
@@ -314,6 +316,12 @@ function ChatConversationRow({
 			// the list can never leave a swipe "armed" for the next touchend.
 			state.lock = Math.abs(rawDy) > Math.abs(rawDx) ? "vertical" : "horizontal";
 			if (state.lock === "vertical") return;
+		}
+
+		if (state.lock === "horizontal") {
+			if (event.cancelable) {
+				event.preventDefault();
+			}
 		}
 		// Pinning isn't available for archived conversations, so don't let a
 		// right-swipe reveal an action that would silently do nothing.
@@ -372,9 +380,11 @@ function ChatConversationRow({
 		resetSwipeVisual();
 	};
 
-	const handleClick = () => {
+	const handleClick = (e: React.MouseEvent) => {
 		if (suppressClickRef.current) {
 			suppressClickRef.current = false;
+			e.stopPropagation();
+			e.preventDefault();
 			return;
 		}
 		onSelectConversation(conversation);
@@ -831,7 +841,6 @@ export function ChatInboxPanel({
 														viewType="inbox"
 														onNormalClick={() => onSelectConversation(conversation)}
 														roundedClassName="rounded-2xl"
-														isDisabled={!isMultiSelectActive}
 													>
 														<ChatConversationRow
 															conversation={conversation}
@@ -851,6 +860,7 @@ export function ChatInboxPanel({
 															}
 															onSwipePin={(c) => void onTogglePinConversation(c.data.conversationId, c.data.pinned)}
 															onSwipeDeleteRequest={requestDeleteConversation}
+															isDisabledSwipe={isMultiSelectActive}
 														/>
 													</SelectableItem>
 												</div>
