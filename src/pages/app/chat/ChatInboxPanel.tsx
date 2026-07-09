@@ -293,94 +293,105 @@ function ChatConversationRow({
 		}
 	};
 
-	const handleTouchStart = (event: React.TouchEvent) => {
-		if (isDesktop || isDisabledSwipe || event.touches.length !== 1) {
+	useEffect(() => {
+		const el = contentRef.current;
+		if (!el || isDesktop) return;
+
+		const onTouchStart = (e: TouchEvent) => {
+			if (isDisabledSwipe || e.touches.length !== 1) {
+				swipeStateRef.current = null;
+				return;
+			}
+			const touch = e.touches[0];
+			swipeStateRef.current = { startX: touch.clientX, startY: touch.clientY, dx: 0, armed: false, lock: "pending" };
+		};
+
+		const onTouchMove = (e: TouchEvent) => {
+			const state = swipeStateRef.current;
+			if (!state || state.lock === "vertical" || e.touches.length !== 1) return;
+
+			const touch = e.touches[0];
+			const rawDx = touch.clientX - state.startX;
+			const rawDy = touch.clientY - state.startY;
+
+			if (state.lock === "pending") {
+				if (Math.max(Math.abs(rawDx), Math.abs(rawDy)) < DIRECTION_LOCK_DISTANCE) return;
+				state.lock = Math.abs(rawDy) > Math.abs(rawDx) ? "vertical" : "horizontal";
+				if (state.lock === "vertical") return;
+			}
+
+			if (state.lock === "horizontal") {
+				if (e.cancelable) {
+					e.preventDefault();
+				}
+			}
+			if (rawDx > 0 && isArchived) return;
+
+			const dx = Math.max(-SWIPE_MAX_DRAG, Math.min(SWIPE_MAX_DRAG, rawDx));
+			state.dx = dx;
+
+			const content = contentRef.current;
+			if (content && dx !== 0) {
+				content.style.transition = "none";
+				content.style.transform = `translateX(${dx}px)`;
+				content.style.boxShadow =
+					"-8px 0 16px -4px rgba(0, 0, 0, 0.35), 8px 0 16px -4px rgba(0, 0, 0, 0.35)";
+			}
+			const activeIcon = dx > 0 ? pinIconRef.current : deleteIconRef.current;
+			const inactiveIcon = dx > 0 ? deleteIconRef.current : pinIconRef.current;
+			if (inactiveIcon) inactiveIcon.style.opacity = "0";
+			if (activeIcon) {
+				const progress = Math.min(Math.abs(dx) / 40, 1);
+				activeIcon.style.transition = "none";
+				activeIcon.style.opacity = String(progress);
+				activeIcon.style.transform = `scale(${0.5 + progress * 0.5})`;
+			}
+
+			const isArmed = Math.abs(dx) > SWIPE_THRESHOLD;
+			if (isArmed !== state.armed) {
+				state.armed = isArmed;
+				if (isArmed) {
+					(window as unknown as { FreeGrindBridge?: { vibrate?: (ms: number) => void } }).FreeGrindBridge
+						?.vibrate?.(15) ?? navigator.vibrate?.(15);
+				}
+			}
+		};
+
+		const onTouchEnd = () => {
+			const state = swipeStateRef.current;
 			swipeStateRef.current = null;
-			return;
-		}
-		const touch = event.touches[0];
-		swipeStateRef.current = { startX: touch.clientX, startY: touch.clientY, dx: 0, armed: false, lock: "pending" };
-	};
+			if (!state) return;
 
-	const handleTouchMove = (event: React.TouchEvent) => {
-		if (isDesktop || event.touches.length !== 1) return;
-		const state = swipeStateRef.current;
-		if (!state || state.lock === "vertical") return;
-
-		const touch = event.touches[0];
-		const rawDx = touch.clientX - state.startX;
-		const rawDy = touch.clientY - state.startY;
-
-		if (state.lock === "pending") {
-			if (Math.max(Math.abs(rawDx), Math.abs(rawDy)) < DIRECTION_LOCK_DISTANCE) return;
-			// Whichever axis moved further decides the gesture — once it's a
-			// vertical scroll we stop touching the row entirely so scrolling
-			// the list can never leave a swipe "armed" for the next touchend.
-			state.lock = Math.abs(rawDy) > Math.abs(rawDx) ? "vertical" : "horizontal";
-			if (state.lock === "vertical") return;
-		}
-
-		if (state.lock === "horizontal") {
-			if (event.cancelable) {
-				event.preventDefault();
+			if (Math.abs(state.dx) > 8) {
+				suppressClickRef.current = true;
 			}
-		}
-		// Pinning isn't available for archived conversations, so don't let a
-		// right-swipe reveal an action that would silently do nothing.
-		if (rawDx > 0 && isArchived) return;
+			resetSwipeVisual();
+			if (!state.armed) return;
 
-		const dx = Math.max(-SWIPE_MAX_DRAG, Math.min(SWIPE_MAX_DRAG, rawDx));
-		state.dx = dx;
-
-		const content = contentRef.current;
-		if (content && dx !== 0) {
-			content.style.transition = "none";
-			content.style.transform = `translateX(${dx}px)`;
-			content.style.boxShadow =
-				"-8px 0 16px -4px rgba(0, 0, 0, 0.35), 8px 0 16px -4px rgba(0, 0, 0, 0.35)";
-		}
-		const activeIcon = dx > 0 ? pinIconRef.current : deleteIconRef.current;
-		const inactiveIcon = dx > 0 ? deleteIconRef.current : pinIconRef.current;
-		if (inactiveIcon) inactiveIcon.style.opacity = "0";
-		if (activeIcon) {
-			const progress = Math.min(Math.abs(dx) / 40, 1);
-			activeIcon.style.transition = "none";
-			activeIcon.style.opacity = String(progress);
-			activeIcon.style.transform = `scale(${0.5 + progress * 0.5})`;
-		}
-
-		const isArmed = Math.abs(dx) > SWIPE_THRESHOLD;
-		if (isArmed !== state.armed) {
-			state.armed = isArmed;
-			if (isArmed) {
-				(window as unknown as { FreeGrindBridge?: { vibrate?: (ms: number) => void } }).FreeGrindBridge
-					?.vibrate?.(15) ?? navigator.vibrate?.(15);
+			if (state.dx > 0) {
+				onSwipePin(conversation);
+			} else {
+				onSwipeDeleteRequest(conversation, isArchived);
 			}
-		}
-	};
+		};
 
-	const handleTouchEnd = () => {
-		const state = swipeStateRef.current;
-		swipeStateRef.current = null;
-		if (!state) return;
+		const onTouchCancel = () => {
+			swipeStateRef.current = null;
+			resetSwipeVisual();
+		};
 
-		if (Math.abs(state.dx) > 8) {
-			suppressClickRef.current = true;
-		}
-		resetSwipeVisual();
-		if (!state.armed) return;
+		el.addEventListener("touchstart", onTouchStart, { passive: true });
+		el.addEventListener("touchmove", onTouchMove, { passive: false });
+		el.addEventListener("touchend", onTouchEnd, { passive: true });
+		el.addEventListener("touchcancel", onTouchCancel, { passive: true });
 
-		if (state.dx > 0) {
-			onSwipePin(conversation);
-		} else {
-			onSwipeDeleteRequest(conversation, isArchived);
-		}
-	};
-
-	const handleTouchCancel = () => {
-		swipeStateRef.current = null;
-		resetSwipeVisual();
-	};
+		return () => {
+			el.removeEventListener("touchstart", onTouchStart);
+			el.removeEventListener("touchmove", onTouchMove);
+			el.removeEventListener("touchend", onTouchEnd);
+			el.removeEventListener("touchcancel", onTouchCancel);
+		};
+	}, [isDesktop, isDisabledSwipe, isArchived, conversation, onSwipePin, onSwipeDeleteRequest]);
 
 	const handleClick = (e: React.MouseEvent) => {
 		if (suppressClickRef.current) {
@@ -435,10 +446,6 @@ function ChatConversationRow({
 				ref={contentRef}
 				onClick={handleClick}
 				onContextMenu={handleContextMenu}
-				onTouchStart={handleTouchStart}
-				onTouchEnd={handleTouchEnd}
-				onTouchMove={handleTouchMove}
-				onTouchCancel={handleTouchCancel}
 				style={{
 					touchAction: "pan-y",
 					...(isSelected
@@ -596,6 +603,7 @@ export function ChatInboxPanel({
 	onViewProfile,
 	onClearInboxFilters,
 	onToggleFavoritesOnly,
+	onTogglePinnedFilter,
 	onToggleUnreadOnly,
 	onToggleRightNowOnly,
 	onToggleOnlineNowOnly,
@@ -685,7 +693,7 @@ export function ChatInboxPanel({
 	const rowVirtualizer = useVirtualizer({
 		count: filteredConversations.length,
 		getScrollElement: () => inboxListRef.current,
-		estimateSize: () => 108,
+		estimateSize: () => 96,
 		overscan: 8,
 		getItemKey: (index: number) => filteredConversations[index]?.data.conversationId ?? index,
 	});
@@ -743,6 +751,7 @@ export function ChatInboxPanel({
 					onSetIsFiltersOpen={onSetIsFiltersOpen}
 					onSetFiltersDraft={onSetFiltersDraft}
 					onToggleFavoritesOnly={onToggleFavoritesOnly}
+					onTogglePinnedFilter={onTogglePinnedFilter}
 					onToggleUnreadOnly={onToggleUnreadOnly}
 					onToggleRightNowOnly={onToggleRightNowOnly}
 					onToggleOnlineNowOnly={onToggleOnlineNowOnly}
@@ -817,7 +826,7 @@ export function ChatInboxPanel({
 										style={{
 											position: "relative",
 											width: "100%",
-											height: rowVirtualizer.getTotalSize() + 12,
+											height: rowVirtualizer.getTotalSize(),
 										}}
 									>
 										{virtualItems.map((virtualRow: any) => {
@@ -835,13 +844,12 @@ export function ChatInboxPanel({
 													key={virtualRow.key}
 													data-index={virtualRow.index}
 													ref={rowVirtualizer.measureElement}
-													className="pb-3 px-[var(--app-px)]"
 													style={{
 														position: "absolute",
 														top: 0,
 														left: 0,
 														width: "100%",
-														transform: `translateY(${virtualRow.start + 12}px)`,
+														transform: `translateY(${virtualRow.start}px)`,
 													}}
 												>
 													<SelectableItem

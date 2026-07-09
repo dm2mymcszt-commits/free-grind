@@ -1,4 +1,4 @@
-import { Images, Loader2, Mail, Search, SlidersHorizontal, Star, X } from "lucide-react";
+import { Images, Loader2, Pin, PinOff, Search, SlidersHorizontal, Star, X } from "lucide-react";
 import { type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -32,6 +32,7 @@ export type ChatInboxHeaderProps = {
 	onSetIsFiltersOpen: (v: boolean) => void;
 	onSetFiltersDraft: (v: ChatFiltersDraft) => void;
 	onToggleFavoritesOnly: () => void;
+	onTogglePinnedFilter: () => void;
 	onToggleUnreadOnly: () => void;
 	onToggleRightNowOnly: () => void;
 	onToggleOnlineNowOnly: () => void;
@@ -87,7 +88,8 @@ export function ChatInboxHeader({
 	onSetIsFiltersOpen,
 	onSetFiltersDraft,
 	onToggleFavoritesOnly,
-	onToggleUnreadOnly,
+	onTogglePinnedFilter,
+	onToggleUnreadOnly: _onToggleUnreadOnly,
 	onToggleRightNowOnly: _onToggleRightNowOnly,
 	onToggleOnlineNowOnly: _onToggleOnlineNowOnly,
 	onClearInboxFilters: _onClearInboxFilters,
@@ -150,6 +152,18 @@ export function ChatInboxHeader({
 					{!isSearchOpen && (
 						<div className="-mx-[var(--app-px)] overflow-x-auto pb-4 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 							<div className="flex min-w-max items-center gap-2 px-[var(--app-px)]">
+								<FilterPill
+									icon={<Star className={`h-3.5 w-3.5 ${inboxFilters.favoritesOnly ? "fill-current" : ""}`} />}
+									label={t("browse_filters.options.favorites")}
+									active={Boolean(inboxFilters.favoritesOnly)}
+									onClick={onToggleFavoritesOnly}
+								/>
+								<FilterPill
+									icon={pinnedFilter === "hide" ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+									label={t("chat.pinned")}
+									active={pinnedFilter === "hide"}
+									onClick={onTogglePinnedFilter}
+								/>
 								<button
 									type="button"
 									onClick={() => {
@@ -172,20 +186,6 @@ export function ChatInboxHeader({
 										</span>
 									)}
 								</button>
-
-								<FilterPill
-									icon={<Mail className="h-3.5 w-3.5" />}
-									label={t("chat_filters.options.unread")}
-									active={Boolean(inboxFilters.unreadOnly)}
-									onClick={onToggleUnreadOnly}
-								/>
-								<FilterPill
-									icon={<Star className={`h-3.5 w-3.5 ${inboxFilters.favoritesOnly ? "fill-current" : ""}`} />}
-									label={t("browse_filters.options.favorites")}
-									active={Boolean(inboxFilters.favoritesOnly)}
-									onClick={onToggleFavoritesOnly}
-								/>
-
 							</div>
 						</div>
 					)}

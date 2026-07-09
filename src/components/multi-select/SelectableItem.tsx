@@ -60,7 +60,7 @@ export function SelectableItem({ id, name, profileId, viewType, children, onNorm
             className="w-full h-full relative group transition-transform duration-200 select-none cursor-pointer"
             onContextMenu={handleContextMenu}
             onClick={handleClick}
-            style={{ WebkitTouchCallout: "none", touchAction: "pan-y" }}
+            style={{ WebkitTouchCallout: "none" }}
             {...(!isModeActiveForThisView ? longPressGestures : {})}
         >
             <div className="w-full h-full relative">

@@ -11,6 +11,7 @@ import {
 	Eye,
 	EyeOff,
 	Star,
+	Heart,
 	Hourglass,
 	ImagePlus,
 	Images,
@@ -89,6 +90,8 @@ import {
 	isProfileAutoblockWhitelisted,
 	addToAutoBlockWhitelist,
 	removeFromAutoBlockWhitelist,
+	isChatGhosted,
+	toggleChatGhost,
 } from "../../../utils/privacy";
 import { ToggleRow } from "../../../components/ui/toggle-row";
 import { BottomDrawer } from "../../../components/ui/bottom-drawer";
@@ -273,7 +276,15 @@ function AudioPreviewPlayer({ blob, durationMs, recordedBars, recordedFraction }
 export function ChatThreadPanel(props: ChatThreadPanelProps) {
 	const { t } = useTranslation();
 	useAvatarCache();
-    const apiFunctions = useApiFunctions();
+	const apiFunctions = useApiFunctions();
+
+	// MAGIC UI REDRAW TRIGGER FOR GHOST MODE
+	const [, forceRender] = useState(0);
+	useEffect(() => {
+		const triggerUpdate = () => forceRender(Date.now());
+		window.addEventListener("fg-ghost-update", triggerUpdate);
+		return () => window.removeEventListener("fg-ghost-update", triggerUpdate);
+	}, []);
 	const { unitsPreset, geohash } = usePreferences();
 	const [pendingLocationShare, setPendingLocationShare] = useState<{ lat: number; lon: number } | null>(null);
 	const [isSavedPhrasesOpen, setIsSavedPhrasesOpen] = useState(false);
@@ -1080,11 +1091,12 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 		};
 	}, [isDesktop, selectedConversation, targetProfileId]);
 
+	const showGhostButton = typeof window !== "undefined" && window.localStorage.getItem("fg-show-ghost-btn") !== "false";
+	const isGhosted = selectedConversation ? isChatGhosted(selectedConversation.data.conversationId) : false;
+
 	const renderThread = (selectedConversation || targetProfileId) ? (
 		<div
-			className={`flex h-full flex-col ${!isDesktop ? "overflow-hidden p-0" : "overflow-hidden p-3 sm:p-4"} ${
-				isDesktop ? "surface-card" : ""
-			}`}
+			className={`flex h-full flex-col ${!isDesktop ? "overflow-hidden p-0" : "overflow-hidden pt-0 px-3 pb-3 sm:pt-0 sm:px-4 sm:pb-4"} border-none shadow-none bg-transparent`}
 			style={
 				!isDesktop
 					? {
@@ -1285,6 +1297,30 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 							<div className="flex items-center gap-2">
             {isDesktop && showBlockGroup && (
                 <>
+                    {showGhostButton && selectedConversation && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const newState = toggleChatGhost(selectedConversation.data.conversationId);
+                                window.dispatchEvent(new Event("fg-ghost-update"));
+                                if (!newState) {
+                                    const lastMsg = threadMessages[threadMessages.length - 1];
+                                    if (lastMsg) {
+                                        apiFunctions.markRead(selectedConversation.data.conversationId, lastMsg.messageId).catch(() => {});
+                                        loadThread({ conversationId: selectedConversation.data.conversationId, older: false });
+                                    }
+                                }
+                                toast.success(newState ? "Ghost Mode ON for this chat." : "Ghost Mode OFF. They will see read receipts.");
+                            }}
+                            className={`rounded-xl px-3 py-2 text-xs font-medium transition disabled:opacity-60 ${
+                                isGhosted ? "glass-btn-muted" : "glass-btn-accent"
+                            }`}
+                            title={isGhosted ? "Ghost Mode ON (Hidden)" : "Ghost Mode OFF (Visible)"}
+                        >
+                            {isGhosted ? <EyeOff className="mr-1 inline h-3.5 w-3.5" /> : <Eye className="mr-1 inline h-3.5 w-3.5" />}
+                            {isGhosted ? "Ghosting" : "Reading"}
+                        </button>
+                    )}
                     <button
                         type="button"
                         onClick={() => {
@@ -1292,44 +1328,40 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
                             void onToggleFavorite(profileId, isFavorite);
                         }}
                         disabled={isTogglingFavorite || profileId == null || !onToggleFavorite}
-                        title={isFavorite ? t("chat.unfavorite") : t("chat.favorite")}
-                        className={`rounded-xl border p-2 transition disabled:opacity-60 ${
-                            isFavorite
-                                ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] hover:brightness-110"
-                                : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--text)]"
+                        className={`rounded-xl px-3 py-2 text-xs font-medium transition disabled:opacity-60 ${
+                            isFavorite ? "glass-btn-pink" : "glass-btn-muted"
                         }`}
                     >
                         {isTogglingFavorite ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" />
                         ) : (
-                            <Star className={`h-4 w-4 ${isFavorite ? "fill-current" : ""}`} />
+                            <Heart className={`mr-1 inline h-3.5 w-3.5 ${isFavorite ? "fill-current" : ""}`} />
                         )}
+                        {isFavorite ? t("chat.unfavorite") : t("chat.favorite")}
                     </button>
                     <button
                         type="button"
                         disabled={isUpdatingConversationState || !selectedConversation}
                         onClick={togglePin}
-                        title={selectedConversation?.data.pinned ? t("chat.unpin") : t("chat.pin")}
-                        className={`rounded-xl border p-2 transition disabled:opacity-40 disabled:cursor-not-allowed ${
-                            selectedConversation?.data.pinned
-                                ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] hover:brightness-110"
-                                : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--text)]"
+                        className={`rounded-xl px-3 py-2 text-xs font-medium transition disabled:opacity-60 ${
+                            selectedConversation?.data.pinned ? "glass-btn-accent" : "glass-btn-muted"
                         }`}
                     >
-                        <Pin className="h-4 w-4" />
+                        <Pin className="mr-1 inline h-3.5 w-3.5" />
+                        {selectedConversation?.data.pinned ? t("chat.unpin") : t("chat.pin")}
                     </button>
                     <button
                         type="button"
                         onClick={requestBlockProfile}
                         disabled={isBlockingProfile || profileId == null || !onBlockProfile}
-                        title={isBlockingProfile ? t("profile_details.block_in_progress") : t("profile_details.block")}
-                        className="rounded-xl border border-red-500/40 bg-red-500/10 p-2 text-red-300 transition hover:bg-red-500/20 disabled:opacity-60"
+                        className="rounded-xl px-3 py-2 text-xs font-medium transition glass-btn-red disabled:opacity-60"
                     >
                         {isBlockingProfile ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" />
                         ) : (
-                            <Ban className="h-4 w-4" />
+                            <Ban className="mr-1 inline h-3.5 w-3.5" />
                         )}
+                        {isBlockingProfile ? t("profile_details.block_in_progress") : t("profile_details.block")}
                     </button>
                 </>
             )}
@@ -1371,7 +1403,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 										onClick={() =>
 											setIsHeaderActionsMenuOpen((current) => !current)
 										}
-										className="rounded-xl border border-[var(--border)] p-2 text-[var(--text-muted)] transition hover:border-[var(--accent)] hover:text-[var(--text)]"
+										className="rounded-xl p-2 transition glass-btn-muted"
 										aria-label="Open conversation actions"
 										aria-expanded={isHeaderActionsMenuOpen}
 									>
