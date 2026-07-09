@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { 
     Ban, Clock, Download, RefreshCw, Save, Tag, Upload, Users, 
-    Wand2, Trash2, Eye, ShieldAlert, Crosshair, Image as ImageIcon,
+    Wand2, Trash2, Eye, EyeOff, ShieldAlert, Crosshair, Image as ImageIcon,
     MessageSquare, ShieldCheck
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -44,6 +44,10 @@ export function SettingsAutomationPage() {
     const [blockMediaDelayMinutes, setBlockMediaDelayMinutes] = useState(() => window.localStorage.getItem("fg-block-media-delay-minutes") || "2");
     const [inboxScannerEnabled, setInboxScannerEnabled] = useState(() => window.localStorage.getItem("fg-inbox-scanner-enabled") === "true");
     const [skipBlockAfterTwo, setSkipBlockAfterTwo] = useState(() => window.localStorage.getItem("fg-autoblock-skip-after-two") === "true");
+
+    // Seen/Read Auto-Block
+    const [blockSeenEnabled, setBlockSeenEnabled] = useState(() => window.localStorage.getItem("fg-block-seen-enabled") === "true");
+    const [blockSeenMinutes, setBlockSeenMinutes] = useState(() => window.localStorage.getItem("fg-block-seen-time") || "5");
 
     const [whitelist, setWhitelist] = useState<{ profileId: string; displayName: string }[]>([]);
     useEffect(() => {
@@ -160,6 +164,8 @@ export function SettingsAutomationPage() {
         window.localStorage.setItem("fg-block-looking-for-mode", blockedLookingForMode);
         window.localStorage.setItem("fg-block-looking-for", JSON.stringify(blockedLookingFor));
         window.localStorage.setItem("fg-autoblock-skip-after-two", String(skipBlockAfterTwo));
+        window.localStorage.setItem("fg-block-seen-enabled", String(blockSeenEnabled));
+        window.localStorage.setItem("fg-block-seen-time", blockSeenMinutes);
 
         // Trigger immediate background scan with new rules
         window.dispatchEvent(new Event("fg-trigger-inbox-scan"));
@@ -442,6 +448,45 @@ export function SettingsAutomationPage() {
                                                   <strong className="text-[var(--text)]">Disable Auto-Block for Active Chats.</strong> Stops auto-blocking a profile once you have sent them 2 or more messages, protecting active conversations.
                                               </span>
                                           </label>
+                                      </div>
+                                  </div>
+
+                                  {/* Seen / Read Auto-Block */}
+                                  <div className="flex items-start gap-3 p-4">
+                                      <div className="shrink-0 rounded-2xl bg-rose-500/15 p-2.5 text-rose-400">
+                                          <EyeOff className="h-5 w-5" />
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                          <label className="flex items-start gap-2 cursor-pointer">
+                                              <input
+                                                  type="checkbox"
+                                                  checked={blockSeenEnabled}
+                                                  onChange={(e) => setBlockSeenEnabled(e.target.checked)}
+                                                  className="mt-0.5 h-4 w-4 accent-[var(--accent)] shrink-0"
+                                              />
+                                              <span className="text-xs text-[var(--text-muted)] leading-relaxed">
+                                                  <strong className="text-[var(--text)]">Block if Left on Seen / Read.</strong> Automatically blocks someone if they read your last message but don't reply within the set time.
+                                              </span>
+                                          </label>
+                                          {blockSeenEnabled && (
+                                              <div className="flex items-center gap-2 mt-3 ml-6">
+                                                  <span className="text-xs text-[var(--text-muted)]">Block after:</span>
+                                                  <select
+                                                      value={blockSeenMinutes}
+                                                      onChange={(e) => setBlockSeenMinutes(e.target.value)}
+                                                      className="bg-[var(--surface-1)] border border-[var(--border)] rounded px-2 py-0.5 text-xs text-[var(--text)] focus:outline-none focus:border-[var(--accent)]"
+                                                  >
+                                                      <option value="1">1 minute</option>
+                                                      <option value="2">2 minutes</option>
+                                                      <option value="3">3 minutes</option>
+                                                      <option value="5">5 minutes</option>
+                                                      <option value="10">10 minutes</option>
+                                                      <option value="15">15 minutes</option>
+                                                      <option value="30">30 minutes</option>
+                                                      <option value="60">1 hour</option>
+                                                  </select>
+                                              </div>
+                                          )}
                                       </div>
                                   </div>
 

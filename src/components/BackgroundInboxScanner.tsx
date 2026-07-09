@@ -9,6 +9,7 @@ import {
     getMatchedForbiddenWord 
 } from "../utils/autoblock";
 import { getOtherParticipant } from "../pages/app/chat/chatUtils";
+import { isProfileAutoblockWhitelisted } from "../utils/privacy";
 
 export function BackgroundInboxScanner() {
     const api = useApiFunctions();
@@ -17,6 +18,8 @@ export function BackgroundInboxScanner() {
     const scannedProfilesRef = useRef<Map<string, { lastActivityTimestamp: number; unreadCount: number }>>(new Map());
     const isScanningRef = useRef(false);
     const pendingMediaBlocksRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+    // Seen/Read auto-block: maps conversationId -> timestamp when "seen but not replied" was first detected
+    const seenStartTimesRef = useRef<Map<string, number>>(new Map());
 
     useEffect(() => {
         if (!api || userId == null) return;
@@ -28,7 +31,8 @@ export function BackgroundInboxScanner() {
             
             const isScannerEnabled = window.localStorage.getItem("fg-inbox-scanner-enabled") === "true";
             const isBotEvasionEnabled = window.localStorage.getItem("fg-block-first-media") === "true";
-            if (!isScannerEnabled && !isBotEvasionEnabled) {
+            const isSeenBlockEnabled = window.localStorage.getItem("fg-block-seen-enabled") === "true";
+            if (!isScannerEnabled && !isBotEvasionEnabled && !isSeenBlockEnabled) {
                 // Check again in 30 seconds
                 if (!isCancelled) {
                     timeoutRef.current = setTimeout(scanInbox, 30000);
@@ -258,6 +262,101 @@ export function BackgroundInboxScanner() {
                         await new Promise((resolve) => setTimeout(resolve, 1500));
                     }
                 }
+
+                // --- SEEN/READ AUTO-BLOCK PASS ---
+                if (isSeenBlockEnabled) {
+                    const seenTimeoutMs = parseInt(window.localStorage.getItem("fg-block-seen-time") || "5", 10) * 60 * 1000;
+                    const now = Date.now();
+
+                    for (const c of conversations) {
+                        if (isCancelled) break;
+                        const conversationId = c.data?.conversationId;
+                        if (!conversationId) continue;
+
+                        const otherParticipant = getOtherParticipant(c, userId);
+                        const profileId = otherParticipant?.profileId?.toString();
+                        if (!profileId) continue;
+
+                        // Skip whitelisted profiles
+                        if (isProfileAutoblockWhitelisted(profileId)) {
+                            seenStartTimesRef.current.delete(conversationId);
+                            continue;
+                        }
+
+                        const unreadCount = c.data?.unreadCount ?? 0;
+                        const lastSenderId = c.data?.preview?.senderId;
+                        const isLastMessageFromMe = lastSenderId != null && Number(lastSenderId) === Number(userId);
+
+                        // Only process conversations where:
+                        // 1. The last message is from us (we sent it)
+                        // 2. There are no unread messages (they haven't sent anything new)
+                        if (!isLastMessageFromMe || unreadCount > 0) {
+                            // They replied or the last message isn't ours — clear any tracker
+                            seenStartTimesRef.current.delete(conversationId);
+                            continue;
+                        }
+
+                        try {
+                            // Fetch messages to get lastReadTimestamp
+                            const msgRes = await api.listMessages({ conversationId });
+                            const lastReadTs = msgRes.lastReadTimestamp ?? null;
+                            const msgs = msgRes.messages || [];
+
+                            // Find our most recent outgoing message
+                            let lastOutgoingTs = 0;
+                            for (let i = msgs.length - 1; i >= 0; i--) {
+                                if (Number(msgs[i].senderId) === Number(userId)) {
+                                    lastOutgoingTs = msgs[i].timestamp;
+                                    break;
+                                }
+                            }
+
+                            if (lastOutgoingTs === 0) {
+                                // No outgoing message found
+                                seenStartTimesRef.current.delete(conversationId);
+                                continue;
+                            }
+
+                            // Normalize timestamps: API can return seconds or milliseconds
+                            const normalizedReadTs = lastReadTs
+                                ? (lastReadTs < 100_000_000_000 ? lastReadTs * 1000 : lastReadTs)
+                                : null;
+                            const normalizedOutTs = lastOutgoingTs < 100_000_000_000 ? lastOutgoingTs * 1000 : lastOutgoingTs;
+
+                            // Check if they have read our last message
+                            if (normalizedReadTs != null && normalizedReadTs >= normalizedOutTs) {
+                                // They've read it! Start or continue the countdown
+                                if (!seenStartTimesRef.current.has(conversationId)) {
+                                    seenStartTimesRef.current.set(conversationId, now);
+                                    console.log(`[BackgroundInboxScanner] Seen detected for ${conversationId} (${c.data?.name || profileId}), starting countdown (${seenTimeoutMs / 1000}s)`);
+                                }
+
+                                const seenSince = seenStartTimesRef.current.get(conversationId)!;
+                                const elapsed = now - seenSince;
+
+                                if (elapsed >= seenTimeoutMs) {
+                                    // Time's up — block them
+                                    const displayName = c.data?.name || profileId;
+                                    const minutesElapsed = Math.round(elapsed / 60000);
+                                    console.log(`[BackgroundInboxScanner] Blocking ${profileId} (${displayName}) for: Left on seen for ${minutesElapsed}min`);
+                                    await api.blockProfile(profileId);
+                                    void notifyAutoBlock(displayName, `Left on seen for ${minutesElapsed}min`);
+                                    seenStartTimesRef.current.delete(conversationId);
+                                    window.dispatchEvent(new Event("fg-refresh-inbox"));
+                                }
+                            } else {
+                                // They haven't read it yet — no countdown
+                                seenStartTimesRef.current.delete(conversationId);
+                            }
+                        } catch (err) {
+                            console.warn(`[BackgroundInboxScanner] Seen check failed for ${conversationId}:`, err);
+                        }
+
+                        // Throttle between API calls
+                        await new Promise((resolve) => setTimeout(resolve, 1000));
+                    }
+                }
+
             } catch (error) {
                 console.error("[BackgroundInboxScanner] Scan failed:", error);
             } finally {
@@ -265,8 +364,9 @@ export function BackgroundInboxScanner() {
             }
 
             if (!isCancelled) {
-                // Run scanner every 60 seconds
-                timeoutRef.current = setTimeout(scanInbox, 60000);
+                // Run scanner more frequently when seen-blocker is active for responsive blocking
+                const interval = isSeenBlockEnabled ? 30000 : 60000;
+                timeoutRef.current = setTimeout(scanInbox, interval);
             }
         };
 
