@@ -15,10 +15,14 @@ import { interestViewsStore } from "../../services/interestViewsStore";
 import { getLookingForOptions } from "./profile-option-builders";
 import { getThumbImageUrl } from "../../utils/media";
 import { getAutoBlockWhitelist, removeFromAutoBlockWhitelist } from "../../utils/privacy";
+import { useNavigate } from "react-router-dom";
+import { useApiFunctions } from "../../hooks/useApiFunctions";
 
 export function SettingsAutomationPage() {
     const { t } = useTranslation();
     const queryClient = useQueryClient();
+    const navigate = useNavigate();
+    const apiFunctions = useApiFunctions();
 
     // --- AUTO REFRESH STATE ---
     const [refreshEnabled, setRefreshEnabled] = useState(() => window.localStorage.getItem("fg-auto-refresh-enabled") === "true");
@@ -50,10 +54,67 @@ export function SettingsAutomationPage() {
     const [blockSeenEnabled, setBlockSeenEnabled] = useState(() => window.localStorage.getItem("fg-block-seen-enabled") === "true");
     const [blockSeenMinutes, setBlockSeenMinutes] = useState(() => window.localStorage.getItem("fg-block-seen-time") || "5");
 
+    const [blockFacelessNoMedia, setBlockFacelessNoMedia] = useState(() => window.localStorage.getItem("fg-block-faceless-no-media") === "true");
     const [whitelist, setWhitelist] = useState<{ profileId: string; displayName: string; primaryMediaHash?: string | null }[]>([]);
     useEffect(() => {
         setWhitelist(getAutoBlockWhitelist());
     }, []);
+
+    useEffect(() => {
+        const fetchMissingWhitelistProfiles = async () => {
+            const missingIds = whitelist
+                .filter(x => !x.primaryMediaHash)
+                .map(x => x.profileId);
+            
+            if (missingIds.length === 0) return;
+
+            try {
+                const raw = await apiFunctions.getProfilesByIds(missingIds);
+                const profiles =
+                    raw && typeof raw === "object" && Array.isArray((raw as { profiles?: unknown }).profiles)
+                        ? (raw as { profiles: unknown[] }).profiles
+                        : [];
+
+                if (profiles.length > 0) {
+                    let updated = false;
+                    const list = getAutoBlockWhitelist();
+                    
+                    for (const p of profiles) {
+                        if (!p || typeof p !== "object") continue;
+                        const idRaw = (p as { profileId?: unknown }).profileId;
+                        if (idRaw == null) continue;
+                        const profileId = String(idRaw);
+                        const hashRaw = (p as { profileImageMediaHash?: unknown }).profileImageMediaHash;
+                        const nameRaw = (p as { displayName?: unknown }).displayName;
+                        
+                        const itemIndex = list.findIndex(x => String(x.profileId) === profileId);
+                        if (itemIndex !== -1) {
+                            const currentItem = list[itemIndex];
+                            if (typeof hashRaw === "string" && hashRaw.trim().length > 0 && currentItem.primaryMediaHash !== hashRaw) {
+                                currentItem.primaryMediaHash = hashRaw;
+                                updated = true;
+                            }
+                            if (typeof nameRaw === "string" && nameRaw.trim().length > 0 && currentItem.displayName !== nameRaw) {
+                                currentItem.displayName = nameRaw;
+                                updated = true;
+                            }
+                        }
+                    }
+                    
+                    if (updated) {
+                        window.localStorage.setItem("fg-auto-block-whitelist", JSON.stringify(list));
+                        setWhitelist(list);
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to fetch missing whitelist profile details", err);
+            }
+        };
+
+        if (whitelist.length > 0) {
+            fetchMissingWhitelistProfiles();
+        }
+    }, [whitelist, apiFunctions]);
 
     // Grindr Tags Block State
     const [blockedLookingForMode, setBlockedLookingForMode] = useState(() => window.localStorage.getItem("fg-block-looking-for-mode") || "any");
@@ -167,6 +228,7 @@ export function SettingsAutomationPage() {
         window.localStorage.setItem("fg-autoblock-skip-after-two", String(skipBlockAfterTwo));
         window.localStorage.setItem("fg-block-seen-enabled", String(blockSeenEnabled));
         window.localStorage.setItem("fg-block-seen-time", blockSeenMinutes);
+        window.localStorage.setItem("fg-block-faceless-no-media", String(blockFacelessNoMedia));
 
         // Trigger immediate background scan with new rules
         window.dispatchEvent(new Event("fg-trigger-inbox-scan"));
@@ -491,6 +553,26 @@ export function SettingsAutomationPage() {
                                       </div>
                                   </div>
 
+                                  {/* Faceless No Media Block */}
+                                  <div className="flex items-start gap-3 p-4">
+                                      <div className="shrink-0 rounded-2xl bg-purple-500/15 p-2.5 text-purple-400">
+                                          <Users className="h-5 w-5" />
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                          <label className="flex items-center gap-2 cursor-pointer">
+                                              <input
+                                                  type="checkbox"
+                                                  checked={blockFacelessNoMedia}
+                                                  onChange={(e) => setBlockFacelessNoMedia(e.target.checked)}
+                                                  className="h-4 w-4 accent-[var(--accent)] shrink-0"
+                                              />
+                                              <span className="text-xs text-[var(--text-muted)] leading-relaxed">
+                                                  <strong className="text-[var(--text)]">Block Faceless Profiles with No Media.</strong> Automatically blocks profiles with no profile picture if they haven't sent any media (photos, videos, albums) 5 minutes after their first message.
+                                              </span>
+                                          </label>
+                                      </div>
+                                  </div>
+
                                  {/* Tags Block */}
                                  <div className="flex items-start gap-3 p-4">
                                      <div className="shrink-0 rounded-2xl bg-emerald-500/15 p-2.5 text-emerald-400">
@@ -601,7 +683,10 @@ export function SettingsAutomationPage() {
                                              <div className="mt-3 max-h-[200px] overflow-y-auto border border-[var(--border)] rounded-xl bg-[var(--surface-1)] divide-y divide-[var(--border)]">
                                                  {whitelist.map((profile) => (
                                                       <div key={profile.profileId} className="flex items-center justify-between p-2.5 text-xs gap-3">
-                                                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                                                          <div
+                                                              onClick={() => navigate(`/profile/${profile.profileId}`, { state: { returnTo: "/settings/automation" } })}
+                                                              className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer hover:bg-[var(--surface-2)]/40 p-1 -m-1 rounded-lg transition"
+                                                          >
                                                               <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full border border-[var(--border)] bg-[var(--surface-2)]">
                                                                   {profile.primaryMediaHash ? (
                                                                       <img
@@ -616,7 +701,7 @@ export function SettingsAutomationPage() {
                                                                   )}
                                                               </div>
                                                               <div className="min-w-0 flex-1">
-                                                                  <p className="font-semibold truncate text-[var(--text)]">{profile.displayName}</p>
+                                                                  <p className="font-semibold truncate text-[var(--text)] hover:text-[var(--accent)] transition">{profile.displayName}</p>
                                                                   <p className="text-[10px] text-[var(--text-muted)] mt-0.5">ID: {profile.profileId}</p>
                                                               </div>
                                                           </div>

@@ -32,7 +32,8 @@ export function BackgroundInboxScanner() {
             const isScannerEnabled = window.localStorage.getItem("fg-inbox-scanner-enabled") === "true";
             const isBotEvasionEnabled = window.localStorage.getItem("fg-block-first-media") === "true";
             const isSeenBlockEnabled = window.localStorage.getItem("fg-block-seen-enabled") === "true";
-            if (!isScannerEnabled && !isBotEvasionEnabled && !isSeenBlockEnabled) {
+            const isFacelessBlockEnabled = window.localStorage.getItem("fg-block-faceless-no-media") === "true";
+            if (!isScannerEnabled && !isBotEvasionEnabled && !isSeenBlockEnabled && !isFacelessBlockEnabled) {
                 // Check again in 30 seconds
                 if (!isCancelled) {
                     timeoutRef.current = setTimeout(scanInbox, 30000);
@@ -357,6 +358,120 @@ export function BackgroundInboxScanner() {
                     }
                 }
 
+                // --- FACELESS NO-MEDIA AUTO-BLOCK PASS ---
+                const isFacelessBlockEnabled = window.localStorage.getItem("fg-block-faceless-no-media") === "true";
+                if (isFacelessBlockEnabled) {
+                    const blockDelayMs = 5 * 60 * 1000; // 5 minutes
+                    const now = Date.now();
+
+                    for (const c of conversations) {
+                        if (isCancelled) break;
+                        const conversationId = c.data?.conversationId;
+                        if (!conversationId) continue;
+
+                        const otherParticipant = getOtherParticipant(c, userId);
+                        const profileId = otherParticipant?.profileId?.toString();
+                        if (!profileId) continue;
+
+                        // Skip whitelisted profiles
+                        if (isProfileAutoblockWhitelisted(profileId)) {
+                            continue;
+                        }
+
+                        // Skip active chats protection if enabled and we sent 2+ messages
+                        if (window.localStorage.getItem("fg-autoblock-skip-after-two") === "true") {
+                            try {
+                                const msgRes = await api.listMessages({ conversationId });
+                                const msgs = msgRes.messages || [];
+                                let outgoingCount = 0;
+                                for (const msg of msgs) {
+                                    if (userId != null && Number(msg.senderId) === Number(userId)) {
+                                        outgoingCount++;
+                                    }
+                                }
+                                if (outgoingCount >= 2) {
+                                    continue;
+                                }
+                            } catch {}
+                        }
+
+                        // Check if the profile is faceless
+                        if (otherParticipant.primaryMediaHash && otherParticipant.primaryMediaHash.trim().length > 0) {
+                            continue;
+                        }
+
+                        try {
+                            const msgRes = await api.listMessages({ conversationId });
+                            const messages = msgRes.messages || [];
+
+                            let firstIncomingMsgTimestamp = 0;
+                            let hasSentAnyMedia = false;
+
+                            for (const msg of messages) {
+                                const msgIsMine = userId != null && Number(msg.senderId) === Number(userId);
+                                if (!msgIsMine) {
+                                    // Incoming message from them!
+                                    if (firstIncomingMsgTimestamp === 0) {
+                                        firstIncomingMsgTimestamp = msg.timestamp || Date.now();
+                                    }
+
+                                    // Check if this message is media
+                                    const typeLower = msg.type?.toLowerCase() || "";
+                                    const chat1Lower = msg.chat1Type?.toLowerCase() || "";
+                                    const isMedia =
+                                        typeLower === "image" ||
+                                        typeLower === "expiringimage" ||
+                                        typeLower === "video" ||
+                                        typeLower === "nonexpiringvideo" ||
+                                        typeLower.includes("album") ||
+                                        chat1Lower === "image" ||
+                                        chat1Lower === "expiring_image" ||
+                                        chat1Lower === "video" ||
+                                        chat1Lower === "private_video" ||
+                                        chat1Lower === "expiring_video";
+
+                                    if (isMedia) {
+                                        hasSentAnyMedia = true;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            // If they have never sent any incoming message, skip
+                            if (firstIncomingMsgTimestamp === 0) {
+                                continue;
+                            }
+
+                            // If they have sent any media, skip
+                            if (hasSentAnyMedia) {
+                                continue;
+                            }
+
+                            // Calculate elapsed time
+                            const normalizedFirstTs = firstIncomingMsgTimestamp < 100_000_000_000
+                                ? firstIncomingMsgTimestamp * 1000
+                                : firstIncomingMsgTimestamp;
+
+                            const elapsed = now - normalizedFirstTs;
+
+                            if (elapsed >= blockDelayMs) {
+                                // Block them!
+                                const displayName = c.data?.name || profileId;
+                                console.log(`[BackgroundInboxScanner] Blocking faceless profile ${profileId} (${displayName}) - no media sent after 5 minutes`);
+                                await api.blockProfile(profileId);
+                                void notifyAutoBlock(displayName, `Faceless profile: No media sent 5min after first message`);
+                                window.dispatchEvent(new Event("fg-refresh-inbox"));
+                            }
+
+                        } catch (err) {
+                            console.warn(`[BackgroundInboxScanner] Faceless check failed for ${conversationId}:`, err);
+                        }
+
+                        // Throttle between API calls
+                        await new Promise((resolve) => setTimeout(resolve, 1000));
+                    }
+                }
+
             } catch (error) {
                 console.error("[BackgroundInboxScanner] Scan failed:", error);
             } finally {
@@ -364,8 +479,8 @@ export function BackgroundInboxScanner() {
             }
 
             if (!isCancelled) {
-                // Run scanner more frequently when seen-blocker is active for responsive blocking
-                const interval = isSeenBlockEnabled ? 30000 : 60000;
+                // Run scanner more frequently when seen-blocker or faceless blocker is active for responsive blocking
+                const interval = (isSeenBlockEnabled || isFacelessBlockEnabled) ? 30000 : 60000;
                 timeoutRef.current = setTimeout(scanInbox, interval);
             }
         };
