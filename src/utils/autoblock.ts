@@ -3,8 +3,29 @@ import { isTauriRuntime } from "../services/tauriWebSocket";
 import { getSetting, setSetting } from "../services/chatDb";
 import { appLog } from "./logger";
 
+const notificationCache = new Map<string, number>();
+const DEDUPLICATION_WINDOW_MS = 2 * 60 * 1000; // 2 minutes
+
 export async function notifyAutoBlock(profileName: string, reason: string) {
     console.log(`[AutoBlock] Banned: ${profileName} | Reason: ${reason}`);
+
+    const now = Date.now();
+    const cacheKey = `${profileName}::${reason}`;
+    const lastSentTime = notificationCache.get(cacheKey);
+
+    if (lastSentTime && (now - lastSentTime < DEDUPLICATION_WINDOW_MS)) {
+        console.log(`[AutoBlock] Duplicate notification suppressed for: ${profileName} | Reason: ${reason}`);
+        return;
+    }
+
+    notificationCache.set(cacheKey, now);
+
+    // Clean up old entries from cache
+    for (const [key, timestamp] of notificationCache.entries()) {
+        if (now - timestamp > DEDUPLICATION_WINDOW_MS) {
+            notificationCache.delete(key);
+        }
+    }
 
     if (!isTauriRuntime()) return;
 
