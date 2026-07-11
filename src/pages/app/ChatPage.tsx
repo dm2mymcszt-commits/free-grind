@@ -276,7 +276,7 @@ export function ChatPage() {
 		useState<string | null>(null);
 
 	const [pinnedFilter, setPinnedFilter] = useState<InboxVisibilityFilter>("all");
-	const [archivedFilter, setArchivedFilter] = useState<InboxVisibilityFilter>("all");
+	const [archivedFilter, setArchivedFilter] = useState<InboxVisibilityFilter>("hide");
 	// Hidden chats default to actually being hidden — that's the point of the
 	// feature — unlike pinned/archived, which default to a mixed-in view.
 	const [hiddenFilter, setHiddenFilter] = useState<InboxVisibilityFilter>("hide");
@@ -400,7 +400,7 @@ export function ChatPage() {
 	const clearInboxFilters = useCallback(() => {
 		setInboxFilters({});
 		setPinnedFilter("all");
-		setArchivedFilter("all");
+		setArchivedFilter("hide");
 		setHiddenFilter("hide");
 	}, []);
 
@@ -416,7 +416,7 @@ export function ChatPage() {
 	}, []);
 
 	const toggleInboxArchivedFilter = useCallback(() => {
-		setArchivedFilter((prev) => (prev === "only" ? "all" : "only"));
+		setArchivedFilter((prev) => (prev === "only" ? "hide" : "only"));
 	}, []);
 
 
