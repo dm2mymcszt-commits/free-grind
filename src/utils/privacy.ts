@@ -106,19 +106,19 @@ export async function setRecordProfileViewsEnabled(value: boolean): Promise<void
 }
 
 // --- AUTO-BLOCK WHITELIST LOGIC ---
-export function getAutoBlockWhitelist(): { profileId: string; displayName: string }[] {
+export function getAutoBlockWhitelist(): { profileId: string; displayName: string; primaryMediaHash?: string | null }[] {
     try {
         const json = window.localStorage.getItem("fg-auto-block-whitelist") || "[]";
-        return JSON.parse(json) as { profileId: string; displayName: string }[];
+        return JSON.parse(json) as { profileId: string; displayName: string; primaryMediaHash?: string | null }[];
     } catch {
         return [];
     }
 }
 
-export function addToAutoBlockWhitelist(profileId: string, displayName: string) {
+export function addToAutoBlockWhitelist(profileId: string, displayName: string, primaryMediaHash?: string | null) {
     const list = getAutoBlockWhitelist();
     if (!list.some(x => String(x.profileId) === String(profileId))) {
-        list.push({ profileId: String(profileId), displayName });
+        list.push({ profileId: String(profileId), displayName, primaryMediaHash });
         window.localStorage.setItem("fg-auto-block-whitelist", JSON.stringify(list));
     }
 }

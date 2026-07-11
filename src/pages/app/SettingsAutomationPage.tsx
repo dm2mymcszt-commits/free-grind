@@ -13,6 +13,7 @@ import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { RangeSlider, Slider } from "../../components/ui/range-slider";
 import { interestViewsStore } from "../../services/interestViewsStore";
 import { getLookingForOptions } from "./profile-option-builders";
+import { getThumbImageUrl } from "../../utils/media";
 import { getAutoBlockWhitelist, removeFromAutoBlockWhitelist } from "../../utils/privacy";
 
 export function SettingsAutomationPage() {
@@ -49,7 +50,7 @@ export function SettingsAutomationPage() {
     const [blockSeenEnabled, setBlockSeenEnabled] = useState(() => window.localStorage.getItem("fg-block-seen-enabled") === "true");
     const [blockSeenMinutes, setBlockSeenMinutes] = useState(() => window.localStorage.getItem("fg-block-seen-time") || "5");
 
-    const [whitelist, setWhitelist] = useState<{ profileId: string; displayName: string }[]>([]);
+    const [whitelist, setWhitelist] = useState<{ profileId: string; displayName: string; primaryMediaHash?: string | null }[]>([]);
     useEffect(() => {
         setWhitelist(getAutoBlockWhitelist());
     }, []);
@@ -599,11 +600,26 @@ export function SettingsAutomationPage() {
                                          ) : (
                                              <div className="mt-3 max-h-[200px] overflow-y-auto border border-[var(--border)] rounded-xl bg-[var(--surface-1)] divide-y divide-[var(--border)]">
                                                  {whitelist.map((profile) => (
-                                                     <div key={profile.profileId} className="flex items-center justify-between p-2.5 text-xs">
-                                                         <div className="min-w-0 flex-1 pr-2">
-                                                             <p className="font-semibold truncate">{profile.displayName}</p>
-                                                             <p className="text-[10px] text-[var(--text-muted)]">ID: {profile.profileId}</p>
-                                                         </div>
+                                                      <div key={profile.profileId} className="flex items-center justify-between p-2.5 text-xs gap-3">
+                                                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                                                              <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full border border-[var(--border)] bg-[var(--surface-2)]">
+                                                                  {profile.primaryMediaHash ? (
+                                                                      <img
+                                                                          src={getThumbImageUrl(profile.primaryMediaHash, "75x75")}
+                                                                          alt=""
+                                                                          className="h-full w-full object-cover"
+                                                                      />
+                                                                  ) : (
+                                                                      <div className="flex h-full w-full items-center justify-center font-bold text-[var(--text-muted)] uppercase text-[10px]">
+                                                                          {profile.displayName ? profile.displayName.slice(0, 2) : "??"}
+                                                                      </div>
+                                                                  )}
+                                                              </div>
+                                                              <div className="min-w-0 flex-1">
+                                                                  <p className="font-semibold truncate text-[var(--text)]">{profile.displayName}</p>
+                                                                  <p className="text-[10px] text-[var(--text-muted)] mt-0.5">ID: {profile.profileId}</p>
+                                                              </div>
+                                                          </div>
                                                          <button
                                                              type="button"
                                                              onClick={() => {

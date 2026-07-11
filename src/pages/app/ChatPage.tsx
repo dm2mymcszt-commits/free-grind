@@ -415,12 +415,11 @@ export function ChatPage() {
 		setPinnedFilter((prev) => (prev === "hide" ? "all" : "hide"));
 	}, []);
 
-	const toggleInboxUnreadOnly = useCallback(() => {
-		setInboxFilters((previous) => ({
-			...previous,
-			unreadOnly: previous.unreadOnly ? undefined : true,
-		}));
+	const toggleInboxArchivedFilter = useCallback(() => {
+		setArchivedFilter((prev) => (prev === "only" ? "all" : "only"));
 	}, []);
+
+
 
 	const toggleInboxRightNowOnly = useCallback(() => {
 		setInboxFilters((previous) => ({
@@ -5580,7 +5579,7 @@ export function ChatPage() {
 		onSetFiltersDraft: setChatFiltersDraft,
 		onToggleFavoritesOnly: toggleInboxFavoritesOnly,
 		onTogglePinnedFilter: toggleInboxPinnedFilter,
-		onToggleUnreadOnly: toggleInboxUnreadOnly,
+		onToggleArchivedFilter: toggleInboxArchivedFilter,
 		onToggleRightNowOnly: toggleInboxRightNowOnly,
 		onToggleOnlineNowOnly: toggleInboxOnlineNowOnly,
 		onClearInboxFilters: clearInboxFilters,

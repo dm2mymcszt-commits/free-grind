@@ -1529,7 +1529,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 															removeFromAutoBlockWhitelist(targetId);
 															toast.success(`Removed "${displayName}" from Auto-Block Whitelist.`);
 														} else {
-															addToAutoBlockWhitelist(targetId, displayName);
+															addToAutoBlockWhitelist(targetId, displayName, otherParticipant.primaryMediaHash);
 															toast.success(`Added "${displayName}" to Auto-Block Whitelist.`);
 														}
 													}}
