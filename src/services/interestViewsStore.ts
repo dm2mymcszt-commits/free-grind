@@ -13,7 +13,7 @@ const DB_NAME = "open-grind-interest";
 const DB_VERSION = 1;
 const STORE_NAME = "views";
 
-const MAX_STORED_VIEWS = 1000;
+const MAX_STORED_VIEWS = 50000;
 const MAX_VIEW_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 function openDatabase(): Promise<IDBDatabase | null> {
