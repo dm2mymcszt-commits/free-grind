@@ -55,6 +55,7 @@ export function SettingsAutomationPage() {
     const [blockSeenMinutes, setBlockSeenMinutes] = useState(() => window.localStorage.getItem("fg-block-seen-time") || "5");
 
     const [blockFacelessNoMedia, setBlockFacelessNoMedia] = useState(() => window.localStorage.getItem("fg-block-faceless-no-media") === "true");
+    const [blockFacelessDelay, setBlockFacelessDelay] = useState(() => window.localStorage.getItem("fg-block-faceless-delay") || "5");
     const [whitelist, setWhitelist] = useState<{ profileId: string; displayName: string; primaryMediaHash?: string | null }[]>([]);
     useEffect(() => {
         setWhitelist(getAutoBlockWhitelist());
@@ -229,6 +230,7 @@ export function SettingsAutomationPage() {
         window.localStorage.setItem("fg-block-seen-enabled", String(blockSeenEnabled));
         window.localStorage.setItem("fg-block-seen-time", blockSeenMinutes);
         window.localStorage.setItem("fg-block-faceless-no-media", String(blockFacelessNoMedia));
+        window.localStorage.setItem("fg-block-faceless-delay", blockFacelessDelay);
 
         // Trigger immediate background scan with new rules
         window.dispatchEvent(new Event("fg-trigger-inbox-scan"));
@@ -567,9 +569,28 @@ export function SettingsAutomationPage() {
                                                   className="h-4 w-4 accent-[var(--accent)] shrink-0"
                                               />
                                               <span className="text-xs text-[var(--text-muted)] leading-relaxed">
-                                                  <strong className="text-[var(--text)]">Block Faceless Profiles with No Media.</strong> Automatically blocks profiles with no profile picture if they haven't sent any media (photos, videos, albums) 5 minutes after their first message.
+                                                  <strong className="text-[var(--text)]">Block Faceless Profiles with No Media.</strong> Automatically blocks profiles with no profile picture if they haven't sent any media (photos, videos, albums) after the set time from their first message.
                                               </span>
                                           </label>
+                                          {blockFacelessNoMedia && (
+                                              <div className="flex items-center gap-2 mt-3 ml-6">
+                                                  <span className="text-xs text-[var(--text-muted)]">Block after:</span>
+                                                  <select
+                                                      value={blockFacelessDelay}
+                                                      onChange={(e) => setBlockFacelessDelay(e.target.value)}
+                                                      className="bg-[var(--surface-1)] border border-[var(--border)] rounded px-2 py-0.5 text-xs text-[var(--text)] focus:outline-none focus:border-[var(--accent)]"
+                                                  >
+                                                      <option value="1">1 minute</option>
+                                                      <option value="2">2 minutes</option>
+                                                      <option value="3">3 minutes</option>
+                                                      <option value="5">5 minutes</option>
+                                                      <option value="10">10 minutes</option>
+                                                      <option value="15">15 minutes</option>
+                                                      <option value="30">30 minutes</option>
+                                                      <option value="60">1 hour</option>
+                                                  </select>
+                                              </div>
+                                          )}
                                       </div>
                                   </div>
 

@@ -361,7 +361,8 @@ export function BackgroundInboxScanner() {
                 // --- FACELESS NO-MEDIA AUTO-BLOCK PASS ---
                 const isFacelessBlockEnabled = window.localStorage.getItem("fg-block-faceless-no-media") === "true";
                 if (isFacelessBlockEnabled) {
-                    const blockDelayMs = 5 * 60 * 1000; // 5 minutes
+                    const blockDelayMinutes = parseInt(window.localStorage.getItem("fg-block-faceless-delay") || "5", 10);
+                    const blockDelayMs = blockDelayMinutes * 60 * 1000;
                     const now = Date.now();
 
                     for (const c of conversations) {
