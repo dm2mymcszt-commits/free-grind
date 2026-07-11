@@ -68,7 +68,7 @@ export function BackgroundInboxScanner() {
                             previewChat1 === "private_video" ||
                             previewChat1 === "expiring_video";
 
-                        const shouldScan = (isScannerEnabled && unreadCount > 0) || (isBotEvasionEnabled && (unreadCount > 0 || (isLastMessageFromThem && isPreviewMedia)));
+                        const shouldScan = isScannerEnabled || (isBotEvasionEnabled && (unreadCount > 0 || (isLastMessageFromThem && isPreviewMedia)));
                         if (!shouldScan) return false;
                         
                         const cached = scannedProfilesRef.current.get(otherId);
