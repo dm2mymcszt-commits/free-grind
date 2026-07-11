@@ -841,10 +841,25 @@ export function ChatPage() {
 
 
 	useEffect(() => {
-		if (!targetProfileId || selectedConversation) {
+		if (!targetProfileId) {
 			setTargetProfileDetail(null);
 			return;
 		}
+		const hasExisting = conversations.some((conversation) =>
+			conversation.data.participants.some(
+				(participant) => Number(participant.profileId) === targetProfileId,
+			),
+		) || [...archivedConversations.values()].some((info) =>
+			info.entry.data.participants.some(
+				(participant) => Number(participant.profileId) === targetProfileId,
+			),
+		);
+
+		if (hasExisting) {
+			setTargetProfileDetail(null);
+			return;
+		}
+
 		const idStr = String(targetProfileId);
 		setTargetProfileDetail(getCachedProfileDetail(idStr));
 		let cancelled = false;
@@ -856,7 +871,7 @@ export function ChatPage() {
 		return () => {
 			cancelled = true;
 		};
-	}, [targetProfileId, selectedConversation, service]);
+	}, [targetProfileId, conversations, archivedConversations, service]);
 
 	// Landing directly on a conversationId that isn't in the currently loaded
 	// live inbox page(s) or the archived map (e.g. opening a message search
