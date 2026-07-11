@@ -5585,6 +5585,7 @@ export function ChatPage() {
 		onClearInboxFilters: clearInboxFilters,
 		archivedFilter,
 		hiddenFilter,
+		archivedCount: archivedConversations.size,
 	} as const;
 
 	const renderInbox = (

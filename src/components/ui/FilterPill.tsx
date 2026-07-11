@@ -19,6 +19,7 @@ type FilterPillProps = {
 	/** "label" (default): icon + visible text, sized to content.
 	 * "icon": icon-only square button (aria-label/title carry the label). */
 	variant?: "label" | "icon";
+	badge?: string | number;
 };
 
 /** Shared quick-filter pill used by both GridPage's and the chat inbox's
@@ -31,6 +32,7 @@ export function FilterPill({
 	onClick,
 	color = "accent",
 	variant = "label",
+	badge,
 }: FilterPillProps) {
 	const isIconOnly = variant === "icon";
 	const isRightNow = color === "right-now";
@@ -54,6 +56,16 @@ export function FilterPill({
 		>
 			{icon}
 			{!isIconOnly && label}
+			{badge != null && badge !== "" && (
+				<span className={cn(
+					"ml-1 flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[9px] font-bold transition-colors",
+					active
+						? "bg-[var(--accent-contrast)] text-[var(--accent)]"
+						: "bg-[var(--accent)] text-[var(--accent-contrast)]"
+				)}>
+					{badge}
+				</span>
+			)}
 		</button>
 	);
 }

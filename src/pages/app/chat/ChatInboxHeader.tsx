@@ -25,6 +25,7 @@ export type ChatInboxHeaderProps = {
 	hiddenFilter: InboxVisibilityFilter;
 	hasActiveInboxFilters: boolean;
 	activeFilterCount: number;
+	archivedCount: number;
 	isSearchOpen: boolean;
 	searchQuery: string;
 	onSetIsSearchOpen: (v: boolean) => void;
@@ -81,6 +82,7 @@ export function ChatInboxHeader({
 	hiddenFilter,
 	hasActiveInboxFilters,
 	activeFilterCount,
+	archivedCount,
 	isSearchOpen,
 	searchQuery,
 	onSetIsSearchOpen,
@@ -166,9 +168,10 @@ export function ChatInboxHeader({
 								/>
 								<FilterPill
 									icon={<Archive className="h-3.5 w-3.5" />}
-									label={t("chat.archived")}
+									label={t("chat.archived.filter_label", { defaultValue: "Archived" })}
 									active={archivedFilter === "only"}
 									onClick={onToggleArchivedFilter}
+									badge={archivedCount > 0 ? archivedCount : undefined}
 								/>
 								<button
 									type="button"
