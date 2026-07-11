@@ -425,7 +425,7 @@ function ChatConversationRow({
 	const readReceiptsHidden = isReadReceiptsHidden(conversation.data.conversationId);
 
 	return (
-		<div ref={ref} className={`relative overflow-hidden h-[96px] ${revealClass}`}>
+		<div ref={ref} className={`relative overflow-hidden h-full ${revealClass}`}>
 			<div className="pointer-events-none absolute inset-0 flex items-center justify-between px-6">
 				<div
 					ref={pinIconRef}
