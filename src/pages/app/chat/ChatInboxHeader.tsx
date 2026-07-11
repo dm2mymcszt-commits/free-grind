@@ -1,4 +1,4 @@
-import { Archive, EyeOff, Images, Loader2, Pin, PinOff, Search, SlidersHorizontal, Star, Trash2, X } from "lucide-react";
+import { Archive, EyeOff, Images, Loader2, Pin, PinOff, Search, SlidersHorizontal, Star, X } from "lucide-react";
 import { type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -39,7 +39,6 @@ export type ChatInboxHeaderProps = {
 	onToggleRightNowOnly: () => void;
 	onToggleOnlineNowOnly: () => void;
 	onClearInboxFilters: () => void;
-	onDeleteAllArchived?: () => void;
 	hiddenCount: number;
 };
 
@@ -99,7 +98,6 @@ export function ChatInboxHeader({
 	onToggleRightNowOnly: _onToggleRightNowOnly,
 	onToggleOnlineNowOnly: _onToggleOnlineNowOnly,
 	onClearInboxFilters: _onClearInboxFilters,
-	onDeleteAllArchived,
 	hiddenCount,
 }: ChatInboxHeaderProps) {
 	const { t } = useTranslation();
@@ -175,7 +173,7 @@ export function ChatInboxHeader({
 								{hiddenCount > 0 && (
 									<FilterPill
 										icon={<EyeOff className="h-3.5 w-3.5" />}
-										label={t("chat.hidden", { defaultValue: "Hidden" })}
+										label={t("chat.hidden.filter_label", { defaultValue: "Hidden" })}
 										active={hiddenFilter === "only"}
 										onClick={onToggleHiddenFilter}
 										badge={hiddenCount}
@@ -188,16 +186,6 @@ export function ChatInboxHeader({
 									onClick={onToggleArchivedFilter}
 									badge={archivedCount > 0 ? archivedCount : undefined}
 								/>
-								{archivedFilter === "only" && archivedCount > 0 && onDeleteAllArchived && (
-									<button
-										type="button"
-										onClick={onDeleteAllArchived}
-										className="inline-flex shrink-0 items-center gap-1.5 px-4 py-2 text-sm font-bold transition-all active:scale-95 rounded-full border border-red-500 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white"
-									>
-										<Trash2 className="h-3.5 w-3.5" />
-										{t("chat.delete_all", { defaultValue: "Delete All" })}
-									</button>
-								)}
 								<button
 									type="button"
 									onClick={() => {

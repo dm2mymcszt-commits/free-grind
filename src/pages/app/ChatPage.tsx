@@ -124,7 +124,6 @@ import freegrindLogo from "../../images/freegrind-logo.webp";
 import { removeProfileFromBrowseCache, getCachedProfileDetail, setCachedProfileDetail } from "./gridpage/cache";
 import type { ProfileDetail } from "../../types/grid";
 import { getThumbImageUrl, validateMediaHash } from "../../utils/media";
-import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 
 // Local pagination for archived threads (chatDb has no server to ask, so we
 // page through it ourselves) — a "pageKey" here is this prefix + a cursor
@@ -467,8 +466,7 @@ export function ChatPage() {
 	const [isDeletingConversationId, setIsDeletingConversationId] = useState<string | null>(
 		null,
 	);
-	const [isDeleteAllArchivedConfirmOpen, setIsDeleteAllArchivedConfirmOpen] = useState(false);
-	const [isDeletingAllArchived, setIsDeletingAllArchived] = useState(false);
+
 	const [isTogglingFavoriteProfileId, setIsTogglingFavoriteProfileId] = useState<string | null>(null);
 	const [localNicknamesByProfileId, setLocalNicknamesByProfileId] = useState<
 		Record<string, string>
@@ -4009,22 +4007,7 @@ export function ChatPage() {
 		[deleteConversationFromChat],
 	);
 
-	const handleDeleteAllArchived = useCallback(async () => {
-		setIsDeletingAllArchived(true);
-		try {
-			const ids = [...archivedConversations.keys()];
-			for (const id of ids) {
-				await deleteConversationFromChat(id, true);
-			}
-			toast.success("Successfully deleted all archived conversations.");
-		} catch (err) {
-			console.error("Failed to delete all archived chats", err);
-			toast.error("Failed to delete all archived chats.");
-		} finally {
-			setIsDeletingAllArchived(false);
-			setIsDeleteAllArchivedConfirmOpen(false);
-		}
-	}, [archivedConversations, deleteConversationFromChat]);
+
 
 	const blockProfileFromChat = useCallback(
 		async (profileId: number) => {
@@ -5612,7 +5595,6 @@ export function ChatPage() {
 		hiddenFilter,
 		archivedCount: archivedConversations.size,
 		hiddenCount: hiddenConversationIds.size,
-		onDeleteAllArchived: () => setIsDeleteAllArchivedConfirmOpen(true),
 	} as const;
 
 	const renderInbox = (
@@ -5942,18 +5924,6 @@ export function ChatPage() {
 						</p>
 					);
 				}}
-			/>
-
-			<ConfirmDialog
-				isOpen={isDeleteAllArchivedConfirmOpen}
-				title={t("chat.delete_all_archived_title", { defaultValue: "Delete All Archived Chats" })}
-				message={t("chat.delete_all_archived_confirm", { defaultValue: "Are you sure you want to delete all archived conversations? This action cannot be undone." })}
-				confirmLabel={t("chat.delete_all", { defaultValue: "Delete All" })}
-				cancelLabel={t("chat.actions.cancel", { defaultValue: "Cancel" })}
-				onConfirm={handleDeleteAllArchived}
-				onCancel={() => setIsDeleteAllArchivedConfirmOpen(false)}
-				isProcessing={isDeletingAllArchived}
-				confirmTone="danger"
 			/>
 		</section>
 	);

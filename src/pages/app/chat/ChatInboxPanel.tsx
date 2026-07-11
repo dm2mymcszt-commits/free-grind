@@ -608,7 +608,6 @@ export function ChatInboxPanel({
 	onToggleArchivedFilter,
 	archivedCount,
 	hiddenCount,
-	onDeleteAllArchived,
 	onToggleRightNowOnly,
 	onToggleOnlineNowOnly,
 	archivedFilter,
@@ -783,7 +782,6 @@ export function ChatInboxPanel({
 					onToggleArchivedFilter={onToggleArchivedFilter}
 					archivedCount={archivedCount}
 					hiddenCount={hiddenCount}
-					onDeleteAllArchived={onDeleteAllArchived}
 					onToggleRightNowOnly={onToggleRightNowOnly}
 					onToggleOnlineNowOnly={onToggleOnlineNowOnly}
 					onClearInboxFilters={onClearInboxFilters}
