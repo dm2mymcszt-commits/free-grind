@@ -3649,28 +3649,65 @@ export function ChatPage() {
 		// regardless of inbox pagination. Fixes opening a chat from a profile
 		// landing on an empty "new conversation" screen when a real one exists.
 		let cancelled = false;
-		void chatDb.findConversationByProfileId(String(targetProfileId)).then((stored) => {
-			if (cancelled || !stored) {
+		void (async () => {
+			const stored = await chatDb.findConversationByProfileId(String(targetProfileId));
+			if (cancelled) return;
+
+			if (stored) {
+				if (stored.archived) {
+					setArchivedConversations((previous) => {
+						const next = new Map(previous);
+						next.set(stored.conversationId, {
+							reason: stored.archivedReason ?? "not_found",
+							entry: stored.entry,
+						});
+						return next;
+					});
+				} else {
+					setConversations((previous) =>
+						previous.some((c) => c.data.conversationId === stored.conversationId)
+							? previous
+							: [...previous, stored.entry],
+					);
+				}
+				openConversationById(stored.conversationId);
 				return;
 			}
-			if (stored.archived) {
-				setArchivedConversations((previous) => {
-					const next = new Map(previous);
-					next.set(stored.conversationId, {
-						reason: stored.archivedReason ?? "not_found",
-						entry: stored.entry,
-					});
-					return next;
-				});
-			} else {
-				setConversations((previous) =>
-					previous.some((c) => c.data.conversationId === stored.conversationId)
-						? previous
-						: [...previous, stored.entry],
-				);
+
+			// DB had nothing — paginate through the API inbox to find a
+			// conversation with this profile. This covers the case where the
+			// local DB was cleared or never stored this conversation.
+			try {
+				const numTarget = Number(targetProfileId);
+				let page = 1;
+				const MAX_PAGES = 10;
+				while (!cancelled && page <= MAX_PAGES) {
+					const response = await service.listConversations({ page });
+					if (cancelled) return;
+					const entries = response?.entries || [];
+					if (entries.length === 0) break;
+
+					const match = entries.find((entry: any) =>
+						entry.data?.participants?.some(
+							(p: any) => Number(p.profileId) === numTarget,
+						),
+					);
+					if (match) {
+						setConversations((previous) =>
+							previous.some((c) => c.data.conversationId === match.data.conversationId)
+								? previous
+								: [...previous, match],
+						);
+						openConversationById(match.data.conversationId);
+						return;
+					}
+					if (!response.nextPage) break;
+					page++;
+				}
+			} catch {
+				// Best effort — fall through to the synthetic stub
 			}
-			openConversationById(stored.conversationId);
-		});
+		})();
 
 		return () => {
 			cancelled = true;
@@ -3681,6 +3718,7 @@ export function ChatPage() {
 		openConversationById,
 		selectedConversationId,
 		targetProfileId,
+		service,
 	]);
 
 	const handleLoadMoreInbox = () => {
