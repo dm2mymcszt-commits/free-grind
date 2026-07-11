@@ -379,7 +379,7 @@ export function ChatPage() {
 		(inboxFilters.positions?.length ?? 0) > 0 ||
 		inboxFilters.distanceMeters != null ||
 		pinnedFilter !== "all" ||
-		archivedFilter !== "all" ||
+		archivedFilter !== "hide" ||
 		hiddenFilter !== "hide";
 
 	const chatActiveFilterCount = [
@@ -391,7 +391,7 @@ export function ChatPage() {
 		inboxFilters.distanceMeters !== null && inboxFilters.distanceMeters !== undefined,
 		(inboxFilters.positions?.length ?? 0) > 0,
 		pinnedFilter !== "all",
-		archivedFilter !== "all",
+		archivedFilter !== "hide",
 		hiddenFilter !== "hide",
 	].filter(Boolean).length;
 
@@ -418,6 +418,10 @@ export function ChatPage() {
 
 	const toggleInboxArchivedFilter = useCallback(() => {
 		setArchivedFilter((prev) => (prev === "only" ? "hide" : "only"));
+	}, []);
+
+	const toggleInboxHiddenFilter = useCallback(() => {
+		setHiddenFilter((prev) => (prev === "only" ? "hide" : "only"));
 	}, []);
 
 
@@ -5599,6 +5603,7 @@ export function ChatPage() {
 		onSetFiltersDraft: setChatFiltersDraft,
 		onToggleFavoritesOnly: toggleInboxFavoritesOnly,
 		onTogglePinnedFilter: toggleInboxPinnedFilter,
+		onToggleHiddenFilter: toggleInboxHiddenFilter,
 		onToggleArchivedFilter: toggleInboxArchivedFilter,
 		onToggleRightNowOnly: toggleInboxRightNowOnly,
 		onToggleOnlineNowOnly: toggleInboxOnlineNowOnly,
@@ -5606,6 +5611,7 @@ export function ChatPage() {
 		archivedFilter,
 		hiddenFilter,
 		archivedCount: archivedConversations.size,
+		hiddenCount: hiddenConversationIds.size,
 		onDeleteAllArchived: () => setIsDeleteAllArchivedConfirmOpen(true),
 	} as const;
 

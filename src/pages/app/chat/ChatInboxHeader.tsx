@@ -1,4 +1,4 @@
-import { Archive, Images, Loader2, Pin, PinOff, Search, SlidersHorizontal, Star, Trash2, X } from "lucide-react";
+import { Archive, EyeOff, Images, Loader2, Pin, PinOff, Search, SlidersHorizontal, Star, Trash2, X } from "lucide-react";
 import { type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -34,11 +34,13 @@ export type ChatInboxHeaderProps = {
 	onSetFiltersDraft: (v: ChatFiltersDraft) => void;
 	onToggleFavoritesOnly: () => void;
 	onTogglePinnedFilter: () => void;
+	onToggleHiddenFilter: () => void;
 	onToggleArchivedFilter: () => void;
 	onToggleRightNowOnly: () => void;
 	onToggleOnlineNowOnly: () => void;
 	onClearInboxFilters: () => void;
 	onDeleteAllArchived?: () => void;
+	hiddenCount: number;
 };
 
 /** Small "Inbox · Syncing 42%" caption under the title — the mobile-only,
@@ -92,11 +94,13 @@ export function ChatInboxHeader({
 	onSetFiltersDraft,
 	onToggleFavoritesOnly,
 	onTogglePinnedFilter,
+	onToggleHiddenFilter,
 	onToggleArchivedFilter,
 	onToggleRightNowOnly: _onToggleRightNowOnly,
 	onToggleOnlineNowOnly: _onToggleOnlineNowOnly,
 	onClearInboxFilters: _onClearInboxFilters,
 	onDeleteAllArchived,
+	hiddenCount,
 }: ChatInboxHeaderProps) {
 	const { t } = useTranslation();
 	const navigate = useNavigate();
@@ -168,6 +172,15 @@ export function ChatInboxHeader({
 									active={pinnedFilter === "hide"}
 									onClick={onTogglePinnedFilter}
 								/>
+								{hiddenCount > 0 && (
+									<FilterPill
+										icon={<EyeOff className="h-3.5 w-3.5" />}
+										label={t("chat.hidden", { defaultValue: "Hidden" })}
+										active={hiddenFilter === "only"}
+										onClick={onToggleHiddenFilter}
+										badge={hiddenCount}
+									/>
+								)}
 								<FilterPill
 									icon={<Archive className="h-3.5 w-3.5" />}
 									label={t("chat.archived.filter_label", { defaultValue: "Archived" })}

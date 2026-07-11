@@ -34,7 +34,7 @@ export type ChatFiltersVisibilityState = {
 
 export const defaultChatFiltersVisibilityState: ChatFiltersVisibilityState = {
 	pinnedFilter: "all",
-	archivedFilter: "all",
+	archivedFilter: "hide",
 	// Hidden chats default to actually being hidden — that's the point of the feature.
 	hiddenFilter: "hide",
 };
