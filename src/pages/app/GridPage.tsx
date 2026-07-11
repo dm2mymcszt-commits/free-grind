@@ -1,5 +1,5 @@
 import { useAuth } from "../../contexts/useAuth";
-import { MapPin, Navigation, SlidersHorizontal, ListFilter, Star, Plane, Droplet, Search, Eye, EyeOff, Check, Loader2, Settings, X } from "lucide-react";
+import { MapPin, Navigation, SlidersHorizontal, ListFilter, Star, Search, Eye, EyeOff, Check, Loader2, Settings, X } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useApiFunctions } from "../../hooks/useApiFunctions";
@@ -1551,30 +1551,6 @@ export function GridPage() {
 										}
 									/>
 
-									<FilterPill
-										icon={<Plane className={`h-3.5 w-3.5 ${browseFilters.isVisiting ? "fill-current" : ""}`} />}
-										label={t("profile_details.visiting")}
-										active={Boolean(browseFilters.isVisiting)}
-										onClick={() =>
-											setBrowseFilters((prev: typeof browseFilters) => ({
-												...prev,
-												isVisiting: !prev.isVisiting,
-											}))
-										}
-									/>
-
-									<FilterPill
-										icon={<Droplet className={`h-3.5 w-3.5 ${browseFilters.rightNow ? "fill-current" : ""}`} />}
-										label={t("browse_filters.options.right_now")}
-										active={Boolean(browseFilters.rightNow)}
-										onClick={() =>
-											setBrowseFilters((prev: typeof browseFilters) => ({
-												...prev,
-												rightNow: !prev.rightNow,
-											}))
-										}
-										color="right-now"
-									/>
 
 									{hasActiveBrowseFilters ? (
 										<button

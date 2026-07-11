@@ -1,4 +1,4 @@
-import { Images, Loader2, Pin, PinOff, Search, SlidersHorizontal, Star, X } from "lucide-react";
+import { Images, Loader2, Mail, Pin, PinOff, Search, SlidersHorizontal, Star, X } from "lucide-react";
 import { type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -89,7 +89,7 @@ export function ChatInboxHeader({
 	onSetFiltersDraft,
 	onToggleFavoritesOnly,
 	onTogglePinnedFilter,
-	onToggleUnreadOnly: _onToggleUnreadOnly,
+	onToggleUnreadOnly,
 	onToggleRightNowOnly: _onToggleRightNowOnly,
 	onToggleOnlineNowOnly: _onToggleOnlineNowOnly,
 	onClearInboxFilters: _onClearInboxFilters,
@@ -163,6 +163,12 @@ export function ChatInboxHeader({
 									label={t("chat.pinned")}
 									active={pinnedFilter === "hide"}
 									onClick={onTogglePinnedFilter}
+								/>
+								<FilterPill
+									icon={<Mail className="h-3.5 w-3.5" />}
+									label={t("chat_filters.options.unread")}
+									active={Boolean(inboxFilters.unreadOnly)}
+									onClick={onToggleUnreadOnly}
 								/>
 								<button
 									type="button"
