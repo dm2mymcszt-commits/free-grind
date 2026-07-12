@@ -18,6 +18,7 @@ import {
 import { platform } from "@tauri-apps/plugin-os";
 import { isTauriRuntime } from "./tauriWebSocket";
 import { appLog } from "../utils/logger";
+import { isChatNotificationsEnabled, isTapNotificationsEnabled } from "../utils/notificationSettings";
 
 // Matches the Linux .desktop entry's `Icon=`/`StartupWMClass=` value (the
 // main binary name, not the bundle `identifier`) — confirmed against the
@@ -94,14 +95,14 @@ export async function notifyLocal(options: LocalNotifyOptions): Promise<void> {
 		return;
 	}
 
-	// Check user preferences in localStorage
+	// Check user preferences
 	if (options.group === "taps") {
-		if (window.localStorage.getItem("fg-notify-taps") === "false") {
+		if (!isTapNotificationsEnabled()) {
 			appLog.debug("[notify] suppressed: taps notifications disabled by user settings");
 			return;
 		}
 	} else {
-		if (window.localStorage.getItem("fg-notify-chats") === "false") {
+		if (!isChatNotificationsEnabled()) {
 			appLog.debug("[notify] suppressed: chats notifications disabled by user settings");
 			return;
 		}

@@ -445,12 +445,8 @@ export function ChatRealtimeBridge() {
 		// desktop/iOS have no competing push channel, so they go straight
 		// to notifyLocal().
 		const triggerIncomingMessageNotification = (m: Message) => {
-			if (
-				!isAppForeground() ||
-				!isChatNotificationsEnabled() ||
-				!isForegroundNotificationsEnabled()
-			)
-				return;
+			if (!isChatNotificationsEnabled()) return;
+			if (isAppForeground() && !isForegroundNotificationsEnabled()) return;
 
 			const conv = getConversation(m.conversationId);
 			const other = conv ? getOtherParticipant(conv, userIdRef.current) : null;
@@ -485,12 +481,8 @@ export function ChatRealtimeBridge() {
 		};
 
 		const triggerTapNotification = (tap: TapReceivedDetail) => {
-			if (
-				!isAppForeground() ||
-				!isTapNotificationsEnabled() ||
-				!isForegroundNotificationsEnabled()
-			)
-				return;
+			if (!isTapNotificationsEnabled()) return;
+			if (isAppForeground() && !isForegroundNotificationsEnabled()) return;
 
 			const senderName = tap.displayName || tRef.current("chat.notifications.someone");
 			const bodyText = tap.isMutual
