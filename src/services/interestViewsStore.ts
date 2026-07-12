@@ -129,9 +129,9 @@ export const interestViewsStore = {
 				const now = Date.now();
 				const toDelete: string[] = [];
 
-				// 1. Mark all items older than 30 days for deletion
+				// 1. Mark all items older than 30 days or preview placeholders for deletion
 				rows.forEach((row) => {
-					if (now - (row.timestamp ?? row.updatedAt) > MAX_VIEW_AGE_MS) {
+					if (row.profileId.startsWith("preview:") || now - (row.timestamp ?? row.updatedAt) > MAX_VIEW_AGE_MS) {
 						toDelete.push(row.profileId);
 					}
 				});

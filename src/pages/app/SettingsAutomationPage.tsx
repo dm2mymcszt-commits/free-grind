@@ -132,19 +132,14 @@ export function SettingsAutomationPage() {
     const [viewScannerEnabled, setViewScannerEnabled] = useState(() => window.localStorage.getItem("fg-view-scanner") !== "false");
     const [viewScannerInterval, setViewScannerInterval] = useState(() => window.localStorage.getItem("fg-view-scanner-interval") || "30");
     const [unlockedViewsCount, setUnlockedViewsCount] = useState<number | null>(null);
-    const [lockedViewsCount, setLockedViewsCount] = useState<number | null>(null);
     const [lastViewScanTime, setLastViewScanTime] = useState(() => window.localStorage.getItem("fg-view-scanner-last-run"));
-
-
 
     // Live update the Views Recovery Stats every 5 seconds
     useEffect(() => {
         const fetchStats = () => {
             void interestViewsStore.getAll().then(rows => {
                 const unlocked = rows.filter(r => r.profileId && !r.profileId.startsWith("preview:"));
-                const locked = rows.filter(r => r.profileId && r.profileId.startsWith("preview:"));
                 setUnlockedViewsCount(unlocked.length);
-                setLockedViewsCount(locked.length);
             });
             setLastViewScanTime(window.localStorage.getItem("fg-view-scanner-last-run"));
         };
@@ -164,7 +159,6 @@ export function SettingsAutomationPage() {
             queryClient.invalidateQueries({ queryKey: ["interest", "list"] });
             queryClient.removeQueries({ queryKey: ["interest", "list"] });
             setUnlockedViewsCount(0);
-            setLockedViewsCount(0);
             setIsClearViewsConfirmOpen(false);
             toast.success("Unlocked views cache has been cleared!");
         });
@@ -298,10 +292,10 @@ export function SettingsAutomationPage() {
 
                         {viewScannerEnabled && (
                             <div className="p-4 grid gap-4">
-                                <div className="grid grid-cols-3 gap-3">
+                                <div className="grid grid-cols-2 gap-3">
                                     <div className="rounded-lg bg-[var(--surface-1)] border border-[var(--border)] p-3">
                                         <div className="flex items-center justify-between mb-1">
-                                            <p className="text-[10px] uppercase font-semibold text-[var(--text-muted)]">Unlocked</p>
+                                            <p className="text-[10px] uppercase font-semibold text-[var(--text-muted)]">Saved Profiles</p>
                                             <button
                                                 type="button"
                                                 onClick={() => setIsClearViewsConfirmOpen(true)}
@@ -313,12 +307,6 @@ export function SettingsAutomationPage() {
                                         </div>
                                         <p className="text-lg font-bold text-[var(--accent)]">
                                             {unlockedViewsCount !== null ? unlockedViewsCount : "..."} <span className="text-[10px] font-medium text-[var(--text-muted)] block">profiles</span>
-                                        </p>
-                                    </div>
-                                    <div className="rounded-lg bg-[var(--surface-1)] border border-[var(--border)] p-3">
-                                        <p className="text-[10px] uppercase font-semibold text-[var(--text-muted)] mb-1">Locked</p>
-                                        <p className="text-lg font-bold text-[var(--text-muted)] mt-1">
-                                            {lockedViewsCount !== null ? lockedViewsCount : "..."} <span className="text-[10px] font-medium block">profiles</span>
                                         </p>
                                     </div>
                                     <div className="rounded-lg bg-[var(--surface-1)] border border-[var(--border)] p-3">

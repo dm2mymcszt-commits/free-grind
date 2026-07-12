@@ -23,22 +23,10 @@ export function BackgroundViewScanner() {
                     const cachedViews = cachedRows.map(fromStoredView);
                     const normalizedViews = normalizeViews(response, cachedViews, (key: string) => key);
 
-                    // 1. Save all active views (both profiles and active previews)
-                    await interestViewsStore.upsertMany(normalizedViews.map(toStoredView));
+                    // 1. Save all active views (only real profiles, ignore locked previews)
+                    const realProfiles = normalizedViews.filter((item) => !item.profileId.startsWith(PREVIEW_ID_PREFIX));
+                    await interestViewsStore.upsertMany(realProfiles.map(toStoredView));
 
-                    // 2. Find and delete stale previews
-                    const activePreviewIds = new Set(
-                        normalizedViews
-                            .filter((item) => item.profileId.startsWith(PREVIEW_ID_PREFIX))
-                            .map((item) => item.profileId)
-                    );
-                    const stalePreviewIds = cachedRows
-                        .map((r) => r.profileId)
-                        .filter((id) => id.startsWith(PREVIEW_ID_PREFIX) && !activePreviewIds.has(id));
-
-                    if (stalePreviewIds.length > 0) {
-                        await interestViewsStore.deleteMany(stalePreviewIds);
-                    }
                     window.localStorage.setItem("fg-view-scanner-last-run", Date.now().toString());
                 } catch (error) {
                     console.error("[BackgroundViews] Sweep failed:", error);
