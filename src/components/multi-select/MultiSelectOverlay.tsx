@@ -9,7 +9,8 @@ import { deleteConversationOnly } from "../../services/chatDb";
 
 export function MultiSelectOverlay() {
     const { isActive, selectedItems, viewType, deactivateMode, selectableItems, setSelectedItems } = useMultiSelect();
-    const [activeModal, setActiveModal] = useState<"block" | "message" | null>(null);
+    const [activeModal, setActiveModal] = useState<"block" | "message" | "delete" | null>(null);
+    const [progressCount, setProgressCount] = useState(0);
     const [messageText, setMessageText] = useState("");
     const [isProcessing, setIsProcessing] = useState(false);
     const navigate = useNavigate();
@@ -48,6 +49,7 @@ export function MultiSelectOverlay() {
         }
 
         setIsProcessing(true);
+        setProgressCount(0);
         let successCount = 0;
 
         try {
@@ -66,6 +68,7 @@ export function MultiSelectOverlay() {
                         } catch (e) {
                             console.error(`Failed to mark read for ${item.id}`, e);
                         }
+                        setProgressCount(prev => prev + 1);
                         await delay(400); 
                     }
                     toast.success(`Marked ${successCount} chats as read!`);
@@ -95,7 +98,8 @@ export function MultiSelectOverlay() {
                         } catch (e) {
                             console.error(`Failed to delete conversation ${item.id}`, e);
                         }
-                        await delay(300);
+                        setProgressCount(prev => prev + 1);
+                        await delay(100);
                     }
                     toast.success(`Deleted ${successCount} conversations.`);
                     break;
@@ -109,6 +113,7 @@ export function MultiSelectOverlay() {
                         } catch (e) {
                             console.error(`Failed to block profile ${targetId}`, e);
                         }
+                        setProgressCount(prev => prev + 1);
                         await delay(500); 
                     }
                     toast.success(`Blocked ${successCount} profiles.`);
@@ -124,6 +129,7 @@ export function MultiSelectOverlay() {
                         } catch (e) {
                             console.error(`Failed to send message to ${targetId}`, e);
                         }
+                        setProgressCount(prev => prev + 1);
                         await delay(1000); 
                     }
                     toast.success(`Message sent to ${successCount} profiles!`);
@@ -205,7 +211,7 @@ export function MultiSelectOverlay() {
                         {/* DELETE (Only for inbox, white style) */}
                         {viewType === "inbox" && (
                             <button 
-                                onClick={() => handleAction("delete")} 
+                                onClick={() => setActiveModal("delete")} 
                                 disabled={selectedItems.length === 0 || isProcessing} 
                                 className="snap-start shrink-0 flex items-center gap-2 border border-white/20 bg-white/10 hover:bg-white/25 px-4 py-2.5 rounded-2xl transition disabled:opacity-50 text-sm font-semibold text-white"
                             >
@@ -237,6 +243,37 @@ export function MultiSelectOverlay() {
                 </div>
             </div>
 
+            {/* DELETE MODAL */}
+            {activeModal === "delete" && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-300">
+                    <div className="bg-[#1A202C] border border-[var(--accent)]/30 rounded-[2rem] w-full max-w-sm shadow-2xl p-6 text-center animate-in zoom-in-95 duration-300">
+                        <Trash2 className="h-12 w-12 mx-auto mb-4 text-red-500" />
+                        <h2 className="text-xl font-bold text-white mb-2">Delete Chats?</h2>
+                        <p className="text-sm text-gray-400 mb-6">
+                            Are you sure you want to delete the selected <strong className="text-[var(--accent)]">{selectedItems.length}</strong> conversations? This action cannot be undone.
+                        </p>
+                        <div className="flex gap-3">
+                            <Button variant="secondary" className="flex-1 rounded-xl bg-white/10 text-white border-0 hover:bg-white/20" onClick={() => setActiveModal(null)} disabled={isProcessing}>Cancel</Button>
+                            <button 
+                                className="flex-1 flex items-center justify-center gap-2 rounded-xl font-semibold transition disabled:opacity-50 py-2" 
+                                style={{ backgroundColor: "var(--accent)", color: "#1A202C" }} 
+                                disabled={isProcessing}
+                                onClick={() => handleAction("delete")}
+                            >
+                                {isProcessing ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        {`Deleting (${progressCount}/${selectedItems.length})`}
+                                    </>
+                                ) : (
+                                    "Delete All"
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* BLOCK MODAL */}
             {activeModal === "block" && (
                 <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-300">
@@ -249,12 +286,19 @@ export function MultiSelectOverlay() {
                         <div className="flex gap-3">
                             <Button variant="secondary" className="flex-1 rounded-xl bg-white/10 text-white border-0 hover:bg-white/20" onClick={() => setActiveModal(null)} disabled={isProcessing}>Cancel</Button>
                             <button 
-                                className="flex-1 flex items-center justify-center gap-2 rounded-xl font-semibold transition disabled:opacity-50" 
+                                className="flex-1 flex items-center justify-center gap-2 rounded-xl font-semibold transition disabled:opacity-50 py-2" 
                                 style={{ backgroundColor: "var(--accent)", color: "#1A202C" }} 
                                 disabled={isProcessing}
                                 onClick={() => handleAction("block")}
                             >
-                                {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : "Block All"}
+                                {isProcessing ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        {`Blocking (${progressCount}/${selectedItems.length})`}
+                                    </>
+                                ) : (
+                                    "Block All"
+                                )}
                             </button>
                         </div>
                     </div>
@@ -276,6 +320,7 @@ export function MultiSelectOverlay() {
                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 block">To:</label>
                                 <div 
                                     className="text-sm font-medium px-4 py-3 rounded-xl border border-white/10 bg-black/20 text-gray-200"
+                                    style={{ WebkitTouchCallout: "none" }}
                                 >
                                     {generateRecipientString()}
                                 </div>
@@ -295,7 +340,14 @@ export function MultiSelectOverlay() {
                                 disabled={!messageText.trim() || isProcessing}
                                 onClick={() => handleAction("message")}
                             >
-                                {isProcessing ? <><Loader2 className="h-4 w-4 animate-spin" /> Sending...</> : <><Send className="h-4 w-4" /> Send Message</>}
+                                {isProcessing ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        {`Sending (${progressCount}/${selectedItems.length})...`}
+                                    </>
+                                ) : (
+                                    <><Send className="h-4 w-4" /> Send Message</>
+                                )}
                             </button>
                         </div>
                     </div>
