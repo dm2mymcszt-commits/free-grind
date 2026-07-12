@@ -607,9 +607,7 @@ export async function reconcileBlockStateWithBlockedList(
 	const toReconcile = conversations.filter((c) => {
 		if (!c.otherProfileId) return false;
 		const shouldBeBlockedByMe = blockedSet.has(c.otherProfileId);
-		return shouldBeBlockedByMe
-			? c.blockState !== "blocked_by_me"
-			: c.blockState === "blocked_by_me";
+		return shouldBeBlockedByMe && c.blockState !== "blocked_by_me";
 	});
 	if (toReconcile.length === 0) {
 		return;
@@ -622,33 +620,23 @@ export async function reconcileBlockStateWithBlockedList(
 	const messages: Message[] = [];
 	await Promise.all(
 		toReconcile.map(async (conversation) => {
-			const shouldBeBlockedByMe = blockedSet.has(conversation.otherProfileId as string);
 			const claimed = await claimBlockStateTransition(
 				conversation.conversationId,
-				shouldBeBlockedByMe ? "blocked_by_me" : null,
+				"blocked_by_me",
 			);
 			if (!claimed) {
 				return;
 			}
 			try {
-				if (shouldBeBlockedByMe) {
-					await archiveConversation(conversation.conversationId, "ws_delete");
-					const message = await chatDb.insertSystemMessage(
-						conversation.conversationId,
-						"SystemBlockedBySelf",
-					);
-					messages.push(message);
-				} else {
-					await unarchiveConversation(conversation.conversationId);
-					const message = await chatDb.insertSystemMessage(
-						conversation.conversationId,
-						"SystemUnblockedBySelf",
-					);
-					messages.push(message);
-				}
+				await archiveConversation(conversation.conversationId, "ws_delete");
+				const message = await chatDb.insertSystemMessage(
+					conversation.conversationId,
+					"SystemBlockedBySelf",
+				);
+				messages.push(message);
 			} catch (error) {
 				appLog.error(
-					`[conversation-archive] failed to insert reconciled ${shouldBeBlockedByMe ? "block" : "unblock"} message for ${conversation.conversationId}`,
+					`[conversation-archive] failed to insert reconciled block message for ${conversation.conversationId}`,
 					error,
 				);
 			}
