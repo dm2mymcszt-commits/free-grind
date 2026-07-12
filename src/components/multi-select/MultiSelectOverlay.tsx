@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { X, Trash2, MessageSquare, CheckSquare, Send, Ban, Loader2 } from "lucide-react";
 import { useMultiSelect } from "../../contexts/MultiSelectContext";
-import { Button } from "../ui/button";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 import { useApiFunctions } from "../../hooks/useApiFunctions";
@@ -9,12 +8,18 @@ import { deleteConversationOnly } from "../../services/chatDb";
 
 export function MultiSelectOverlay() {
     const { isActive, selectedItems, viewType, deactivateMode, selectableItems, setSelectedItems } = useMultiSelect();
-    const [activeModal, setActiveModal] = useState<"block" | "message" | "delete" | null>(null);
+    const [activeModal, setActiveModal] = useState<"message" | null>(null);
+    const [confirmAction, setConfirmAction] = useState<"delete" | "block" | null>(null);
     const [progressCount, setProgressCount] = useState(0);
     const [messageText, setMessageText] = useState("");
     const [isProcessing, setIsProcessing] = useState(false);
     const navigate = useNavigate();
     const api = useApiFunctions();
+
+    // Reset confirmation state when selection changes or deactivates
+    useEffect(() => {
+        setConfirmAction(null);
+    }, [selectedItems.length, isActive]);
 
     // 1. ESC Key Global Listener (Instant Deactivation & Navigation)
     useEffect(() => {
@@ -140,6 +145,7 @@ export function MultiSelectOverlay() {
             toast.error("An error occurred during bulk processing.");
         } finally {
             setIsProcessing(false);
+            setConfirmAction(null);
             setActiveModal(null);
             deactivateMode();
             
@@ -196,114 +202,92 @@ export function MultiSelectOverlay() {
                         </div>
                     </div>
 
-                    <div className="flex sm:flex-wrap items-center justify-start gap-2 overflow-x-auto px-1 pb-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] snap-x">
-                        
-                        {/* PRIMARY ACTION (Solid Accent) */}
-                        <button 
-                            onClick={() => setActiveModal("message")} 
-                            disabled={selectedItems.length === 0 || isProcessing} 
-                            className="snap-start shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-2xl transition disabled:opacity-50 text-sm font-bold shadow-md hover:brightness-110"
-                            style={{ backgroundColor: "var(--accent)", color: "#1A202C" }}
-                        >
-                            <MessageSquare className="h-4 w-4" /> Message
-                        </button>
-
-                        {/* DELETE (Only for inbox, white style) */}
-                        {viewType === "inbox" && (
+                    {confirmAction ? (
+                        <div className="flex items-center justify-between gap-3 px-1 pb-1 w-full animate-in slide-in-from-bottom-2 duration-300">
+                            <span className="text-xs font-semibold text-gray-200">
+                                {confirmAction === "delete" 
+                                    ? `Delete ${selectedItems.length} chats?` 
+                                    : `Block ${selectedItems.length} profiles?`}
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setConfirmAction(null)}
+                                    disabled={isProcessing}
+                                    className="text-xs font-semibold px-3.5 py-2 rounded-xl bg-white/10 text-white hover:bg-white/20 transition disabled:opacity-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={() => handleAction(confirmAction)}
+                                    disabled={isProcessing}
+                                    className="text-xs font-bold px-4 py-2 rounded-xl transition disabled:opacity-50 flex items-center gap-1.5 shadow-md"
+                                    style={{ 
+                                        backgroundColor: confirmAction === "delete" ? "#EF4444" : "var(--accent)", 
+                                        color: confirmAction === "delete" ? "#FFFFFF" : "#1A202C" 
+                                    }}
+                                >
+                                    {isProcessing ? (
+                                        <>
+                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                            {confirmAction === "delete" 
+                                                ? `Deleting (${progressCount}/${selectedItems.length})` 
+                                                : `Blocking (${progressCount}/${selectedItems.length})`}
+                                        </>
+                                    ) : (
+                                        confirmAction === "delete" ? "Confirm Delete" : "Confirm Block"
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="flex sm:flex-wrap items-center justify-start gap-2 overflow-x-auto px-1 pb-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] snap-x w-full">
+                            
+                            {/* PRIMARY ACTION (Solid Accent) */}
                             <button 
-                                onClick={() => setActiveModal("delete")} 
+                                onClick={() => setActiveModal("message")} 
                                 disabled={selectedItems.length === 0 || isProcessing} 
-                                className="snap-start shrink-0 flex items-center gap-2 border border-white/20 bg-white/10 hover:bg-white/25 px-4 py-2.5 rounded-2xl transition disabled:opacity-50 text-sm font-semibold text-white"
+                                className="snap-start shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-2xl transition disabled:opacity-50 text-sm font-bold shadow-md hover:brightness-110"
+                                style={{ backgroundColor: "var(--accent)", color: "#1A202C" }}
                             >
-                                <Trash2 className="h-4 w-4" /> Delete
+                                <MessageSquare className="h-4 w-4" /> Message
                             </button>
-                        )}
 
-                        {/* READ (Only for inbox, default outline style) */}
-                        {viewType === "inbox" && (
+                            {/* DELETE (Only for inbox, white style) */}
+                            {viewType === "inbox" && (
+                                <button 
+                                    onClick={() => setConfirmAction("delete")} 
+                                    disabled={selectedItems.length === 0 || isProcessing} 
+                                    className="snap-start shrink-0 flex items-center gap-2 border border-white/20 bg-white/10 hover:bg-white/25 px-4 py-2.5 rounded-2xl transition disabled:opacity-50 text-sm font-semibold text-white"
+                                >
+                                    <Trash2 className="h-4 w-4" /> Delete
+                                </button>
+                            )}
+
+                            {/* READ (Only for inbox, default outline style) */}
+                            {viewType === "inbox" && (
+                                <button 
+                                    onClick={() => handleAction("read")} 
+                                    disabled={selectedItems.length === 0 || isProcessing} 
+                                    className={secondaryBtnClass}
+                                >
+                                    <CheckSquare className="h-4 w-4" /> Read
+                                </button>
+                            )}
+
+                            {/* BLOCK (For both grid & inbox, red style) */}
                             <button 
-                                onClick={() => handleAction("read")} 
+                                onClick={() => setConfirmAction("block")} 
                                 disabled={selectedItems.length === 0 || isProcessing} 
-                                className={secondaryBtnClass}
+                                className="snap-start shrink-0 flex items-center gap-2 border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 px-4 py-2.5 rounded-2xl transition disabled:opacity-50 text-sm font-semibold text-red-400"
                             >
-                                <CheckSquare className="h-4 w-4" /> Read
+                                <Ban className="h-4 w-4" /> Block
                             </button>
-                        )}
 
-                        {/* BLOCK (For both grid & inbox, red style) */}
-                        <button 
-                            onClick={() => setActiveModal("block")} 
-                            disabled={selectedItems.length === 0 || isProcessing} 
-                            className="snap-start shrink-0 flex items-center gap-2 border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 px-4 py-2.5 rounded-2xl transition disabled:opacity-50 text-sm font-semibold text-red-400"
-                        >
-                            <Ban className="h-4 w-4" /> Block
-                        </button>
+                        </div>
+                    )}
 
-                    </div>
                 </div>
             </div>
-
-            {/* DELETE MODAL */}
-            {activeModal === "delete" && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-300">
-                    <div className="bg-[#1A202C] border border-[var(--accent)]/30 rounded-[2rem] w-full max-w-sm shadow-2xl p-6 text-center animate-in zoom-in-95 duration-300">
-                        <Trash2 className="h-12 w-12 mx-auto mb-4 text-red-500" />
-                        <h2 className="text-xl font-bold text-white mb-2">Delete Chats?</h2>
-                        <p className="text-sm text-gray-400 mb-6">
-                            Are you sure you want to delete the selected <strong className="text-[var(--accent)]">{selectedItems.length}</strong> conversations? This action cannot be undone.
-                        </p>
-                        <div className="flex gap-3">
-                            <Button variant="secondary" className="flex-1 rounded-xl bg-white/10 text-white border-0 hover:bg-white/20" onClick={() => setActiveModal(null)} disabled={isProcessing}>Cancel</Button>
-                            <button 
-                                className="flex-1 flex items-center justify-center gap-2 rounded-xl font-semibold transition disabled:opacity-50 py-2" 
-                                style={{ backgroundColor: "var(--accent)", color: "#1A202C" }} 
-                                disabled={isProcessing}
-                                onClick={() => handleAction("delete")}
-                            >
-                                {isProcessing ? (
-                                    <>
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                        {`Deleting (${progressCount}/${selectedItems.length})`}
-                                    </>
-                                ) : (
-                                    "Delete All"
-                                )}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* BLOCK MODAL */}
-            {activeModal === "block" && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-300">
-                    <div className="bg-[#1A202C] border border-[var(--accent)]/30 rounded-[2rem] w-full max-w-sm shadow-2xl p-6 text-center animate-in zoom-in-95 duration-300">
-                        <Ban className="h-12 w-12 mx-auto mb-4" style={{ color: "var(--accent)" }} />
-                        <h2 className="text-xl font-bold text-white mb-2">Block Profiles?</h2>
-                        <p className="text-sm text-gray-400 mb-6">
-                            Are you sure you want to block the selected <strong style={{ color: "var(--accent)" }}>{selectedItems.length}</strong> profiles? This action cannot be undone.
-                        </p>
-                        <div className="flex gap-3">
-                            <Button variant="secondary" className="flex-1 rounded-xl bg-white/10 text-white border-0 hover:bg-white/20" onClick={() => setActiveModal(null)} disabled={isProcessing}>Cancel</Button>
-                            <button 
-                                className="flex-1 flex items-center justify-center gap-2 rounded-xl font-semibold transition disabled:opacity-50 py-2" 
-                                style={{ backgroundColor: "var(--accent)", color: "#1A202C" }} 
-                                disabled={isProcessing}
-                                onClick={() => handleAction("block")}
-                            >
-                                {isProcessing ? (
-                                    <>
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                        {`Blocking (${progressCount}/${selectedItems.length})`}
-                                    </>
-                                ) : (
-                                    "Block All"
-                                )}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             {/* MESSAGE MODAL */}
             {activeModal === "message" && (
