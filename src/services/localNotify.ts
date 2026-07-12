@@ -118,12 +118,23 @@ export async function notifyLocal(options: LocalNotifyOptions): Promise<void> {
 	}
 	try {
 		appLog.debug("[notify] sending", options.title);
-		sendNotification({
+		const p = platform();
+		const params: any = {
 			title: options.title,
 			body: options.body,
-			group: options.group,
-			icon: APP_ICON_NAME,
-		});
+		};
+		if (p === "linux") {
+			params.icon = APP_ICON_NAME;
+		}
+		if (p === "macos" || p === "ios") {
+			params.group = options.group;
+		}
+		const result = sendNotification(params) as any;
+		if (result && typeof result.catch === "function") {
+			result.catch((error: any) => {
+				appLog.warn("[notify] sendNotification promise rejected", error);
+			});
+		}
 	} catch (error) {
 		appLog.warn("[notify] sendNotification failed", error);
 	}
