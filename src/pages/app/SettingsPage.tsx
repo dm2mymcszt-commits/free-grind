@@ -7,20 +7,15 @@ import {
 	CheckCircle2,
 	ChevronLeft,
 	ChevronRight,
-	ClipboardList,
 	DatabaseBackup,
 	Download,
-	GitBranch,
 	Images,
 	Info,
 	Loader2,
 	LogOut,
 	Megaphone,
-	MessageSquareWarning,
-	History,
 	Palette,
 	Radar,
-	RefreshCcw,
 	Shield,
 	SlidersHorizontal,
     Workflow,
@@ -31,25 +26,12 @@ import { useState, useCallback, useEffect, useRef, type CSSProperties } from "re
 import toast from "react-hot-toast";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { appLog } from "../../utils/logger";
 import { useAuth } from "../../contexts/useAuth";
 import { useApi } from "../../hooks/useApi";
 import { usePreferences } from "../../contexts/PreferencesContext";
 import { exportAllLogs } from "../../services/chatLog";
 import { useInboxSyncStatus } from "../../hooks/useInboxSyncStatus";
 import type { InboxSyncStatus } from "../../services/inboxSync";
-import {
-	checkForHotswapUpdate,
-	getCurrentHotswapChannel,
-	getHotswapChannels,
-	installHotswapUpdate,
-	isHotswapAvailable,
-	setHotswapChannel,
-	clearContributorChannel,
-	isContributorChannel,
-	getContributorHandle,
-	type HotswapChannel,
-} from "../../services/hotswap";
 import { Button } from "../../components/ui/button";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { FingerprintCheckButton } from "../../components/FingerprintCheckButton";
@@ -200,8 +182,6 @@ export function SettingsPage() {
 	const { developerMode, showDebugInfo, setPreferences } = usePreferences();
 	const [previewAnnouncement, setPreviewAnnouncement] = useState(false);
 	const [previewOutdatedPrompt, setPreviewOutdatedPrompt] = useState(false);
-	const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
-	const [isSwitchingChannel, setIsSwitchingChannel] = useState(false);
 	const [isSyncingFcm, setIsSyncingFcm] = useState(false);
 	const [fcmToken, setFcmToken] = useState<string | null>(() => {
 		const stored = window.localStorage.getItem(PUSH_TOKEN_STORAGE_KEY);
@@ -254,21 +234,7 @@ export function SettingsPage() {
 		window.addEventListener("fg:fcm-token", onFcmToken as EventListener);
 		return () => window.removeEventListener("fg:fcm-token", onFcmToken as EventListener);
 	}, []);
-	const [updateChannel, setUpdateChannel] =
-		useState<HotswapChannel>(getCurrentHotswapChannel());
-	const visibleChannels = getHotswapChannels({ includeDevChannels: developerMode });
-	const [contributorCodeInput, setContributorCodeInput] = useState("");
-	const [isActivatingContributor, setIsActivatingContributor] = useState(false);
 
-	useEffect(() => {
-		if (!developerMode && updateChannel === "testingwjay") {
-			void setHotswapChannel("main").then(() => {
-				setUpdateChannel("main");
-				toast("Developer-only update channel disabled; switched to main.");
-			});
-		}
-		// Contributor channels are always allowed regardless of developer mode
-	}, [developerMode, updateChannel]);
 
 	const handleForceSyncFcm = useCallback(async (overrideToken?: string) => {
 		const tokenToSync = overrideToken ?? fcmToken;
@@ -331,145 +297,7 @@ export function SettingsPage() {
 		}
 	};
 
-	const handleCheckUpdates = async () => {
-		if (!isHotswapAvailable()) {
-			toast.error(t("settings.ota_available_only_tauri"));
-			return;
-		}
 
-		setIsCheckingUpdates(true);
-		try {
-			const result = await checkForHotswapUpdate();
-			if (result.requiresBinaryUpdate) {
-				toast.error(
-					result.notes ??
-						"This build is no longer compatible. Please download and install the latest APK.",
-				);
-				return;
-			}
-
-			if (!result.available) {
-				toast.success(t("settings.latest_version"));
-				return;
-			}
-
-			await installHotswapUpdate();
-			toast.success(t("settings.update_installed"));
-			window.location.reload();
-		} catch (error) {
-			const msg = getErrorMessage(error, t("settings.failed_update_check"));
-			if (import.meta.env.DEV) {
-				appLog.error("Update check failed:", error, "| message:", msg);
-			}
-			toast.error(msg, { duration: 10000 });
-		} finally {
-			setIsCheckingUpdates(false);
-		}
-	};
-
-	const handleSwitchUpdateChannel = async (channel: HotswapChannel) => {
-		if (!developerMode && channel === "testingwjay") {
-			toast.error("Enable Developer Mode to use this update branch.");
-			return;
-		}
-
-		if (!isHotswapAvailable()) {
-			toast.error(t("settings.ota_available_only_tauri"));
-			return;
-		}
-
-		if (channel === updateChannel) {
-			return;
-		}
-
-		setIsSwitchingChannel(true);
-		try {
-			await setHotswapChannel(channel);
-			setUpdateChannel(channel);
-
-			const result = await checkForHotswapUpdate();
-			if (!result.requiresBinaryUpdate && result.available) {
-				await installHotswapUpdate();
-				toast.success(t("settings.switched_and_updated", { channel }));
-				window.location.reload();
-				return;
-			}
-
-			toast.success(t("settings.switched_channel", { channel }));
-			window.location.reload();
-		} catch (error) {
-			if (import.meta.env.DEV) {
-				appLog.error("Switch update environment failed:", error);
-			}
-			toast.error(t("settings.failed_switch_env"));
-		} finally {
-			setIsSwitchingChannel(false);
-		}
-	};
-
-	const handleActivateContributorChannel = async () => {
-		const handle = contributorCodeInput.trim().toLowerCase();
-		if (!handle || !/^[a-z0-9_-]{1,32}$/.test(handle)) {
-			toast.error("Enter a valid contributor code (letters, numbers, _ or -).");
-			return;
-		}
-
-		if (!isHotswapAvailable()) {
-			toast.error(t("settings.ota_available_only_tauri"));
-			return;
-		}
-
-		const channel: HotswapChannel = `contrib-${handle}`;
-		setIsActivatingContributor(true);
-		try {
-			await setHotswapChannel(channel);
-			setUpdateChannel(channel);
-			setContributorCodeInput("");
-
-			const result = await checkForHotswapUpdate();
-			if (!result.available) {
-				toast.success(`Switched to ${handle}'s channel. No update available yet.`);
-				window.location.reload();
-				return;
-			}
-			if (result.requiresBinaryUpdate) {
-				toast.error(result.notes ?? "Binary update required.");
-				return;
-			}
-			await installHotswapUpdate();
-			toast.success(`Switched to ${handle}'s channel and updated!`);
-			window.location.reload();
-		} catch (error) {
-			if (import.meta.env.DEV) {
-				appLog.error("Contributor channel switch failed:", error);
-			}
-			toast.error("Failed to switch to contributor channel.");
-		} finally {
-			setIsActivatingContributor(false);
-		}
-	};
-
-	const handleLeaveContributorChannel = async () => {
-		if (!isHotswapAvailable()) {
-			toast.error(t("settings.ota_available_only_tauri"));
-			return;
-		}
-
-		setIsSwitchingChannel(true);
-		try {
-			await clearContributorChannel();
-			setUpdateChannel("main");
-			toast.success("Left contributor channel, switched back to main.");
-			window.location.reload();
-		} catch (error) {
-			if (import.meta.env.DEV) {
-				appLog.error("Leave contributor channel failed:", error);
-			}
-			toast.error("Failed to leave contributor channel.");
-		} finally {
-			setIsSwitchingChannel(false);
-		}
-	};
 
 	const navRow = (
 		onClick: (() => void) | null,
@@ -761,15 +589,6 @@ export function SettingsPage() {
 							t("settings.blocked_accounts_desc"),
 						)}
 						{navRow(
-							() => navigate("/settings/block-history"),
-							<History className="h-5 w-5" />,
-							"bg-orange-500/15 text-orange-400",
-							t("settings.block_history", { defaultValue: "Block Activity" }),
-							t("settings.block_history_desc", {
-								defaultValue: "See who has blocked or unblocked you, and when.",
-							}),
-						)}
-						{navRow(
 							() => navigate("/settings/privacy"),
 							<Shield className="h-5 w-5" />,
 							"bg-sky-500/15 text-sky-400",
@@ -795,113 +614,7 @@ export function SettingsPage() {
 					</div>
 				</div>
 
-				{/* Updates */}
-				<div>
-					<p className="mb-2 px-1 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">Updates</p>
-					<div className="surface-card overflow-hidden divide-y divide-[var(--border)]">
 
-						{/* Check for Updates + Channel switcher */}
-						<div className="flex items-start gap-3 px-4 py-3.5">
-							<div className="rounded-2xl bg-green-500/15 p-2.5 shrink-0 text-green-400">
-								<RefreshCcw className="h-5 w-5" />
-							</div>
-							<div className="min-w-0 flex-1">
-								<div className="grid grid-cols-[1fr_auto] gap-x-3">
-									<p className="text-sm font-semibold leading-snug">{t("settings.check_updates")}</p>
-									<div className="row-span-2 flex items-start">
-										{isSwitchingChannel ? (
-											<span className="text-xs text-[var(--text-muted)]">{t("settings.switching")}</span>
-										) : isCheckingUpdates ? (
-											<span className="text-xs text-[var(--text-muted)]">{t("settings.checking")}</span>
-										) : (
-											<Button type="button" onClick={() => void handleCheckUpdates()} disabled={isCheckingUpdates || isSwitchingChannel}>
-												{t("settings.check_now")}
-											</Button>
-										)}
-									</div>
-									<p className="mt-0.5 text-xs text-[var(--text-muted)]">{t("settings.check_updates_desc")}</p>
-								</div>
-								{visibleChannels.length > 0 && (
-									<div className="mt-3 flex flex-wrap gap-1">
-										{visibleChannels.map((channel) => (
-											<button
-												key={channel}
-												type="button"
-												disabled={isSwitchingChannel || isCheckingUpdates}
-												onClick={() => void handleSwitchUpdateChannel(channel)}
-												className={`rounded-full border px-2.5 py-0.5 text-xs font-medium transition ${
-													channel === updateChannel
-														? "border-[var(--accent)] bg-[var(--accent)] text-black"
-														: "border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-muted)] hover:border-[var(--accent)]/50"
-												}`}
-											>
-												{channel}
-											</button>
-										))}
-									</div>
-								)}
-							</div>
-						</div>
-
-						{/* Contributor Channel */}
-						{(developerMode || isContributorChannel(updateChannel)) && (
-							<div className="px-4 py-3.5">
-								<div className="flex items-start gap-3">
-									<div className="rounded-2xl bg-[var(--surface-2)] p-2.5 shrink-0 text-[var(--text-muted)]">
-										<GitBranch className="h-5 w-5" />
-									</div>
-									<div className="grid gap-2 min-w-0 flex-1">
-										<div>
-											<p className="text-sm font-semibold leading-snug">Contributor Channel</p>
-											<p className="text-xs text-[var(--text-muted)] mt-0.5">Receive experimental builds from a community contributor.</p>
-										</div>
-										{isContributorChannel(updateChannel) ? (
-											<>
-												<div className="flex items-center justify-between rounded-lg bg-[var(--accent)]/10 border border-[var(--accent)]/30 px-3 py-2">
-													<div>
-														<p className="text-xs text-[var(--text-muted)]">Active</p>
-														<p className="text-sm font-semibold text-[var(--accent)]">{getContributorHandle(updateChannel)}</p>
-													</div>
-													<button
-														type="button"
-														disabled={isSwitchingChannel}
-														onClick={() => void handleLeaveContributorChannel()}
-														className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-2.5 py-1 text-xs text-[var(--text-muted)] transition hover:border-red-400 hover:text-red-400 disabled:opacity-50"
-													>
-														{isSwitchingChannel ? "Leaving…" : "Leave"}
-													</button>
-												</div>
-												<p className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-300">
-													Community build — use at your own risk.
-												</p>
-											</>
-										) : developerMode ? (
-											<div className="flex items-center gap-2">
-												<input
-													type="text"
-													value={contributorCodeInput}
-													onChange={(e) => setContributorCodeInput(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))}
-													onKeyDown={(e) => { if (e.key === "Enter") void handleActivateContributorChannel(); }}
-													placeholder="contributor-handle"
-													maxLength={32}
-													className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 py-1.5 text-sm outline-none focus:border-[var(--accent)]"
-												/>
-												<button
-													type="button"
-													disabled={isActivatingContributor || !contributorCodeInput}
-													onClick={() => void handleActivateContributorChannel()}
-													className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-black transition disabled:opacity-50"
-												>
-													{isActivatingContributor ? "Activating…" : "Activate"}
-												</button>
-											</div>
-										) : null}
-									</div>
-								</div>
-							</div>
-						)}
-					</div>
-				</div>
 
 				{/* Dev tools */}
 				{developerMode ? (
@@ -1058,20 +771,6 @@ export function SettingsPage() {
 							"bg-slate-500/15 text-slate-400",
 							t("settings.about"),
 							t("settings.about_desc"),
-						)}
-						{navRow(
-							() => navigate("/settings/issues"),
-							<ClipboardList className="h-5 w-5" />,
-							"bg-orange-500/15 text-orange-400",
-							t("settings.issue_board"),
-							t("settings.issue_board_desc"),
-						)}
-						{navRow(
-							() => navigate("/settings/report-issue"),
-							<MessageSquareWarning className="h-5 w-5" />,
-							"bg-rose-500/15 text-rose-400",
-							t("settings.report_issue"),
-							t("settings.report_issue_desc"),
 						)}
 					</div>
 				</div>
