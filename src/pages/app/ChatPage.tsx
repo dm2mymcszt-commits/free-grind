@@ -1030,24 +1030,10 @@ export function ChatPage() {
 			const unresolved: string[] = [];
 			const resolved = new Map<string, ConversationEntry>();
 			for (const id of ids) {
-				let entry =
-					conversationsRef.current.find((c) => c.data.conversationId === id) ??
-					archivedConversationsRef.current.get(id)?.entry;
-
+				const entry =
+					archivedConversationsRef.current.get(id)?.entry ??
+					conversationsRef.current.find((c) => c.data.conversationId === id);
 				if (entry) {
-					if (selectedConversationIdRef.current === id && threadMessagesRef.current.length > 0) {
-						const latest = threadMessagesRef.current[threadMessagesRef.current.length - 1];
-						if (latest.timestamp > (entry.data.lastActivityTimestamp ?? 0)) {
-							entry = {
-								...entry,
-								data: {
-									...entry.data,
-									lastActivityTimestamp: latest.timestamp,
-									preview: buildPreviewFromMessage(latest, t),
-								},
-							};
-						}
-					}
 					resolved.set(id, entry);
 				} else {
 					unresolved.push(id);
@@ -1068,44 +1054,25 @@ export function ChatPage() {
 			}
 
 			if (unresolved.length > 0) {
-				void Promise.all(
-					unresolved.map(async (id) => {
-						const result = await chatDb.getConversation(id).catch(() => null);
-						if (!result) return null;
-						const messages = await chatDb.getMessages(id).catch(() => []);
-						let entry = result.entry;
-						if (messages.length > 0) {
-							const latest = messages[messages.length - 1];
-							if (latest.timestamp > (entry.data.lastActivityTimestamp ?? 0)) {
-								entry = {
-									...entry,
-									data: {
-										...entry.data,
-										lastActivityTimestamp: latest.timestamp,
-										preview: buildPreviewFromMessage(latest, t),
-									},
-								};
+				void Promise.all(unresolved.map((id) => chatDb.getConversation(id))).then(
+					(results) => {
+						setArchivedConversations((previous) => {
+							const next = new Map(previous);
+							for (const result of results) {
+								if (result) {
+									next.set(result.conversationId, {
+										reason,
+										entry:
+											reason === "ws_delete"
+												? clearUnreadForArchivedEntry(result.entry)
+												: result.entry,
+									});
+								}
 							}
-						}
-						return { conversationId: result.conversationId, entry };
-					}),
-				).then((results) => {
-					setArchivedConversations((previous) => {
-						const next = new Map(previous);
-						for (const result of results) {
-							if (result) {
-								next.set(result.conversationId, {
-									reason,
-									entry:
-										reason === "ws_delete"
-											? clearUnreadForArchivedEntry(result.entry)
-											: result.entry,
-								});
-							}
-						}
-						return next;
-					});
-				});
+							return next;
+						});
+					},
+				);
 			}
 		},
 		[clearUnreadForArchivedEntry],
@@ -1236,35 +1203,24 @@ export function ChatPage() {
 				// even though we have real local history.
 				const withPreviews = await Promise.all(
 					archived.map(async (c) => {
+						if (!isPreviewUnhelpful(c.entry.data.preview)) {
+							return c;
+						}
 						const messages = await chatDb.getMessages(c.conversationId);
-						let latestValidMessage: Message | null = null;
 						for (let i = messages.length - 1; i >= 0; i--) {
 							const message = messages[i];
 							if (message.body && typeof message.body === "object") {
-								latestValidMessage = message;
-								break;
-							}
-						}
-
-						if (
-							latestValidMessage &&
-							(latestValidMessage.timestamp > (c.entry.data.lastActivityTimestamp ?? 0) ||
-								isPreviewUnhelpful(c.entry.data.preview))
-						) {
-							return {
-								...c,
-								entry: {
-									...c.entry,
-									data: {
-										...c.entry.data,
-										lastActivityTimestamp: Math.max(
-											c.entry.data.lastActivityTimestamp ?? 0,
-											latestValidMessage.timestamp,
-										),
-										preview: buildPreviewFromMessage(latestValidMessage, t),
+								return {
+									...c,
+									entry: {
+										...c.entry,
+										data: {
+											...c.entry.data,
+											preview: buildPreviewFromMessage(message, t),
+										},
 									},
-								},
-							};
+								};
+							}
 						}
 						return c;
 					}),
