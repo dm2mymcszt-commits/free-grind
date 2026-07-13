@@ -214,8 +214,10 @@ export function createChatService(fetchRest: RestFetcher, t: (key: string) => st
 				const bioMatch = !isWhitelisted ? getMatchedForbiddenWord(aboutMe, "bio") : null;
 				const msgMatch = !isWhitelisted ? getMatchedForbiddenWord(lastMessageText, "message") : null;
 
+				const blockOnChat = window.localStorage.getItem("fg-block-chat") !== "false";
+
 				let shouldBlock = 
-					!isWhitelisted && (
+					blockOnChat && !isWhitelisted && (
 						nameMatch !== null || 
 						bioMatch !== null || 
 						msgMatch !== null ||

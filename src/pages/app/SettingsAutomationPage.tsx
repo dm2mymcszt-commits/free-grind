@@ -17,6 +17,7 @@ import { getThumbImageUrl } from "../../utils/media";
 import { getAutoBlockWhitelist, removeFromAutoBlockWhitelist } from "../../utils/privacy";
 import { useNavigate } from "react-router-dom";
 import { useApiFunctions } from "../../hooks/useApiFunctions";
+import { getForbiddenWords, setForbiddenWords as setForbiddenWordsInStore } from "../../utils/autoblock";
 
 export function SettingsAutomationPage() {
     const { t } = useTranslation();
@@ -30,7 +31,7 @@ export function SettingsAutomationPage() {
 
     // --- AUTO-BLOCK STATE ---
     const [blockOnChat, setBlockOnChat] = useState(() => window.localStorage.getItem("fg-block-chat") === "true");
-    const [forbiddenWords, setForbiddenWords] = useState(() => window.localStorage.getItem("fg-forbidden-words") || "");
+    const [forbiddenWords, setForbiddenWords] = useState(() => getForbiddenWords() || window.localStorage.getItem("fg-forbidden-words") || "");
     const [minAge, setMinAge] = useState(() => window.localStorage.getItem("fg-block-min-age") ?? "18");
     const [maxAge, setMaxAge] = useState(() => window.localStorage.getItem("fg-block-max-age") ?? "99");
     const [blockNoAge, setBlockNoAge] = useState(() => window.localStorage.getItem("fg-block-no-age") === "true");
@@ -150,6 +151,8 @@ export function SettingsAutomationPage() {
 
     const handleClearKeywords = () => {
         setForbiddenWords("");
+        void setForbiddenWordsInStore("");
+        window.localStorage.removeItem("fg-forbidden-words");
         setIsClearKeywordsConfirmOpen(false);
         toast.success("All keywords cleared! (Click Save to apply)");
     };
@@ -206,6 +209,7 @@ export function SettingsAutomationPage() {
         const finalWordsString = uniqueSortedWords.join(', ');
 		
         setForbiddenWords(finalWordsString);
+        void setForbiddenWordsInStore(finalWordsString);
 
         window.localStorage.setItem("fg-block-name", String(blockName));
         window.localStorage.setItem("fg-block-bio", String(blockBio));
@@ -377,7 +381,9 @@ export function SettingsAutomationPage() {
                                                 <button type="button" onClick={() => {
                                                     const cleaned = forbiddenWords.split(',').map(w => w.trim()).filter(w => w.length > 0);
                                                     const unique = [...new Set(cleaned)].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
-                                                    setForbiddenWords(unique.join(', '));
+                                                    const cleanStr = unique.join(', ');
+                                                    setForbiddenWords(cleanStr);
+                                                    void setForbiddenWordsInStore(cleanStr);
                                                     toast.success("Keywords sorted!");
                                                 }} className="flex items-center gap-1 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--accent)] transition">
                                                     <Wand2 className="h-3 w-3" /> Clean

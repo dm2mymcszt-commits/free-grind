@@ -75,9 +75,10 @@ export function getMatchedForbiddenWord(text: string | null | undefined, target:
             .map(word => word.trim().toLowerCase())
             .filter(word => word.length > 0)
             .map(keyword => {
-                const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const cleanKeyword = keyword.replace(/\s+/g, ' ');
+                const escaped = cleanKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 return {
-                    keyword,
+                    keyword: cleanKeyword,
                     regex: new RegExp(`(?:^|\\W)${escaped}(?:$|\\W)`, 'i') // Your exact match rule
                 };
             });
@@ -85,8 +86,10 @@ export function getMatchedForbiddenWord(text: string | null | undefined, target:
 
     if (cachedRegexes.length === 0) return null;
 
+    const normalizedText = text.replace(/\s+/g, ' ').trim();
+
     for (const item of cachedRegexes) {
-        if (item.regex.test(text)) {
+        if (item.regex.test(text) || item.regex.test(normalizedText)) {
             return item.keyword; // Boom. Caught.
         }
     }
@@ -220,7 +223,12 @@ let automationCache: AutomationSettings = DEFAULT_AUTOMATION_SETTINGS;
 export async function loadAutomationCache(): Promise<void> {
     try {
         const stored = await getSetting<Partial<AutomationSettings>>(AUTOMATION_SETTINGS_KEY);
+        const localWords = typeof window !== "undefined" ? window.localStorage.getItem("fg-forbidden-words") || "" : "";
         automationCache = { ...DEFAULT_AUTOMATION_SETTINGS, ...stored };
+        if (!automationCache.forbiddenWords && localWords) {
+            automationCache.forbiddenWords = localWords;
+            await setSetting(AUTOMATION_SETTINGS_KEY, automationCache).catch(() => {});
+        }
     } catch (error) {
         appLog.error("[AutoBlock] failed to load automation settings", error);
         automationCache = DEFAULT_AUTOMATION_SETTINGS;
@@ -240,10 +248,18 @@ export async function setAutomationSettings(
 }
 
 export function getForbiddenWords(): string {
-    return automationCache.forbiddenWords;
+    const fromCache = automationCache.forbiddenWords;
+    if (fromCache && fromCache.trim()) return fromCache;
+    if (typeof window !== "undefined") {
+        return window.localStorage.getItem("fg-forbidden-words") || "";
+    }
+    return "";
 }
 
 export async function setForbiddenWords(value: string): Promise<void> {
+    if (typeof window !== "undefined") {
+        window.localStorage.setItem("fg-forbidden-words", value);
+    }
     await setAutomationSettings({ forbiddenWords: value });
 }
 
