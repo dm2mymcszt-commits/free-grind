@@ -1949,7 +1949,7 @@ export function ChatThreadMessages({
                                 {mine && !pending && !failed && lastMyMessageId === message.messageId && (
                                     <div className="-mt-1 px-1">
                                         <span className="text-[10px] font-medium uppercase tracking-wider text-[var(--text-muted)] opacity-80">
-                                            {threadLastReadTimestamp != null && (message.timestamp <= threadLastReadTimestamp || message.timestamp - 5000 <= threadLastReadTimestamp)
+                                            {threadLastReadTimestamp != null && message.timestamp <= threadLastReadTimestamp
                                                 ? t("chat.read")
                                                 : t("chat.unread")}
                                         </span>
