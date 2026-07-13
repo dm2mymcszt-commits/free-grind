@@ -1030,10 +1030,24 @@ export function ChatPage() {
 			const unresolved: string[] = [];
 			const resolved = new Map<string, ConversationEntry>();
 			for (const id of ids) {
-				const entry =
-					archivedConversationsRef.current.get(id)?.entry ??
-					conversationsRef.current.find((c) => c.data.conversationId === id);
+				let entry =
+					conversationsRef.current.find((c) => c.data.conversationId === id) ??
+					archivedConversationsRef.current.get(id)?.entry;
+
 				if (entry) {
+					if (selectedConversationIdRef.current === id && threadMessagesRef.current.length > 0) {
+						const latest = threadMessagesRef.current[threadMessagesRef.current.length - 1];
+						if (latest.timestamp > (entry.data.lastActivityTimestamp ?? 0)) {
+							entry = {
+								...entry,
+								data: {
+									...entry.data,
+									lastActivityTimestamp: latest.timestamp,
+									preview: buildPreviewFromMessage(latest, t),
+								},
+							};
+						}
+					}
 					resolved.set(id, entry);
 				} else {
 					unresolved.push(id);
@@ -1054,25 +1068,44 @@ export function ChatPage() {
 			}
 
 			if (unresolved.length > 0) {
-				void Promise.all(unresolved.map((id) => chatDb.getConversation(id))).then(
-					(results) => {
-						setArchivedConversations((previous) => {
-							const next = new Map(previous);
-							for (const result of results) {
-								if (result) {
-									next.set(result.conversationId, {
-										reason,
-										entry:
-											reason === "ws_delete"
-												? clearUnreadForArchivedEntry(result.entry)
-												: result.entry,
-									});
-								}
+				void Promise.all(
+					unresolved.map(async (id) => {
+						const result = await chatDb.getConversation(id).catch(() => null);
+						if (!result) return null;
+						const messages = await chatDb.getMessages(id).catch(() => []);
+						let entry = result.entry;
+						if (messages.length > 0) {
+							const latest = messages[messages.length - 1];
+							if (latest.timestamp > (entry.data.lastActivityTimestamp ?? 0)) {
+								entry = {
+									...entry,
+									data: {
+										...entry.data,
+										lastActivityTimestamp: latest.timestamp,
+										preview: buildPreviewFromMessage(latest, t),
+									},
+								};
 							}
-							return next;
-						});
-					},
-				);
+						}
+						return { conversationId: result.conversationId, entry };
+					}),
+				).then((results) => {
+					setArchivedConversations((previous) => {
+						const next = new Map(previous);
+						for (const result of results) {
+							if (result) {
+								next.set(result.conversationId, {
+									reason,
+									entry:
+										reason === "ws_delete"
+											? clearUnreadForArchivedEntry(result.entry)
+											: result.entry,
+								});
+							}
+						}
+						return next;
+					});
+				});
 			}
 		},
 		[clearUnreadForArchivedEntry],
@@ -1203,24 +1236,35 @@ export function ChatPage() {
 				// even though we have real local history.
 				const withPreviews = await Promise.all(
 					archived.map(async (c) => {
-						if (!isPreviewUnhelpful(c.entry.data.preview)) {
-							return c;
-						}
 						const messages = await chatDb.getMessages(c.conversationId);
+						let latestValidMessage: Message | null = null;
 						for (let i = messages.length - 1; i >= 0; i--) {
 							const message = messages[i];
 							if (message.body && typeof message.body === "object") {
-								return {
-									...c,
-									entry: {
-										...c.entry,
-										data: {
-											...c.entry.data,
-											preview: buildPreviewFromMessage(message, t),
-										},
-									},
-								};
+								latestValidMessage = message;
+								break;
 							}
+						}
+
+						if (
+							latestValidMessage &&
+							(latestValidMessage.timestamp > (c.entry.data.lastActivityTimestamp ?? 0) ||
+								isPreviewUnhelpful(c.entry.data.preview))
+						) {
+							return {
+								...c,
+								entry: {
+									...c.entry,
+									data: {
+										...c.entry.data,
+										lastActivityTimestamp: Math.max(
+											c.entry.data.lastActivityTimestamp ?? 0,
+											latestValidMessage.timestamp,
+										),
+										preview: buildPreviewFromMessage(latestValidMessage, t),
+									},
+								},
+							};
 						}
 						return c;
 					}),
@@ -1590,52 +1634,60 @@ export function ChatPage() {
 					});
 				});
 
-				// The live API sometimes returns a null preview for a conversation
-				// whose last message was unsent server-side, even though we have
-				// real history for it locally — patch in a preview built from that
-				// history instead of leaving the inbox row stuck on "no messages
-				// yet" for a conversation that clearly has messages.
-				const entriesNeedingFallbackPreview = response.entries.filter((entry) =>
-					isPreviewUnhelpful(entry.data.preview),
-				);
-				if (entriesNeedingFallbackPreview.length > 0) {
-					void Promise.all(
-						entriesNeedingFallbackPreview.map(async (entry) => {
-							const cid = entry.data.conversationId;
-							const localData = await chatLog.readLog(cid);
-							for (let i = localData.messages.length - 1; i >= 0; i--) {
-								const message = localData.messages[i];
-								if (message.body && typeof message.body === "object") {
-									return [cid, buildPreviewFromMessage(message, t)] as const;
+				// Patch inbox previews & timestamps from local stored history whenever
+				// local messages have a newer timestamp or server preview is null/unhelpful.
+				void Promise.all(
+					response.entries.map(async (entry) => {
+						const cid = entry.data.conversationId;
+						const localData = await chatLog.readLog(cid);
+						for (let i = localData.messages.length - 1; i >= 0; i--) {
+							const message = localData.messages[i];
+							if (message.body && typeof message.body === "object") {
+								const serverTs = entry.data.lastActivityTimestamp ?? 0;
+								if (message.timestamp > serverTs || isPreviewUnhelpful(entry.data.preview)) {
+									return {
+										conversationId: cid,
+										lastActivityTimestamp: Math.max(serverTs, message.timestamp),
+										preview: buildPreviewFromMessage(message, t),
+									};
 								}
+								break;
 							}
-							return null;
-						}),
-					).then((results) => {
-						const patches = new Map(
-							results.filter(
-								(r): r is readonly [string, ReturnType<typeof buildPreviewFromMessage>] =>
-									r != null,
-							),
-						);
-						if (patches.size === 0) {
-							return;
 						}
-						setConversations((previous) =>
-							previous.map((conversation) =>
-								patches.has(conversation.data.conversationId)
-									? {
-											...conversation,
-											data: {
-												...conversation.data,
-												preview: patches.get(conversation.data.conversationId)!,
-											},
-										}
-									: conversation,
-							),
-						);
+						return null;
+					}),
+				).then((results) => {
+					const patches = new Map(
+						results
+							.filter((r): r is NonNullable<typeof r> => r != null)
+							.map((r) => [r.conversationId, r] as const),
+					);
+					if (patches.size === 0) {
+						return;
+					}
+					setConversations((previous) => {
+						const updated = previous.map((conversation) => {
+							const patch = patches.get(conversation.data.conversationId);
+							if (!patch) return conversation;
+							return {
+								...conversation,
+								data: {
+									...conversation.data,
+									lastActivityTimestamp: Math.max(
+										conversation.data.lastActivityTimestamp ?? 0,
+										patch.lastActivityTimestamp,
+									),
+									preview: patch.preview,
+								},
+							};
+						});
+						return [...updated].sort((a, b) => {
+							if (a.data.pinned && !b.data.pinned) return -1;
+							if (b.data.pinned && !a.data.pinned) return 1;
+							return (b.data.lastActivityTimestamp ?? 0) - (a.data.lastActivityTimestamp ?? 0);
+						});
 					});
-				}
+				});
 
 				setNextPage(response.nextPage ?? null);
 				if (replace && response.entries.length > 0) {
@@ -2835,6 +2887,41 @@ export function ChatPage() {
 				if (b.data.pinned && !a.data.pinned) return 1;
 				return (b.data.lastActivityTimestamp ?? 0) - (a.data.lastActivityTimestamp ?? 0);
 			});
+		});
+
+		setArchivedConversations((previous) => {
+			let changed = false;
+			const next = new Map(previous);
+			for (const [cid, latestMessage] of byConversation) {
+				const archivedItem = next.get(cid);
+				if (archivedItem) {
+					if (latestMessage.timestamp > (archivedItem.entry.data.lastActivityTimestamp ?? 0)) {
+						changed = true;
+						const text = getMessagePreviewLabel(latestMessage, t);
+						next.set(cid, {
+							...archivedItem,
+							entry: {
+								...archivedItem.entry,
+								data: {
+									...archivedItem.entry.data,
+									lastActivityTimestamp: latestMessage.timestamp,
+									preview: {
+										conversationId: { value: cid },
+										messageId: latestMessage.messageId,
+										senderId: latestMessage.senderId,
+										type: latestMessage.type,
+										chat1Type: latestMessage.chat1Type ?? "text",
+										text,
+										albumId: null,
+										imageHash: null,
+									},
+								},
+							},
+						});
+					}
+				}
+			}
+			return changed ? next : previous;
 		});
 	}, [loadInbox, userId, t]);
 

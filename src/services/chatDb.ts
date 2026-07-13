@@ -981,6 +981,55 @@ export async function upsertMessages(
 				],
 			);
 		}
+
+		// Keep conversations table's last_activity_timestamp and preview_json up to date
+		// so archived or offline-hydrated conversations show current message previews & correct sorting.
+		const latestMessage = messages.reduce<Message>(
+			(latest, m) => (!latest || m.timestamp > latest.timestamp ? m : latest),
+			messages[0],
+		);
+		if (latestMessage && latestMessage.timestamp > 0) {
+			let previewText = "Message";
+			const msgType = latestMessage.type?.toLowerCase() || "";
+			const chat1Type = latestMessage.chat1Type?.toLowerCase() || "";
+			if (latestMessage.unsent) {
+				previewText = "Message recalled";
+			} else if (msgType === "image" || msgType === "expiringimage" || chat1Type === "image" || chat1Type === "expiring_image") {
+				previewText = "📷 Image";
+			} else if (msgType === "video" || msgType === "privatevideo" || msgType === "nonexpiringvideo" || chat1Type === "video" || chat1Type === "private_video" || chat1Type === "expiring_video") {
+				previewText = "📹 Video";
+			} else if (msgType === "audio") {
+				previewText = "🎵 Audio";
+			} else if (msgType === "location") {
+				previewText = "📍 Location";
+			} else if (msgType === "album" || msgType === "expiringalbum" || msgType === "expiringalbumv2") {
+				previewText = "🖼️ Shared album";
+			} else if (latestMessage.body && typeof latestMessage.body === "object" && typeof (latestMessage.body as Record<string, unknown>).text === "string") {
+				previewText = (latestMessage.body as Record<string, unknown>).text as string;
+			}
+
+			const previewJson = JSON.stringify({
+				conversationId: { value: conversationId },
+				messageId: latestMessage.messageId,
+				senderId: latestMessage.senderId,
+				type: latestMessage.type ?? "Unknown",
+				chat1Type: latestMessage.chat1Type ?? "text",
+				text: previewText,
+				albumId: null,
+				imageHash: null,
+			});
+
+			await db.execute(
+				`
+				UPDATE conversations
+				SET last_activity_timestamp = $2,
+				    preview_json = $3,
+				    updated_at = $4
+				WHERE conversation_id = $1 AND ($2 >= COALESCE(last_activity_timestamp, 0))
+				`,
+				[conversationId, latestMessage.timestamp, previewJson, now],
+			);
+		}
 	});
 }
 
