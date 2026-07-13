@@ -1036,21 +1036,14 @@ export function ChatPage() {
 
 				if (entry) {
 					if (selectedConversationIdRef.current === id && threadMessagesRef.current.length > 0) {
-						let latestRealMessage: Message | null = null;
-						for (let i = threadMessagesRef.current.length - 1; i >= 0; i--) {
-							const m = threadMessagesRef.current[i];
-							if (!m.type?.startsWith("System")) {
-								latestRealMessage = m;
-								break;
-							}
-						}
-						if (latestRealMessage && latestRealMessage.timestamp > (entry.data.lastActivityTimestamp ?? 0)) {
+						const latest = threadMessagesRef.current[threadMessagesRef.current.length - 1];
+						if (latest.timestamp > (entry.data.lastActivityTimestamp ?? 0)) {
 							entry = {
 								...entry,
 								data: {
 									...entry.data,
-									lastActivityTimestamp: latestRealMessage.timestamp,
-									preview: buildPreviewFromMessage(latestRealMessage, t),
+									lastActivityTimestamp: latest.timestamp,
+									preview: buildPreviewFromMessage(latest, t),
 								},
 							};
 						}
@@ -1081,18 +1074,14 @@ export function ChatPage() {
 						if (!result) return null;
 						const messages = await chatDb.getMessages(id).catch(() => []);
 						let entry = result.entry;
-						const realMessages = messages.filter((m) => !m.type?.startsWith("System"));
-						if (realMessages.length > 0) {
-							const latest = realMessages[realMessages.length - 1];
-							if (latest.timestamp > (entry.data.lastActivityTimestamp ?? 0) || isPreviewUnhelpful(entry.data.preview)) {
+						if (messages.length > 0) {
+							const latest = messages[messages.length - 1];
+							if (latest.timestamp > (entry.data.lastActivityTimestamp ?? 0)) {
 								entry = {
 									...entry,
 									data: {
 										...entry.data,
-										lastActivityTimestamp: Math.max(
-											entry.data.lastActivityTimestamp ?? 0,
-											latest.timestamp,
-										),
+										lastActivityTimestamp: latest.timestamp,
 										preview: buildPreviewFromMessage(latest, t),
 									},
 								};
@@ -1251,7 +1240,7 @@ export function ChatPage() {
 						let latestValidMessage: Message | null = null;
 						for (let i = messages.length - 1; i >= 0; i--) {
 							const message = messages[i];
-							if (!message.type?.startsWith("System") && message.body && typeof message.body === "object") {
+							if (message.body && typeof message.body === "object") {
 								latestValidMessage = message;
 								break;
 							}
@@ -1653,7 +1642,7 @@ export function ChatPage() {
 						const localData = await chatLog.readLog(cid);
 						for (let i = localData.messages.length - 1; i >= 0; i--) {
 							const message = localData.messages[i];
-							if (!message.type?.startsWith("System") && message.body && typeof message.body === "object") {
+							if (message.body && typeof message.body === "object") {
 								const serverTs = entry.data.lastActivityTimestamp ?? 0;
 								if (message.timestamp > serverTs || isPreviewUnhelpful(entry.data.preview)) {
 									return {
