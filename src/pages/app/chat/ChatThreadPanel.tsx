@@ -1519,7 +1519,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 													{selectedConversation?.data.muted ? t("chat.unmute") : t("chat.mute")}
 												</button>
 											)}
-											{otherParticipant && !isArchived && (
+											{otherParticipant && (
 												<button
 													type="button"
 													onClick={() => {

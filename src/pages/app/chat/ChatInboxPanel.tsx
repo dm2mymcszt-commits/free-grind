@@ -1,6 +1,7 @@
-import { Archive, BellOff, Eye, EyeOff, Home, Loader2, MessageCircle, Pin, PinOff, Star, Trash2, Zap } from "lucide-react";
+import { Archive, BellOff, Eye, EyeOff, Home, Loader2, MessageCircle, Pin, PinOff, ShieldCheck, Star, Trash2, Zap } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
+import toast from "react-hot-toast";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChatSearchPanel } from "./ChatSearchPanel";
 import { ChatInboxHeader, type ChatInboxHeaderProps } from "./ChatInboxHeader";
@@ -19,7 +20,13 @@ import {
 	getParticipantOnlineMeta,
 	getPreviewText,
 } from "../chat/chatUtils";
-import { isReadReceiptsHidden, useReadReceiptsChanged } from "../../../utils/privacy";
+import {
+	isReadReceiptsHidden,
+	useReadReceiptsChanged,
+	isProfileAutoblockWhitelisted,
+	addToAutoBlockWhitelist,
+	removeFromAutoBlockWhitelist,
+} from "../../../utils/privacy";
 import {
 	SKIP_DELETE_CONVERSATION_CONFIRM_KEY,
 	isDeleteConversationConfirmSkipped,
@@ -192,6 +199,10 @@ function ConversationContextMenu({
 	}, [onClose]);
 
 	const isPinned = conversation.data.pinned;
+	const otherParticipant = getOtherParticipant(conversation, null);
+	const otherProfileId = otherParticipant?.profileId ? String(otherParticipant.profileId) : null;
+	const displayName = (otherParticipant as any)?.displayName || conversation.data.name || "User";
+	const isWhitelisted = otherProfileId ? isProfileAutoblockWhitelisted(otherProfileId) : false;
 
 	// Portal to <body> — the list sits inside PullToRefreshContainer, which
 	// applies a `transform` to its content wrapper (even at rest, translateY(0)
@@ -224,6 +235,25 @@ function ConversationContextMenu({
 					? t("chat.unhide_conversation", { defaultValue: "Unhide" })
 					: t("chat.hide_conversation", { defaultValue: "Hide" })}
 			</button>
+			{otherProfileId && (
+				<button
+					type="button"
+					onClick={() => {
+						onClose();
+						if (isWhitelisted) {
+							removeFromAutoBlockWhitelist(otherProfileId);
+							toast.success(`Removed "${displayName}" from Auto-Block Whitelist.`);
+						} else {
+							addToAutoBlockWhitelist(otherProfileId, displayName, otherParticipant?.primaryMediaHash);
+							toast.success(`Added "${displayName}" to Auto-Block Whitelist.`);
+						}
+					}}
+					className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--text)] transition hover:bg-[var(--surface-2)]"
+				>
+					<ShieldCheck className="h-4 w-4" />
+					{isWhitelisted ? "Remove Whitelist" : "Add Whitelist"}
+				</button>
+			)}
 			<button
 				type="button"
 				onClick={onDelete}
