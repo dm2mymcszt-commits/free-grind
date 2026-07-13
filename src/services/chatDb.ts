@@ -1051,7 +1051,7 @@ export async function insertSystemMessage(
 	timestamp: number = Date.now(),
 ): Promise<Message> {
 	const message: Message = {
-		messageId: `local-system:${type}:${conversationId}:${timestamp}`,
+		messageId: `local-system:${type}:${conversationId}`,
 		conversationId,
 		senderId: 0,
 		timestamp,
