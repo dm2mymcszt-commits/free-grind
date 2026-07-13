@@ -874,9 +874,7 @@ export async function getLastReadTimestamp(
 		"SELECT last_read_timestamp FROM conversation_meta WHERE conversation_id = $1",
 		[conversationId],
 	);
-	const raw = rows[0]?.last_read_timestamp ?? null;
-	if (raw == null || raw <= 0) return null;
-	return raw < 100_000_000_000 ? raw * 1000 : raw;
+	return rows[0]?.last_read_timestamp ?? null;
 }
 
 export async function setLastReadTimestamp(
@@ -884,10 +882,6 @@ export async function setLastReadTimestamp(
 	timestamp: number | null,
 ): Promise<void> {
 	const db = await getDb();
-	const normalizedMs =
-		timestamp != null && timestamp > 0
-			? (timestamp < 100_000_000_000 ? timestamp * 1000 : timestamp)
-			: null;
 
 	await executeWithLockRetry(db, "set-last-read-timestamp", async () => {
 		await db.execute(
@@ -896,7 +890,7 @@ export async function setLastReadTimestamp(
 			VALUES ($1, $2)
 			ON CONFLICT(conversation_id) DO UPDATE SET last_read_timestamp = excluded.last_read_timestamp
 			`,
-			[conversationId, normalizedMs],
+			[conversationId, timestamp],
 		);
 	});
 }
