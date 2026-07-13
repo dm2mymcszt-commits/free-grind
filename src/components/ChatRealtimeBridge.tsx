@@ -56,7 +56,6 @@ import { captureAlbumsForMessages } from "../services/albumStore";
 import { captureReplyPreviewsForMessages } from "../services/replyMediaStore";
 import { getConversation, getDisplayName } from "../services/conversationDirectory";
 import { runAutomationRulesForSender } from "../utils/automationRules";
-import { getMatchedForbiddenWord, notifyAutoBlock } from "../utils/autoblock";
 import { useApiFunctions } from "../hooks/useApiFunctions";
 import { useBlockedProfileIds } from "../hooks/queries/useProfileQueries";
 import { isReadReceiptsHidden } from "../utils/privacy";
@@ -669,20 +668,8 @@ export function ChatRealtimeBridge() {
 
 						const isIncoming = userIdRef.current != null && Number(m.senderId) !== Number(userIdRef.current);
 
-						// --- FORBIDDEN KEYWORDS & CUSTOM AUTOMATION RULES ---
+						// --- CUSTOM AUTOMATION RULES ---
 						if (isIncoming && m.senderId) {
-							const isBlockEnabled = window.localStorage.getItem("fg-block-chat") !== "false";
-							if (isBlockEnabled && messageText) {
-								const matchedKeyword = getMatchedForbiddenWord(messageText, "message");
-								if (matchedKeyword) {
-									appLog.info(`[ChatRealtimeBridge] Instant auto-blocking ${m.senderId} due to forbidden word: "${matchedKeyword}"`);
-									const pidStr = String(m.senderId);
-									await apiFunctions.blockProfile(pidStr).catch(() => {});
-									void notifyAutoBlock(pidStr, `Message matched forbidden word: "${matchedKeyword}"`);
-									continue;
-								}
-							}
-
 							const { blocked: blockedByNewChat } = await runAutomationRulesForSender(
 								String(m.senderId),
 								"new_chat",

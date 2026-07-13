@@ -1031,8 +1031,8 @@ export function ChatPage() {
 			const resolved = new Map<string, ConversationEntry>();
 			for (const id of ids) {
 				const entry =
-					conversationsRef.current.find((c) => c.data.conversationId === id) ??
-					archivedConversationsRef.current.get(id)?.entry;
+					archivedConversationsRef.current.get(id)?.entry ??
+					conversationsRef.current.find((c) => c.data.conversationId === id);
 				if (entry) {
 					resolved.set(id, entry);
 				} else {
@@ -2835,41 +2835,6 @@ export function ChatPage() {
 				if (b.data.pinned && !a.data.pinned) return 1;
 				return (b.data.lastActivityTimestamp ?? 0) - (a.data.lastActivityTimestamp ?? 0);
 			});
-		});
-
-		setArchivedConversations((previous) => {
-			let changed = false;
-			const next = new Map(previous);
-			for (const [cid, latestMessage] of byConversation) {
-				const archivedItem = next.get(cid);
-				if (archivedItem) {
-					if (latestMessage.timestamp > (archivedItem.entry.data.lastActivityTimestamp ?? 0)) {
-						changed = true;
-						const text = getMessagePreviewLabel(latestMessage, t);
-						next.set(cid, {
-							...archivedItem,
-							entry: {
-								...archivedItem.entry,
-								data: {
-									...archivedItem.entry.data,
-									lastActivityTimestamp: latestMessage.timestamp,
-									preview: {
-										conversationId: { value: cid },
-										messageId: latestMessage.messageId,
-										senderId: latestMessage.senderId,
-										type: latestMessage.type,
-										chat1Type: latestMessage.chat1Type ?? "text",
-										text,
-										albumId: null,
-										imageHash: null,
-									},
-								},
-							},
-						});
-					}
-				}
-			}
-			return changed ? next : previous;
 		});
 	}, [loadInbox, userId, t]);
 
