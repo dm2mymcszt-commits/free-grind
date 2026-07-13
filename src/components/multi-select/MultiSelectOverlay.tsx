@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Trash2, MessageSquare, CheckSquare, Send, Ban, Loader2 } from "lucide-react";
+import { X, Trash2, CheckSquare, Ban, Loader2 } from "lucide-react";
 import { useMultiSelect } from "../../contexts/MultiSelectContext";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
@@ -8,10 +8,8 @@ import { deleteConversationOnly } from "../../services/chatDb";
 
 export function MultiSelectOverlay() {
     const { isActive, selectedItems, viewType, deactivateMode, selectableItems, setSelectedItems } = useMultiSelect();
-    const [activeModal, setActiveModal] = useState<"message" | null>(null);
     const [confirmAction, setConfirmAction] = useState<"delete" | "block" | null>(null);
     const [progressCount, setProgressCount] = useState(0);
-    const [messageText, setMessageText] = useState("");
     const [isProcessing, setIsProcessing] = useState(false);
     const navigate = useNavigate();
     const api = useApiFunctions();
@@ -26,24 +24,13 @@ export function MultiSelectOverlay() {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === "Escape" && isActive) {
                 e.preventDefault();
-                if (activeModal) {
-                    setActiveModal(null);
-                } else {
-                    deactivateMode();
-                    navigate(-1); // Go back one level
-                }
+                deactivateMode();
+                navigate(-1); // Go back one level
             }
         };
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [isActive, activeModal, deactivateMode, navigate]);
-
-    // Truncated Recipient List
-    const generateRecipientString = () => {
-        if (selectedItems.length === 0) return "";
-        if (selectedItems.length <= 3) return selectedItems.map(s => s.name).join(", ");
-        return `${selectedItems[0].name}, ${selectedItems[1].name}, ${selectedItems[2].name}, +${selectedItems.length - 3} others`;
-    };
+    }, [isActive, deactivateMode, navigate]);
 
     const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -123,30 +110,12 @@ export function MultiSelectOverlay() {
                     }
                     toast.success(`Blocked ${successCount} profiles.`);
                     break;
-
-                case "message":
-                    if (!messageText.trim()) return;
-                    for (const item of selectedItems) {
-                        const targetId = item.profileId || item.id;
-                        try {
-                            await api.sendText({ targetProfileId: Number(targetId), text: messageText });
-                            successCount++;
-                        } catch (e) {
-                            console.error(`Failed to send message to ${targetId}`, e);
-                        }
-                        setProgressCount(prev => prev + 1);
-                        await delay(1000); 
-                    }
-                    toast.success(`Message sent to ${successCount} profiles!`);
-                    setMessageText("");
-                    break;
             }
         } catch (error) {
             toast.error("An error occurred during bulk processing.");
         } finally {
             setIsProcessing(false);
             setConfirmAction(null);
-            setActiveModal(null);
             deactivateMode();
             
             if (action === "delete" || action === "block") {
@@ -163,7 +132,7 @@ export function MultiSelectOverlay() {
             {/* LIQUID GLASS ACTION BAR */}
             <div 
                 className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] w-[96%] max-w-3xl transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] ${
-                    isActive && !activeModal ? "translate-y-0 opacity-100 scale-100" : "translate-y-[150%] opacity-0 scale-90 pointer-events-none"
+                    isActive ? "translate-y-0 opacity-100 scale-100" : "translate-y-[150%] opacity-0 scale-90 pointer-events-none"
                 }`}
             >
                 {/* 2. iOS 26 Liquid Glass implementation */}
@@ -241,16 +210,6 @@ export function MultiSelectOverlay() {
                         </div>
                     ) : (
                         <div className="flex sm:flex-wrap items-center justify-start gap-2 overflow-x-auto px-1 pb-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] snap-x w-full">
-                            
-                            {/* PRIMARY ACTION (Solid Accent) */}
-                            <button 
-                                onClick={() => setActiveModal("message")} 
-                                disabled={selectedItems.length === 0 || isProcessing} 
-                                className="snap-start shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-2xl transition disabled:opacity-50 text-sm font-bold shadow-md hover:brightness-110"
-                                style={{ backgroundColor: "var(--accent)", color: "#1A202C" }}
-                            >
-                                <MessageSquare className="h-4 w-4" /> Message
-                            </button>
 
                             {/* DELETE (Only for inbox, white style) */}
                             {viewType === "inbox" && (
@@ -288,55 +247,6 @@ export function MultiSelectOverlay() {
 
                 </div>
             </div>
-
-            {/* MESSAGE MODAL */}
-            {activeModal === "message" && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-300">
-                    <div className="bg-[#1A202C] border border-[var(--accent)]/30 rounded-[2rem] w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-                        <div className="bg-black/40 p-5 border-b border-white/5 flex justify-between items-center">
-                            <h2 className="text-sm font-bold uppercase tracking-widest text-white flex items-center gap-2">
-                                <MessageSquare className="h-4 w-4" style={{ color: "var(--accent)" }} /> Bulk Message
-                            </h2>
-                            <button onClick={() => setActiveModal(null)} disabled={isProcessing} className="text-gray-400 hover:text-white transition disabled:opacity-50"><X className="h-5 w-5" /></button>
-                        </div>
-                        <div className="p-5">
-                            <div className="mb-5">
-                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 block">To:</label>
-                                <div 
-                                    className="text-sm font-medium px-4 py-3 rounded-xl border border-white/10 bg-black/20 text-gray-200"
-                                    style={{ WebkitTouchCallout: "none" }}
-                                >
-                                    {generateRecipientString()}
-                                </div>
-                            </div>
-                            <div>
-                                <textarea 
-                                    value={messageText}
-                                    onChange={(e) => setMessageText(e.target.value)}
-                                    placeholder="Type your message here..."
-                                    disabled={isProcessing}
-                                    className="w-full h-32 bg-black/40 border border-white/10 rounded-xl p-4 text-sm text-white outline-none focus:border-[var(--accent)] resize-none transition disabled:opacity-50"
-                                ></textarea>
-                            </div>
-                            <button 
-                                className="w-full mt-4 flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition disabled:opacity-50 hover:brightness-110"
-                                style={{ backgroundColor: "var(--accent)", color: "#1A202C" }}
-                                disabled={!messageText.trim() || isProcessing}
-                                onClick={() => handleAction("message")}
-                            >
-                                {isProcessing ? (
-                                    <>
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                        {`Sending (${progressCount}/${selectedItems.length})...`}
-                                    </>
-                                ) : (
-                                    <><Send className="h-4 w-4" /> Send Message</>
-                                )}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </>
     );
 }
