@@ -1240,31 +1240,34 @@ export function ChatPage() {
 						let latestValidMessage: Message | null = null;
 						for (let i = messages.length - 1; i >= 0; i--) {
 							const message = messages[i];
-							if (message.body && typeof message.body === "object") {
+							if (!message.type?.startsWith("System")) {
 								latestValidMessage = message;
 								break;
 							}
 						}
 
-						if (
-							latestValidMessage &&
-							(latestValidMessage.timestamp > (c.entry.data.lastActivityTimestamp ?? 0) ||
-								isPreviewUnhelpful(c.entry.data.preview))
-						) {
-							return {
-								...c,
-								entry: {
-									...c.entry,
-									data: {
-										...c.entry.data,
-										lastActivityTimestamp: Math.max(
-											c.entry.data.lastActivityTimestamp ?? 0,
-											latestValidMessage.timestamp,
-										),
-										preview: buildPreviewFromMessage(latestValidMessage, t),
+						if (latestValidMessage) {
+							const currentText = c.entry.data.preview?.text;
+							if (
+								latestValidMessage.timestamp > (c.entry.data.lastActivityTimestamp ?? 0) ||
+								isPreviewUnhelpful(c.entry.data.preview) ||
+								currentText === "Message"
+							) {
+								return {
+									...c,
+									entry: {
+										...c.entry,
+										data: {
+											...c.entry.data,
+											lastActivityTimestamp: Math.max(
+												c.entry.data.lastActivityTimestamp ?? 0,
+												latestValidMessage.timestamp,
+											),
+											preview: buildPreviewFromMessage(latestValidMessage, t),
+										},
 									},
-								},
-							};
+								};
+							}
 						}
 						return c;
 					}),
@@ -1642,9 +1645,14 @@ export function ChatPage() {
 						const localData = await chatLog.readLog(cid);
 						for (let i = localData.messages.length - 1; i >= 0; i--) {
 							const message = localData.messages[i];
-							if (message.body && typeof message.body === "object") {
+							if (!message.type?.startsWith("System")) {
 								const serverTs = entry.data.lastActivityTimestamp ?? 0;
-								if (message.timestamp > serverTs || isPreviewUnhelpful(entry.data.preview)) {
+								const currentText = entry.data.preview?.text;
+								if (
+									message.timestamp > serverTs ||
+									isPreviewUnhelpful(entry.data.preview) ||
+									currentText === "Message"
+								) {
 									return {
 										conversationId: cid,
 										lastActivityTimestamp: Math.max(serverTs, message.timestamp),
