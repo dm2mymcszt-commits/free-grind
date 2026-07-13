@@ -1828,7 +1828,11 @@ export function ChatPage() {
 				// Load initial state from local log if available.
 				void chatLog.readLog(conversationId).then((localData) => {
 					if (selectedConversationIdRef.current === conversationId) {
-						setThreadLastReadTimestamp(localData.lastReadTimestamp ?? null);
+						const rawTs = localData.lastReadTimestamp;
+						if (rawTs != null && rawTs > 0) {
+							const ms = rawTs < 100_000_000_000 ? rawTs * 1000 : rawTs;
+							setThreadLastReadTimestamp((prev) => Math.max(prev ?? 0, ms));
+						}
 					}
 				});
 			}
@@ -1905,7 +1909,9 @@ export function ChatPage() {
 				captureReplyPreviewsForMessages(responseMessages, conversationId);
 
 				if (!older) {
-					setThreadLastReadTimestamp(normalizedLastRead);
+					if (normalizedLastRead != null && normalizedLastRead > 0) {
+						setThreadLastReadTimestamp((prev) => Math.max(prev ?? 0, normalizedLastRead));
+					}
 					const mediaIdImageMessages = responseMessages.filter((message) => {
 						const imageType = message.chat1Type?.toLowerCase();
 						const isImageLike =
@@ -2455,7 +2461,11 @@ export function ChatPage() {
 					if (!older && selectedConversationIdRef.current === conversationId) {
 						const localData = await chatLog.readLog(conversationId);
 						setThreadMessages(localData.messages);
-						setThreadLastReadTimestamp(localData.lastReadTimestamp ?? null);
+						const rawTs = localData.lastReadTimestamp;
+						if (rawTs != null && rawTs > 0) {
+							const ms = rawTs < 100_000_000_000 ? rawTs * 1000 : rawTs;
+							setThreadLastReadTimestamp((prev) => Math.max(prev ?? 0, ms));
+						}
 						setThreadError(null);
 					}
 					return;
@@ -2471,7 +2481,11 @@ export function ChatPage() {
 							selectedConversationIdRef.current === conversationId
 						) {
 							setThreadMessages(localData.messages);
-							setThreadLastReadTimestamp(localData.lastReadTimestamp ?? null);
+							const rawTs = localData.lastReadTimestamp;
+							if (rawTs != null && rawTs > 0) {
+								const ms = rawTs < 100_000_000_000 ? rawTs * 1000 : rawTs;
+								setThreadLastReadTimestamp((prev) => Math.max(prev ?? 0, ms));
+							}
 							setThreadError(null);
 							return;
 						}
@@ -2842,13 +2856,14 @@ export function ChatPage() {
 				const record = envelope.payload as Record<string, unknown> | undefined;
 				if (record) {
 					const cid = record.conversationId as string | undefined;
-					const ts = Number(record.timestamp); // already milliseconds per API spec
+					const rawTs = Number(record.timestamp);
+					const ts = Number.isNaN(rawTs) ? 0 : (rawTs < 100_000_000_000 ? rawTs * 1000 : rawTs);
 					const senderId = Number(record.profileId);
 
-					if (cid && !Number.isNaN(ts) && !Number.isNaN(senderId)) {
+					if (cid && ts > 0 && !Number.isNaN(senderId)) {
 						if (userId != null && senderId !== userId) {
 							if (cid === selectedConversationIdRef.current) {
-								setThreadLastReadTimestamp(ts);
+								setThreadLastReadTimestamp((prev) => Math.max(prev ?? 0, ts));
 							}
 							void chatLog.appendMessages(cid, [], ts);
 						}
