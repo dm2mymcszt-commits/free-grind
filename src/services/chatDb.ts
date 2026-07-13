@@ -984,9 +984,10 @@ export async function upsertMessages(
 
 		// Keep conversations table's last_activity_timestamp and preview_json up to date
 		// so archived or offline-hydrated conversations show current message previews & correct sorting.
-		const latestMessage = messages.reduce<Message>(
+		const realChatMessages = messages.filter((m) => !m.type?.startsWith("System"));
+		const latestMessage = realChatMessages.reduce<Message | null>(
 			(latest, m) => (!latest || m.timestamp > latest.timestamp ? m : latest),
-			messages[0],
+			null,
 		);
 		if (latestMessage && latestMessage.timestamp > 0) {
 			let previewText = "Message";
