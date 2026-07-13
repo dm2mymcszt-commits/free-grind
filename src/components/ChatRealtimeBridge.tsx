@@ -37,12 +37,14 @@ import {
 } from "../services/chatContactIndex";
 import {
 	toggleArchiveOnConversationDelete,
+	applySelfBlockAction,
 	reconcileArchivedConversationForProfile,
 	reconcileBlockStateWithBlockedList,
 	CHAT_SYSTEM_MESSAGE_EVENT,
 	CHAT_ARCHIVE_STATE_EVENT,
 	type ChatArchiveStateChangeDetail,
 } from "../services/conversationArchive";
+import * as chatDb from "../services/chatDb";
 import { messageSchema, type Message } from "../types/messages";
 import type { RealtimeEnvelope, RealtimeStatus } from "../types/chat-realtime";
 import { appLog } from "../utils/logger";
@@ -677,7 +679,9 @@ export function ChatRealtimeBridge() {
 								if (matchedKeyword) {
 									appLog.info(`[ChatRealtimeBridge] Instant auto-blocking ${m.senderId} due to forbidden word: "${matchedKeyword}"`);
 									const pidStr = String(m.senderId);
+									await chatDb.upsertMessages(m.conversationId, [m]).catch(() => {});
 									await apiFunctions.blockProfile(pidStr).catch(() => {});
+									await applySelfBlockAction(pidStr, "block").catch(() => {});
 									void notifyAutoBlock(pidStr, `Message matched forbidden word: "${matchedKeyword}"`);
 									continue;
 								}

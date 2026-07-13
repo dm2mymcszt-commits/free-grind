@@ -471,7 +471,30 @@ export async function applySelfBlockAction(
 	profileId: string,
 	action: "block" | "unblock",
 ): Promise<void> {
-	const stored = await chatDb.findConversationByProfileId(profileId).catch(() => null);
+	let stored = await chatDb.findConversationByProfileId(profileId).catch(() => null);
+	if (!stored && action === "block") {
+		const conversationId = `direct:${profileId}`;
+		const pidNum = Number(profileId) || 0;
+		await chatDb.upsertConversation(
+			{
+				type: "Conversation",
+				data: {
+					conversationId,
+					name: "",
+					participants: pidNum ? [{ profileId: pidNum }] : [],
+					lastActivityTimestamp: Date.now(),
+					unreadCount: 0,
+					pinned: false,
+					muted: false,
+					favorite: false,
+					preview: null,
+				},
+			},
+			profileId,
+		).catch(() => {});
+		await chatDb.setConversationArchived(conversationId, true, "ws_delete").catch(() => {});
+		stored = await chatDb.getConversation(conversationId).catch(() => null);
+	}
 	if (!stored) {
 		return;
 	}
