@@ -79,7 +79,10 @@ export function getMatchedForbiddenWord(text: string | null | undefined, target:
                 const escaped = cleanKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 return {
                     keyword: cleanKeyword,
-                    regex: new RegExp(`(?:^|\\W)${escaped}(?:$|\\W)`, 'i') // Your exact match rule
+                    // Unicode-aware word boundaries (\p{L} = Any Unicode Letter, \p{N} = Number)
+                    // Prevents accidental partial matches (e.g. "sub" matching "submit") while matching
+                    // French words with accents (é, è, à, ç) and multi-word phrases cleanly.
+                    regex: new RegExp(`(?:^|[^\\p{L}\\p{N}_])${escaped}(?:$|[^\\p{L}\\p{N}_])`, 'ui')
                 };
             });
     }
@@ -87,15 +90,10 @@ export function getMatchedForbiddenWord(text: string | null | undefined, target:
     if (cachedRegexes.length === 0) return null;
 
     const normalizedText = text.replace(/\s+/g, ' ').trim();
-    const lowerText = normalizedText.toLowerCase();
 
     for (const item of cachedRegexes) {
-        if (
-            item.regex.test(text) ||
-            item.regex.test(normalizedText) ||
-            (item.keyword.length >= 3 && lowerText.includes(item.keyword))
-        ) {
-            return item.keyword; // Boom. Caught.
+        if (item.regex.test(text) || item.regex.test(normalizedText)) {
+            return item.keyword; // Boom. Caught safely without false positives.
         }
     }
     return null;
