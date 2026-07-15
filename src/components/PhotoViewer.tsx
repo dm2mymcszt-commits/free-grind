@@ -458,7 +458,7 @@ export function PhotoViewer({
 	const canAnimate = dragOffset === 0 && !noTransition;
 
 	return createPortal(
-		<div className="fixed inset-0 z-[80] bg-black" onClick={onClose}>
+		<div className="fixed inset-0 z-[80] flex items-center justify-center bg-black overflow-hidden" onClick={onClose}>
 			<button
 				type="button"
 				onClick={(e) => { e.stopPropagation(); onClose(); }}
@@ -636,7 +636,11 @@ export function PhotoViewer({
 
 			{zoomScale > 1 && (
 				<div
-					className="absolute bottom-4 left-1/2 z-[84] flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/20 bg-black/60 px-3 py-1.5 shadow-xl backdrop-blur-md transition-all"
+					className={`absolute left-1/2 z-[84] flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/20 bg-black/60 px-3 py-1.5 shadow-xl backdrop-blur-md transition-all ${
+						renderFooter
+							? "bottom-[calc(env(safe-area-inset-bottom,0px)+5.5rem)]"
+							: "bottom-4"
+					}`}
 					onClick={(e) => e.stopPropagation()}
 				>
 					<button
