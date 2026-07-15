@@ -389,7 +389,8 @@
 		background: transparent !important;
 	}
 
-	body.has-titlebar #app {
+	body.has-titlebar #app,
+	#app {
 		height: 100vh;
 		width: 100%;
 		margin: 0;
@@ -402,14 +403,16 @@
 		border: 1px solid rgba(255, 255, 255, 0.08);
 		box-sizing: border-box;
 		
-		/* Creates containing block so position:fixed children (titlebar, navbar, glow)
+		/* Creates containing block so position:fixed children (titlebar, navbar, glow, lightboxes)
 		   are clipped by overflow:hidden + border-radius */
 		transform: translateZ(0);
 	}
 
-	body.has-titlebar .app-shell {
+	body.has-titlebar .app-shell,
+	.app-shell {
 		height: 100vh;
 		overflow-y: auto;
+		border-radius: 20px;
 	}
 
 	body {

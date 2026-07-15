@@ -694,6 +694,6 @@ export function PhotoViewer({
 				</div>
 			)}
 		</div>,
-		document.body,
+		document.getElementById("app") ?? document.body,
 	);
 }
