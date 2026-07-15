@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Download, ScanSearch } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, ScanSearch, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -51,6 +51,7 @@ export function PhotoViewer({
 	const [zoomScale, setZoomScale] = useState(1);
 	const [zoomOffset, setZoomOffset] = useState({ x: 0, y: 0 });
 	const [isSaving, setIsSaving] = useState(false);
+	const [isPointerDragging, setIsPointerDragging] = useState(false);
 
 	const mediaRef = useRef<HTMLImageElement | HTMLVideoElement | null>(null);
 
@@ -61,6 +62,13 @@ export function PhotoViewer({
 	const decidedAxisRef = useRef<"h" | "v" | null>(null);
 	const isDraggingRef = useRef(false);
 	const gestureMovedRef = useRef(false);
+	const pointerDragRef = useRef<{ isDragging: boolean; startX: number; startY: number; initialOffsetX: number; initialOffsetY: number }>({
+		isDragging: false,
+		startX: 0,
+		startY: 0,
+		initialOffsetX: 0,
+		initialOffsetY: 0,
+	});
 	const onIndexChangeRef = useRef(onIndexChange);
 	onIndexChangeRef.current = onIndexChange;
 
@@ -136,6 +144,107 @@ export function PhotoViewer({
 			x: Math.min(maxX, Math.max(-maxX, offset.x)),
 			y: Math.min(maxY, Math.max(-maxY, offset.y)),
 		};
+	}, []);
+
+	const handleWheel = useCallback(
+		(e: React.WheelEvent) => {
+			e.stopPropagation();
+			const delta = -e.deltaY;
+			const factor = delta > 0 ? 1.15 : 0.85;
+
+			setZoomScale((prevScale) => {
+				const nextScale = Math.min(Math.max(1, prevScale * factor), 5);
+				if (nextScale === 1) {
+					setZoomOffset({ x: 0, y: 0 });
+				} else if (nextScale !== prevScale) {
+					const rect = mediaRef.current?.getBoundingClientRect();
+					if (rect) {
+						const mouseX = e.clientX - (rect.left + rect.width / 2);
+						const mouseY = e.clientY - (rect.top + rect.height / 2);
+						const ratio = nextScale / prevScale - 1;
+						setZoomOffset((prevOffset) =>
+							clampOffset(
+								{
+									x: prevOffset.x - mouseX * ratio,
+									y: prevOffset.y - mouseY * ratio,
+								},
+								nextScale,
+							),
+						);
+					}
+				}
+				return nextScale;
+			});
+		},
+		[clampOffset],
+	);
+
+	const handleDoubleClick = useCallback(
+		(e: React.MouseEvent) => {
+			e.stopPropagation();
+			setZoomScale((prev) => {
+				if (prev > 1.2) {
+					setZoomOffset({ x: 0, y: 0 });
+					return 1;
+				}
+				const rect = mediaRef.current?.getBoundingClientRect();
+				if (rect) {
+					const mouseX = e.clientX - (rect.left + rect.width / 2);
+					const mouseY = e.clientY - (rect.top + rect.height / 2);
+					setZoomOffset(clampOffset({ x: -mouseX * 1.5, y: -mouseY * 1.5 }, 2.5));
+				}
+				return 2.5;
+			});
+		},
+		[clampOffset],
+	);
+
+	const handlePointerDown = useCallback((e: React.PointerEvent) => {
+		if (zoomScaleRef.current > 1 && e.button === 0) {
+			e.stopPropagation();
+			pointerDragRef.current = {
+				isDragging: true,
+				startX: e.clientX,
+				startY: e.clientY,
+				initialOffsetX: zoomOffsetRef.current.x,
+				initialOffsetY: zoomOffsetRef.current.y,
+			};
+			setIsPointerDragging(true);
+			try {
+				(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+			} catch {}
+		}
+	}, []);
+
+	const handlePointerMove = useCallback(
+		(e: React.PointerEvent) => {
+			if (pointerDragRef.current.isDragging && zoomScaleRef.current > 1) {
+				e.stopPropagation();
+				const dx = e.clientX - pointerDragRef.current.startX;
+				const dy = e.clientY - pointerDragRef.current.startY;
+				setZoomOffset(
+					clampOffset(
+						{
+							x: pointerDragRef.current.initialOffsetX + dx,
+							y: pointerDragRef.current.initialOffsetY + dy,
+						},
+						zoomScaleRef.current,
+					),
+				);
+			}
+		},
+		[clampOffset],
+	);
+
+	const handlePointerUp = useCallback((e: React.PointerEvent) => {
+		if (pointerDragRef.current.isDragging) {
+			e.stopPropagation();
+			pointerDragRef.current.isDragging = false;
+			setIsPointerDragging(false);
+			try {
+				(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+			} catch {}
+		}
 	}, []);
 
 	const handleTouchStart = useCallback((e: React.TouchEvent) => {
@@ -326,7 +435,6 @@ export function PhotoViewer({
 	};
 
 	// --- MEDIA SCANNER ---
-	const scannerEnabled = window.localStorage.getItem("fg-image-scanner-enabled") === "true";
 	const openExternalTool = async (targetUrl: string) => {
 		try {
 			await openUrl(targetUrl);
@@ -373,7 +481,7 @@ export function PhotoViewer({
 				<Download className="h-5 w-5" />
 			</button>
 
-			{getMediaInfo(photos[centerIdx]).type === "image" && scannerEnabled && (
+			{getMediaInfo(photos[centerIdx]).type === "image" && (
 				<button
 					type="button"
 					onClick={(e) => {
@@ -392,7 +500,7 @@ export function PhotoViewer({
 							openExternalTool(`https://lens.google.com/uploadbyurl?url=${encodeURIComponent(url)}`);
 						}
 					})}
-					className="absolute left-16 top-[calc(env(safe-area-inset-top,0px)+2rem)] z-[83] inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/30 bg-black/50 text-white transition hover:bg-black/70 sm:left-20 sm:top-5"
+					className="absolute right-3 top-[calc(env(safe-area-inset-top,0px)+5.25rem)] z-[83] inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md transition active:scale-90 disabled:opacity-50 sm:right-5 sm:top-20"
 					aria-label="Google Lens Search"
 				>
 					<ScanSearch className="h-5 w-5" />
@@ -475,8 +583,20 @@ export function PhotoViewer({
 								onClick={onClose}
 							>
 								<div
-									className="relative flex max-h-full max-w-full items-center justify-center overflow-hidden rounded-xl"
+									className={`relative flex max-h-full max-w-full items-center justify-center overflow-hidden rounded-2xl border border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.85)] sm:rounded-3xl ${
+										zoomScale > 1
+											? isPointerDragging
+												? "cursor-grabbing"
+												: "cursor-grab"
+											: "cursor-zoom-in"
+									}`}
 									onClick={(e) => e.stopPropagation()}
+									onWheel={isCurrent ? handleWheel : undefined}
+									onDoubleClick={isCurrent ? handleDoubleClick : undefined}
+									onPointerDown={isCurrent ? handlePointerDown : undefined}
+									onPointerMove={isCurrent ? handlePointerMove : undefined}
+									onPointerUp={isCurrent ? handlePointerUp : undefined}
+									onPointerCancel={isCurrent ? handlePointerUp : undefined}
 								>
 									{type === "video" ? (
 										<video
@@ -484,7 +604,7 @@ export function PhotoViewer({
 											src={url}
 											controls
 											autoPlay={isCurrent}
-											className="max-h-[88vh] w-auto max-w-full object-contain"
+											className="max-h-[88vh] w-auto max-w-full object-contain rounded-2xl sm:rounded-3xl"
 											style={zoomStyle}
 										/>
 									) : (
@@ -494,7 +614,7 @@ export function PhotoViewer({
 											alt={alt}
 											loading="eager"
 											draggable={false}
-											className="max-h-[88vh] w-auto max-w-full select-none object-contain"
+											className="max-h-[88vh] w-auto max-w-full select-none object-contain rounded-2xl sm:rounded-3xl"
 											style={zoomStyle}
 										/>
 									)}
@@ -506,15 +626,58 @@ export function PhotoViewer({
 			</div>
 
 			{renderExtraInfo && (
-				// Positioned against the viewer's full-width root rather than nested inside
-				// the per-slide image box — that box shrinks to the rendered image's width,
-				// which for narrow/portrait images is often narrower than this pill's natural
-				// width and was forcing the text to wrap.
 				<div
 					className="absolute left-1/2 top-[calc(env(safe-area-inset-top,0px)+2rem)] z-[83] flex -translate-x-1/2 items-center gap-2"
 					onClick={(e) => e.stopPropagation()}
 				>
 					{renderExtraInfo(centerIdx)}
+				</div>
+			)}
+
+			{zoomScale > 1 && (
+				<div
+					className="absolute bottom-4 left-1/2 z-[84] flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/20 bg-black/60 px-3 py-1.5 shadow-xl backdrop-blur-md transition-all"
+					onClick={(e) => e.stopPropagation()}
+				>
+					<button
+						type="button"
+						onClick={() =>
+							setZoomScale((prev) => {
+								const next = Math.max(1, prev - 0.5);
+								if (next === 1) setZoomOffset({ x: 0, y: 0 });
+								return next;
+							})
+						}
+						className="inline-flex h-7 w-7 items-center justify-center rounded-full text-white hover:bg-white/20 active:scale-95"
+						title="Zoom Out"
+					>
+						<ZoomOut className="h-4 w-4" />
+					</button>
+
+					<span className="min-w-[3.5rem] text-center text-xs font-semibold tracking-wider text-white">
+						{Math.round(zoomScale * 100)}%
+					</span>
+
+					<button
+						type="button"
+						onClick={() => setZoomScale((prev) => Math.min(5, prev + 0.5))}
+						className="inline-flex h-7 w-7 items-center justify-center rounded-full text-white hover:bg-white/20 active:scale-95"
+						title="Zoom In"
+					>
+						<ZoomIn className="h-4 w-4" />
+					</button>
+
+					<button
+						type="button"
+						onClick={() => {
+							setZoomScale(1);
+							setZoomOffset({ x: 0, y: 0 });
+						}}
+						className="ml-1 inline-flex h-7 w-7 items-center justify-center rounded-full text-white hover:bg-white/20 active:scale-95"
+						title="Reset Zoom"
+					>
+						<RotateCcw className="h-3.5 w-3.5" />
+					</button>
 				</div>
 			)}
 
