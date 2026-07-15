@@ -1539,18 +1539,6 @@ export function GridPage() {
 										)}
 									</button>
 
-									<FilterPill
-										icon={<span className="h-2.5 w-2.5 shrink-0 rounded-full bg-green-500 shadow-sm" />}
-										label={t("browse_filters.options.online")}
-										active={Boolean(browseFilters.onlineOnly)}
-										onClick={() =>
-											setBrowseFilters((prev: typeof browseFilters) => ({
-												...prev,
-												onlineOnly: !prev.onlineOnly,
-											}))
-										}
-									/>
-
 
 									{hasActiveBrowseFilters ? (
 										<button
