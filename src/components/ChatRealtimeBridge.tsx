@@ -225,6 +225,17 @@ function extractMessages(envelope: RealtimeEnvelope): Message[] {
 	});
 }
 
+function extractTextFromMessage(m: Message): string {
+	if (typeof m.body === "string") return m.body;
+	if (m.body && typeof m.body === "object") {
+		const b = m.body as Record<string, unknown>;
+		if (typeof b.text === "string") return b.text;
+		if (typeof b.content === "string") return b.content;
+		if (typeof b.body === "string") return b.body;
+	}
+	return "";
+}
+
 export function ChatRealtimeBridge() {
 	const { userId, settingsReady } = useAuth();
 	const { callMethod } = useApi();
@@ -663,12 +674,7 @@ export function ChatRealtimeBridge() {
 				if (messages.length > 0) {
 					const byConv = new Map<string, Message[]>();
 					for (const m of messages) {
-						let messageText = "";
-						const msgBody: any = m.body;
-						if (msgBody && typeof msgBody.text === "string") {
-							messageText = msgBody.text;
-						}
-
+						const messageText = extractTextFromMessage(m);
 						const isIncoming = userIdRef.current != null && Number(m.senderId) !== Number(userIdRef.current);
 
 						// --- FORBIDDEN KEYWORDS & CUSTOM AUTOMATION RULES ---

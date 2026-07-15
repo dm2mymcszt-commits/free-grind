@@ -87,9 +87,14 @@ export function getMatchedForbiddenWord(text: string | null | undefined, target:
     if (cachedRegexes.length === 0) return null;
 
     const normalizedText = text.replace(/\s+/g, ' ').trim();
+    const lowerText = normalizedText.toLowerCase();
 
     for (const item of cachedRegexes) {
-        if (item.regex.test(text) || item.regex.test(normalizedText)) {
+        if (
+            item.regex.test(text) ||
+            item.regex.test(normalizedText) ||
+            (item.keyword.length >= 3 && lowerText.includes(item.keyword))
+        ) {
             return item.keyword; // Boom. Caught.
         }
     }
