@@ -32,7 +32,25 @@ function openDatabase(): Promise<IDBDatabase | null> {
 				}
 			};
 
-			request.onsuccess = () => resolve(request.result);
+			request.onsuccess = () => {
+				const db = request.result;
+				try {
+					const tx = db.transaction(STORE_NAME, "readwrite");
+					const store = tx.objectStore(STORE_NAME);
+					const req = store.getAll();
+					req.onsuccess = () => {
+						const rows = (req.result as StoredInterestView[]) || [];
+						if (rows.length > MAX_STORED_VIEWS) {
+							rows.sort((a, b) => (b.timestamp ?? b.updatedAt) - (a.timestamp ?? a.updatedAt));
+							const excess = rows.slice(MAX_STORED_VIEWS);
+							for (const item of excess) {
+								store.delete(item.profileId);
+							}
+						}
+					};
+				} catch {}
+				resolve(db);
+			};
 			request.onerror = (e) => {
 				appLog.error("[interestStore] IDB Open Error", e);
 				resolve(null);
