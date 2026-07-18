@@ -36,7 +36,7 @@ import type {
 } from "../types/chat-service";
 
 
-import { isOutsideAgeLimits, isOutsideDistanceLimits, notifyAutoBlock, getMatchedForbiddenWord } from "../utils/autoblock";
+import { isOutsideAgeLimits, isOutsideDistanceLimits, hasRightNowStatus, notifyAutoBlock, getMatchedForbiddenWord } from "../utils/autoblock";
 import { isProfileAutoblockWhitelisted } from "../utils/privacy";
 import * as chatLog from "./chatLog";
 
@@ -208,11 +208,13 @@ export function createChatService(fetchRest: RestFetcher, t: (key: string) => st
 
 				// --- 1. LOCAL AUTO BLOCK CHECK (INBOX) ---
 				const userId = window.localStorage.getItem("fg-user-id");
+				const participant = data.participants?.[0];
 				const isWhitelisted = profileId ? isProfileAutoblockWhitelisted(String(profileId)) : false;
 
 				const nameMatch = !isWhitelisted ? getMatchedForbiddenWord(displayName, "name") : null;
 				const bioMatch = !isWhitelisted ? getMatchedForbiddenWord(aboutMe, "bio") : null;
 				const msgMatch = !isWhitelisted ? getMatchedForbiddenWord(lastMessageText, "message") : null;
+				const rightNowMatch = !isWhitelisted ? hasRightNowStatus(participant) : false;
 
 				const blockOnChat = window.localStorage.getItem("fg-block-chat") !== "false";
 
@@ -221,6 +223,7 @@ export function createChatService(fetchRest: RestFetcher, t: (key: string) => st
 						nameMatch !== null || 
 						bioMatch !== null || 
 						msgMatch !== null ||
+						rightNowMatch ||
 						(profileAge !== undefined && isOutsideAgeLimits(profileAge)) ||
 						(distance !== undefined && isOutsideDistanceLimits(distance))
 					);
@@ -243,7 +246,9 @@ export function createChatService(fetchRest: RestFetcher, t: (key: string) => st
 				if (shouldBlock) {
 					if (profileId) {
 						let reason = "Keyword match";
-						if (profileAge !== undefined && isOutsideAgeLimits(profileAge)) {
+						if (rightNowMatch) {
+							reason = "Has active 'Right Now' status";
+						} else if (profileAge !== undefined && isOutsideAgeLimits(profileAge)) {
 							reason = profileAge == null ? "No Age Set" : `Age Limit (${profileAge})`;
 						} else if (distance !== undefined && isOutsideDistanceLimits(distance)) {
 							reason = `Distance Limit (${Math.round(distance/1000)}km)`;

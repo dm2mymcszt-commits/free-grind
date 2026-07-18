@@ -104,6 +104,17 @@ export function shouldAutoBlock(text: string | null | undefined, target: "name" 
     return getMatchedForbiddenWord(text, target) !== null;
 }
 
+export function hasRightNowStatus(profile: { rightNow?: string | null; rightNowText?: string | null; rightNowPosted?: number | null } | null | undefined): boolean {
+    if (!profile) return false;
+    if (window.localStorage.getItem("fg-block-right-now") !== "true") return false;
+
+    const hasHosting = profile.rightNow === "HOSTING" || profile.rightNow === "NOT_HOSTING";
+    const hasText = Boolean(profile.rightNowText && profile.rightNowText.trim().length > 0);
+    const hasPosted = typeof profile.rightNowPosted === "number" && Number.isFinite(profile.rightNowPosted) && profile.rightNowPosted > 0;
+
+    return hasHosting || hasText || hasPosted;
+}
+
 // --- Grindr Tag Blocker ---
 export function isForbiddenLookingFor(profileLookingFor: number[] | null | undefined): boolean {
     if (!profileLookingFor || profileLookingFor.length === 0) return false;

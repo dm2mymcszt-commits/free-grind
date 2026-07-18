@@ -5,6 +5,7 @@ import {
     isOutsideAgeLimits, 
     isOutsideDistanceLimits, 
     isForbiddenLookingFor,
+    hasRightNowStatus,
     notifyAutoBlock,
     getMatchedForbiddenWord 
 } from "../utils/autoblock";
@@ -134,6 +135,8 @@ export function BackgroundInboxScanner() {
                                         blockReason = age == null ? "No Age Set" : `Age limit (${age})`;
                                     } else if (isOutsideDistanceLimits(distance)) {
                                         blockReason = "Distance limit";
+                                    } else if (hasRightNowStatus(p)) {
+                                        blockReason = "Has active 'Right Now' status";
                                     } else if (isForbiddenLookingFor(lookingForTags)) {
                                         blockReason = "Forbidden 'Looking For' tag";
                                     } else if (matchedName) {
