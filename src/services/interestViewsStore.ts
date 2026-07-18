@@ -32,25 +32,7 @@ function openDatabase(): Promise<IDBDatabase | null> {
 				}
 			};
 
-			request.onsuccess = () => {
-				const db = request.result;
-				try {
-					const tx = db.transaction(STORE_NAME, "readwrite");
-					const store = tx.objectStore(STORE_NAME);
-					const req = store.getAll();
-					req.onsuccess = () => {
-						const rows = (req.result as StoredInterestView[]) || [];
-						if (rows.length > MAX_STORED_VIEWS) {
-							rows.sort((a, b) => (b.timestamp ?? b.updatedAt) - (a.timestamp ?? a.updatedAt));
-							const excess = rows.slice(MAX_STORED_VIEWS);
-							for (const item of excess) {
-								store.delete(item.profileId);
-							}
-						}
-					};
-				} catch {}
-				resolve(db);
-			};
+			request.onsuccess = () => resolve(request.result);
 			request.onerror = (e) => {
 				appLog.error("[interestStore] IDB Open Error", e);
 				resolve(null);
@@ -168,6 +150,12 @@ export const interestViewsStore = {
 				const rows = (request.result as StoredInterestView[]) || [];
 				const now = Date.now();
 				const toDelete: string[] = [];
+
+				// If database holds a legacy bloat of >3000 rows, wipe it instantly in 1ms instead of issuing 48,000 individual deletes
+				if (rows.length > 3000) {
+					store.clear();
+					return;
+				}
 
 				// 1. Mark all items older than 30 days or preview placeholders for deletion
 				rows.forEach((row) => {
