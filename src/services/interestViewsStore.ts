@@ -13,7 +13,7 @@ const DB_NAME = "open-grind-interest";
 const DB_VERSION = 1;
 const STORE_NAME = "views";
 
-const MAX_STORED_VIEWS = 50000;
+const MAX_STORED_VIEWS = 2000;
 const MAX_VIEW_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 function openDatabase(): Promise<IDBDatabase | null> {
@@ -45,6 +45,32 @@ function openDatabase(): Promise<IDBDatabase | null> {
 }
 
 export const interestViewsStore = {
+	async count(): Promise<number> {
+		const db = await openDatabase();
+		if (!db) return 0;
+
+		return new Promise((resolve) => {
+			try {
+				const tx = db.transaction(STORE_NAME, "readonly");
+				const store = tx.objectStore(STORE_NAME);
+				const req = store.count();
+
+				req.onsuccess = () => {
+					const c = req.result || 0;
+					db.close();
+					resolve(c);
+				};
+				req.onerror = () => {
+					db.close();
+					resolve(0);
+				};
+			} catch {
+				db.close();
+				resolve(0);
+			}
+		});
+	},
+
 	async getAll(): Promise<StoredInterestView[]> {
 		const db = await openDatabase();
 		if (!db) return [];
@@ -58,8 +84,9 @@ export const interestViewsStore = {
 				const rows = (request.result as StoredInterestView[]) || [];
 				const now = Date.now();
 
-				// 1. Filter: Only return data younger than 30 days
+				// 1. Filter: Only return data younger than 30 days & non-previews
 				const activeRows = rows.filter((row) => {
+					if (row.profileId.startsWith("preview:")) return false;
 					const age = now - (row.timestamp ?? row.updatedAt);
 					return age < MAX_VIEW_AGE_MS;
 				});
@@ -67,14 +94,10 @@ export const interestViewsStore = {
 				// 2. Sort: Newest first
 				activeRows.sort((a, b) => (b.timestamp ?? b.updatedAt) - (a.timestamp ?? a.updatedAt));
 
-				// Only close connection once we have the data
 				db.close();
 
-				// 3. Limit: Return maximum 1000 entries
+				// 3. Limit: Return maximum MAX_STORED_VIEWS entries
 				resolve(activeRows.slice(0, MAX_STORED_VIEWS));
-
-				// Trigger background cleanup to keep DB clean
-				void this.cleanup();
 			};
 
 			request.onerror = (event) => {
@@ -100,7 +123,6 @@ export const interestViewsStore = {
 				store.put({ ...row, updatedAt: now });
 			}
 
-			// IMPORTANT: Only close and resolve once the transaction has completed!
 			tx.oncomplete = () => {
 				db.close();
 				resolve();
@@ -168,23 +190,40 @@ export const interestViewsStore = {
 
 	async clear(): Promise<void> {
 		const db = await openDatabase();
-		if (!db) return;
+		if (!db) {
+			try {
+				window.indexedDB.deleteDatabase(DB_NAME);
+			} catch {}
+			return;
+		}
 
 		return new Promise((resolve) => {
-			const tx = db.transaction(STORE_NAME, "readwrite");
-			const store = tx.objectStore(STORE_NAME);
-			store.clear();
-
-			tx.oncomplete = () => {
-				db.close();
+			let isDone = false;
+			const finish = () => {
+				if (isDone) return;
+				isDone = true;
+				try { db.close(); } catch {}
 				resolve();
 			};
 
-			tx.onerror = (event) => {
-				appLog.error("[interestStore] clear transaction failed", event);
-				db.close();
-				resolve();
-			};
+			try {
+				const tx = db.transaction(STORE_NAME, "readwrite");
+				const store = tx.objectStore(STORE_NAME);
+				store.clear();
+
+				tx.oncomplete = finish;
+				tx.onerror = finish;
+			} catch {
+				finish();
+			}
+
+			// Timeout fallback
+			setTimeout(() => {
+				if (!isDone) {
+					finish();
+					try { window.indexedDB.deleteDatabase(DB_NAME); } catch {}
+				}
+			}, 1000);
 		});
 	},
 

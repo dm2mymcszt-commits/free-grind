@@ -138,9 +138,8 @@ export function SettingsAutomationPage() {
     // Live update the Views Recovery Stats every 5 seconds
     useEffect(() => {
         const fetchStats = () => {
-            void interestViewsStore.getAll().then(rows => {
-                const unlocked = rows.filter(r => r.profileId && !r.profileId.startsWith("preview:"));
-                setUnlockedViewsCount(unlocked.length);
+            void interestViewsStore.count().then(cnt => {
+                setUnlockedViewsCount(cnt);
             });
             setLastViewScanTime(window.localStorage.getItem("fg-view-scanner-last-run"));
         };
@@ -158,12 +157,13 @@ export function SettingsAutomationPage() {
     };
 
     const handleClearViewsCache = () => {
-        void interestViewsStore.clear().then(() => {
+        setUnlockedViewsCount(0);
+        setIsClearViewsConfirmOpen(false);
+        toast.success("Unlocked views cache has been cleared!");
+
+        void interestViewsStore.clear().finally(() => {
             queryClient.invalidateQueries({ queryKey: ["interest", "list"] });
             queryClient.removeQueries({ queryKey: ["interest", "list"] });
-            setUnlockedViewsCount(0);
-            setIsClearViewsConfirmOpen(false);
-            toast.success("Unlocked views cache has been cleared!");
         });
     };
 
