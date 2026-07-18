@@ -686,12 +686,17 @@ export async function getBlockStatesByProfileIds(
 		return new Map();
 	}
 	const db = await getDb();
-	const placeholders = profileIds.map((_, i) => `$${i + 1}`).join(", ");
 	const rows = await db.select<{ other_profile_id: string; block_state: string }[]>(
-		`SELECT other_profile_id, block_state FROM conversations WHERE other_profile_id IN (${placeholders}) AND block_state IS NOT NULL`,
-		profileIds,
+		`SELECT other_profile_id, block_state FROM conversations WHERE block_state IS NOT NULL`,
 	);
-	return new Map(rows.map((row) => [row.other_profile_id, row.block_state as BlockState]));
+	const targetSet = new Set(profileIds);
+	const result = new Map<string, BlockState>();
+	for (const row of rows) {
+		if (targetSet.has(row.other_profile_id)) {
+			result.set(row.other_profile_id, row.block_state as BlockState);
+		}
+	}
+	return result;
 }
 
 /**

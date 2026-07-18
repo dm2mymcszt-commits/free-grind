@@ -255,21 +255,27 @@ export async function getChatContactIndexForProfiles(
 		return [];
 	}
 
-	const placeholders = ids.map((_, index) => `$${index + 1}`).join(", ");
-	const rows = await db.select<ChatContactIndexRow[]>(
-		`
-		SELECT
-			profile_id,
-			conversation_id,
-			last_message_timestamp,
-			unread_count,
-			has_chatted,
-			updated_at
-		FROM chat_contact_index
-		WHERE profile_id IN (${placeholders})
-		`,
-		ids,
-	);
+	const rows: ChatContactIndexRow[] = [];
+	const BATCH_SIZE = 250;
+	for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+		const chunk = ids.slice(i, i + BATCH_SIZE);
+		const placeholders = chunk.map((_, index) => `$${index + 1}`).join(", ");
+		const chunkRows = await db.select<ChatContactIndexRow[]>(
+			`
+			SELECT
+				profile_id,
+				conversation_id,
+				last_message_timestamp,
+				unread_count,
+				has_chatted,
+				updated_at
+			FROM chat_contact_index
+			WHERE profile_id IN (${placeholders})
+			`,
+			chunk,
+		);
+		rows.push(...chunkRows);
+	}
 
 	return rows.map((row) => ({
 		profileId: row.profile_id,
@@ -411,15 +417,21 @@ export async function getLocalNicknamesForProfiles(
 	}
 
 	const db = await getDb();
-	const placeholders = ids.map((_, index) => `$${index + 1}`).join(", ");
-	const rows = await db.select<LocalNicknameRow[]>(
-		`
-		SELECT profile_id, local_nickname
-		FROM chat_local_profile_meta
-		WHERE profile_id IN (${placeholders})
-		`,
-		ids,
-	);
+	const rows: LocalNicknameRow[] = [];
+	const BATCH_SIZE = 250;
+	for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+		const chunk = ids.slice(i, i + BATCH_SIZE);
+		const placeholders = chunk.map((_, index) => `$${index + 1}`).join(", ");
+		const chunkRows = await db.select<LocalNicknameRow[]>(
+			`
+			SELECT profile_id, local_nickname
+			FROM chat_local_profile_meta
+			WHERE profile_id IN (${placeholders})
+			`,
+			chunk,
+		);
+		rows.push(...chunkRows);
+	}
 
 	const next: Record<string, string> = {};
 	for (const row of rows) {
