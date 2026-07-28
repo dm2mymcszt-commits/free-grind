@@ -426,13 +426,37 @@ export function SharedAlbumsPage() {
 				await apiFunctions.openSharedAlbum({ albumId });
 
 				const details = await apiFunctions.getAlbum(albumId);
+
+				const local = await getLocalAlbum(albumId).catch(() => null);
+				const localByContentId = new Map(
+					(local?.content ?? []).map((entry) => [entry.contentId, entry] as const),
+				);
+				const liveContentIds = new Set(details.content.map((entry) => entry.contentId));
+				const localOnly = (local?.content ?? []).filter(
+					(entry) => !liveContentIds.has(entry.contentId),
+				);
+				const mergedContent = [
+					...details.content.map((entry) => {
+						const cached = localByContentId.get(entry.contentId);
+						return cached
+							? {
+									...entry,
+									thumbUrl: entry.thumbUrl ?? cached.thumbUrl,
+									url: entry.url ?? cached.url,
+									coverUrl: entry.coverUrl ?? cached.coverUrl,
+								}
+							: entry;
+					}),
+					...localOnly,
+				];
+
 				setViewer({
 					albumId: details.albumId,
-					albumName: details.albumName,
+					albumName: details.albumName ?? local?.albumName ?? null,
 					profileId: item.profileId,
 					profileName: item.profileName,
 					conversationId: item.conversationId,
-					content: details.content,
+					content: mergedContent,
 				});
 				setViewerIndex(0);
 				if (!viewerHistoryPushedRef.current) {
