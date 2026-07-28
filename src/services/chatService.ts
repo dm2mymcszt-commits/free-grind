@@ -554,19 +554,12 @@ export function createChatService(fetchRest: RestFetcher, t: (key: string) => st
 			});
 
 			const v2Response = await fetchRest(`/v2/albums/${albumId}`);
-			if (v2Response.status === 403) {
-				return {
-					albumId: Number(albumId),
-					albumName: null,
-					content: [],
-				};
-			}
 			await assertSuccess(v2Response, t("chat.errors.load_album_details"));
 			const v2Result = albumDetailsSchema.parse(await parseJsonSafe(v2Response));
 
 			if (v2Result.content.length === 0) {
 				const v1Response = await fetchRest(`/v1/albums/${albumId}`);
-				if (v1Response.status === 405 || v1Response.status === 403) {
+				if (v1Response.status === 405) {
 					return v2Result;
 				}
 				await assertSuccess(v1Response, t("chat.errors.load_album_details"));
