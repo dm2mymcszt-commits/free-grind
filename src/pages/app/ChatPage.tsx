@@ -21,6 +21,7 @@ import { getProfilePhotoHash } from "./profile-editor/profileEditorUtils";
 import { usePresenceCheckBatch } from "../../hooks/usePresenceCheck";
 import { useAuth } from "../../contexts/useAuth";
 import { ChatApiError } from "../../services/chatService";
+import { showAlbumApiWarning } from "../../utils/albumWarning";
 import { setConversationDirectory } from "../../services/conversationDirectory";
 import * as chatDb from "../../services/chatDb";
 import type { ArchivedReason } from "../../types/chat-db";
@@ -5280,6 +5281,7 @@ export function ChatPage() {
 	const openAlbumViewerById = useCallback(
 		async (albumId: number, isOwnAlbum?: boolean) => {
 			albumViewerCancelledRef.current = false;
+			showAlbumApiWarning();
 			setIsAlbumSheetOpen(true);
 			setAlbumViewerMediaIndex(null);
 
@@ -5332,9 +5334,10 @@ export function ChatPage() {
 				if (albumViewerCancelledRef.current) return;
 				if (!cached) {
 					setIsAlbumSheetOpen(false);
-					toast.error(
-						error instanceof Error ? error.message : t("chat.errors.album_open_failed"),
-					);
+					const message = (error instanceof ChatApiError && error.status === 403)
+						? "This album is no longer available. Grindr now restricts access to older albums — only previously cached albums can be viewed."
+						: (error instanceof Error ? error.message : t("chat.errors.album_open_failed"));
+					toast.error(message);
 				}
 			} finally {
 				if (!albumViewerCancelledRef.current) setIsAlbumViewerLoading(false);

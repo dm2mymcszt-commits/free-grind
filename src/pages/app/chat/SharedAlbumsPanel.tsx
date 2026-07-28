@@ -10,6 +10,8 @@ import { EmptyState, ErrorState, LoadingState } from "../../../components/ui/sta
 import type { ConversationEntry } from "../../../types/chat";
 import type { AlbumViewer, SharedAlbumItem } from "../../../types/shared-albums";
 import { getThumbImageUrl, validateMediaHash } from "../../../utils/media";
+import { ApiFunctionError } from "../../../services/apiHelpers";
+import { showAlbumApiWarning } from "../../../utils/albumWarning";
 import { useAvatarCache } from "../../../hooks/useAvatarCache";
 import { resolveAvatarSrc } from "../../../services/avatarStore";
 import { AlbumViewerPanel } from "../shared-albums/AlbumViewerPanel";
@@ -228,6 +230,7 @@ export function SharedAlbumsPanel({ isDesktop }: Props) {
 
 	const openViewer = useCallback(
 		async (item: SharedAlbumItem) => {
+			showAlbumApiWarning();
 			if (isOpeningAlbum) return;
 			setOpenAlbumError(null);
 			setIsOpeningAlbum(true);
@@ -277,7 +280,11 @@ export function SharedAlbumsPanel({ isDesktop }: Props) {
 					viewerHistoryPushedRef.current = true;
 				}
 			} catch (e) {
-				setOpenAlbumError(e instanceof Error ? e.message : t("shared_albums.error_open_fallback"));
+				if (e instanceof ApiFunctionError && e.status === 403) {
+					setOpenAlbumError("This album is no longer available. Grindr now restricts access to older albums — only previously cached albums can be viewed.");
+				} else {
+					setOpenAlbumError(e instanceof Error ? e.message : t("shared_albums.error_open_fallback"));
+				}
 			} finally {
 				setIsOpeningAlbum(false);
 			}

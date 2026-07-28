@@ -14,6 +14,8 @@ import { ProfileImage } from "../../components/ui/profile-image";
 import type { ConversationEntry } from "../../types/chat";
 import type { AlbumViewer, SharedAlbumItem } from "../../types/shared-albums";
 import type { GetSharedAlbumsInput } from "../../types/api-functions";
+import { ApiFunctionError } from "../../services/apiHelpers";
+import { showAlbumApiWarning } from "../../utils/albumWarning";
 import { getThumbImageUrl, validateMediaHash } from "../../utils/media";
 import { cn } from "../../utils/cn";
 import { captureAlbum, deleteLocalAlbum, getCachedAlbumCoverUri, getLocalAlbum } from "../../services/albumStore";
@@ -392,6 +394,7 @@ export function SharedAlbumsPage() {
 
 	const openViewer = useCallback(
 		async (item: SharedAlbumItem) => {
+			showAlbumApiWarning();
 			if (isOpeningAlbum) {
 				return;
 			}
@@ -477,11 +480,15 @@ export function SharedAlbumsPage() {
 					isViewable: true,
 				});
 			} catch (openError) {
-				setOpenAlbumError(
-					openError instanceof Error
-						? openError.message
-						: t("shared_albums.error_open_fallback"),
-				);
+				if (openError instanceof ApiFunctionError && openError.status === 403) {
+					setOpenAlbumError("This album is no longer available. Grindr now restricts access to older albums — only previously cached albums can be viewed.");
+				} else {
+					setOpenAlbumError(
+						openError instanceof Error
+							? openError.message
+							: t("shared_albums.error_open_fallback"),
+					);
+				}
 			} finally {
 				setIsOpeningAlbum(false);
 			}
