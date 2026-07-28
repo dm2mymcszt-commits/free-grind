@@ -535,30 +535,38 @@ export function createChatService(fetchRest: RestFetcher, t: (key: string) => st
 		},
 
 		async getAlbum(albumId: number | string): Promise<AlbumDetailsResponse> {
-			let response = await fetchRest(`/v1/albums/${albumId}`);
-			if (response.status === 405) {
-				response = await fetchRest(`/v2/albums/${albumId}`);
+			const albumDetailsSchema = z.object({
+				albumId: z.coerce.number().int(),
+				albumName: z.string().nullable().optional().default(null),
+				content: z
+					.array(
+						z.object({
+							contentId: z.coerce.number().int(),
+							contentType: z.string().nullable().optional().default(null),
+							thumbUrl: z.string().nullable().optional().default(null),
+							url: z.string().nullable().optional().default(null),
+							coverUrl: z.string().nullable().optional().default(null),
+							processing: z.boolean().optional().default(false),
+						}),
+					)
+					.optional()
+					.default([]),
+			});
+
+			const v2Response = await fetchRest(`/v2/albums/${albumId}`);
+			await assertSuccess(v2Response, t("chat.errors.load_album_details"));
+			const v2Result = albumDetailsSchema.parse(await parseJsonSafe(v2Response));
+
+			if (v2Result.content.length === 0) {
+				const v1Response = await fetchRest(`/v1/albums/${albumId}`);
+				if (v1Response.status === 405) {
+					return v2Result;
+				}
+				await assertSuccess(v1Response, t("chat.errors.load_album_details"));
+				return albumDetailsSchema.parse(await parseJsonSafe(v1Response));
 			}
-			await assertSuccess(response, t("chat.errors.load_album_details"));
-			return z
-				.object({
-					albumId: z.coerce.number().int(),
-					albumName: z.string().nullable().optional().default(null),
-					content: z
-						.array(
-							z.object({
-								contentId: z.coerce.number().int(),
-								contentType: z.string().nullable().optional().default(null),
-								thumbUrl: z.string().nullable().optional().default(null),
-								url: z.string().nullable().optional().default(null),
-								coverUrl: z.string().nullable().optional().default(null),
-								processing: z.boolean().optional().default(false),
-							}),
-						)
-						.optional()
-						.default([]),
-				})
-				.parse(await parseJsonSafe(response));
+
+			return v2Result;
 		},
 
 		async getSharedAlbums(profileId: number | string): Promise<{
