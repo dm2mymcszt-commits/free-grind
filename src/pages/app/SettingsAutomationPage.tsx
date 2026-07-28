@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { 
-    Ban, Clock, Download, RefreshCw, Save, Tag, Upload, Users, 
+    Ban, Download, Save, Tag, Upload, Users, 
     Wand2, Trash2, Eye, EyeOff, ShieldAlert, Crosshair, Image as ImageIcon,
     MessageSquare, ShieldCheck, Zap
 } from "lucide-react";
@@ -24,10 +24,6 @@ export function SettingsAutomationPage() {
     const queryClient = useQueryClient();
     const navigate = useNavigate();
     const apiFunctions = useApiFunctions();
-
-    // --- AUTO REFRESH STATE ---
-    const [refreshEnabled, setRefreshEnabled] = useState(() => window.localStorage.getItem("fg-auto-refresh-enabled") === "true");
-    const [refreshInterval, setRefreshInterval] = useState(() => window.localStorage.getItem("fg-auto-refresh-interval") || "5");
 
     // --- AUTO-BLOCK STATE ---
     const [blockOnChat, setBlockOnChat] = useState(() => window.localStorage.getItem("fg-block-chat") === "true");
@@ -193,11 +189,7 @@ export function SettingsAutomationPage() {
 
 
 
-    const handleToggleRefresh = (val: boolean) => {
-        setRefreshEnabled(val);
-        window.localStorage.setItem("fg-auto-refresh-enabled", String(val));
-        toast.success(val ? t("settings_automation.auto_refresh_enabled", { defaultValue: "Auto Refresh Enabled" }) : t("settings_automation.auto_refresh_disabled", { defaultValue: "Auto Refresh Disabled" }), { id: "refresh-toggle" });
-    };
+
 
     // --- SAVE HANDLERS ---
     const handleSaveViewScanner = () => {
@@ -239,10 +231,7 @@ export function SettingsAutomationPage() {
         toast.success(t("settings_automation.block_rules_updated", { defaultValue: "Block Rules Updated!" }));
     };
 
-    const handleSaveRefresh = () => {
-        window.localStorage.setItem("fg-auto-refresh-interval", refreshInterval);
-        toast.success(t("settings_automation.refresh_settings_updated", { defaultValue: "Refresh Settings Updated!" }));
-    };
+
 
     const handleExport = () => {
         const blob = new Blob([forbiddenWords], { type: "text/plain" });
@@ -769,72 +758,6 @@ export function SettingsAutomationPage() {
                                     >
                                         <Save className="h-4 w-4" />
                                         {t("settings_automation.update_block_rules", { defaultValue: "Save Auto-Block Settings" })}
-                                    </button>
-                                </div>
-                            </>
-                        )}
-                    </div>
-                </div>
-
-                {/* AUTO REFRESH */}
-                <div>
-                    <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
-                        {t("settings_automation.auto_refresh_title", { defaultValue: "Auto Refresh Grid" })}
-                    </p>
-                    <div className="surface-card divide-y divide-[var(--border)] overflow-hidden">
-                        <ToggleRow
-                            icon={<RefreshCw className="h-5 w-5" />}
-                            iconClass="bg-green-500/15 text-green-400"
-                            label={t("settings_automation.enable_refresh", { defaultValue: "Enable Auto-Refresh" })}
-                            description={t("settings_automation.enable_refresh_desc", { defaultValue: "Automatically refresh the grid." })}
-                            checked={refreshEnabled}
-                            onChange={handleToggleRefresh}
-                        />
-
-                        {refreshEnabled && (
-                            <>
-                                <div className="flex items-start gap-3 p-4">
-                                    <div className="shrink-0 rounded-2xl bg-blue-500/15 p-2.5 text-blue-400">
-                                        <Clock className="h-5 w-5" />
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                        <div className="flex items-center gap-2">
-                                            <p className="min-w-0 flex-1 text-sm font-semibold leading-snug">
-                                                {t("settings_automation.refresh_interval", { defaultValue: "Refresh Interval" })}
-                                            </p>
-                                            <span className="shrink-0 rounded-lg bg-[var(--surface-2)] px-2.5 py-1 text-xs font-bold">
-                                                {t("settings_automation.refresh_interval_unit", { count: Number(refreshInterval), defaultValue: `${refreshInterval} min` })}
-                                            </span>
-                                        </div>
-                                        <p className="mt-0.5 text-xs leading-relaxed text-[var(--text-muted)]">
-                                            {t("settings_automation.refresh_technical_note", { defaultValue: "Too frequent refreshing may cause rate limits." })}
-                                        </p>
-                                        <div className="mt-3 px-2">
-                                            <Slider
-                                                label=""
-                                                hideHeader
-                                                min={5}
-                                                max={60}
-                                                step={5}
-                                                defaultValue={Number(refreshInterval)}
-                                                displayValue={t("settings_automation.refresh_interval_unit", { count: Number(refreshInterval), defaultValue: `${refreshInterval} min` })}
-                                                onChange={(val) => setRefreshInterval(String(val))}
-                                            />
-                                            <div className="flex justify-between mt-1">
-                                                <span className="text-[10px] text-[var(--text-muted)]">5 min</span>
-                                                <span className="text-[10px] text-[var(--text-muted)]">60 min</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="p-4">
-                                    <button
-                                        type="button"
-                                        onClick={handleSaveRefresh}
-                                        className="btn-accent inline-flex w-full min-h-11 items-center justify-center gap-2 px-4 py-2.5 font-semibold"
-                                    >
-                                        <Save className="h-4 w-4" />
-                                        {t("settings_automation.update_refresh_settings", { defaultValue: "Save Refresh Settings" })}
                                     </button>
                                 </div>
                             </>

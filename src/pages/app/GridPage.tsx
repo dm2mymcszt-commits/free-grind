@@ -42,7 +42,8 @@ import {
 } from "../../services/chatContactIndex";
 import type { ChatContactIndexRecord } from "../../types/chat-contact-index";
 import { appLog } from "../../utils/logger";
-import { getAutoRefreshSettings } from "../../utils/autoblock";
+import { setGridPageActive } from "./gridpage/activeState";
+import { GRID_REFRESH_INTERVAL_MS } from "../../components/gridRefreshInterval";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { cn } from "../../utils/cn";
 import { DEMO_CARDS, DEMO_CHAT_STATUS, SHOW_DEMO_DATA } from "./gridpage/demoData";
@@ -138,6 +139,11 @@ export function GridPage() {
 	const profileImageHash = useMemo(() => getProfilePhotoHash(myProfile), [myProfile]);
 	const ownDisplayName = myProfile?.displayName ?? null;
 	const showDistance = myProfile?.showDistance ?? true;
+
+	useEffect(() => {
+		setGridPageActive(true);
+		return () => setGridPageActive(false);
+	}, []);
 
 	const genderOptions = useMemo(() => {
 		return managedGenders?.map((item) => ({
@@ -798,19 +804,9 @@ export function GridPage() {
 	useEffect(() => {
 		if (typeof window === "undefined") return;
 
-		const { enabled, intervalMinutes: rawIntervalMinutes } = getAutoRefreshSettings();
-		const intervalMinutes = parseInt(rawIntervalMinutes, 10);
-
-		if (!enabled || isNaN(intervalMinutes) || intervalMinutes <= 0) {
-			return;
-		}
-
-		const intervalMs = intervalMinutes * 60 * 1000;
-		appLog.info(`[grid] auto-refresh scheduled every ${intervalMinutes} minutes`);
-
 		const timer = setInterval(() => {
 			void handleAutoRefresh();
-		}, intervalMs);
+		}, GRID_REFRESH_INTERVAL_MS);
 
 		return () => clearInterval(timer);
 	}, [handleAutoRefresh]);
