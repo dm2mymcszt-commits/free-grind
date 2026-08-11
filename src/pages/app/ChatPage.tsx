@@ -122,6 +122,7 @@ import { SCROLL_RESTORATION_TIMEOUT_MS } from "../../config/ui-constants";
 import { clearAutomationSeenHistoryForSender, runAutomationRulesForSender } from "../../utils/automationRules";
 import { consumeSelfBlockAction } from "../../utils/selfBlockActions";
 import { isReadReceiptsHidden, checkAndAutoWhitelistActiveChat } from "../../utils/privacy";
+import { getDisplayName } from "../../services/conversationDirectory";
 import freegrindLogo from "../../images/freegrind-logo.webp";
 import { removeProfileFromBrowseCache, getCachedProfileDetail, setCachedProfileDetail } from "./gridpage/cache";
 import type { ProfileDetail } from "../../types/grid";
@@ -4551,12 +4552,13 @@ export function ChatPage() {
 				setReplyTargetMessageId(null);
 
 				const otherP = selectedConversation ? getOtherParticipant(selectedConversation, userId) : null;
-				const otherName = otherP ? getDisplayName(otherP.profileId) : undefined;
+				const otherName = getDisplayName(sentMessage.conversationId, userId) ?? undefined;
+				const otherMediaHash = otherP?.primaryMediaHash ?? undefined;
 				void checkAndAutoWhitelistActiveChat(
 					String(targetProfileIdValue),
 					sentMessage.conversationId,
 					otherName,
-					otherP?.primaryMediaHash,
+					otherMediaHash,
 					userId,
 				);
 			} catch (error) {

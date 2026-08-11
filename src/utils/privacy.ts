@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
-import { getSetting, setSetting, listMessages } from "../services/chatDb";
+import { getSetting, setSetting, getMessages } from "../services/chatDb";
 
 // --- PER-CHAT READ RECEIPTS LOGIC ---
 // Backed by the active profile's db, kept in an in-memory cache so the
@@ -172,7 +172,7 @@ export async function checkAndAutoWhitelistActiveChat(
         const localMsgs = await getMessages(conversationId).catch(() => []);
         if (localMsgs && localMsgs.length > 0) {
             for (const m of localMsgs) {
-                if (userId != null && Number(m.sender_id) === Number(userId)) {
+                if (userId != null && Number(m.senderId) === Number(userId)) {
                     outgoingCount++;
                 }
             }
