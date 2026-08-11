@@ -26,9 +26,10 @@ export type PhotoViewerProps = {
 	conversationId?: string | null;
 };
 
-function getMediaInfo(photo: string | PhotoViewerMedia) {
+function getMediaInfo(photo?: string | PhotoViewerMedia | null) {
+	if (!photo) return { url: "", type: "image" as const, alt: "" };
 	if (typeof photo === "string") return { url: photo, type: "image" as const, alt: "" };
-	return { url: photo.url, type: photo.type, alt: photo.alt ?? "" };
+	return { url: photo.url || "", type: photo.type || "image", alt: photo.alt ?? "" };
 }
 
 export function PhotoViewer({

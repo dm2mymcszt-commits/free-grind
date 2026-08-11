@@ -307,11 +307,13 @@ export function SharedAlbumsPanel({ isDesktop }: Props) {
 	);
 
 	const viewerPhotos = useMemo<PhotoViewerMedia[]>(() => {
-		if (!viewer) return [];
-		return viewer.content.map((item) => ({
-			url: item.url || item.thumbUrl || item.coverUrl || "",
-			type: item.contentType?.startsWith("video/") ? "video" : "image",
-		}));
+		if (!viewer || !Array.isArray(viewer.content)) return [];
+		return viewer.content
+			.filter(Boolean)
+			.map((item) => ({
+				url: item?.url || item?.thumbUrl || item?.coverUrl || "",
+				type: item?.contentType?.startsWith("video/") ? "video" : "image",
+			}));
 	}, [viewer]);
 
 	const selectedViewerItem =

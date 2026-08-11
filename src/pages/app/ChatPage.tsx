@@ -713,11 +713,13 @@ export function ChatPage() {
 	const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>(() => getChatRealtimeStatus());
 
 	const albumViewerPhotos = useMemo<PhotoViewerMedia[]>(() => {
-		if (!albumViewer) return [];
-		return albumViewer.content.map((item) => ({
-			url: item.url || item.thumbUrl || item.coverUrl || "",
-			type: item.contentType?.startsWith("video/") ? "video" : "image",
-		}));
+		if (!albumViewer || !Array.isArray(albumViewer.content)) return [];
+		return albumViewer.content
+			.filter(Boolean)
+			.map((item) => ({
+				url: item?.url || item?.thumbUrl || item?.coverUrl || "",
+				type: item?.contentType?.startsWith("video/") ? "video" : "image",
+			}));
 	}, [albumViewer]);
 
 	const maxActivityTimestamp = useMemo(() => {

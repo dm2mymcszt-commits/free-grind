@@ -113,10 +113,10 @@ function SortableAlbumMediaItem({
 		transition,
 	};
 
-	const imageUrl = item.thumbUrl || item.url || item.coverUrl || "";
-	const isVideo = item.contentType?.startsWith("video/");
-	const isProcessing = item.processing;
-	const isRejected = item.rejectionId != null;
+	const imageUrl = item?.thumbUrl || item?.url || item?.coverUrl || "";
+	const isVideo = item?.contentType?.startsWith("video/");
+	const isProcessing = item?.processing;
+	const isRejected = item?.rejectionId != null;
 
 	return (
 		<div

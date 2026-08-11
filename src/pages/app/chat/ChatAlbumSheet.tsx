@@ -32,9 +32,10 @@ export function ChatAlbumSheet({
 
 	const handleSaveAll = async () => {
 		const items = (viewer?.content ?? [])
+			.filter(Boolean)
 			.map((item) => ({
-				url: item.url || item.coverUrl,
-				type: (item.contentType?.startsWith("video/") ? "video" : "image") as "image" | "video",
+				url: item?.url || item?.coverUrl || "",
+				type: (item?.contentType?.startsWith("video/") ? "video" : "image") as "image" | "video",
 			}))
 			.filter((item): item is { url: string; type: "image" | "video" } => !!item.url);
 

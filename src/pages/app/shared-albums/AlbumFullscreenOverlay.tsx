@@ -33,9 +33,10 @@ export function AlbumFullscreenOverlay({
 	const { t } = useTranslation();
 
 	const mediaUrl =
-		fullScreenItem.url ||
-		fullScreenItem.thumbUrl ||
-		fullScreenItem.coverUrl;
+		fullScreenItem?.url ||
+		fullScreenItem?.thumbUrl ||
+		fullScreenItem?.coverUrl ||
+		"";
 
 	return (
 		<div className="fixed inset-0 z-[60] bg-black/90" onClick={closeFullScreen}>
