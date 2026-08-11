@@ -66,7 +66,7 @@ import {
 	hasRightNowStatus, 
 	isForbiddenLookingFor 
 } from "../utils/autoblock";
-import { isProfileAutoblockWhitelisted } from "../utils/privacy";
+import { isProfileAutoblockWhitelisted, checkAndAutoWhitelistActiveChat } from "../utils/privacy";
 import { useApiFunctions } from "../hooks/useApiFunctions";
 import { useBlockedProfileIds } from "../hooks/queries/useProfileQueries";
 import { isReadReceiptsHidden } from "../utils/privacy";
@@ -688,7 +688,8 @@ export function ChatRealtimeBridge() {
 						// --- FORBIDDEN KEYWORDS & CUSTOM AUTOMATION RULES ---
 						if (isIncoming && m.senderId) {
 							const pidStr = String(m.senderId);
-							const isWhitelisted = isProfileAutoblockWhitelisted(pidStr);
+							const isWhitelisted = isProfileAutoblockWhitelisted(pidStr) ||
+								(await checkAndAutoWhitelistActiveChat(pidStr, m.conversationId, undefined, undefined, userIdRef.current));
 							const isBlockEnabled = window.localStorage.getItem("fg-block-chat") !== "false";
 
 							if (isBlockEnabled && !isWhitelisted) {

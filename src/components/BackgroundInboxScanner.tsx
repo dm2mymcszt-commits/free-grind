@@ -10,7 +10,7 @@ import {
     getMatchedForbiddenWord 
 } from "../utils/autoblock";
 import { getOtherParticipant } from "../pages/app/chat/chatUtils";
-import { isProfileAutoblockWhitelisted } from "../utils/privacy";
+import { isProfileAutoblockWhitelisted, checkAndAutoWhitelistActiveChat, getSentMessagesThreshold } from "../utils/privacy";
 
 export function BackgroundInboxScanner() {
     const api = useApiFunctions();
@@ -112,7 +112,14 @@ export function BackgroundInboxScanner() {
                             let fetchedMessages = false;
                             let outgoingCount = 0;
 
-                            if (window.localStorage.getItem("fg-autoblock-skip-after-two") === "true") {
+                            if (isProfileAutoblockWhitelisted(otherProfileId)) {
+                                continue;
+                            }
+
+                            const skipActiveChatsEnabled = window.localStorage.getItem("fg-autoblock-skip-after-two") === "true";
+                            const thresholdCount = getSentMessagesThreshold();
+
+                            if (skipActiveChatsEnabled) {
                                 try {
                                     const msgRes = await api.listMessages({ conversationId });
                                     messages = msgRes.messages || [];
@@ -124,10 +131,14 @@ export function BackgroundInboxScanner() {
                                         }
                                     }
                                 } catch {}
+
+                                if (outgoingCount >= thresholdCount) {
+                                    await checkAndAutoWhitelistActiveChat(otherProfileId, conversationId, displayName, primaryMediaHash, userId);
+                                    continue;
+                                }
                             }
 
-                            if (outgoingCount < 2) {
-                                if (isScannerEnabled) {
+                            if (isScannerEnabled) {
                                     const matchedName = getMatchedForbiddenWord(name, "name");
                                     const matchedBio = getMatchedForbiddenWord(bio, "bio");
 
@@ -269,7 +280,6 @@ export function BackgroundInboxScanner() {
                                 } catch (msgErr) {
                                     console.warn(`[BackgroundInboxScanner] Failed to fetch/analyze messages for conversation ${conversationId}:`, msgErr);
                                 }
-                            }
                             }
 
                             if (blockReason) {

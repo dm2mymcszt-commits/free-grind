@@ -121,7 +121,7 @@ import { markInboxSeen, getInboxLastSeen } from "../../services/seenStore";
 import { SCROLL_RESTORATION_TIMEOUT_MS } from "../../config/ui-constants";
 import { clearAutomationSeenHistoryForSender, runAutomationRulesForSender } from "../../utils/automationRules";
 import { consumeSelfBlockAction } from "../../utils/selfBlockActions";
-import { isReadReceiptsHidden } from "../../utils/privacy";
+import { isReadReceiptsHidden, checkAndAutoWhitelistActiveChat } from "../../utils/privacy";
 import freegrindLogo from "../../images/freegrind-logo.webp";
 import { removeProfileFromBrowseCache, getCachedProfileDetail, setCachedProfileDetail } from "./gridpage/cache";
 import type { ProfileDetail } from "../../types/grid";
@@ -4549,6 +4549,15 @@ export function ChatPage() {
 
 				setDraft("");
 				setReplyTargetMessageId(null);
+
+				const otherP = selectedConversation ? getOtherParticipant(selectedConversation, userId) : null;
+				void checkAndAutoWhitelistActiveChat(
+					String(targetProfileIdValue),
+					sentMessage.conversationId,
+					otherP?.name,
+					otherP?.primaryMediaHash,
+					userId,
+				);
 			} catch (error) {
 				setThreadMessages((previous) =>
 					previous.map((message) =>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { getSetting, setSetting } from "../services/chatDb";
+import { toast } from "react-hot-toast";
+import { getSetting, setSetting, listMessages } from "../services/chatDb";
 
 // --- PER-CHAT READ RECEIPTS LOGIC ---
 // Backed by the active profile's db, kept in an in-memory cache so the
@@ -115,11 +116,22 @@ export function getAutoBlockWhitelist(): { profileId: string; displayName: strin
     }
 }
 
+export const AUTO_BLOCK_WHITELIST_UPDATED_EVENT = "fg-auto-block-whitelist-updated";
+
+export function getSentMessagesThreshold(): number {
+    if (typeof window === "undefined") return 3;
+    const val = parseInt(window.localStorage.getItem("fg-autoblock-skip-after-count") || "3", 10);
+    return isNaN(val) || val < 1 ? 3 : val;
+}
+
 export function addToAutoBlockWhitelist(profileId: string, displayName: string, primaryMediaHash?: string | null) {
     const list = getAutoBlockWhitelist();
     if (!list.some(x => String(x.profileId) === String(profileId))) {
         list.push({ profileId: String(profileId), displayName, primaryMediaHash });
         window.localStorage.setItem("fg-auto-block-whitelist", JSON.stringify(list));
+        if (typeof window !== "undefined") {
+            window.dispatchEvent(new Event(AUTO_BLOCK_WHITELIST_UPDATED_EVENT));
+        }
     }
 }
 
@@ -127,11 +139,58 @@ export function removeFromAutoBlockWhitelist(profileId: string) {
     const list = getAutoBlockWhitelist();
     const filtered = list.filter(x => String(x.profileId) !== String(profileId));
     window.localStorage.setItem("fg-auto-block-whitelist", JSON.stringify(filtered));
+    if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event(AUTO_BLOCK_WHITELIST_UPDATED_EVENT));
+    }
 }
 
 export function isProfileAutoblockWhitelisted(profileId: string): boolean {
     const list = getAutoBlockWhitelist();
     return list.some(x => String(x.profileId) === String(profileId));
+}
+
+export async function checkAndAutoWhitelistActiveChat(
+    profileId: string,
+    conversationId: string,
+    displayName?: string,
+    primaryMediaHash?: string | null,
+    userId?: number | null,
+): Promise<boolean> {
+    if (!profileId || profileId === "0" || typeof window === "undefined") return false;
+
+    const skipActiveChatsEnabled = window.localStorage.getItem("fg-autoblock-skip-after-two") === "true";
+    if (!skipActiveChatsEnabled) return false;
+
+    if (isProfileAutoblockWhitelisted(profileId)) {
+        return true;
+    }
+
+    const threshold = getSentMessagesThreshold();
+    let outgoingCount = 0;
+
+    try {
+        const localMsgs = await listMessages(conversationId).catch(() => []);
+        if (localMsgs && localMsgs.length > 0) {
+            for (const m of localMsgs) {
+                if (userId != null && Number(m.senderId) === Number(userId)) {
+                    outgoingCount++;
+                }
+            }
+        }
+    } catch {}
+
+    if (outgoingCount >= threshold) {
+        const name = displayName || `Profile ${profileId}`;
+        addToAutoBlockWhitelist(profileId, name, primaryMediaHash);
+
+        toast.success(
+            `Auto-block disabled for ${name} (${outgoingCount} sent messages - added to whitelist)!`,
+            { id: `autowhitelist-${profileId}` },
+        );
+        return true;
+    }
+
+    return false;
 }
 
 // --- PER-CHAT GHOST MODE LOGIC ---

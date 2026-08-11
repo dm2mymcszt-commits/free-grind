@@ -14,7 +14,7 @@ import { RangeSlider, Slider } from "../../components/ui/range-slider";
 import { interestViewsStore } from "../../services/interestViewsStore";
 import { getLookingForOptions } from "./profile-option-builders";
 import { getThumbImageUrl } from "../../utils/media";
-import { getAutoBlockWhitelist, removeFromAutoBlockWhitelist } from "../../utils/privacy";
+import { getAutoBlockWhitelist, removeFromAutoBlockWhitelist, AUTO_BLOCK_WHITELIST_UPDATED_EVENT } from "../../utils/privacy";
 import { useNavigate } from "react-router-dom";
 import { useApiFunctions } from "../../hooks/useApiFunctions";
 import { getForbiddenWords, setForbiddenWords as setForbiddenWordsInStore } from "../../utils/autoblock";
@@ -46,6 +46,7 @@ export function SettingsAutomationPage() {
     const [blockMediaDelayMinutes, setBlockMediaDelayMinutes] = useState(() => window.localStorage.getItem("fg-block-media-delay-minutes") || "2");
     const [inboxScannerEnabled, setInboxScannerEnabled] = useState(() => window.localStorage.getItem("fg-inbox-scanner-enabled") === "true");
     const [skipBlockAfterTwo, setSkipBlockAfterTwo] = useState(() => window.localStorage.getItem("fg-autoblock-skip-after-two") === "true");
+    const [skipBlockCount, setSkipBlockCount] = useState(() => window.localStorage.getItem("fg-autoblock-skip-after-count") || "3");
 
     // Seen/Read Auto-Block
     const [blockSeenEnabled, setBlockSeenEnabled] = useState(() => window.localStorage.getItem("fg-block-seen-enabled") === "true");
@@ -58,6 +59,14 @@ export function SettingsAutomationPage() {
     const [whitelist, setWhitelist] = useState<{ profileId: string; displayName: string; primaryMediaHash?: string | null }[]>([]);
     useEffect(() => {
         setWhitelist(getAutoBlockWhitelist());
+    }, []);
+
+    useEffect(() => {
+        const handleWhitelistUpdated = () => {
+            setWhitelist(getAutoBlockWhitelist());
+        };
+        window.addEventListener(AUTO_BLOCK_WHITELIST_UPDATED_EVENT, handleWhitelistUpdated);
+        return () => window.removeEventListener(AUTO_BLOCK_WHITELIST_UPDATED_EVENT, handleWhitelistUpdated);
     }, []);
 
     useEffect(() => {
@@ -232,6 +241,7 @@ export function SettingsAutomationPage() {
         window.localStorage.setItem("fg-block-looking-for-mode", blockedLookingForMode);
         window.localStorage.setItem("fg-block-looking-for", JSON.stringify(blockedLookingFor));
         window.localStorage.setItem("fg-autoblock-skip-after-two", String(skipBlockAfterTwo));
+        window.localStorage.setItem("fg-autoblock-skip-after-count", skipBlockCount);
         window.localStorage.setItem("fg-block-seen-enabled", String(blockSeenEnabled));
         window.localStorage.setItem("fg-block-seen-time", blockSeenMinutes);
         window.localStorage.setItem("fg-block-right-now", String(blockRightNow));
@@ -495,25 +505,39 @@ export function SettingsAutomationPage() {
                                      </div>
                                  </div>
 
-                                  {/* Conversation Shield */}
-                                  <div className="flex items-start gap-3 p-4">
-                                      <div className="shrink-0 rounded-2xl bg-cyan-500/15 p-2.5 text-cyan-400">
-                                          <MessageSquare className="h-5 w-5" />
-                                      </div>
-                                      <div className="min-w-0 flex-1">
-                                          <label className="flex items-center gap-2 cursor-pointer">
-                                              <input
-                                                  type="checkbox"
-                                                  checked={skipBlockAfterTwo}
-                                                  onChange={(e) => setSkipBlockAfterTwo(e.target.checked)}
-                                                  className="h-4 w-4 accent-[var(--accent)] shrink-0"
-                                              />
-                                              <span className="text-xs text-[var(--text-muted)] leading-relaxed">
-                                                  <strong className="text-[var(--text)]">Disable Auto-Block for Active Chats.</strong> Stops auto-blocking a profile once you have sent them 2 or more messages, protecting active conversations.
-                                              </span>
-                                          </label>
-                                      </div>
-                                  </div>
+                                 {/* Conversation Shield */}
+                                 <div className="flex items-start gap-3 p-4">
+                                     <div className="shrink-0 rounded-2xl bg-cyan-500/15 p-2.5 text-cyan-400">
+                                         <MessageSquare className="h-5 w-5" />
+                                     </div>
+                                     <div className="min-w-0 flex-1">
+                                         <label className="flex items-center gap-2 cursor-pointer">
+                                             <input
+                                                 type="checkbox"
+                                                 checked={skipBlockAfterTwo}
+                                                 onChange={(e) => setSkipBlockAfterTwo(e.target.checked)}
+                                                 className="h-4 w-4 accent-[var(--accent)] shrink-0"
+                                             />
+                                             <span className="text-xs text-[var(--text-muted)] leading-relaxed">
+                                                 <strong className="text-[var(--text)]">Disable Auto-Block for Active Chats.</strong> Automatically whitelists and stops auto-blocking a profile once you have sent them messages.
+                                             </span>
+                                         </label>
+                                         {skipBlockAfterTwo && (
+                                             <div className="mt-2.5 flex items-center gap-2 text-xs text-[var(--text-muted)] pl-6">
+                                                 <span>Auto-whitelist profile after sending</span>
+                                                 <input
+                                                     type="number"
+                                                     min="1"
+                                                     max="50"
+                                                     value={skipBlockCount}
+                                                     onChange={(e) => setSkipBlockCount(e.target.value)}
+                                                     className="w-14 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-2 py-1 text-center font-bold text-[var(--text)] outline-none transition focus:border-[var(--accent)]"
+                                                 />
+                                                 <span>sent message{Number(skipBlockCount) !== 1 ? "s" : ""} (default: 3)</span>
+                                             </div>
+                                         )}
+                                     </div>
+                                 </div>
 
                                   {/* Seen / Read Auto-Block */}
                                   <div className="flex items-start gap-3 p-4">
