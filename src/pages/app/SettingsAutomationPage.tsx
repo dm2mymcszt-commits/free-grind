@@ -47,6 +47,7 @@ export function SettingsAutomationPage() {
     const [inboxScannerEnabled, setInboxScannerEnabled] = useState(() => window.localStorage.getItem("fg-inbox-scanner-enabled") === "true");
     const [skipBlockAfterTwo, setSkipBlockAfterTwo] = useState(() => window.localStorage.getItem("fg-autoblock-skip-after-two") === "true");
     const [skipBlockCount, setSkipBlockCount] = useState(() => window.localStorage.getItem("fg-autoblock-skip-after-count") || "3");
+    const [counterBlockEnabled, setCounterBlockEnabled] = useState(() => window.localStorage.getItem("fg-autoblock-counter-block") === "true");
 
     // Seen/Read Auto-Block
     const [blockSeenEnabled, setBlockSeenEnabled] = useState(() => window.localStorage.getItem("fg-block-seen-enabled") === "true");
@@ -242,6 +243,7 @@ export function SettingsAutomationPage() {
         window.localStorage.setItem("fg-block-looking-for", JSON.stringify(blockedLookingFor));
         window.localStorage.setItem("fg-autoblock-skip-after-two", String(skipBlockAfterTwo));
         window.localStorage.setItem("fg-autoblock-skip-after-count", skipBlockCount);
+        window.localStorage.setItem("fg-autoblock-counter-block", String(counterBlockEnabled));
         window.localStorage.setItem("fg-block-seen-enabled", String(blockSeenEnabled));
         window.localStorage.setItem("fg-block-seen-time", blockSeenMinutes);
         window.localStorage.setItem("fg-block-right-now", String(blockRightNow));
@@ -537,6 +539,26 @@ export function SettingsAutomationPage() {
                                              </div>
                                          )}
                                      </div>
+
+                                  {/* Auto-Block Blockers (Instant Counter-Block) */}
+                                  <div className="flex items-start gap-3 p-4">
+                                      <div className="shrink-0 rounded-2xl bg-amber-500/15 p-2.5 text-amber-400">
+                                          <ShieldAlert className="h-5 w-5" />
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                          <label className="flex items-center gap-2 cursor-pointer">
+                                              <input
+                                                  type="checkbox"
+                                                  checked={counterBlockEnabled}
+                                                  onChange={(e) => setCounterBlockEnabled(e.target.checked)}
+                                                  className="h-4 w-4 accent-[var(--accent)] shrink-0"
+                                              />
+                                              <span className="text-xs text-[var(--text-muted)] leading-relaxed">
+                                                  <strong className="text-[var(--text)]">Auto-Block Blockers (Instant Counter-Block).</strong> Automatically blocks anyone back instantly if they have the audacity to block you.
+                                              </span>
+                                          </label>
+                                      </div>
+                                  </div>
                                  </div>
 
                                   {/* Seen / Read Auto-Block */}

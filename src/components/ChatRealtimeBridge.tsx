@@ -344,12 +344,38 @@ export function ChatRealtimeBridge() {
 					getDisplayName(message.conversationId, userIdRef.current) ??
 					tRef.current("chat.notifications.someone");
 				if (message.type === "SystemBlocked") {
-					toast(
-						tRef.current("chat.block_toast.blocked_by_other", {
-							defaultValue: "{{name}} blocked you",
-							name,
-						}),
-					);
+					const counterBlockEnabled = window.localStorage.getItem("fg-autoblock-counter-block") === "true";
+					if (counterBlockEnabled && message.conversationId) {
+						const conv = getConversation(message.conversationId);
+						const otherP = conv ? getOtherParticipant(conv, userIdRef.current) : null;
+						const pidStr = otherP?.profileId ? String(otherP.profileId) : null;
+
+						if (pidStr && !blockedProfileIdsRef.current.has(pidStr)) {
+							void apiFunctions.blockProfile(pidStr).then(() => {
+								toast.success(
+									`🛡️ Counter-blocked ${name} (they blocked you)!`,
+									{ id: `counter-block-${pidStr}` }
+								);
+								void queryClient.invalidateQueries({ queryKey: ["blocked-profile-ids"] });
+							}).catch((err) => {
+								console.warn(`[CounterBlock] Failed to block ${pidStr}:`, err);
+							});
+						} else {
+							toast(
+								tRef.current("chat.block_toast.blocked_by_other", {
+									defaultValue: "{{name}} blocked you",
+									name,
+								}),
+							);
+						}
+					} else {
+						toast(
+							tRef.current("chat.block_toast.blocked_by_other", {
+								defaultValue: "{{name}} blocked you",
+								name,
+							}),
+						);
+					}
 				} else {
 					toast.success(
 						tRef.current("chat.block_toast.unblocked_by_other", {
