@@ -274,6 +274,7 @@ export async function setForbiddenWords(value: string): Promise<void> {
     if (typeof window !== "undefined") {
         window.localStorage.setItem("fg-forbidden-words", value);
         window.dispatchEvent(new Event("fg-trigger-inbox-scan"));
+        window.dispatchEvent(new CustomEvent("fg-forbidden-words-updated", { detail: value }));
     }
     await setAutomationSettings({ forbiddenWords: value });
 }

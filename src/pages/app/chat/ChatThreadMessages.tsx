@@ -29,7 +29,6 @@ import {
 import { useAvatarCache } from "../../../hooks/useAvatarCache";
 import { resolveAvatarSrc } from "../../../services/avatarStore";
 import { getThumbImageUrl, validateMediaHash } from "../../../utils/media";
-import { getForbiddenWords, setForbiddenWords } from "../../../utils/autoblock";
 import {
 	formatDateHeader,
 	formatDateTime24,
@@ -88,6 +87,7 @@ type ChatThreadMessagesProps = {
 	hasChattedBefore?: boolean;
 	lastMessageTimestamp?: number | null;
 	composerHeight?: number;
+	onBanWord?: (text: string) => void;
 };
 
 const getReactionEmoji = (type: number): string => {
@@ -298,6 +298,7 @@ export function ChatThreadMessages({
 	hasChattedBefore = false,
 	lastMessageTimestamp = null,
 	composerHeight: _composerHeight = 88,
+	onBanWord,
 }: ChatThreadMessagesProps) {
 	const { t } = useTranslation();
 	useLocalMediaCache();
@@ -706,23 +707,7 @@ export function ChatThreadMessages({
 				label: t("chat.actions.ban_word", { defaultValue: "Ban word" }),
 				icon: <Ban className="h-4 w-4" />,
 				onClick: () => {
-					const wordToBan = window.prompt(
-						t("chat.actions.ban_word_prompt", {
-							defaultValue: "Trim this message down to the specific keyword you want to ban:",
-						}),
-						hasText ? body.text : "",
-					);
-					if (wordToBan && wordToBan.trim()) {
-						const currentList = getForbiddenWords();
-						const newList = currentList ? `${currentList}, ${wordToBan.trim()}` : wordToBan.trim();
-						void setForbiddenWords(newList);
-						toast.success(
-							t("chat.actions.ban_word_added", {
-								defaultValue: "Added \"{{word}}\" to forbidden keywords!",
-								word: wordToBan.trim(),
-							}),
-						);
-					}
+					onBanWord?.(hasText ? body.text : "");
 				},
 			});
 		}

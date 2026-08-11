@@ -61,6 +61,19 @@ export function SettingsAutomationPage() {
     }, []);
 
     useEffect(() => {
+        const handleWordsUpdated = (e: Event) => {
+            const detail = (e as CustomEvent<string>).detail;
+            if (typeof detail === "string") {
+                setForbiddenWords(detail);
+            } else {
+                setForbiddenWords(getForbiddenWords());
+            }
+        };
+        window.addEventListener("fg-forbidden-words-updated", handleWordsUpdated);
+        return () => window.removeEventListener("fg-forbidden-words-updated", handleWordsUpdated);
+    }, []);
+
+    useEffect(() => {
         const fetchMissingWhitelistProfiles = async () => {
             const missingIds = whitelist
                 .filter(x => !x.primaryMediaHash)

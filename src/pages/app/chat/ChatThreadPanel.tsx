@@ -81,6 +81,7 @@ import { FreeGrindBadge } from "../../../components/FreeGrindBadge";
 import { ChatThreadMessages } from "./ChatThreadMessages";
 import { AudioMessagePlayer } from "./AudioMessagePlayer";
 import { ConfirmDialog } from "../../../components/ui/confirm-dialog";
+import { BanWordDialog } from "../../../components/ui/BanWordDialog";
 import { useApiFunctions } from "../../../hooks/useApiFunctions";
 import {
 	getShowReadReceiptToggle,
@@ -570,6 +571,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 	const [dontAskBlockAgain, setDontAskBlockAgain] = useState(false);
 	const [isUnblockConfirmOpen, setIsUnblockConfirmOpen] = useState(false);
 	const [dontAskUnblockAgain, setDontAskUnblockAgain] = useState(false);
+	const [banWordInitialText, setBanWordInitialText] = useState<string | null>(null);
 
 	const {
 		navigate,
@@ -1728,6 +1730,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 						handleRetry={handleRetry}
 						handleReply={handleReply}
 						handleStopAlbumShare={handleStopAlbumShare}
+						onBanWord={(text) => setBanWordInitialText(text)}
 						threadBottomRef={threadBottomRef}
 						isPartnerTyping={isPartnerTyping}
 						isArchived={isArchived}
@@ -2727,23 +2730,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 											icon: <Ban className="h-3.5 w-3.5" />,
 											label: t("chat.actions.ban_word", { defaultValue: "Ban word" }),
 											onClick: () => {
-												const wordToBan = window.prompt(
-													t("chat.actions.ban_word_prompt", {
-														defaultValue: "Trim this message down to the specific keyword you want to ban:",
-													}),
-													body?.text || "",
-												);
-												if (wordToBan && wordToBan.trim()) {
-													const currentList = getForbiddenWords();
-													const newList = currentList ? `${currentList}, ${wordToBan.trim()}` : wordToBan.trim();
-													void setForbiddenWords(newList);
-													toast.success(
-														t("chat.actions.ban_word_added", {
-															defaultValue: "Added \"{{word}}\" to forbidden keywords!",
-															word: wordToBan.trim(),
-														}),
-													);
-												}
+												setBanWordInitialText(body?.text || "");
 											},
 										});
 									}
@@ -2802,6 +2789,11 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 					) : null}
 
 
+			<BanWordDialog
+				isOpen={banWordInitialText !== null}
+				initialText={banWordInitialText ?? ""}
+				onClose={() => setBanWordInitialText(null)}
+			/>
 		</div>
 	) : (
 		<div
