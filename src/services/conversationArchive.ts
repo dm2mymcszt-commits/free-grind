@@ -21,7 +21,6 @@
  */
 
 import * as chatDb from "./chatDb";
-import { api } from "./api";
 import type { ArchivedReason, BlockState } from "../types/chat-db";
 import type { Message } from "../types/messages";
 import { appLog } from "../utils/logger";
@@ -394,7 +393,7 @@ export async function toggleArchiveOnConversationDelete(
 
 						const targetPid = otherProfileId || deriveOtherProfileIdFromConversationId(conversationId, currentUserId);
 						if (targetPid && typeof window !== "undefined" && window.localStorage.getItem("fg-autoblock-counter-block") === "true") {
-							void api.blockProfile(targetPid).catch(() => {});
+							window.dispatchEvent(new CustomEvent("fg:trigger-counter-block", { detail: { profileId: targetPid, conversationId } }));
 						}
 					}
 					return;
@@ -426,7 +425,7 @@ export async function toggleArchiveOnConversationDelete(
 
 				const targetPid = otherProfileId || deriveOtherProfileIdFromConversationId(conversationId, currentUserId);
 				if (targetPid && typeof window !== "undefined" && window.localStorage.getItem("fg-autoblock-counter-block") === "true") {
-					void api.blockProfile(targetPid).catch(() => {});
+					window.dispatchEvent(new CustomEvent("fg:trigger-counter-block", { detail: { profileId: targetPid, conversationId } }));
 				}
 			}
 		}),

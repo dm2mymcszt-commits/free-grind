@@ -360,32 +360,20 @@ export function ChatRealtimeBridge() {
 							pidStr = dbConv?.otherProfileId ? String(dbConv.otherProfileId) : null;
 						}
 
-						if (pidStr && !blockedProfileIdsRef.current.has(pidStr)) {
-							void apiFunctions.blockProfile(pidStr).then(() => {
-								toast.success(
-									`🛡️ Counter-blocked ${name} (they blocked you)!`,
-									{ id: `counter-block-${pidStr}` }
-								);
-								void queryClient.invalidateQueries({ queryKey: ["blocked-profile-ids"] });
-							}).catch((err) => {
-								console.warn(`[CounterBlock] Failed to block ${pidStr}:`, err);
-							});
-						} else {
-							toast(
-								tRef.current("chat.block_toast.blocked_by_other", {
-									defaultValue: "{{name}} blocked you",
-									name,
-								}),
+						if (pidStr) {
+							window.dispatchEvent(
+								new CustomEvent("fg:trigger-counter-block", {
+									detail: { profileId: pidStr, conversationId: message.conversationId },
+								})
 							);
 						}
-					} else {
-						toast(
-							tRef.current("chat.block_toast.blocked_by_other", {
-								defaultValue: "{{name}} blocked you",
-								name,
-							}),
-						);
 					}
+					toast(
+						tRef.current("chat.block_toast.blocked_by_other", {
+							defaultValue: "{{name}} blocked you",
+							name,
+						}),
+					);
 				} else {
 					toast.success(
 						tRef.current("chat.block_toast.unblocked_by_other", {
@@ -400,7 +388,36 @@ export function ChatRealtimeBridge() {
 		return () => {
 			window.removeEventListener(CHAT_SYSTEM_MESSAGE_EVENT, handleSystemMessage as EventListener);
 		};
-	}, []);
+	}, [queryClient]);
+
+	useEffect(() => {
+		const handleCounterBlockEvent = async (event: Event) => {
+			const detail = (event as CustomEvent<{ profileId: string; conversationId?: string }>).detail;
+			if (!detail?.profileId) return;
+			const pidStr = String(detail.profileId);
+			if (blockedProfileIdsRef.current.has(pidStr)) return;
+
+			const name = detail.conversationId
+				? (getDisplayName(detail.conversationId, userIdRef.current) ?? `Profile ${pidStr}`)
+				: `Profile ${pidStr}`;
+
+			try {
+				await apiFunctions.blockProfile(pidStr);
+				toast.success(
+					`🛡️ Counter-blocked ${name} (they blocked you)!`,
+					{ id: `counter-block-${pidStr}` }
+				);
+				void queryClient.invalidateQueries({ queryKey: ["blocked-profile-ids"] });
+			} catch (err) {
+				console.warn(`[CounterBlock] Failed to block ${pidStr}:`, err);
+			}
+		};
+
+		window.addEventListener("fg:trigger-counter-block", handleCounterBlockEvent as EventListener);
+		return () => {
+			window.removeEventListener("fg:trigger-counter-block", handleCounterBlockEvent as EventListener);
+		};
+	}, [apiFunctions, queryClient]);
 
 	// Boot the realtime manager whenever the user is authenticated.
 	// getToken is called fresh on every (re)connect so an expired token
