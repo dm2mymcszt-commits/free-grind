@@ -573,6 +573,50 @@ export function ChatRealtimeBridge() {
 						Number(tap.profileId) !== Number(currentUserId)
 					) {
 						appLog.debug(`[chat-ws:bridge] Incoming tap received from profileId: ${tap.profileId}`);
+
+						const pidStr = String(tap.profileId);
+						const isWhitelisted = isProfileAutoblockWhitelisted(pidStr);
+						const isBlockEnabled = window.localStorage.getItem("fg-block-chat") !== "false";
+
+						if (isBlockEnabled && !isWhitelisted) {
+							let blockReason = "";
+							const matchedName = getMatchedForbiddenWord(tap.displayName, "name");
+							if (matchedName) {
+								blockReason = `Name keyword: "${matchedName}"`;
+							} else {
+								try {
+									const profile = await apiFunctions.getProfileDetail(pidStr).catch(() => null) as any;
+									if (profile) {
+										const bio = profile.aboutMe || "";
+										const age = profile.age;
+										const distance = profile.distanceMeters ?? profile.distance;
+										const lookingForTags = profile.lookingFor || [];
+										const matchedBio = getMatchedForbiddenWord(bio, "bio");
+
+										if (isOutsideAgeLimits(age)) {
+											blockReason = age == null ? "No Age Set" : `Age limit (${age})`;
+										} else if (isOutsideDistanceLimits(distance)) {
+											blockReason = "Distance limit";
+										} else if (hasRightNowStatus(profile)) {
+											blockReason = "Has active 'Right Now' status";
+										} else if (isForbiddenLookingFor(lookingForTags)) {
+											blockReason = "Forbidden 'Looking For' tag";
+										} else if (matchedBio) {
+											blockReason = `Bio keyword: "${matchedBio}"`;
+										}
+									}
+								} catch {}
+							}
+
+							if (blockReason) {
+								appLog.info(`[ChatRealtimeBridge] Auto-blocking tap from ${pidStr} due to: ${blockReason}`);
+								await apiFunctions.blockProfile(pidStr).catch(() => {});
+								await applySelfBlockAction(pidStr, "block").catch(() => {});
+								void notifyAutoBlock(tap.displayName || pidStr, blockReason);
+								return;
+							}
+						}
+
 						window.dispatchEvent(
 							new CustomEvent<TapReceivedDetail>(TAP_RECEIVED_EVENT, {
 								detail: tap,
