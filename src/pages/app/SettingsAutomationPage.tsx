@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { 
-    Ban, Download, Save, Tag, Upload, Users, 
+    Ban, Download, Save, Tag, Upload, Users, UserX,
     Wand2, Trash2, Eye, EyeOff, ShieldAlert, Crosshair, Image as ImageIcon,
     MessageSquare, ShieldCheck, Zap
 } from "lucide-react";
@@ -543,8 +543,8 @@ export function SettingsAutomationPage() {
 
                                   {/* Auto-Block Blockers (Instant Counter-Block) */}
                                   <div className="flex items-start gap-3 p-4">
-                                      <div className="shrink-0 rounded-2xl bg-amber-500/15 p-2.5 text-amber-400">
-                                          <ShieldAlert className="h-5 w-5" />
+                                      <div className="shrink-0 rounded-2xl bg-purple-500/15 p-2.5 text-purple-400">
+                                          <UserX className="h-5 w-5" />
                                       </div>
                                       <div className="min-w-0 flex-1">
                                           <label className="flex items-center gap-2 cursor-pointer">
