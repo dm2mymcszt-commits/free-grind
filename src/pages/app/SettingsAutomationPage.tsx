@@ -539,6 +539,7 @@ export function SettingsAutomationPage() {
                                              </div>
                                          )}
                                      </div>
+                                 </div>
 
                                   {/* Auto-Block Blockers (Instant Counter-Block) */}
                                   <div className="flex items-start gap-3 p-4">
@@ -554,12 +555,11 @@ export function SettingsAutomationPage() {
                                                   className="h-4 w-4 accent-[var(--accent)] shrink-0"
                                               />
                                               <span className="text-xs text-[var(--text-muted)] leading-relaxed">
-                                                  <strong className="text-[var(--text)]">Auto-Block Blockers (Instant Counter-Block).</strong> Automatically blocks anyone back instantly if they have the audacity to block you.
+                                                  <strong className="text-[var(--text)]">Auto-Block Blockers (Instant Counter-Block).</strong> Automatically blocks users back instantly if they block you.
                                               </span>
                                           </label>
                                       </div>
                                   </div>
-                                 </div>
 
                                   {/* Seen / Read Auto-Block */}
                                   <div className="flex items-start gap-3 p-4">
