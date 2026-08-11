@@ -169,10 +169,10 @@ export async function checkAndAutoWhitelistActiveChat(
     let outgoingCount = 0;
 
     try {
-        const localMsgs = await listMessages(conversationId).catch(() => []);
+        const localMsgs = await getMessages(conversationId).catch(() => []);
         if (localMsgs && localMsgs.length > 0) {
             for (const m of localMsgs) {
-                if (userId != null && Number(m.senderId) === Number(userId)) {
+                if (userId != null && Number(m.sender_id) === Number(userId)) {
                     outgoingCount++;
                 }
             }

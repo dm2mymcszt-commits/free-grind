@@ -112,7 +112,7 @@ export function BackgroundInboxScanner() {
                             let fetchedMessages = false;
                             let outgoingCount = 0;
 
-                            if (isProfileAutoblockWhitelisted(otherProfileId)) {
+                            if (isProfileAutoblockWhitelisted(profileId)) {
                                 continue;
                             }
 
@@ -133,7 +133,7 @@ export function BackgroundInboxScanner() {
                                 } catch {}
 
                                 if (outgoingCount >= thresholdCount) {
-                                    await checkAndAutoWhitelistActiveChat(otherProfileId, conversationId, displayName, primaryMediaHash, userId);
+                                    await checkAndAutoWhitelistActiveChat(profileId, conversationId, name, p.primaryMediaHash, userId);
                                     continue;
                                 }
                             }

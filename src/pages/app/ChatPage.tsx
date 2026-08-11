@@ -4551,10 +4551,11 @@ export function ChatPage() {
 				setReplyTargetMessageId(null);
 
 				const otherP = selectedConversation ? getOtherParticipant(selectedConversation, userId) : null;
+				const otherName = otherP ? getDisplayName(otherP.profileId) : undefined;
 				void checkAndAutoWhitelistActiveChat(
 					String(targetProfileIdValue),
 					sentMessage.conversationId,
-					otherP?.name,
+					otherName,
 					otherP?.primaryMediaHash,
 					userId,
 				);
