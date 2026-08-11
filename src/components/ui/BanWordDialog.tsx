@@ -121,7 +121,7 @@ export function BanWordDialog({
 				}}
 				className="p-4"
 			>
-				<div className="flex items-center gap-2 text-red-400">
+				<div className="flex items-center gap-2 text-[var(--accent)]">
 					<Ban className="h-5 w-5 shrink-0" />
 					<p className="text-base font-bold text-[var(--text)]">
 						{t("chat.actions.ban_word_title", { defaultValue: "Ban Keyword" })}
@@ -142,12 +142,12 @@ export function BanWordDialog({
 						onChange={(e) => setWord(e.target.value)}
 						placeholder="Enter word to ban..."
 						disabled={isProcessing}
-						className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-2.5 text-sm font-medium text-[var(--text)] outline-none transition focus:border-red-500 focus:ring-1 focus:ring-red-500"
+						className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-2.5 text-sm font-medium text-[var(--text)] outline-none transition focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)]"
 					/>
 				</div>
 
 				{word.trim() && (
-					<p className="mt-2 flex items-center gap-1.5 text-[11px] text-amber-400/90 font-medium">
+					<p className="mt-2 flex items-center gap-1.5 text-[11px] text-[var(--accent)] font-medium">
 						<ShieldAlert className="h-3.5 w-3.5 shrink-0" />
 						<span>Will autoblock any user matching "{word.trim()}"</span>
 					</p>
@@ -165,7 +165,7 @@ export function BanWordDialog({
 					<button
 						type="submit"
 						disabled={isProcessing || !word.trim()}
-						className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-red-500/50 bg-red-500/20 px-4 text-sm font-semibold text-red-200 transition hover:bg-red-500/30 disabled:opacity-50"
+						className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[var(--accent)] bg-[var(--accent)] px-4 text-sm font-semibold text-[var(--accent-contrast)] transition hover:brightness-110 disabled:opacity-50 shadow-md shadow-[var(--accent)]/20"
 					>
 						{isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
 						<span>{t("chat.actions.ban_word_confirm", { defaultValue: "Add & Auto-Block" })}</span>
