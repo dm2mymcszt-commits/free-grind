@@ -38,6 +38,7 @@ import { SelectableItem } from "../../../components/multi-select/SelectableItem"
 import { useMultiSelect } from "../../../contexts/MultiSelectContext";
 import { useInboxSyncStatus } from "../../../hooks/useInboxSyncStatus";
 import { FEED_HEADER_OFFSET, FEED_MASK_GRADIENT_STOP } from "../../../config/design-config";
+import { hideConversation, unhideConversation } from "../../../services/conversationHide";
 
 /** Footer bar below the chat list's scroll area (not inside it) — reads as
  * part of the list (same border/background as a conversation row) rather
@@ -916,6 +917,19 @@ export function ChatInboxPanel({
 												>
 													<SwipeableRow
 														onDelete={(complete, revert) => requestDeleteConversation(conversation, isArchived, complete, revert)}
+														onHide={(complete) => {
+															const cid = conversation.data.conversationId;
+															const isCurrentlyHidden = hiddenConversationIds.has(cid);
+															complete();
+															void (isCurrentlyHidden ? unhideConversation(cid) : hideConversation(cid));
+															toast.success(
+																isCurrentlyHidden
+																	? t("chat.actions.unhidden", { defaultValue: "Conversation unhidden" })
+																	: t("chat.actions.hidden", { defaultValue: "Conversation hidden" }),
+																{ id: `hide-${cid}` }
+															);
+														}}
+														isHidden={hiddenConversationIds.has(conversation.data.conversationId)}
 														isDisabled={isMultiSelectActive}
 														isSelected={isSelected}
 													>
@@ -1036,11 +1050,15 @@ export function ChatInboxPanel({
 function SwipeableRow({
 	children,
 	onDelete,
+	onHide,
+	isHidden,
 	isDisabled,
 	isSelected,
 }: {
 	children: React.ReactNode;
 	onDelete: (complete: () => void, revert: () => void) => void;
+	onHide?: (complete: () => void, revert: () => void) => void;
+	isHidden?: boolean;
 	isDisabled?: boolean;
 	isSelected?: boolean;
 }) {
@@ -1066,6 +1084,12 @@ function SwipeableRow({
 			} else {
 				setCurrentX(deltaX);
 			}
+		} else if (deltaX > 0 && onHide) {
+			if (deltaX > 140) {
+				setCurrentX(140 + (deltaX - 140) * 0.2);
+			} else {
+				setCurrentX(deltaX);
+			}
 		} else {
 			setCurrentX(0);
 		}
@@ -1078,6 +1102,8 @@ function SwipeableRow({
 
 		if (currentX < -90) {
 			triggerDelete();
+		} else if (currentX > 90 && onHide) {
+			triggerHide();
 		} else {
 			setCurrentX(0);
 		}
@@ -1101,6 +1127,20 @@ function SwipeableRow({
 		);
 	};
 
+	const triggerHide = () => {
+		if (!onHide) return;
+		onHide(
+			() => {
+				setIsAnimatingOut(true);
+				setCurrentX(500);
+			},
+			() => {
+				setIsAnimatingOut(false);
+				setCurrentX(0);
+			}
+		);
+	};
+
 	return (
 		<div
 			className={`relative overflow-hidden shrink-0 rounded-2xl transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] select-none touch-pan-y ${
@@ -1113,7 +1153,7 @@ function SwipeableRow({
 				transformOrigin: "center top",
 			}}
 		>
-			{/* Crimson Liquid Glass Underlay Background (revealed on drag) */}
+			{/* Crimson Liquid Glass Underlay Background (revealed on drag left) */}
 			{currentX < 0 && (
 				<div
 					className="absolute inset-y-0 right-0 bg-gradient-to-r from-red-600/15 to-red-600/80 backdrop-blur-md z-0 cursor-pointer"
@@ -1135,6 +1175,30 @@ function SwipeableRow({
 				</div>
 			)}
 
+			{/* Sapphire Blue Liquid Glass Underlay Background (revealed on drag right) */}
+			{currentX > 0 && (
+				<div
+					className="absolute inset-y-0 left-0 bg-gradient-to-l from-blue-600/15 via-blue-600/60 to-blue-600/85 backdrop-blur-md z-0 cursor-pointer"
+					style={{ width: `${Math.abs(currentX)}px` }}
+					onClick={triggerHide}
+				/>
+			)}
+
+			{/* Blue Sharp Foreground Label (Z-20) */}
+			{currentX > 60 && (
+				<div
+					className="absolute inset-y-0 left-0 flex items-center justify-start px-6 text-white z-20 pointer-events-none transition-opacity duration-200"
+					style={{ width: `${Math.abs(currentX)}px` }}
+				>
+					<div className="flex flex-col items-center gap-1">
+						<EyeOff className="h-5 w-5 text-blue-100 drop-shadow-[0_2px_8px_rgba(59,130,246,0.6)] animate-pulse" />
+						<span className="text-[10px] font-extrabold uppercase tracking-widest text-blue-100">
+							{isHidden ? "Unhide" : "Hide"}
+						</span>
+					</div>
+				</div>
+			)}
+
 			{/* Foreground Content Card with dynamic liquid glass blur */}
 			<div
 				onPointerDown={handlePointerDown}
@@ -1144,8 +1208,8 @@ function SwipeableRow({
 				className="relative bg-transparent w-full h-full z-10 shrink-0 select-none cursor-grab active:cursor-grabbing"
 				style={{
 					transform: `translateX(${currentX}px)`,
-					filter: currentX < 0 ? `blur(${Math.min(6, Math.abs(currentX) / 25)}px)` : "none",
-					opacity: currentX < 0 ? Math.max(0.3, 1 - Math.abs(currentX) / 250) : 1,
+					filter: currentX !== 0 ? `blur(${Math.min(6, Math.abs(currentX) / 25)}px)` : "none",
+					opacity: currentX !== 0 ? Math.max(0.3, 1 - Math.abs(currentX) / 250) : 1,
 					transition: isSwiping ? "none" : "transform 0.25s cubic-bezier(0.25, 1, 0.5, 1), filter 0.25s ease, opacity 0.25s ease",
 				}}
 			>
