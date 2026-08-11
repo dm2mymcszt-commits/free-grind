@@ -40,6 +40,7 @@ import {
 	applySelfBlockAction,
 	reconcileArchivedConversationForProfile,
 	reconcileBlockStateWithBlockedList,
+	deriveOtherProfileIdFromConversationId,
 	CHAT_SYSTEM_MESSAGE_EVENT,
 	CHAT_ARCHIVE_STATE_EVENT,
 	type ChatArchiveStateChangeDetail,
@@ -329,7 +330,7 @@ export function ChatRealtimeBridge() {
 	// visible from the confirmation dialog and immediate UI change that
 	// triggered it, not something we need telling about again.
 	useEffect(() => {
-		const handleSystemMessage = (event: Event) => {
+		const handleSystemMessage = async (event: Event) => {
 			const messages = (event as CustomEvent<Message[]>).detail;
 			if (!Array.isArray(messages)) return;
 			for (const message of messages) {
@@ -348,7 +349,16 @@ export function ChatRealtimeBridge() {
 					if (counterBlockEnabled && message.conversationId) {
 						const conv = getConversation(message.conversationId);
 						const otherP = conv ? getOtherParticipant(conv, userIdRef.current) : null;
-						const pidStr = otherP?.profileId ? String(otherP.profileId) : null;
+						let pidStr: string | null = otherP?.profileId ? String(otherP.profileId) : null;
+
+						if (!pidStr) {
+							pidStr = deriveOtherProfileIdFromConversationId(message.conversationId, userIdRef.current);
+						}
+
+						if (!pidStr) {
+							const dbConv = await chatDb.getConversation(message.conversationId).catch(() => null);
+							pidStr = dbConv?.otherProfileId ? String(dbConv.otherProfileId) : null;
+						}
 
 						if (pidStr && !blockedProfileIdsRef.current.has(pidStr)) {
 							void apiFunctions.blockProfile(pidStr).then(() => {
