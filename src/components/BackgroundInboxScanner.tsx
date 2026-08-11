@@ -144,6 +144,28 @@ export function BackgroundInboxScanner() {
                                     } else if (matchedBio) {
                                         blockReason = `Bio keyword: ${matchedBio}`;
                                     }
+
+                                    if (!blockReason) {
+                                        if (!fetchedMessages) {
+                                            try {
+                                                const msgRes = await api.listMessages({ conversationId });
+                                                messages = msgRes.messages || [];
+                                                fetchedMessages = true;
+                                            } catch {}
+                                        }
+                                        for (const msg of messages) {
+                                            const msgIsMine = userId != null && Number(msg.senderId) === Number(userId);
+                                            if (!msgIsMine) {
+                                                const msgBody: any = msg.body;
+                                                const text = msgBody && typeof msgBody.text === "string" ? msgBody.text : (typeof msg.body === "string" ? msg.body : "");
+                                                const matchedMsg = getMatchedForbiddenWord(text, "message");
+                                                if (matchedMsg) {
+                                                    blockReason = `Message keyword: ${matchedMsg}`;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
 
                                 if (!blockReason && window.localStorage.getItem("fg-block-first-media") === "true") {

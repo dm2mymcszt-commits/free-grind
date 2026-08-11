@@ -58,7 +58,15 @@ import { captureAlbumsForMessages } from "../services/albumStore";
 import { captureReplyPreviewsForMessages } from "../services/replyMediaStore";
 import { getConversation, getDisplayName } from "../services/conversationDirectory";
 import { runAutomationRulesForSender } from "../utils/automationRules";
-import { getMatchedForbiddenWord, notifyAutoBlock } from "../utils/autoblock";
+import { 
+	getMatchedForbiddenWord, 
+	notifyAutoBlock, 
+	isOutsideAgeLimits, 
+	isOutsideDistanceLimits, 
+	hasRightNowStatus, 
+	isForbiddenLookingFor 
+} from "../utils/autoblock";
+import { isProfileAutoblockWhitelisted } from "../utils/privacy";
 import { useApiFunctions } from "../hooks/useApiFunctions";
 import { useBlockedProfileIds } from "../hooks/queries/useProfileQueries";
 import { isReadReceiptsHidden } from "../utils/privacy";
@@ -679,16 +687,51 @@ export function ChatRealtimeBridge() {
 
 						// --- FORBIDDEN KEYWORDS & CUSTOM AUTOMATION RULES ---
 						if (isIncoming && m.senderId) {
+							const pidStr = String(m.senderId);
+							const isWhitelisted = isProfileAutoblockWhitelisted(pidStr);
 							const isBlockEnabled = window.localStorage.getItem("fg-block-chat") !== "false";
-							if (isBlockEnabled && messageText) {
-								const matchedKeyword = getMatchedForbiddenWord(messageText, "message");
-								if (matchedKeyword) {
-									appLog.info(`[ChatRealtimeBridge] Instant auto-blocking ${m.senderId} due to forbidden word: "${matchedKeyword}"`);
-									const pidStr = String(m.senderId);
+
+							if (isBlockEnabled && !isWhitelisted) {
+								let blockReason = "";
+								const matchedMessage = messageText ? getMatchedForbiddenWord(messageText, "message") : null;
+								if (matchedMessage) {
+									blockReason = `Message keyword: "${matchedMessage}"`;
+								} else {
+									try {
+										const profile = await apiFunctions.getProfileDetail(pidStr).catch(() => null) as any;
+										if (profile) {
+											const name = profile.name || profile.displayName || "";
+											const bio = profile.aboutMe || "";
+											const age = profile.age;
+											const distance = profile.distanceMeters ?? profile.distance;
+											const lookingForTags = profile.lookingFor || [];
+
+											const matchedName = getMatchedForbiddenWord(name, "name");
+											const matchedBio = getMatchedForbiddenWord(bio, "bio");
+
+											if (isOutsideAgeLimits(age)) {
+												blockReason = age == null ? "No Age Set" : `Age limit (${age})`;
+											} else if (isOutsideDistanceLimits(distance)) {
+												blockReason = "Distance limit";
+											} else if (hasRightNowStatus(profile)) {
+												blockReason = "Has active 'Right Now' status";
+											} else if (isForbiddenLookingFor(lookingForTags)) {
+												blockReason = "Forbidden 'Looking For' tag";
+											} else if (matchedName) {
+												blockReason = `Name keyword: "${matchedName}"`;
+											} else if (matchedBio) {
+												blockReason = `Bio keyword: "${matchedBio}"`;
+											}
+										}
+									} catch {}
+								}
+
+								if (blockReason) {
+									appLog.info(`[ChatRealtimeBridge] Instant auto-blocking ${pidStr} due to: ${blockReason}`);
 									await chatDb.upsertMessages(m.conversationId, [m]).catch(() => {});
 									await apiFunctions.blockProfile(pidStr).catch(() => {});
 									await applySelfBlockAction(pidStr, "block").catch(() => {});
-									void notifyAutoBlock(pidStr, `Message matched forbidden word: "${matchedKeyword}"`);
+									void notifyAutoBlock(pidStr, blockReason);
 									continue;
 								}
 							}
