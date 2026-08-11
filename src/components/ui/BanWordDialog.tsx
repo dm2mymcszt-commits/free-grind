@@ -147,7 +147,7 @@ export function BanWordDialog({
 				</div>
 
 				{word.trim() && (
-					<p className="mt-2 flex items-center gap-1.5 text-[11px] text-[var(--accent)] font-medium">
+					<p className="mt-2 flex items-center gap-1.5 text-[11px] text-[var(--accent)]/90 font-medium">
 						<ShieldAlert className="h-3.5 w-3.5 shrink-0" />
 						<span>Will autoblock any user matching "{word.trim()}"</span>
 					</p>
@@ -165,7 +165,7 @@ export function BanWordDialog({
 					<button
 						type="submit"
 						disabled={isProcessing || !word.trim()}
-						className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[var(--accent)] bg-[var(--accent)] px-4 text-sm font-semibold text-[var(--accent-contrast)] transition hover:brightness-110 disabled:opacity-50 shadow-md shadow-[var(--accent)]/20"
+						className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[var(--accent)] bg-[var(--accent)] px-4 text-sm font-semibold text-[var(--accent-contrast)] transition hover:brightness-110 disabled:opacity-50"
 					>
 						{isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
 						<span>{t("chat.actions.ban_word_confirm", { defaultValue: "Add & Auto-Block" })}</span>
