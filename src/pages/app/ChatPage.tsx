@@ -3659,6 +3659,37 @@ export function ChatPage() {
 		hiddenConversationIds,
 	]);
 
+	const activeHiddenCount = useMemo(() => {
+		if (hiddenConversationIds.size === 0) return 0;
+		const liveConversations = conversations.filter(
+			(c) => !archivedConversations.has(c.data.conversationId),
+		);
+		if (archivedFilter === "only") {
+			let count = 0;
+			for (const cid of archivedConversations.keys()) {
+				if (hiddenConversationIds.has(cid)) count++;
+			}
+			return count;
+		}
+		if (archivedFilter === "all") {
+			let count = 0;
+			const counted = new Set<string>();
+			for (const c of conversations) {
+				if (hiddenConversationIds.has(c.data.conversationId)) {
+					count++;
+					counted.add(c.data.conversationId);
+				}
+			}
+			for (const cid of archivedConversations.keys()) {
+				if (!counted.has(cid) && hiddenConversationIds.has(cid)) {
+					count++;
+				}
+			}
+			return count;
+		}
+		return liveConversations.filter((c) => hiddenConversationIds.has(c.data.conversationId)).length;
+	}, [conversations, archivedConversations, hiddenConversationIds, archivedFilter]);
+
 	// Scroll memory: save position on scroll (re-attaches when list mounts/unmounts)
 	useEffect(() => {
 		const container = inboxListRef.current;
@@ -5739,7 +5770,7 @@ export function ChatPage() {
 		archivedFilter,
 		hiddenFilter,
 		archivedCount: archivedConversations.size,
-		hiddenCount: hiddenConversationIds.size,
+		hiddenCount: activeHiddenCount,
 	} as const;
 
 	const renderInbox = (
@@ -5970,7 +6001,7 @@ export function ChatPage() {
 					onChangeDraft={setChatFiltersDraft}
 					onClose={() => setChatIsFiltersOpen(false)}
 					archivedCount={archivedConversations.size}
-					hiddenCount={hiddenConversationIds.size}
+					hiddenCount={activeHiddenCount}
 					onApply={(draft) => {
 						setInboxFilters(draftToFilters(draft));
 						setPinnedFilter(draft.pinnedFilter);

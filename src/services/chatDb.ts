@@ -729,7 +729,8 @@ export async function setConversationArchived(
 		await db.execute(
 			`
 			UPDATE conversations
-			SET archived = $2, archived_reason = $3, archived_at = $4, updated_at = $5
+			SET archived = $2, archived_reason = $3, archived_at = $4, updated_at = $5,
+			    hidden = CASE WHEN $2 = 1 THEN 0 ELSE hidden END
 			WHERE conversation_id = $1
 			`,
 			[conversationId, archived ? 1 : 0, archived ? reason : null, archived ? now : null, now],
@@ -758,7 +759,7 @@ export async function setConversationHidden(
 export async function listHiddenConversationIds(): Promise<string[]> {
 	const db = await getDb();
 	const rows = await db.select<{ conversation_id: string }[]>(
-		"SELECT conversation_id FROM conversations WHERE hidden = 1",
+		"SELECT conversation_id FROM conversations WHERE hidden = 1 AND archived = 0",
 	);
 	return rows.map((row) => row.conversation_id);
 }

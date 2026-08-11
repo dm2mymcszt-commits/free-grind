@@ -52,6 +52,13 @@ export async function archiveConversation(
 	try {
 		await chatDb.setConversationArchived(conversationId, true, reason);
 		dispatchArchiveStateChange({ conversationId, archived: true, reason });
+		if (typeof window !== "undefined") {
+			window.dispatchEvent(
+				new CustomEvent("fg:chat-hide-state", {
+					detail: { conversationId, hidden: false },
+				}),
+			);
+		}
 	} catch (error) {
 		appLog.error(`[conversation-archive] failed to archive ${conversationId}`, error);
 	}
