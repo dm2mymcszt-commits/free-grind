@@ -686,17 +686,12 @@ export async function getBlockStatesByProfileIds(
 		return new Map();
 	}
 	const db = await getDb();
+	const placeholders = profileIds.map((_, i) => `$${i + 1}`).join(", ");
 	const rows = await db.select<{ other_profile_id: string; block_state: string }[]>(
-		`SELECT other_profile_id, block_state FROM conversations WHERE block_state IS NOT NULL`,
+		`SELECT other_profile_id, block_state FROM conversations WHERE other_profile_id IN (${placeholders}) AND block_state IS NOT NULL`,
+		profileIds,
 	);
-	const targetSet = new Set(profileIds);
-	const result = new Map<string, BlockState>();
-	for (const row of rows) {
-		if (targetSet.has(row.other_profile_id)) {
-			result.set(row.other_profile_id, row.block_state as BlockState);
-		}
-	}
-	return result;
+	return new Map(rows.map((row) => [row.other_profile_id, row.block_state as BlockState]));
 }
 
 /**
@@ -865,6 +860,38 @@ export async function deleteConversationOnly(
 			conversationId,
 		]);
 	});
+}
+
+export async function deleteAllArchivedConversations(): Promise<number> {
+	const db = await getDb();
+	let count = 0;
+
+	await executeWithLockRetry(db, "delete-all-archived-conversations", async () => {
+		const rows = await db.select<{ conversation_id: string }[]>(
+			"SELECT conversation_id FROM conversations WHERE archived = 1",
+		);
+		count = rows.length;
+		if (count === 0) return;
+
+		await db.execute(
+			"DELETE FROM messages WHERE conversation_id IN (SELECT conversation_id FROM conversations WHERE archived = 1)",
+		);
+		await db.execute(
+			"DELETE FROM media_files WHERE conversation_id IN (SELECT conversation_id FROM conversations WHERE archived = 1)",
+		);
+		await db.execute(
+			"DELETE FROM album_media WHERE album_id IN (SELECT album_id FROM albums WHERE conversation_id IN (SELECT conversation_id FROM conversations WHERE archived = 1))",
+		);
+		await db.execute(
+			"DELETE FROM albums WHERE conversation_id IN (SELECT conversation_id FROM conversations WHERE archived = 1)",
+		);
+		await db.execute(
+			"DELETE FROM conversation_meta WHERE conversation_id IN (SELECT conversation_id FROM conversations WHERE archived = 1)",
+		);
+		await db.execute("DELETE FROM conversations WHERE archived = 1");
+	});
+
+	return count;
 }
 
 // ---------------------------------------------------------------------------

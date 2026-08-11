@@ -36,6 +36,7 @@ export type ChatInboxHeaderProps = {
 	onTogglePinnedFilter: () => void;
 	onToggleHiddenFilter: () => void;
 	onToggleArchivedFilter: () => void;
+	onLongPressArchived?: () => void;
 	onToggleRightNowOnly: () => void;
 	onToggleOnlineNowOnly: () => void;
 	onClearInboxFilters: () => void;
@@ -95,6 +96,7 @@ export function ChatInboxHeader({
 	onTogglePinnedFilter,
 	onToggleHiddenFilter,
 	onToggleArchivedFilter,
+	onLongPressArchived,
 	onToggleRightNowOnly: _onToggleRightNowOnly,
 	onToggleOnlineNowOnly: _onToggleOnlineNowOnly,
 	onClearInboxFilters: _onClearInboxFilters,
@@ -184,6 +186,7 @@ export function ChatInboxHeader({
 									label={t("chat.archived.filter_label", { defaultValue: "Archived" })}
 									active={archivedFilter === "only"}
 									onClick={onToggleArchivedFilter}
+									onLongPress={onLongPressArchived}
 									badge={archivedCount > 0 ? archivedCount : undefined}
 								/>
 								<button

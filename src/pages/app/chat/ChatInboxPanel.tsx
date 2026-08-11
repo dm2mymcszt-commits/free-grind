@@ -636,6 +636,7 @@ export function ChatInboxPanel({
 	onTogglePinnedFilter,
 	onToggleHiddenFilter,
 	onToggleArchivedFilter,
+	onLongPressArchived,
 	archivedCount,
 	hiddenCount,
 	onToggleRightNowOnly,
@@ -810,6 +811,7 @@ export function ChatInboxPanel({
 					onTogglePinnedFilter={onTogglePinnedFilter}
 					onToggleHiddenFilter={onToggleHiddenFilter}
 					onToggleArchivedFilter={onToggleArchivedFilter}
+					onLongPressArchived={onLongPressArchived}
 					archivedCount={archivedCount}
 					hiddenCount={hiddenCount}
 					onToggleRightNowOnly={onToggleRightNowOnly}

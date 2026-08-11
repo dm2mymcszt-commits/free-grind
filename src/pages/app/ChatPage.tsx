@@ -23,6 +23,7 @@ import { useAuth } from "../../contexts/useAuth";
 import { ChatApiError } from "../../services/chatService";
 import { showAlbumApiWarning } from "../../utils/albumWarning";
 import { setConversationDirectory } from "../../services/conversationDirectory";
+import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import * as chatDb from "../../services/chatDb";
 import type { ArchivedReason } from "../../types/chat-db";
 import {
@@ -288,6 +289,36 @@ export function ChatPage() {
 			setHiddenConversationIds(new Set(ids));
 		});
 	}, []);
+
+	const [isNukeArchivedOpen, setIsNukeArchivedOpen] = useState(false);
+	const [isNukingArchived, setIsNukingArchived] = useState(false);
+
+	const handleNukeAllArchived = useCallback(async () => {
+		setIsNukingArchived(true);
+		try {
+			const deletedCount = await chatDb.deleteAllArchivedConversations();
+			setArchivedConversations(new Map());
+			if (archivedFilter === "only") {
+				setArchivedFilter("hide");
+			}
+			toast.success(
+				t("chat.archived.nuked_success", {
+					defaultValue: `Successfully deleted ${deletedCount} archived conversations!`,
+					count: deletedCount,
+				})
+			);
+		} catch (error) {
+			appLog.error("Failed to nuke archived conversations", error);
+			toast.error(
+				t("chat.archived.nuke_failed", {
+					defaultValue: "Failed to delete archived conversations",
+				})
+			);
+		} finally {
+			setIsNukingArchived(false);
+			setIsNukeArchivedOpen(false);
+		}
+	}, [archivedFilter, t]);
 
 	// Header state (shared between ChatInboxHeader on desktop and ChatInboxPanel on mobile)
 	const [chatIsSearchOpen, setChatIsSearchOpen] = useState(false);
@@ -5701,6 +5732,7 @@ export function ChatPage() {
 		onTogglePinnedFilter: toggleInboxPinnedFilter,
 		onToggleHiddenFilter: toggleInboxHiddenFilter,
 		onToggleArchivedFilter: toggleInboxArchivedFilter,
+		onLongPressArchived: () => setIsNukeArchivedOpen(true),
 		onToggleRightNowOnly: toggleInboxRightNowOnly,
 		onToggleOnlineNowOnly: toggleInboxOnlineNowOnly,
 		onClearInboxFilters: clearInboxFilters,
@@ -6037,6 +6069,21 @@ export function ChatPage() {
 						</p>
 					);
 				}}
+			/>
+
+			<ConfirmDialog
+				isOpen={isNukeArchivedOpen}
+				title={t("chat.archived.nuke_title", { defaultValue: "Delete All Archived Chats" })}
+				message={t("chat.archived.nuke_message", {
+					defaultValue: `Are you sure you want to permanently delete all ${archivedConversations.size} archived conversations? This action cannot be undone.`,
+					count: archivedConversations.size,
+				})}
+				confirmLabel={t("chat.archived.nuke_confirm", { defaultValue: "Delete All" })}
+				cancelLabel={t("common.cancel", { defaultValue: "Cancel" })}
+				confirmTone="danger"
+				isProcessing={isNukingArchived}
+				onConfirm={handleNukeAllArchived}
+				onCancel={() => setIsNukeArchivedOpen(false)}
 			/>
 		</section>
 	);

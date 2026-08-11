@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useRef, type CSSProperties, type ReactNode } from "react";
 import { cn } from "../../utils/cn";
 
 type FilterPillProps = {
@@ -6,6 +6,8 @@ type FilterPillProps = {
 	label: string;
 	active: boolean;
 	onClick: () => void;
+	onContextMenu?: (e: React.MouseEvent) => void;
+	onLongPress?: () => void;
 	/** Which brand color this pill tints as — defaults to the app's generic
 	 * accent. "right-now" reads in Right Now's own brand color instead (see
 	 * RightNowPage.tsx's --right-now), for filters tied to that feature.
@@ -30,6 +32,8 @@ export function FilterPill({
 	label,
 	active,
 	onClick,
+	onContextMenu,
+	onLongPress,
 	color = "accent",
 	variant = "label",
 	badge,
@@ -37,14 +41,61 @@ export function FilterPill({
 	const isIconOnly = variant === "icon";
 	const isRightNow = color === "right-now";
 
+	const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const isLongPressRef = useRef(false);
+
+	const startLongPress = () => {
+		if (!onLongPress) return;
+		isLongPressRef.current = false;
+		if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+		longPressTimerRef.current = setTimeout(() => {
+			isLongPressRef.current = true;
+			onLongPress();
+		}, 500);
+	};
+
+	const clearLongPress = () => {
+		if (longPressTimerRef.current) {
+			clearTimeout(longPressTimerRef.current);
+			longPressTimerRef.current = null;
+		}
+	};
+
+	const handleClick = (e: React.MouseEvent) => {
+		if (isLongPressRef.current) {
+			e.preventDefault();
+			e.stopPropagation();
+			isLongPressRef.current = false;
+			return;
+		}
+		onClick();
+	};
+
+	const handleContextMenu = (e: React.MouseEvent) => {
+		if (onContextMenu) {
+			e.preventDefault();
+			onContextMenu(e);
+		} else if (onLongPress) {
+			e.preventDefault();
+			onLongPress();
+		}
+	};
+
 	return (
 		<button
 			type="button"
-			onClick={onClick}
+			onClick={handleClick}
+			onContextMenu={handleContextMenu}
+			onTouchStart={startLongPress}
+			onTouchEnd={clearLongPress}
+			onTouchCancel={clearLongPress}
+			onMouseDown={startLongPress}
+			onMouseUp={clearLongPress}
+			onMouseLeave={clearLongPress}
 			aria-label={isIconOnly ? label : undefined}
 			title={isIconOnly ? label : undefined}
 			className={cn(
-				"inline-flex shrink-0 items-center gap-1.5 text-sm font-bold transition-all active:scale-95 outline-none focus:outline-none focus-visible:outline-none",
+				"inline-flex shrink-0 items-center gap-1.5 text-sm font-bold transition-all active:scale-95 outline-none focus:outline-none focus-visible:outline-none select-none",
 				isIconOnly ? "size-9 justify-center" : "px-4 py-2",
 				active
 					? isRightNow
