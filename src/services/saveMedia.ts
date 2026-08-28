@@ -1,7 +1,7 @@
 import { platform } from "@tauri-apps/plugin-os";
 import { fetch } from "@tauri-apps/plugin-http";
 import { appCacheDir, join } from "@tauri-apps/api/path";
-import { mkdir, writeFile, remove, BaseDirectory } from "@tauri-apps/plugin-fs";
+import { mkdir, writeFile, remove, exists, BaseDirectory } from "@tauri-apps/plugin-fs";
 import {
 	requestPhotosAuth,
 	getPhotosAuthStatus,
@@ -468,7 +468,20 @@ export async function getDownloadedMediaUsage(): Promise<{ count: number; totalB
 	return chatDb.getDownloadedMediaUsage();
 }
 
-export type DeleteAllDownloadedMediaResult = { deleted: number; failed: number };
+export type DeleteAllDownloadedMediaResult = {
+	deleted: number;
+	/** Entries whose file was already gone from the device; the row is dropped anyway. */
+	pruned: number;
+	failed: number;
+	/** True when this platform can't delete tracked files at all (web preview). */
+	unsupported?: boolean;
+};
+
+/** Whether a filesystem error means "the file isn't there" rather than "I wasn't allowed". */
+function isNotFoundError(error: unknown): boolean {
+	const message = error instanceof Error ? error.message : String(error ?? "");
+	return /no such file|not found|cannot find|os error 2|ENOENT/i.test(message);
+}
 
 /**
  * Deletes every file this app has ever saved to the device (manual saves
@@ -477,14 +490,21 @@ export type DeleteAllDownloadedMediaResult = { deleted: number; failed: number }
  * iOS deletes tracked Photos assets from the "Free Grind" album,
  * Android removes each tracked MediaStore file, desktop removes each
  * tracked file from Downloads/FreeGrind.
+ *
+ * The manifest is treated as self-healing: an entry whose file the user
+ * already removed by hand counts as `pruned` and its row is dropped just
+ * like a real delete. Without that, such rows are permanently unremovable
+ * — every pass re-reports them as failures and the storage figure never
+ * returns to zero.
  */
 export async function deleteAllDownloadedMedia(): Promise<DeleteAllDownloadedMediaResult> {
 	const entries = await chatDb.getDownloadedMediaEntries();
 	if (entries.length === 0) {
-		return { deleted: 0, failed: 0 };
+		return { deleted: 0, pruned: 0, failed: 0 };
 	}
 
 	let deleted = 0;
+	let pruned = 0;
 	let failed = 0;
 	const succeededIdentifiers: string[] = [];
 
@@ -492,7 +512,10 @@ export async function deleteAllDownloadedMedia(): Promise<DeleteAllDownloadedMed
 		const byAlbum = new Map<string, string[]>();
 		for (const entry of entries) {
 			if (!entry.albumId) {
-				failed += 1;
+				// No album means the asset can't be addressed any more, so the row
+				// is dead bookkeeping rather than a deletable file.
+				pruned += 1;
+				succeededIdentifiers.push(entry.identifier);
 				continue;
 			}
 			const list = byAlbum.get(entry.albumId) ?? [];
@@ -504,10 +527,11 @@ export async function deleteAllDownloadedMedia(): Promise<DeleteAllDownloadedMed
 				const ok = await deleteAlbumMedias({ album: albumId, identifiers });
 				if (ok) {
 					deleted += identifiers.length;
-					succeededIdentifiers.push(...identifiers);
 				} else {
-					failed += identifiers.length;
+					// The plugin reports false when the assets are already absent.
+					pruned += identifiers.length;
 				}
+				succeededIdentifiers.push(...identifiers);
 			} catch (error) {
 				appLog.error("[saveMedia] Failed to delete iOS album medias", error);
 				failed += identifiers.length;
@@ -521,6 +545,11 @@ export async function deleteAllDownloadedMedia(): Promise<DeleteAllDownloadedMed
 				deleted += 1;
 				succeededIdentifiers.push(entry.identifier);
 			} catch (error) {
+				if (isNotFoundError(error)) {
+					pruned += 1;
+					succeededIdentifiers.push(entry.identifier);
+					continue;
+				}
 				appLog.error("[saveMedia] Failed to delete Android file", error);
 				failed += 1;
 			}
@@ -528,10 +557,20 @@ export async function deleteAllDownloadedMedia(): Promise<DeleteAllDownloadedMed
 	} else if (isDesktopTauri()) {
 		for (const entry of entries) {
 			try {
+				if (!(await exists(entry.identifier, { baseDir: BaseDirectory.Download }))) {
+					pruned += 1;
+					succeededIdentifiers.push(entry.identifier);
+					continue;
+				}
 				await remove(entry.identifier, { baseDir: BaseDirectory.Download });
 				deleted += 1;
 				succeededIdentifiers.push(entry.identifier);
 			} catch (error) {
+				if (isNotFoundError(error)) {
+					pruned += 1;
+					succeededIdentifiers.push(entry.identifier);
+					continue;
+				}
 				appLog.error("[saveMedia] Failed to delete desktop file", error);
 				failed += 1;
 			}
@@ -539,12 +578,12 @@ export async function deleteAllDownloadedMedia(): Promise<DeleteAllDownloadedMed
 	} else {
 		// Not a supported native platform — browser downloads aren't tracked
 		// or revocable from here, nothing to do.
-		return { deleted: 0, failed: 0 };
+		return { deleted: 0, pruned: 0, failed: 0, unsupported: true };
 	}
 
 	if (succeededIdentifiers.length > 0) {
 		await chatDb.deleteDownloadedMediaEntries(succeededIdentifiers);
 	}
 
-	return { deleted, failed };
+	return { deleted, pruned, failed };
 }

@@ -165,5 +165,8 @@ export type FullDbExport = {
 		settings: Record<string, unknown>[];
 		saved_phrases: Record<string, unknown>[];
 		saved_locations: Record<string, unknown>[];
+		// Absent from files written by older builds; the importer skips any
+		// table key it doesn't find, so those still import cleanly.
+		block_events: Record<string, unknown>[];
 	};
 };

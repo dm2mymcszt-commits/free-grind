@@ -444,3 +444,121 @@ export async function getLocalNicknamesForProfiles(
 
 	return next;
 }
+
+// ---------------------------------------------------------------------------
+// Backup export/import
+//
+// This database is deliberately device-global (no per-account suffix, unlike
+// chatDb), and until now nothing ever exported it. It is by far the largest
+// contributor to "profiles my laptop knows about and my phone doesn't": every
+// grid tile's chatted/unread badge is resolved from chat_contact_index, so a
+// fresh install renders tens of thousands of profiles as never-contacted.
+// ---------------------------------------------------------------------------
+
+/** Raw column lists — the only names ever interpolated into the SQL below. */
+const INDEX_TABLES = {
+	chat_contact_index: {
+		primaryKey: "profile_id",
+		columns: [
+			"profile_id", "conversation_id", "last_message_timestamp",
+			"unread_count", "has_chatted", "updated_at",
+		],
+	},
+	chat_local_profile_meta: {
+		primaryKey: "profile_id",
+		columns: ["profile_id", "local_nickname", "updated_at"],
+	},
+} as const;
+
+export type ContactIndexTableName = keyof typeof INDEX_TABLES;
+
+export const CONTACT_INDEX_TABLE_NAMES = Object.keys(INDEX_TABLES) as ContactIndexTableName[];
+
+/** Names arriving from an import file are strings, so re-check them at runtime. */
+export function isContactIndexTable(name: string): name is ContactIndexTableName {
+	return Object.prototype.hasOwnProperty.call(INDEX_TABLES, name);
+}
+
+export async function countContactIndexRows(name: ContactIndexTableName): Promise<number> {
+	const db = await getDb();
+	const rows = await db.select<{ count: number }[]>(`SELECT COUNT(*) as count FROM ${name}`);
+	return rows[0]?.count ?? 0;
+}
+
+/** One page, ordered by primary key so paging stays stable between calls. */
+export async function selectContactIndexPage(
+	name: ContactIndexTableName,
+	offset: number,
+	limit: number,
+	options?: { since?: number },
+): Promise<Record<string, unknown>[]> {
+	const table = INDEX_TABLES[name];
+	// Both tables carry updated_at, so an incremental export filters on it.
+	const since = options?.since;
+	const where = since ? "WHERE updated_at > $1" : "";
+	const params = where ? [since] : [];
+	const db = await getDb();
+	return db.select<Record<string, unknown>[]>(
+		`SELECT ${table.columns.join(", ")} FROM ${name} ${where}
+		 ORDER BY ${table.primaryKey} LIMIT ${Math.trunc(limit)} OFFSET ${Math.trunc(offset)}`,
+		params,
+	);
+}
+
+/** Rows a delta export would carry — drives the "N changes" count in the UI. */
+export async function countContactIndexRowsSince(
+	name: ContactIndexTableName,
+	since: number,
+): Promise<number> {
+	const db = await getDb();
+	const rows = await db.select<{ count: number }[]>(
+		`SELECT COUNT(*) as count FROM ${name} WHERE updated_at > $1`,
+		[since],
+	);
+	return rows[0]?.count ?? 0;
+}
+
+export async function upsertContactIndexRows(
+	name: ContactIndexTableName,
+	rows: Record<string, unknown>[],
+): Promise<number> {
+	if (rows.length === 0) {
+		return 0;
+	}
+	const table = INDEX_TABLES[name];
+	const placeholders = table.columns.map((_, index) => `$${index + 1}`).join(", ");
+	const updates = table.columns
+		.filter((column) => column !== table.primaryKey)
+		.map((column) => `${column} = excluded.${column}`)
+		.join(", ");
+	const sql = `
+		INSERT INTO ${name} (${table.columns.join(", ")})
+		VALUES (${placeholders})
+		ON CONFLICT(${table.primaryKey}) DO UPDATE SET ${updates}
+	`;
+
+	let written = 0;
+	const db = await getDb();
+	await executeWithLockRetry(db, `import-${name}`, async () => {
+		for (const row of rows) {
+			if (!row || typeof row !== "object" || row[table.primaryKey] == null) {
+				continue;
+			}
+			await db.execute(sql, table.columns.map((column) => row[column] ?? null));
+			written += 1;
+		}
+	});
+	return written;
+}
+
+export async function clearContactIndexTables(names: ContactIndexTableName[]): Promise<void> {
+	if (names.length === 0) {
+		return;
+	}
+	const db = await getDb();
+	await executeWithLockRetry(db, "clear-contact-index", async () => {
+		for (const name of names) {
+			await db.execute(`DELETE FROM ${name}`);
+		}
+	});
+}

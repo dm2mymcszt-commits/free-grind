@@ -7,10 +7,18 @@
 	"permissions": [
 		{
 			"identifier": "fs:allow-mkdir",
-			"allow": [{ "path": "$DOWNLOAD/FreeGrind" }]
+			"allow": [{ "path": "$DOWNLOAD/FreeGrind" }, { "path": "$DOWNLOAD/FreeGrind/**" }]
 		},
 		{
 			"identifier": "fs:allow-write-file",
+			"allow": [{ "path": "$DOWNLOAD/FreeGrind/**" }]
+		},
+		{
+			"identifier": "fs:allow-exists",
+			"allow": [{ "path": "$DOWNLOAD/FreeGrind/**" }]
+		},
+		{
+			"identifier": "fs:allow-remove",
 			"allow": [{ "path": "$DOWNLOAD/FreeGrind/**" }]
 		}
 	]

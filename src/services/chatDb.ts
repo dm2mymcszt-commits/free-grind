@@ -2142,6 +2142,11 @@ const FULL_EXPORT_TABLES: {
 			"conversation_id", "other_profile_id", "name", "participants_json",
 			"last_activity_timestamp", "unread_count", "pinned", "muted", "favorite",
 			"preview_json", "archived", "archived_reason", "archived_at", "hidden",
+			// block_state and messages_synced_activity_timestamp were added by
+			// later ALTER TABLE migrations and had been left out here, so an
+			// import lost the recorded block direction (leaving it to be
+			// re-inferred, wrongly) and forced a full message re-sync.
+			"block_state", "messages_synced_activity_timestamp",
 			"last_seen_in_inbox_at", "created_at", "updated_at",
 		],
 	},
@@ -2205,7 +2210,188 @@ const FULL_EXPORT_TABLES: {
 		primaryKey: "id",
 		columns: ["id", "name", "geohash", "lat", "lon", "created_at"],
 	},
+	{
+		// Absent from v1 exports, so Block History came up empty on a restored
+		// device. v1 files simply won't carry the key and the importer skips
+		// any table it doesn't find, so adding it here is backwards compatible.
+		name: "block_events",
+		primaryKey: "id",
+		columns: [
+			"id", "profile_id", "conversation_id", "event_type", "timestamp",
+			"display_name", "avatar_media_hash", "created_at",
+		],
+	},
 ];
+
+export type PortableTable = (typeof FULL_EXPORT_TABLES)[number];
+
+/**
+ * Table descriptors keyed by name. Every generic read/write below resolves
+ * its table through this map rather than accepting a caller-supplied name,
+ * which is what keeps arbitrary strings out of the interpolated SQL.
+ */
+const PORTABLE_TABLES_BY_NAME = new Map<string, PortableTable>(
+	FULL_EXPORT_TABLES.map((table) => [table.name as string, table]),
+);
+
+export function getPortableTable(name: string): PortableTable | null {
+	return PORTABLE_TABLES_BY_NAME.get(name) ?? null;
+}
+
+function requirePortableTable(name: string): PortableTable {
+	const table = getPortableTable(name);
+	if (!table) {
+		throw new Error(`Unknown portable table: ${name}`);
+	}
+	return table;
+}
+
+export async function countTableRows(name: string): Promise<number> {
+	const table = requirePortableTable(name);
+	const db = await getDb();
+	const rows = await db.select<{ count: number }[]>(`SELECT COUNT(*) as count FROM ${table.name}`);
+	return rows[0]?.count ?? 0;
+}
+
+/** Total bytes held by the given TEXT columns — used for the export size preview. */
+export async function sumColumnLengths(name: string, columns: string[]): Promise<number> {
+	const table = requirePortableTable(name);
+	const known = columns.filter((column) => table.columns.includes(column));
+	if (known.length === 0) {
+		return 0;
+	}
+	const db = await getDb();
+	const expression = known.map((column) => `COALESCE(SUM(LENGTH(${column})), 0)`).join(" + ");
+	const rows = await db.select<{ total: number | null }[]>(
+		`SELECT ${expression} as total FROM ${table.name}`,
+	);
+	return rows[0]?.total ?? 0;
+}
+
+/**
+ * One page of a table, ordered by primary key so paging stays stable across
+ * calls. Paging is what keeps a multi-hundred-megabyte media table out of
+ * memory during an export — the previous exporter selected every row of
+ * every table at once and then stringified the lot.
+ */
+export async function selectTablePage(
+	name: string,
+	offset: number,
+	limit: number,
+	options?: { omitColumns?: string[]; sinceColumn?: string; since?: number },
+): Promise<Record<string, unknown>[]> {
+	const table = requirePortableTable(name);
+	const omit = new Set(options?.omitColumns ?? []);
+	const columns = table.columns.filter((column) => !omit.has(column));
+
+	// The watermark column is checked against this table's own schema, so an
+	// incremental export can't smuggle an arbitrary identifier into the SQL.
+	const sinceColumn =
+		options?.sinceColumn && table.columns.includes(options.sinceColumn)
+			? options.sinceColumn
+			: null;
+	const since = options?.since;
+	const where = sinceColumn && since ? `WHERE ${sinceColumn} > $1` : "";
+	const params = where ? [since] : [];
+
+	const db = await getDb();
+	return db.select<Record<string, unknown>[]>(
+		`SELECT ${columns.join(", ")} FROM ${table.name} ${where}
+		 ORDER BY ${table.primaryKey} LIMIT ${Math.trunc(limit)} OFFSET ${Math.trunc(offset)}`,
+		params,
+	);
+}
+
+/** Rows a delta export would carry — drives the "N changes" count in the UI. */
+export async function countTableRowsSince(
+	name: string,
+	sinceColumn: string,
+	since: number,
+): Promise<number> {
+	const table = requirePortableTable(name);
+	if (!table.columns.includes(sinceColumn)) {
+		return countTableRows(name);
+	}
+	const db = await getDb();
+	const rows = await db.select<{ count: number }[]>(
+		`SELECT COUNT(*) as count FROM ${table.name} WHERE ${sinceColumn} > $1`,
+		[since],
+	);
+	return rows[0]?.count ?? 0;
+}
+
+/**
+ * Upserts a batch of rows into a portable table. Mirrors the semantics of
+ * importFullDatabase — existing rows lose to the imported version, nothing
+ * absent from the import is touched — but takes rows a page at a time so a
+ * streaming import never has to hold the whole file.
+ *
+ * Columns absent from a row are written as NULL only when the row genuinely
+ * omits them; a section that deliberately skips a heavy column (album cover
+ * art, say) passes it in `skipColumns` so the existing value survives.
+ */
+export async function upsertTableRows(
+	name: string,
+	rows: Record<string, unknown>[],
+	options?: { skipColumns?: string[] },
+): Promise<number> {
+	const table = requirePortableTable(name);
+	if (rows.length === 0) {
+		return 0;
+	}
+
+	const skip = new Set(options?.skipColumns ?? []);
+	const columns = table.columns.filter((column) => !skip.has(column));
+	const placeholders = columns.map((_, index) => `$${index + 1}`).join(", ");
+	const updates = columns
+		.filter((column) => column !== table.primaryKey)
+		.map((column) => `${column} = excluded.${column}`)
+		.join(", ");
+	const sql = `
+		INSERT INTO ${table.name} (${columns.join(", ")})
+		VALUES (${placeholders})
+		ON CONFLICT(${table.primaryKey}) DO UPDATE SET ${updates}
+	`;
+
+	let written = 0;
+	const db = await getDb();
+	await executeWithLockRetry(db, `import-${table.name}`, async () => {
+		for (const row of rows) {
+			if (!row || typeof row !== "object" || row[table.primaryKey] == null) {
+				continue;
+			}
+			await db.execute(sql, columns.map((column) => row[column] ?? null));
+			written += 1;
+		}
+	});
+	return written;
+}
+
+/** Empties the named portable tables — the "replace everything" import path. */
+export async function clearPortableTables(names: string[]): Promise<void> {
+	const tables = names.map(requirePortableTable);
+	if (tables.length === 0) {
+		return;
+	}
+	const db = await getDb();
+	await executeWithLockRetry(db, "clear-portable-tables", async () => {
+		for (const table of tables) {
+			await db.execute(`DELETE FROM ${table.name}`);
+		}
+	});
+}
+
+/**
+ * The chat database's real on-disk size. Read via pragma rather than a
+ * filesystem stat because $APPDATA has no read scope in our fs capability.
+ */
+export async function getDatabaseSizeBytes(): Promise<number> {
+	const db = await getDb();
+	const rows = await db.select<{ size: number | null }[]>(
+		"SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()",
+	);
+	return rows[0]?.size ?? 0;
+}
 
 /**
  * Dumps every portable table in this profile's db as raw rows, plus the

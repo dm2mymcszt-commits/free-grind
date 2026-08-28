@@ -825,3 +825,23 @@ export const interestViewsStore = {
 };
 
 export type { StoredInterestView };
+// ---------------------------------------------------------------------------
+// Backup export/import
+//
+// Thin wrappers over the adoption primitives above, which already do exactly
+// the right thing for a device transfer. writeRowsVerbatim in particular is
+// the reason this isn't just `upsertMany`: it copies rows with a raw `put`, so
+// firstSeenAt / updatedAt / viewTimestamps survive intact. Re-importing
+// through the normal upsert path would stamp today's updatedAt onto month-old
+// rows and reset the very age anchors the expiry sweep reads.
+// ---------------------------------------------------------------------------
+
+/** Every banked viewer row for the active account, or null if unreadable. */
+export function exportInterestViewRows(): Promise<StoredInterestView[] | null> {
+	return readAllRows(resolveDbName());
+}
+
+/** Restores rows exactly as exported. Returns false if the write failed. */
+export function importInterestViewRows(rows: StoredInterestView[]): Promise<boolean> {
+	return writeRowsVerbatim(resolveDbName(), rows);
+}
