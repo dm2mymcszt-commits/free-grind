@@ -77,6 +77,10 @@
         "auto_block_title": "Message Auto-Block",
         "apply_to_inbox": "Apply to Inbox",
         "apply_to_inbox_desc": "Instantly blocks new chats that match your criteria.",
+        "apply_to_interest_views": "Apply to Interest Views",
+        "apply_to_interest_views_desc": "Checks people who view you against your profile rules and blocks matches before they can start a chat.",
+        "interest_view_block_enabled": "Interest views auto-block enabled",
+        "interest_view_block_disabled": "Interest views auto-block disabled",
         "forbidden_keywords_title": "Forbidden Keywords",
         "forbidden_keywords_desc": "A shared word list — separate with commas (e.g. snapchat, crypto, bot). It doesn't block anything by itself; reuse it as the keyword source (\"Forbidden Keywords\") in an automation condition to build a rule that checks bios, messages, or display names against it.",
         "keywords_placeholder": "Type keywords here...",
@@ -675,6 +679,26 @@
                 "facebook": "Facebook username",
                 "placeholder": "username"
             },
+            "music": {
+                "title": "Music",
+                "description": "Songs shown on your profile",
+                "loading": "Loading your music…",
+                "resolving": "Loading…",
+                "unknown_track": "Unknown track",
+                "empty": "No songs yet. Paste a Spotify track link below to add one.",
+                "placeholder": "Paste a Spotify song link…",
+                "hint": "In Spotify: Share, then Copy Song Link.",
+                "add": "Add",
+                "remove": "Remove",
+                "move_up": "Move up",
+                "move_down": "Move down",
+                "save": "Save music",
+                "discard": "Discard",
+                "saved": "Music saved",
+                "save_failed": "Could not save your music",
+                "invalid_link": "That does not look like a Spotify track link.",
+                "already_added": "That track is already in your list."
+            },
             "other": {
                 "title": "Other Information",
                 "user_id": "User ID"
@@ -814,7 +838,11 @@
         "taps_enabled": "Tap Notifications",
         "taps_enabled_desc": "Get notified when someone taps you.",
         "foreground": "Notifications While App Is Open",
-        "foreground_desc": "Show notifications (for the types enabled above) while you have the app open. Turn this off to only be notified once the app is in the background or closed."
+        "foreground_desc": "Show notifications (for the types enabled above) while you have the app open. Turn this off to only be notified once the app is in the background or closed.",
+        "inbox_autoblock": "Inbox Auto-Block Alerts",
+        "inbox_autoblock_desc": "Get notified when a profile is automatically blocked from your inbox.",
+        "interest_autoblock": "Interest Views Auto-Block Alerts",
+        "interest_autoblock_desc": "Get notified when a viewer is automatically blocked from Interest Views."
     },
     "issue_search": {
         "title": "Issues & Feature Requests",
@@ -1329,6 +1357,11 @@
         "message_placeholder": "Send a message…",
         "default_profile": "Default profile",
         "open_photo": "Open photo {{index}}",
+        "viewed_you_times": "Viewed you {{count}}x",
+        "viewed_you_no_history": "No view times recorded yet.",
+        "viewed_you_just_now": "viewed you just now",
+        "viewed_you_untracked_one": "{{count}} earlier view time wasn't recorded.",
+        "viewed_you_untracked_other": "{{count}} earlier view times weren't recorded.",
         "tags": "Tags",
         "expectations": "Expectations",
         "looking_for": "Looking for",
@@ -1349,6 +1382,10 @@
         "ethnicity": "Ethnicity",
         "relationship": "Relationship",
         "social": "Social",
+        "music": "Music",
+        "music_unknown_track": "Unknown track",
+        "music_play": "Play preview of {{track}}",
+        "music_close_preview": "Close preview",
         "labels": {
             "looking_for": {
                 "chat": "Chat",
@@ -1451,6 +1488,10 @@
         },
         "total_viewed_count": "Total",
         "total_taps_count": "Total",
+        "count": {
+            "real_viewed": "Real",
+            "toggle_hint": "Tap to switch between Grindr's count and the real one, which still counts the people you blocked"
+        },
         "refreshing": "Refreshing {{tab}}...",
         "loading": "Loading {{tab}}...",
         "error_load": "Could not load {{tab}}",
@@ -1478,6 +1519,25 @@
             "hot": "Hot",
             "looking": "Looking",
             "default": "Tap"
+        },
+        "sort": {
+            "recent": "Recent",
+            "most_viewed": "Most viewed",
+            "toggle_hint": "Sort by most recent or most views"
+        },
+        "shown_count": "Shown",
+        "empty_window": "Nothing in this period",
+        "empty_window_desc": "No one viewed you in the {{period}}. Switch back to All to see every viewer.",
+        "window": {
+            "all": "All",
+            "day": "24h",
+            "week": "7d",
+            "toggle_hint": "Show all views, or only the last 24 hours or 7 days"
+        },
+        "window_long": {
+            "all": "all time",
+            "day": "last 24 hours",
+            "week": "last 7 days"
         }
     },
     "api": {

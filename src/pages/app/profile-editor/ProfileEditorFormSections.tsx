@@ -46,6 +46,7 @@ import { Chip } from "../../../components/ui/chip";
 import { LastTestedMonthPicker } from "../../../components/LastTestedMonthPicker";
 import { CategoryHeader, ChipGroup, ToggleRow } from "./ProfileEditorComponents";
 import { TravelPlansSection } from "./TravelPlansSection";
+import { MusicSection } from "./MusicSection";
 import { TagsPickerDialog } from "./TagsPickerDialog";
 import { ManagedOptionsPickerDialog } from "./ManagedOptionsPickerDialog";
 import {
@@ -701,6 +702,8 @@ export function ProfileEditorFormSections({
 			</div>
 
 			<TravelPlansSection profileId={profileId} />
+
+			<MusicSection profileId={profileId} />
 
 			{/* Visiting Mode */}
 			<div className="surface-card p-4 sm:p-5">

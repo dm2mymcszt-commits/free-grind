@@ -12,6 +12,39 @@ use super::client::GrindrClient;
 use super::client::BASE_URL;
 use super::headers::{build_headers, DeviceInfo};
 
+/// Whether the Grindr session token may be attached to `url`.
+///
+/// Paths are normally relative and get BASE_URL prepended, but callers may
+/// pass an absolute URL to reach a third party. Sending the Grindr bearer
+/// token to such a host would leak the user's session to it, so auth is
+/// attached only for Grindr's own hosts.
+fn may_send_grindr_auth(url: &str) -> bool {
+    if !url.starts_with("http") {
+        // Relative path — BASE_URL is prepended, so it is always Grindr.
+        return true;
+    }
+
+    let without_scheme = match url.split_once("://") {
+        Some((_, rest)) => rest,
+        None => return false,
+    };
+    let authority = without_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or_default();
+    // Strip userinfo and port so "grindr.mobi@evil.com" cannot pass.
+    let host = authority
+        .rsplit_once('@')
+        .map(|(_, h)| h)
+        .unwrap_or(authority);
+    let host = host.split(':').next().unwrap_or_default().to_ascii_lowercase();
+
+    host == "grindr.mobi"
+        || host.ends_with(".grindr.mobi")
+        || host == "grindr.com"
+        || host.ends_with(".grindr.com")
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct RawResponse {
     pub status: u16,
@@ -88,7 +121,11 @@ impl GrindrClient {
             req
         };
 
-        let auth_token = self.authorization_header().await;
+        let auth_token = if may_send_grindr_auth(&url) {
+            self.authorization_header().await
+        } else {
+            None
+        };
         let mut response = make_request(auth_token.clone(), &device)
             .send()
             .await
@@ -98,7 +135,9 @@ impl GrindrClient {
                 AppError::Http(e.to_string())
             })?;
 
-        if response.status().as_u16() == 401 && !is_auth_path {
+        // A 401 from a third-party host says nothing about our Grindr session,
+        // and retrying would attach the token to that host.
+        if response.status().as_u16() == 401 && !is_auth_path && may_send_grindr_auth(&url) {
             let _lock = self.refresh_lock.lock().await;
 
             // Check if the token has already been refreshed by someone else since our failed request
@@ -178,7 +217,10 @@ impl GrindrClient {
         }
 
         let is_external = path.starts_with("http");
-        let auth_token = if is_auth_path || is_external {
+        let auth_token = if !may_send_grindr_auth(&url) {
+            // Third-party host: never attach the Grindr session token.
+            None
+        } else if is_auth_path || is_external {
             self.authorization_header().await
         } else {
             Some(
@@ -217,7 +259,9 @@ impl GrindrClient {
             response.status()
         );
 
-        if response.status().as_u16() == 401 && !is_auth_path {
+        // A 401 from a third-party host says nothing about our Grindr session,
+        // and retrying would attach the token to that host.
+        if response.status().as_u16() == 401 && !is_auth_path && may_send_grindr_auth(&url) {
             let _lock = self.refresh_lock.lock().await;
 
             let current_token = self.authorization_header().await;
@@ -267,4 +311,42 @@ pub async fn request(
     Ok(Response::new(
         rmp_serde::encode::to_vec_named(&raw).map_err(|e| AppError::Http(e.to_string()))?,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::may_send_grindr_auth;
+
+    #[test]
+    fn relative_paths_keep_auth() {
+        assert!(may_send_grindr_auth("/v7/profiles/123"));
+        assert!(may_send_grindr_auth("/v8/sessions"));
+    }
+
+    #[test]
+    fn grindr_hosts_keep_auth() {
+        assert!(may_send_grindr_auth("https://grindr.mobi/v7/profiles/1"));
+        assert!(may_send_grindr_auth("https://cdns.grindr.com/images/x"));
+    }
+
+    #[test]
+    fn third_party_hosts_lose_auth() {
+        assert!(!may_send_grindr_auth("https://api.spotify.com/v1/search?q=a"));
+        assert!(!may_send_grindr_auth("https://accounts.spotify.com/api/token"));
+    }
+
+    #[test]
+    fn lookalike_hosts_lose_auth() {
+        // userinfo trick, suffix trick, and embedded-substring trick
+        assert!(!may_send_grindr_auth("https://grindr.mobi@evil.com/x"));
+        assert!(!may_send_grindr_auth("https://notgrindr.mobi/x"));
+        assert!(!may_send_grindr_auth("https://grindr.mobi.evil.com/x"));
+        assert!(!may_send_grindr_auth("https://evil.com/?a=grindr.mobi"));
+    }
+
+    #[test]
+    fn port_and_case_are_handled() {
+        assert!(may_send_grindr_auth("https://GRINDR.MOBI:443/v7/profiles/1"));
+        assert!(!may_send_grindr_auth("https://evil.com:8443/grindr.mobi"));
+    }
 }

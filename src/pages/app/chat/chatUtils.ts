@@ -915,6 +915,43 @@ export function getMediaCaptureTarget(message: UiMessage): MediaCaptureTarget | 
 	return null;
 }
 
+/**
+ * Whether this message is an image/video/audio attachment at all, judged
+ * purely on its type — independent of whether its body still carries a
+ * usable URL.
+ *
+ * The getMessage*Url helpers above conflate the two and return null once the
+ * server empties the body (an expiring image whose views ran out keeps its
+ * `mediaId` but loses `url`). Callers that need to answer "should this bubble
+ * be showing media?" — to decide whether a locally-cached copy is worth
+ * looking up — need just the type half. Giphy is excluded deliberately:
+ * it is never captured locally.
+ */
+export function isMediaMessage(message: UiMessage): boolean {
+	switch (message.type) {
+		case "Image":
+		case "ExpiringImage":
+		case "Video":
+		case "PrivateVideo":
+		case "NonExpiringVideo":
+		case "Audio":
+			return true;
+	}
+	switch (message.chat1Type?.toLowerCase()) {
+		case "image":
+		case "expiring_image":
+		case "video":
+		case "privatevideo":
+		case "private_video":
+		case "nonexpiringvideo":
+		case "expiring_video":
+		case "audio":
+			return true;
+		default:
+			return false;
+	}
+}
+
 export type ReplyImageHashTarget = { mediaKey: string; url: string };
 
 /**

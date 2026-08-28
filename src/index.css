@@ -21,6 +21,10 @@
 	--animate-living-flame-loop: living-emoji 4s ease-in-out infinite, super-pulse 4s ease-in-out infinite;
 	--animate-halo-loop: halo-loop 4s ease-in-out infinite;
 
+	/* "They just viewed you" emphasis on the profile view badge */
+	--animate-viewed-now-ring: viewed-now-ring 1.8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+	--animate-viewed-now-eye: viewed-now-eye 1.8s ease-in-out infinite;
+
 	/* Modal animations */
 	--animate-modal-in: modal-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 	--animate-modal-out: modal-out 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -206,6 +210,30 @@
 			opacity: 0.45;
 			transform: scale(1.1);
 			filter: blur(6px);
+		}
+	}
+
+	/* Ring that pings outward from behind the eye icon while a view is fresh. */
+	@keyframes viewed-now-ring {
+		0% {
+			transform: scale(0.55);
+			opacity: 0.7;
+		}
+		65%,
+		100% {
+			transform: scale(1.9);
+			opacity: 0;
+		}
+	}
+	/* Matching pop on the eye itself, timed to the ring's leading edge. */
+	@keyframes viewed-now-eye {
+		0%,
+		40%,
+		100% {
+			transform: scale(1);
+		}
+		14% {
+			transform: scale(1.3);
 		}
 	}
 

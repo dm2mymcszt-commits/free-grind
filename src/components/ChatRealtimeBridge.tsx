@@ -37,7 +37,6 @@ import {
 } from "../services/chatContactIndex";
 import {
 	toggleArchiveOnConversationDelete,
-	applySelfBlockAction,
 	reconcileArchivedConversationForProfile,
 	reconcileBlockStateWithBlockedList,
 	deriveOtherProfileIdFromConversationId,
@@ -46,7 +45,7 @@ import {
 	type ChatArchiveStateChangeDetail,
 } from "../services/conversationArchive";
 import * as chatDb from "../services/chatDb";
-import { messageSchema, type Message } from "../types/messages";
+import { messageSchema, type ConversationEntry, type Message } from "../types/messages";
 import type { RealtimeEnvelope, RealtimeStatus } from "../types/chat-realtime";
 import { appLog } from "../utils/logger";
 import {
@@ -78,8 +77,42 @@ import {
 	isTapNotificationsEnabled,
 } from "../utils/notificationSettings";
 import { notifyLocal } from "../services/localNotify";
+import {
+	preserveAndAutoBlockConversation,
+	withPreservingBlock,
+} from "../services/autoBlockConversation";
 
 let cachedIsAndroid: boolean | null = null;
+
+function conversationEntryFromRealtimeMessage(
+	message: Message,
+	profileId: string,
+	displayName?: string | null,
+): ConversationEntry {
+	const body = message.body as Record<string, unknown> | null | undefined;
+	return {
+		type: "Conversation",
+		data: {
+			conversationId: message.conversationId,
+			name: displayName?.trim() ?? "",
+			participants: [{ profileId: Number(profileId) }],
+			lastActivityTimestamp: message.timestamp,
+			unreadCount: 1,
+			muted: false,
+			pinned: false,
+			favorite: false,
+			preview: {
+				conversationId: { value: message.conversationId },
+				messageId: message.messageId,
+				senderId: message.senderId,
+				type: message.type,
+				chat1Type: message.chat1Type,
+				text: typeof body?.text === "string" ? body.text : null,
+			},
+		},
+	};
+}
+
 function isAndroidRuntime(): boolean {
 	if (cachedIsAndroid != null) return cachedIsAndroid;
 	if (!isTauriRuntime()) {
@@ -633,7 +666,11 @@ export function ChatRealtimeBridge() {
 						);
 						triggerTapNotification(tap);
 						maybeUnarchiveOnActivity(tap.profileId);
-						runAutomationRulesForSender(tap.profileId, "tap_received", apiFunctions).catch(() => {});
+						runAutomationRulesForSender(
+							tap.profileId,
+							"tap_received",
+							withPreservingBlock(apiFunctions, userIdRef.current),
+						).catch(() => {});
 					}
 				}
 
@@ -741,12 +778,38 @@ export function ChatRealtimeBridge() {
 						// --- FORBIDDEN KEYWORDS & CUSTOM AUTOMATION RULES ---
 						if (isIncoming && m.senderId) {
 							const pidStr = String(m.senderId);
+							const knownDisplayName =
+								getDisplayName(m.conversationId, userIdRef.current) ?? "";
+							const realtimeConversation = conversationEntryFromRealtimeMessage(
+								m,
+								pidStr,
+								knownDisplayName,
+							);
+							const autoBlockRunner = {
+								...apiFunctions,
+								blockProfile: (targetProfileId: string) =>
+									preserveAndAutoBlockConversation({
+										conversation: realtimeConversation,
+										profileId: targetProfileId,
+										displayName: knownDisplayName,
+										fetchMessages: () =>
+											apiFunctions.listMessages({ conversationId: m.conversationId }),
+										additionalMessages: [m],
+										userId: userIdRef.current,
+										getAlbum: (albumId) => apiFunctions.getAlbum(albumId),
+										blockProfile: () => apiFunctions.blockProfile(targetProfileId),
+										// Automation rules mark a sender seen before acting, so a
+										// deferred block here would never be retried.
+										mayDeferOnIncompleteCapture: false,
+									}),
+							};
 							const isWhitelisted = isProfileAutoblockWhitelisted(pidStr) ||
 								(await checkAndAutoWhitelistActiveChat(pidStr, m.conversationId, undefined, undefined, userIdRef.current));
 							const isBlockEnabled = window.localStorage.getItem("fg-block-chat") !== "false";
 
 							if (isBlockEnabled && !isWhitelisted) {
 								let blockReason = "";
+								let detectedDisplayName = knownDisplayName;
 								const matchedMessage = messageText ? getMatchedForbiddenWord(messageText, "message") : null;
 								if (matchedMessage) {
 									blockReason = `Message keyword: "${matchedMessage}"`;
@@ -755,6 +818,7 @@ export function ChatRealtimeBridge() {
 										const profile = await apiFunctions.getProfileDetail(pidStr).catch(() => null) as any;
 										if (profile) {
 											const name = profile.name || profile.displayName || "";
+											detectedDisplayName = name || detectedDisplayName;
 											const bio = profile.aboutMe || "";
 											const age = profile.age;
 											const distance = profile.distanceMeters ?? profile.distance;
@@ -782,18 +846,34 @@ export function ChatRealtimeBridge() {
 
 								if (blockReason) {
 									appLog.info(`[ChatRealtimeBridge] Instant auto-blocking ${pidStr} due to: ${blockReason}`);
-									await chatDb.upsertMessages(m.conversationId, [m]).catch(() => {});
-									await apiFunctions.blockProfile(pidStr).catch(() => {});
-									await applySelfBlockAction(pidStr, "block").catch(() => {});
-									void notifyAutoBlock(pidStr, blockReason);
-									continue;
+									try {
+										await preserveAndAutoBlockConversation({
+											conversation: conversationEntryFromRealtimeMessage(
+												m,
+												pidStr,
+												detectedDisplayName,
+											),
+											profileId: pidStr,
+											displayName: detectedDisplayName,
+											fetchMessages: () =>
+												apiFunctions.listMessages({ conversationId: m.conversationId }),
+											additionalMessages: [m],
+											userId: userIdRef.current,
+											getAlbum: (albumId) => apiFunctions.getAlbum(albumId),
+											blockProfile: () => apiFunctions.blockProfile(pidStr),
+										});
+										void notifyAutoBlock(detectedDisplayName || pidStr, blockReason);
+										continue;
+									} catch (error) {
+										appLog.warn("[ChatRealtimeBridge] preserving auto-blocked conversation failed", error);
+									}
 								}
 							}
 
 							const { blocked: blockedByNewChat } = await runAutomationRulesForSender(
 								String(m.senderId),
 								"new_chat",
-								apiFunctions,
+								autoBlockRunner,
 								undefined,
 								messageText,
 							).catch(() => ({ blocked: false, matchedRuleNames: [] }));
@@ -805,7 +885,7 @@ export function ChatRealtimeBridge() {
 							const { blocked: blockedByMessage } = await runAutomationRulesForSender(
 								String(m.senderId),
 								"message_received",
-								apiFunctions,
+								autoBlockRunner,
 								undefined,
 								messageText,
 								m.messageId,

@@ -6,11 +6,79 @@ import { appLog } from "./logger";
 const notificationCache = new Map<string, number>();
 const DEDUPLICATION_WINDOW_MS = 2 * 60 * 1000; // 2 minutes
 
-export async function notifyAutoBlock(profileName: string, reason: string) {
-    console.log(`[AutoBlock] Banned: ${profileName} | Reason: ${reason}`);
+export const INTEREST_VIEW_AUTOBLOCK_STORAGE_KEY = "fg-block-interest-views";
+export const INTEREST_VIEW_SCAN_EVENT = "fg-trigger-view-scan";
+export const INBOX_AUTOBLOCK_NOTIFICATIONS_STORAGE_KEY = "fg-notify-autoblock";
+export const INTEREST_VIEW_AUTOBLOCK_NOTIFICATIONS_STORAGE_KEY = "fg-notify-autoblock-interest-views";
+
+export type AutoBlockNotificationSource = "inbox" | "interest_views";
+
+export function isInterestViewAutoBlockEnabled(): boolean {
+    return typeof window !== "undefined"
+        && window.localStorage.getItem(INTEREST_VIEW_AUTOBLOCK_STORAGE_KEY) === "true";
+}
+
+export function isInboxAutoBlockNotificationsEnabled(): boolean {
+    return typeof window === "undefined"
+        || window.localStorage.getItem(INBOX_AUTOBLOCK_NOTIFICATIONS_STORAGE_KEY) !== "false";
+}
+
+export function isInterestViewAutoBlockNotificationsEnabled(): boolean {
+    return typeof window === "undefined"
+        || window.localStorage.getItem(INTEREST_VIEW_AUTOBLOCK_NOTIFICATIONS_STORAGE_KEY) !== "false";
+}
+
+function notificationTitle(source: AutoBlockNotificationSource): string {
+    return source === "interest_views"
+        ? "Free Grind Interest Auto-Blocker"
+        : "Free Grind Inbox Auto-Blocker";
+}
+
+/**
+ * The delivery half of an auto-block notification: the per-source user toggle,
+ * the permission dance, and the send itself. Shared by the single-profile and
+ * aggregated paths so the two can never drift on which preference gates which
+ * source — the Interest and Inbox toggles stay strictly independent, and
+ * neither one has any say over whether the block itself happens.
+ */
+async function sendAutoBlockNotification(
+    source: AutoBlockNotificationSource,
+    body: string,
+): Promise<void> {
+    if (!isTauriRuntime()) return;
+
+    const notificationsEnabled = source === "interest_views"
+        ? isInterestViewAutoBlockNotificationsEnabled()
+        : isInboxAutoBlockNotificationsEnabled();
+    if (!notificationsEnabled) {
+        console.log(`[AutoBlock:${source}] Notification suppressed by user settings`);
+        return;
+    }
+
+    try {
+        let permissionGranted = await isPermissionGranted();
+        if (!permissionGranted) {
+            const permission = await requestPermission();
+            permissionGranted = permission === "granted";
+        }
+
+        if (permissionGranted) {
+            sendNotification({ title: notificationTitle(source), body });
+        }
+    } catch (e) {
+        console.error("Failed to send notification", e);
+    }
+}
+
+export async function notifyAutoBlock(
+    profileName: string,
+    reason: string,
+    source: AutoBlockNotificationSource = "inbox",
+) {
+    console.log(`[AutoBlock:${source}] Banned: ${profileName} | Reason: ${reason}`);
 
     const now = Date.now();
-    const cacheKey = `${profileName}::${reason}`;
+    const cacheKey = `${source}::${profileName}::${reason}`;
     const lastSentTime = notificationCache.get(cacheKey);
 
     if (lastSentTime && (now - lastSentTime < DEDUPLICATION_WINDOW_MS)) {
@@ -27,29 +95,61 @@ export async function notifyAutoBlock(profileName: string, reason: string) {
         }
     }
 
-    if (!isTauriRuntime()) return;
+    await sendAutoBlockNotification(
+        source,
+        source === "interest_views"
+            ? `Blocked from Interest Views: ${profileName}\n${reason}`
+            : `Blocked from Inbox: ${profileName}\n${reason}`,
+    );
+}
 
-    if (window.localStorage.getItem("fg-notify-autoblock") === "false") {
-        console.log("[AutoBlock] Notification suppressed: auto-block notifications disabled by user settings");
+/** How many names an aggregated notification spells out before "+N more". */
+const MAX_SUMMARY_NAMES = 3;
+
+/**
+ * Reports a group of blocks made in one pass as a single notification.
+ *
+ * A catch-up sweep can legitimately block several profiles at once (views that
+ * arrived while the app was closed), and one OS notification per profile is
+ * the notification storm this exists to prevent. One profile still gets the
+ * ordinary per-profile notification, wording and dedup unchanged, so a single
+ * live view reads exactly as it did before.
+ */
+export async function notifyAutoBlockBatch(
+    blocked: { profileName: string; reason: string }[],
+    source: AutoBlockNotificationSource = "inbox",
+): Promise<void> {
+    if (blocked.length === 0) return;
+    if (blocked.length === 1) {
+        await notifyAutoBlock(blocked[0].profileName, blocked[0].reason, source);
         return;
     }
 
-    try {
-        let permissionGranted = await isPermissionGranted();
-        if (!permissionGranted) {
-            const permission = await requestPermission();
-            permissionGranted = permission === "granted";
-        }
-
-        if (permissionGranted) {
-            sendNotification({
-                title: "Free Grind Auto-Blocker",
-                body: `Blocked: ${profileName}\n${reason}`,
-            });
-        }
-    } catch (e) {
-        console.error("Failed to send notification", e);
+    for (const entry of blocked) {
+        console.log(`[AutoBlock:${source}] Banned: ${entry.profileName} | Reason: ${entry.reason}`);
     }
+
+    const names = blocked.map((entry) => entry.profileName);
+    const now = Date.now();
+    // Keyed by the batch's own membership, so re-running an identical sweep
+    // within the dedup window stays quiet while a genuinely different group
+    // still gets its summary.
+    const cacheKey = `${source}::batch::${[...names].sort().join("|")}`;
+    const lastSentTime = notificationCache.get(cacheKey);
+    if (lastSentTime && (now - lastSentTime < DEDUPLICATION_WINDOW_MS)) {
+        console.log(`[AutoBlock:${source}] Duplicate summary notification suppressed`);
+        return;
+    }
+    notificationCache.set(cacheKey, now);
+
+    const shownNames = names.slice(0, MAX_SUMMARY_NAMES).join(", ");
+    const remaining = names.length - Math.min(names.length, MAX_SUMMARY_NAMES);
+    const label = source === "interest_views" ? "matching Interest viewers" : "matching profiles";
+
+    await sendAutoBlockNotification(
+        source,
+        `Blocked ${blocked.length} ${label}.\n${shownNames}${remaining > 0 ? ` +${remaining} more` : ""}`,
+    );
 }
 
 // --- JAY'S PERFORMANCE CACHE + YOUR EXACT MATCH REGEX ---

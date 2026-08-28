@@ -18,6 +18,7 @@ import {
 } from "./auth-context";
 import { appLog } from "../utils/logger";
 import { setActiveChatDbUser, migrateLegacySettingsIfNeeded } from "../services/chatDb";
+import { setActiveInterestViewsUser } from "../services/interestViewsStore";
 import { clearAllCaches } from "../pages/app/gridpage/cache";
 import { loadAutomationCache } from "../utils/autoblock";
 import { loadAutomationRulesCache } from "../utils/automationRules";
@@ -278,6 +279,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 		dispatch({ type: "SET_SETTINGS_READY", payload: false });
 
+		// Viewer history is account-scoped for the same reason chats are: its
+		// own IndexedDB per account, so a profile that viewed the previous
+		// account can't surface as one of this account's viewers. Repointed
+		// here rather than inside the async chain below because the protected
+		// layout remounts as soon as loading clears — the view scanner and the
+		// Interest query can both be fetching before `setActiveChatDbUser`
+		// resolves, and every one of those reads/writes has to already be
+		// aimed at the new account. The call itself switches synchronously;
+		// only the one-time legacy adoption is async, and store operations
+		// await that internally.
+		void setActiveInterestViewsUser(state.userId);
+
 		void (async () => {
 			await setActiveChatDbUser(state.userId);
 			if (state.userId != null) {
@@ -316,7 +329,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 				// against the "tap_received" automation trigger — guarded the same
 				// way, and safe to start before the automation cache below finishes
 				// loading (runAutomationRulesForSender no-ops until it has).
-				void runTapsAutomationSync(apiFunctions, () => currentUserIdRef.current === userId);
+				void runTapsAutomationSync(
+					apiFunctions,
+					() => currentUserIdRef.current === userId,
+					userId,
+				);
 			}
 
 			await Promise.all([

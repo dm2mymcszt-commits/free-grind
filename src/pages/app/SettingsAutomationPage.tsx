@@ -17,7 +17,12 @@ import { getThumbImageUrl } from "../../utils/media";
 import { getAutoBlockWhitelist, removeFromAutoBlockWhitelist, AUTO_BLOCK_WHITELIST_UPDATED_EVENT } from "../../utils/privacy";
 import { useNavigate } from "react-router-dom";
 import { useApiFunctions } from "../../hooks/useApiFunctions";
-import { getForbiddenWords, setForbiddenWords as setForbiddenWordsInStore } from "../../utils/autoblock";
+import {
+    getForbiddenWords,
+    INTEREST_VIEW_AUTOBLOCK_STORAGE_KEY,
+    INTEREST_VIEW_SCAN_EVENT,
+    setForbiddenWords as setForbiddenWordsInStore,
+} from "../../utils/autoblock";
 
 export function SettingsAutomationPage() {
     const { t } = useTranslation();
@@ -27,6 +32,9 @@ export function SettingsAutomationPage() {
 
     // --- AUTO-BLOCK STATE ---
     const [blockOnChat, setBlockOnChat] = useState(() => window.localStorage.getItem("fg-block-chat") === "true");
+    const [blockOnInterestViews, setBlockOnInterestViews] = useState(
+        () => window.localStorage.getItem(INTEREST_VIEW_AUTOBLOCK_STORAGE_KEY) === "true",
+    );
     const [forbiddenWords, setForbiddenWords] = useState(() => getForbiddenWords() || window.localStorage.getItem("fg-forbidden-words") || "");
     const [minAge, setMinAge] = useState(() => window.localStorage.getItem("fg-block-min-age") ?? "18");
     const [maxAge, setMaxAge] = useState(() => window.localStorage.getItem("fg-block-max-age") ?? "99");
@@ -159,7 +167,11 @@ export function SettingsAutomationPage() {
     // Live update the Views Recovery Stats every 5 seconds
     useEffect(() => {
         const fetchStats = () => {
-            void interestViewsStore.count().then(cnt => {
+            // countStored(), not count(): the raw row count included locked
+            // preview placeholders and rows past the age window that cleanup
+            // hadn't collected yet, so the figure shown here never matched the
+            // profiles actually recoverable in the Interest list.
+            void interestViewsStore.countStored().then(cnt => {
                 setUnlockedViewsCount(cnt);
             });
             setLastViewScanTime(window.localStorage.getItem("fg-view-scanner-last-run"));
@@ -193,6 +205,18 @@ export function SettingsAutomationPage() {
         setBlockOnChat(val);
         window.localStorage.setItem("fg-block-chat", String(val));
         toast.success(val ? t("settings_automation.chat_block_enabled", { defaultValue: "Inbox Blocking Enabled" }) : t("settings_automation.chat_block_disabled", { defaultValue: "Inbox Blocking Disabled" }), { id: "chat-block-toggle" });
+    };
+
+    const handleToggleInterestViewBlock = (val: boolean) => {
+        setBlockOnInterestViews(val);
+        window.localStorage.setItem(INTEREST_VIEW_AUTOBLOCK_STORAGE_KEY, String(val));
+        window.dispatchEvent(new Event(INTEREST_VIEW_SCAN_EVENT));
+        toast.success(
+            val
+                ? t("settings_automation.interest_view_block_enabled", { defaultValue: "Interest views auto-block enabled" })
+                : t("settings_automation.interest_view_block_disabled", { defaultValue: "Interest views auto-block disabled" }),
+            { id: "interest-view-block-toggle" },
+        );
     };
 
     const handleToggleInboxScanner = (val: boolean) => {
@@ -252,6 +276,7 @@ export function SettingsAutomationPage() {
 
         // Trigger immediate background scan with new rules
         window.dispatchEvent(new Event("fg-trigger-inbox-scan"));
+        window.dispatchEvent(new Event(INTEREST_VIEW_SCAN_EVENT));
 
         toast.success(t("settings_automation.block_rules_updated", { defaultValue: "Block Rules Updated!" }));
     };
@@ -382,7 +407,16 @@ export function SettingsAutomationPage() {
                             onChange={handleToggleChatBlock}
                         />
 
-                        {blockOnChat && (
+                        <ToggleRow
+                            icon={<Eye className="h-5 w-5" />}
+                            iconClass="bg-violet-500/15 text-violet-400"
+                            label={t("settings_automation.apply_to_interest_views", { defaultValue: "Apply to Interest Views" })}
+                            description={t("settings_automation.apply_to_interest_views_desc", { defaultValue: "Checks people who view you against your profile rules and blocks matches before they can start a chat." })}
+                            checked={blockOnInterestViews}
+                            onChange={handleToggleInterestViewBlock}
+                        />
+
+                        {(blockOnChat || blockOnInterestViews) && (
                             <>
                                 {/* Keywords */}
                                 <div className="flex items-start gap-3 p-4">

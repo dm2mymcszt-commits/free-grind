@@ -12,7 +12,14 @@
 
 import { fetch } from "@tauri-apps/plugin-http";
 import * as chatDb from "./chatDb";
+import {
+	getMediaCaptureTarget,
+	getReplyImageHashTarget,
+	isMediaMessage,
+} from "../pages/app/chat/chatUtils";
+import type { MediaCaptureTarget } from "../pages/app/chat/chatUtils";
 import type { MediaKind } from "../types/chat-db";
+import type { UiMessage } from "../types/chat-page";
 import { appLog } from "../utils/logger";
 import { isAutoDownloadMediaEnabled } from "../utils/mediaSettings";
 import { limitChatDbBlobRead } from "../utils/chatDbBlobLimiter";
@@ -158,6 +165,11 @@ async function downloadAndStore(params: FetchAndStoreMediaParams): Promise<void>
 		fetchStatus: "ok",
 	});
 	setCachedMediaUri(mediaKey, toDataUri(fetched.mimeType, fetched.base64));
+	// This message now has bytes on disk, so a message-id-keyed lookup that
+	// previously came back empty would succeed — let it be retried.
+	if (messageId) {
+		emptyMessageMediaLookups.delete(messageId);
+	}
 
 	if (!isOwnMessage && !skipAutoDownload && (kind === "image" || kind === "video")) {
 		void maybeAutoDownloadToDevice(fetched.base64, fetched.mimeType, kind, conversationId);
@@ -274,14 +286,26 @@ export function getMessageFallbackMediaKey(messageId: string): string {
 	return `msg:${messageId}`;
 }
 
+// Message ids whose message-id-keyed lookup came back with nothing usable.
+// Render code calls hydrateMediaByMessageId on every pass for a bubble whose
+// body has lost its URL, and without this each of those passes would re-read
+// a blob table. Cleared for a message the moment anything is stored for it,
+// so a later capture is still picked up.
+const emptyMessageMediaLookups = new Set<string>();
+
 /**
  * Populates the in-memory cache (under the message-id fallback key) from
  * whatever's already stored for this message, regardless of whether the
- * live message currently carries a usable URL. Safe to call repeatedly.
+ * live message currently carries a usable URL. Safe to call repeatedly,
+ * including from render.
  */
 export async function hydrateMediaByMessageId(messageId: string): Promise<void> {
 	const key = getMessageFallbackMediaKey(messageId);
-	if (memoryCache.has(key) || inFlight.has(key)) {
+	if (
+		memoryCache.has(key) ||
+		inFlight.has(key) ||
+		emptyMessageMediaLookups.has(messageId)
+	) {
 		return;
 	}
 
@@ -292,6 +316,8 @@ export async function hydrateMediaByMessageId(messageId: string): Promise<void> 
 			);
 			if (stored?.fetchStatus === "ok") {
 				setCachedMediaUri(key, toDataUri(stored.mimeType, stored.dataBase64));
+			} else {
+				emptyMessageMediaLookups.add(messageId);
 			}
 		} finally {
 			inFlight.delete(key);
@@ -300,4 +326,106 @@ export async function hydrateMediaByMessageId(messageId: string): Promise<void> 
 
 	inFlight.set(key, run);
 	return run;
+}
+
+/** What a pre-block media capture attempt managed to secure locally. */
+export type MediaCaptureResult = {
+	messageId: string;
+	mediaKey: string;
+	kind: MediaKind;
+	/** Bytes for this message are in chatDb with fetchStatus "ok". */
+	captured: boolean;
+	/**
+	 * The URL this message offers is a signed URL that has already expired, so
+	 * it is guaranteed to 403 — no later retry can do better than what's
+	 * cached, and it must not hold a block back.
+	 */
+	unavailable: boolean;
+};
+
+/**
+ * Downloads and stores every image/video/audio attachment in `messages`,
+ * awaited, and reports per-message whether the bytes actually landed.
+ *
+ * The fire-and-forget captureMediaForMessages in ChatPage exists to keep the
+ * open thread's cache warm; this is its counterpart for the auto-block path,
+ * where the block permanently revokes the signed URLs these messages carry
+ * and there is no second chance. Resolves (never rejects).
+ *
+ * Reply-quote and ProfilePhotoReply thumbnails are captured alongside, on a
+ * best-effort basis — those resolve from content-addressed CDN hashes that
+ * outlive the conversation, so they're worth grabbing but aren't reported as
+ * something a block could destroy.
+ */
+export async function captureMessageMediaForArchival(
+	messages: UiMessage[],
+	conversationId: string,
+	userId: number | null,
+): Promise<MediaCaptureResult[]> {
+	const targets: { message: UiMessage; target: MediaCaptureTarget }[] = [];
+	const sideCaptures: Promise<void>[] = [];
+
+	for (const message of messages) {
+		const target = getMediaCaptureTarget(message);
+		if (target) {
+			targets.push({ message, target });
+		} else if (isMediaMessage(message)) {
+			// An attachment whose body has already lost its URL — nothing left to
+			// download, but pull whatever's already stored into the in-memory
+			// cache so the archived thread renders it.
+			sideCaptures.push(hydrateMediaByMessageId(message.messageId));
+		}
+
+		const replyTarget = getReplyImageHashTarget(message);
+		if (replyTarget) {
+			sideCaptures.push(
+				fetchAndStoreMedia({
+					mediaKey: replyTarget.mediaKey,
+					kind: "image",
+					url: replyTarget.url,
+					conversationId,
+					messageId: message.messageId,
+					viewOnce: false,
+					isOwnMessage: false,
+					skipAutoDownload: true,
+				}),
+			);
+		}
+	}
+
+	const [results] = await Promise.all([
+		Promise.all(
+			targets.map(async ({ message, target }): Promise<MediaCaptureResult> => {
+				// fetchAndStoreMedia never throws and de-dupes in flight by
+				// mediaKey, so a racing scanner joins this download rather than
+				// issuing a second one.
+				await fetchAndStoreMedia({
+					mediaKey: target.mediaKey,
+					kind: target.kind,
+					url: target.url,
+					conversationId,
+					messageId: message.messageId,
+					viewOnce: target.viewOnce,
+					isOwnMessage: userId != null && Number(message.senderId) === Number(userId),
+				});
+
+				// It records failures as a row with fetchStatus "failed" rather
+				// than signalling them, so success has to be read back off the row.
+				const stored = await limitChatDbBlobRead(() =>
+					chatDb.getMediaFile(target.mediaKey),
+				).catch(() => null);
+
+				return {
+					messageId: message.messageId,
+					mediaKey: target.mediaKey,
+					kind: target.kind,
+					captured: stored?.fetchStatus === "ok",
+					unavailable: isSignedUrlExpired(target.url),
+				};
+			}),
+		),
+		Promise.all(sideCaptures),
+	]);
+
+	return results;
 }

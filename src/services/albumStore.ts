@@ -12,7 +12,11 @@
 
 import * as chatDb from "./chatDb";
 import { fetchAndEncode, toDataUri } from "./mediaStore";
-import { getMessageAlbumCoverUrl, getMessageAlbumId } from "../pages/app/chat/chatUtils";
+import {
+	getAlbumContentReplyTarget,
+	getMessageAlbumCoverUrl,
+	getMessageAlbumId,
+} from "../pages/app/chat/chatUtils";
 import { ApiFunctionError } from "./apiHelpers";
 import type { UiMessage } from "../types/chat-page";
 import type { AlbumContentItem } from "../types/chat-page";
@@ -62,7 +66,7 @@ const GONE_STATUS_CODES = new Set([403, 404]);
 // message-arrival passes can land for the same share back to back, and
 // without this each one fires its own request before the first one's
 // catch block has a chance to populate knownGoneAlbumIds above.
-const captureInFlight = new Map<number, Promise<void>>();
+const captureInFlight = new Map<number, Promise<AlbumCaptureResult>>();
 
 // Synchronous in-memory record of which albums are fully captured locally,
 // so render code (which can't await a DB read) can show a cached album as
@@ -86,8 +90,11 @@ const albumCoverCache = new Map<number, string>();
 // a full album capture (updateAlbumCacheState) and, when that never
 // happened, by captureAlbumContentThumbFromMessage below.
 const albumContentThumbCache = new Map<string, string>();
-// De-dupes concurrent captureAlbumContentThumbFromMessage calls for the same item.
-const contentThumbCaptureInFlight = new Set<string>();
+// De-dupes concurrent captureAlbumContentThumbFromMessage calls for the same
+// item. Holds the in-flight promise (rather than just the key) so an awaiting
+// caller — e.g. the pre-block capture in autoBlockConversation — can join a
+// capture another scanner already started instead of re-downloading it.
+const contentThumbCaptureInFlight = new Map<string, Promise<void>>();
 
 function albumContentKey(albumId: number, contentId: number): string {
 	return `${albumId}:${contentId}`;
@@ -248,23 +255,25 @@ export function ensureAlbumCacheChecked(albumId: number): void {
 async function captureAlbumPreviewFromMessage(
 	message: UiMessage,
 	albumId: number,
-): Promise<void> {
+): Promise<boolean> {
 	const coverUrl = getMessageAlbumCoverUrl(message);
 	if (!coverUrl) {
-		return;
+		return false;
 	}
 	try {
 		const fetched = await fetchAndEncode(coverUrl);
 		if (!fetched) {
-			return;
+			return false;
 		}
 		await chatDb.upsertAlbumPreviewCover(String(albumId), fetched.base64, fetched.mimeType);
 		albumCoverCache.set(albumId, toDataUri(fetched.mimeType, fetched.base64));
 		for (const listener of albumCacheListeners) {
 			listener();
 		}
+		return true;
 	} catch (error) {
 		appLog.warn(`[album-store] failed to capture preview cover for album ${albumId}`, error);
+		return false;
 	}
 }
 
@@ -286,12 +295,30 @@ export function captureAlbumContentThumbFromMessage(
 	contentType: string | null,
 	previewUrl: string | null,
 ): void {
+	void ensureAlbumContentThumbCaptured(albumId, contentId, contentType, previewUrl);
+}
+
+/**
+ * Awaitable form of captureAlbumContentThumbFromMessage, for callers that
+ * must not proceed until the thumbnail is durably stored — the pre-block
+ * capture, which loses server access the moment the block lands. Resolves
+ * (never rejects) once the item is cached, already cached, or unrecoverable.
+ */
+export function ensureAlbumContentThumbCaptured(
+	albumId: number,
+	contentId: number,
+	contentType: string | null,
+	previewUrl: string | null,
+): Promise<void> {
 	const key = albumContentKey(albumId, contentId);
-	if (albumContentThumbCache.has(key) || contentThumbCaptureInFlight.has(key)) {
-		return;
+	if (albumContentThumbCache.has(key)) {
+		return Promise.resolve();
 	}
-	contentThumbCaptureInFlight.add(key);
-	void (async () => {
+	const inFlight = contentThumbCaptureInFlight.get(key);
+	if (inFlight) {
+		return inFlight;
+	}
+	const run = (async () => {
 		try {
 			const existing = await limitChatDbBlobRead(() => chatDb.getAlbumMedia(String(albumId)));
 			const row = existing.find((m) => m.contentId === key);
@@ -326,6 +353,8 @@ export function captureAlbumContentThumbFromMessage(
 			contentThumbCaptureInFlight.delete(key);
 		}
 	})();
+	contentThumbCaptureInFlight.set(key, run);
+	return run;
 }
 
 export type CaptureAlbumParams = {
@@ -389,8 +418,15 @@ async function captureAlbumContent(
 	}
 }
 
-/** Eagerly downloads and stores every content item's bytes for an album. */
-export async function captureAlbum(params: CaptureAlbumParams): Promise<void> {
+/**
+ * Eagerly downloads and stores every content item's bytes for an album.
+ * Resolves with the album_media rows as they stand afterwards, so callers
+ * that need to know whether the capture actually completed (the pre-block
+ * capture) can check without a second read.
+ */
+export async function captureAlbum(
+	params: CaptureAlbumParams,
+): Promise<StoredAlbumMedia[]> {
 	const {
 		albumId,
 		albumName,
@@ -430,6 +466,7 @@ export async function captureAlbum(params: CaptureAlbumParams): Promise<void> {
 	if (captured.length > 0) {
 		updateAlbumCacheState(albumId, captured);
 	}
+	return captured;
 }
 
 export type AlbumMessageInfo = {
@@ -468,12 +505,49 @@ function getAlbumMessageInfo(message: UiMessage): AlbumMessageInfo | null {
 	return { albumId, remainingViews, isViewable };
 }
 
+/**
+ * What a capture attempt managed to secure locally. Callers that merely want
+ * the cache warmed can ignore this; the pre-block capture uses it to decide
+ * whether it is safe to give up server access to the album.
+ */
+export type AlbumCaptureResult = {
+	albumId: number;
+	/**
+	 * Every content item the server actually exposed a URL for now has its
+	 * bytes in album_media. Items the server reports as still `processing`
+	 * (no URL of any kind) can't be fetched by anyone and don't count against
+	 * this.
+	 */
+	complete: boolean;
+	/**
+	 * The server says the album/share is gone (403/404). Nothing further is
+	 * retrievable, so retrying later cannot do better than what's cached.
+	 */
+	unavailable: boolean;
+	/** Anything at all is stored locally — media rows and/or the teaser cover. */
+	hasLocalContent: boolean;
+};
+
+function summarizeCachedAlbum(
+	albumId: number,
+	media: StoredAlbumMedia[],
+	previewCaptured: boolean,
+	unavailable: boolean,
+): AlbumCaptureResult {
+	return {
+		albumId,
+		complete: media.length > 0 && media.every((m) => m.dataBase64),
+		unavailable,
+		hasLocalContent: media.length > 0 || previewCaptured,
+	};
+}
+
 async function captureAlbumFromMessageIfNeeded(
 	info: AlbumMessageInfo,
 	message: UiMessage,
 	conversationId: string,
 	getAlbum: (albumId: number) => Promise<AlbumDetailsResponse>,
-): Promise<void> {
+): Promise<AlbumCaptureResult> {
 	if (knownGoneAlbumIds.has(info.albumId) && attemptedMessageIds.has(message.messageId)) {
 		// Already confirmed gone for this exact share message — don't keep
 		// re-requesting it on every reload/poll, just keep serving whatever's
@@ -484,15 +558,23 @@ async function captureAlbumFromMessageIfNeeded(
 		if (cached.length > 0) {
 			updateAlbumCacheState(info.albumId, cached);
 		}
-		return;
+		return summarizeCachedAlbum(
+			info.albumId,
+			cached,
+			albumCoverCache.has(info.albumId),
+			true,
+		);
 	}
 
 	const existingRun = captureInFlight.get(info.albumId);
 	if (existingRun) {
+		// Another scanner (or an open ChatPage) is already downloading this
+		// exact album — join that run rather than issuing a second set of
+		// requests for the same bytes.
 		return existingRun;
 	}
 
-	const run = (async () => {
+	const run = (async (): Promise<AlbumCaptureResult> => {
 		attemptedMessageIds.add(message.messageId);
 
 		// The blurred teaser preview comes straight from this message's own
@@ -500,7 +582,7 @@ async function captureAlbumFromMessageIfNeeded(
 		// the full album refresh below, so it's available even if that
 		// refresh fails (share gated/gone) and always reflects this latest
 		// share's preview rather than a stale one from an older share.
-		await captureAlbumPreviewFromMessage(message, info.albumId);
+		const previewCaptured = await captureAlbumPreviewFromMessage(message, info.albumId);
 
 		try {
 			// Always refresh from the live API first, even if we already have a
@@ -512,7 +594,7 @@ async function captureAlbumFromMessageIfNeeded(
 			// already have.
 			const details = await getAlbum(info.albumId);
 			knownGoneAlbumIds.delete(info.albumId);
-			await captureAlbum({
+			const stored = await captureAlbum({
 				albumId: details.albumId,
 				albumName: details.albumName,
 				content: details.content,
@@ -522,8 +604,32 @@ async function captureAlbumFromMessageIfNeeded(
 				remainingViews: info.remainingViews,
 				isViewable: info.isViewable,
 			});
+
+			// Per-item downloads inside captureAlbum swallow their own errors so
+			// one bad item can't abort the rest — so completeness has to be read
+			// back off the stored rows rather than inferred from "didn't throw".
+			const storedById = new Map(stored.map((m) => [m.contentId, m] as const));
+			const missing = details.content.filter((item) => {
+				if (!item.url && !item.coverUrl) {
+					return false; // Nothing to fetch — server hasn't published it.
+				}
+				return !storedById.get(`${info.albumId}:${item.contentId}`)?.dataBase64;
+			});
+			if (missing.length > 0) {
+				appLog.warn(
+					`[album-store] album ${info.albumId} captured incompletely — ${missing.length}/${details.content.length} item(s) missing bytes`,
+				);
+			}
+			return {
+				albumId: info.albumId,
+				complete: missing.length === 0,
+				unavailable: false,
+				hasLocalContent: stored.length > 0 || previewCaptured,
+			};
 		} catch (error) {
-			if (error instanceof ApiFunctionError && GONE_STATUS_CODES.has(error.status)) {
+			const gone =
+				error instanceof ApiFunctionError && GONE_STATUS_CODES.has(error.status);
+			if (gone) {
 				knownGoneAlbumIds.add(info.albumId);
 			}
 			// Live refresh failed (offline, share stopped/gone, conversation
@@ -532,12 +638,13 @@ async function captureAlbumFromMessageIfNeeded(
 			const existing = await chatDb.getAlbumMedia(String(info.albumId)).catch(() => []);
 			if (existing.length > 0) {
 				updateAlbumCacheState(info.albumId, existing);
-				return;
+			} else {
+				appLog.warn(
+					`[album-store] failed to capture album from message ${message.messageId}`,
+					error,
+				);
 			}
-			appLog.warn(
-				`[album-store] failed to capture album from message ${message.messageId}`,
-				error,
-			);
+			return summarizeCachedAlbum(info.albumId, existing, previewCaptured, gone);
 		} finally {
 			captureInFlight.delete(info.albumId);
 		}
@@ -557,6 +664,23 @@ export function captureAlbumsForMessages(
 	conversationId: string,
 	getAlbum: (albumId: number) => Promise<AlbumDetailsResponse>,
 ): void {
+	void captureAlbumsForMessagesNow(messages, conversationId, getAlbum);
+}
+
+/**
+ * Awaitable form of captureAlbumsForMessages, for callers that must not
+ * proceed until every referenced album is durably stored — specifically the
+ * pre-block capture, which permanently loses server access to these albums
+ * the moment the block request lands.
+ *
+ * Resolves (never rejects) with one result per distinct album referenced in
+ * the batch; the caller decides what to do about incomplete ones.
+ */
+export async function captureAlbumsForMessagesNow(
+	messages: UiMessage[],
+	conversationId: string,
+	getAlbum: (albumId: number) => Promise<AlbumDetailsResponse>,
+): Promise<AlbumCaptureResult[]> {
 	const entries: { info: AlbumMessageInfo; message: UiMessage }[] = [];
 	for (const message of messages) {
 		const info = getAlbumMessageInfo(message);
@@ -574,9 +698,47 @@ export function captureAlbumsForMessages(
 		ensureAlbumCacheChecked(albumId);
 	}
 
-	for (const { info, message } of entries) {
-		void captureAlbumFromMessageIfNeeded(info, message, conversationId, getAlbum);
-	}
+	return Promise.all(
+		entries.map(({ info, message }) =>
+			captureAlbumFromMessageIfNeeded(info, message, conversationId, getAlbum),
+		),
+	);
+}
+
+/**
+ * Everything album-shaped in a conversation, captured and awaited — album
+ * shares (metadata + teaser cover + every accessible content item) plus the
+ * per-item thumbnails referenced by AlbumContentReply/AlbumContentReaction
+ * messages, which point at items whose own share message may not be in the
+ * batch at all.
+ *
+ * Used by the pre-block capture in autoBlockConversation: once the block
+ * request lands the server stops serving all of this, so it has to be on
+ * disk first. Resolves (never rejects) with one result per album share.
+ */
+export async function captureConversationAlbumsForArchival(
+	messages: UiMessage[],
+	conversationId: string,
+	getAlbum: (albumId: number) => Promise<AlbumDetailsResponse>,
+): Promise<AlbumCaptureResult[]> {
+	const [results] = await Promise.all([
+		captureAlbumsForMessagesNow(messages, conversationId, getAlbum),
+		Promise.all(
+			messages.map((message) => {
+				const target = getAlbumContentReplyTarget(message);
+				if (!target) {
+					return Promise.resolve();
+				}
+				return ensureAlbumContentThumbCaptured(
+					target.albumId,
+					target.contentId,
+					target.contentType,
+					target.previewUrl,
+				);
+			}),
+		),
+	]);
+	return results;
 }
 
 /**

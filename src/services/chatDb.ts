@@ -507,6 +507,15 @@ export async function setActiveChatDbUser(profileId: number | null): Promise<voi
 	if (profileId != null) {
 		await migrateLegacyDbIfNeeded(profileId);
 		await getDb();
+		await repairSyntheticBlockedConversations().catch((error) => {
+			appLog.warn("[chat-db] failed to repair synthetic blocked conversations", error);
+		});
+		await repairArchivedConversationPreviews().catch((error) => {
+			appLog.warn("[chat-db] failed to repair archived conversation previews", error);
+		});
+		await purgeEmptySyntheticBlockedConversations().catch((error) => {
+			appLog.warn("[chat-db] failed to purge empty synthetic blocked conversations", error);
+		});
 	}
 }
 
@@ -671,6 +680,320 @@ export async function findConversationByProfileId(
 	);
 	const row = rows[0];
 	return row ? rowToStoredConversation(row) : null;
+}
+
+/**
+ * Recovers a conversation whose `conversations` row is gone (e.g. removed via
+ * deleteConversationOnly, which only deletes the conversation/meta rows and
+ * never touches `messages` — see file header) but whose message history is
+ * still sitting in `messages` under a known conversationId. There's nothing
+ * left in `conversations` to look this conversationId up by profile id once
+ * the row is deleted, so the caller must supply it from elsewhere (chat
+ * contact index still remembers it).
+ *
+ * Returns a synthesized, not-yet-persisted StoredConversation so the caller
+ * can hydrate the thread from local history without resurrecting a stale row
+ * into the active inbox or assuming the live conversation still exists.
+ * The profile itself may still be perfectly reachable, so callers should keep
+ * the composer enabled and route sends through the normal targetProfileId
+ * path rather than treating this like an archived/read-only thread — a real
+ * `conversations` row is only written again once that succeeds (normal
+ * upsertConversation path).
+ */
+export async function recoverOrphanedConversation(
+	conversationId: string,
+	otherProfileId: string,
+): Promise<StoredConversation | null> {
+	const db = await getDb();
+	const rows = await db.select<MessageRow[]>(
+		`SELECT * FROM messages
+		 WHERE conversation_id = $1
+		 ORDER BY CASE WHEN COALESCE(type, '') LIKE 'System%' THEN 1 ELSE 0 END ASC,
+		          timestamp DESC
+		 LIMIT 1`,
+		[conversationId],
+	);
+	const lastMessageRow = rows[0];
+	if (!lastMessageRow) {
+		return null;
+	}
+	let messageText: string | null = null;
+	if (lastMessageRow.body_json) {
+		try {
+			const body = JSON.parse(lastMessageRow.body_json) as Record<string, unknown>;
+			messageText = typeof body.text === "string" ? body.text : null;
+		} catch {
+			// A malformed historical body should not prevent the conversation
+			// itself from being recovered.
+		}
+	}
+
+	const now = Date.now();
+	const entry: ConversationEntry = {
+		data: {
+			conversationId,
+			name: "",
+			participants: [{ profileId: Number(otherProfileId) }],
+			lastActivityTimestamp: lastMessageRow.timestamp,
+			unreadCount: 0,
+			preview: {
+				conversationId: { value: conversationId },
+				messageId: lastMessageRow.message_id,
+				senderId: lastMessageRow.sender_id,
+				type: lastMessageRow.type ?? "Unknown",
+				chat1Type: lastMessageRow.chat1_type,
+				text: messageText,
+			},
+			muted: false,
+			pinned: false,
+			favorite: false,
+		},
+	};
+
+	return {
+		conversationId,
+		otherProfileId,
+		entry,
+		archived: false,
+		archivedReason: null,
+		archivedAt: null,
+		hidden: false,
+		blockState: null,
+		lastSeenInInboxAt: null,
+		messagesSyncedActivityTimestamp: null,
+		createdAt: now,
+		updatedAt: now,
+	};
+}
+
+/**
+ * Finds the newest real conversation that has locally saved incoming content
+ * from `profileId` but no conversations row. This is the signature left by
+ * the old realtime auto-block race: the incoming message was saved under the
+ * server id, then applySelfBlockAction could not find its metadata and made a
+ * separate `direct:<profileId>` archive shell.
+ */
+export async function recoverLatestOrphanedConversationForProfile(
+	profileId: string,
+): Promise<StoredConversation | null> {
+	const numericProfileId = Number(profileId);
+	if (!Number.isFinite(numericProfileId)) {
+		return null;
+	}
+	const db = await getDb();
+	const rows = await db.select<{ conversation_id: string }[]>(
+		`
+		SELECT m.conversation_id
+		FROM messages m
+		LEFT JOIN conversations c ON c.conversation_id = m.conversation_id
+		WHERE c.conversation_id IS NULL
+		  AND m.sender_id = $1
+		  AND COALESCE(m.type, '') NOT LIKE 'System%'
+		  AND m.conversation_id NOT LIKE 'direct:%'
+		GROUP BY m.conversation_id
+		ORDER BY MAX(m.timestamp) DESC
+		LIMIT 1
+		`,
+		[numericProfileId],
+	);
+	const conversationId = rows[0]?.conversation_id;
+	return conversationId
+		? recoverOrphanedConversation(conversationId, profileId)
+		: null;
+}
+
+/**
+ * Repairs archives produced by the historical realtime auto-block race.
+ * Only synthetic rows containing system markers (no user content) are
+ * replaced, so a legitimate local `direct:*` draft can never be discarded.
+ */
+export async function repairSyntheticBlockedConversations(): Promise<number> {
+	const correlationWindowMs = 5 * 60_000;
+	const syntheticRows = (await listConversations({ includeArchived: true })).filter(
+		(conversation) =>
+			conversation.archived &&
+			conversation.conversationId.startsWith("direct:") &&
+			conversation.otherProfileId != null &&
+			conversation.blockState != null,
+	);
+	let repaired = 0;
+
+	for (const synthetic of syntheticRows) {
+		const syntheticMessages = await getMessages(synthetic.conversationId);
+		if (syntheticMessages.some((message) => !message.type.startsWith("System"))) {
+			continue;
+		}
+
+		const recovered = await recoverLatestOrphanedConversationForProfile(
+			synthetic.otherProfileId!,
+		);
+		if (!recovered || recovered.conversationId === synthetic.conversationId) {
+			continue;
+		}
+		const markerTimestamp = syntheticMessages.reduce(
+			(latest, message) => Math.max(latest, message.timestamp),
+			0,
+		);
+		const recoveredTimestamp = recovered.entry.data.lastActivityTimestamp ?? 0;
+		if (
+			markerTimestamp === 0 ||
+			recoveredTimestamp === 0 ||
+			Math.abs(markerTimestamp - recoveredTimestamp) > correlationWindowMs
+		) {
+			continue;
+		}
+
+		await upsertConversation(recovered.entry, synthetic.otherProfileId);
+		await setConversationArchived(
+			recovered.conversationId,
+			true,
+			synthetic.archivedReason ?? "ws_delete",
+		);
+		await setBlockState(recovered.conversationId, synthetic.blockState);
+
+		const recoveredMessages = await getMessages(recovered.conversationId);
+		for (const marker of syntheticMessages.filter((message) =>
+			message.type.startsWith("System"),
+		)) {
+			if (!recoveredMessages.some((message) => message.type === marker.type)) {
+				await insertSystemMessage(
+					recovered.conversationId,
+					marker.type as SystemMessageType,
+					marker.timestamp,
+				);
+			}
+		}
+
+		await deleteConversationCascade(synthetic.conversationId);
+		repaired += 1;
+		appLog.info("[chat-db] repaired synthetic blocked conversation", {
+			profileId: synthetic.otherProfileId,
+			from: synthetic.conversationId,
+			to: recovered.conversationId,
+		});
+	}
+
+	return repaired;
+}
+
+/**
+ * Ensures archived inbox rows preview their latest real message rather than
+ * a synthetic block marker. The marker belongs in the thread timeline, but
+ * using it as the conversation preview makes a chat with preserved content
+ * render as "No messages yet" in the archived list.
+ */
+export async function repairArchivedConversationPreviews(): Promise<number> {
+	const archivedRows = (await listConversations({ includeArchived: true })).filter(
+		(conversation) => conversation.archived,
+	);
+	let repaired = 0;
+
+	for (const conversation of archivedRows) {
+		const currentPreviewType = conversation.entry.data.preview?.type ?? "";
+		if (
+			conversation.entry.data.preview &&
+			!currentPreviewType.startsWith("System")
+		) {
+			continue;
+		}
+
+		const messages = await getMessages(conversation.conversationId);
+		const lastContentMessage = [...messages]
+			.reverse()
+			.find((message) => !message.type.startsWith("System"));
+		if (!lastContentMessage) {
+			continue;
+		}
+
+		const body = lastContentMessage.body as Record<string, unknown> | null | undefined;
+		await upsertConversation(
+			{
+				...conversation.entry,
+				data: {
+					...conversation.entry.data,
+					lastActivityTimestamp: lastContentMessage.timestamp,
+					preview: {
+						conversationId: { value: conversation.conversationId },
+						messageId: lastContentMessage.messageId,
+						senderId: lastContentMessage.senderId,
+						type: lastContentMessage.type,
+						chat1Type: lastContentMessage.chat1Type,
+						text: typeof body?.text === "string" ? body.text : null,
+					},
+				},
+			},
+			conversation.otherProfileId,
+		);
+		repaired += 1;
+	}
+
+	return repaired;
+}
+
+/**
+ * Guards the one-time purge below. Stored per account (settings live in that
+ * account's own db file), so each account is cleaned exactly once.
+ */
+const SYNTHETIC_PLACEHOLDER_PURGE_KEY = "synthetic-block-placeholder-purge-v1";
+
+/**
+ * One-time removal of `direct:<profileId>` archive shells that hold nothing.
+ *
+ * Interest-view auto-blocking used to route every block through
+ * applySelfBlockAction, which minted one of these for any profile with no
+ * conversation — producing archived "chats" reading "No messages yet" with a
+ * single "You blocked this person" marker, for people the user never messaged.
+ * The service layer no longer creates them (see
+ * ApplySelfBlockActionOptions.materializeMissingConversation); this clears the
+ * ones already on disk.
+ *
+ * Runs after repairSyntheticBlockedConversations, so any shell whose real
+ * conversation could be recovered has already been migrated and is not a
+ * candidate here. Every guard below has to hold — content-free, media-free,
+ * album-free, and marked as blocked by us — so a legitimate local `direct:*`
+ * draft or a preserved thread can never be caught by it.
+ */
+export async function purgeEmptySyntheticBlockedConversations(): Promise<number> {
+	const alreadyPurged = await getSetting<boolean>(SYNTHETIC_PLACEHOLDER_PURGE_KEY).catch(
+		() => null,
+	);
+	if (alreadyPurged) {
+		return 0;
+	}
+
+	const candidates = (await listConversations({ includeArchived: true })).filter(
+		(conversation) =>
+			conversation.archived &&
+			conversation.conversationId.startsWith("direct:") &&
+			conversation.blockState === "blocked_by_me",
+	);
+
+	let purged = 0;
+	for (const candidate of candidates) {
+		const messages = await getMessages(candidate.conversationId);
+		if (messages.some((message) => !message.type.startsWith("System"))) {
+			continue;
+		}
+		const [media, albums] = await Promise.all([
+			getMediaFilesForConversation(candidate.conversationId),
+			getAlbumsForConversation(candidate.conversationId),
+		]);
+		if (media.length > 0 || albums.length > 0) {
+			continue;
+		}
+
+		await deleteConversationCascade(candidate.conversationId);
+		purged += 1;
+		appLog.info("[chat-db] purged empty synthetic blocked conversation", {
+			conversationId: candidate.conversationId,
+			profileId: candidate.otherProfileId,
+		});
+	}
+
+	await setSetting(SYNTHETIC_PLACEHOLDER_PURGE_KEY, true).catch((error) => {
+		appLog.warn("[chat-db] failed to record synthetic placeholder purge", error);
+	});
+	return purged;
 }
 
 /**
@@ -1014,6 +1337,81 @@ export async function upsertMessages(
 				],
 			);
 		}
+	});
+}
+
+/**
+ * Re-keys every locally stored message, cached media file, shared album, and
+ * the read-timestamp record from one conversationId to another in place.
+ *
+ * Needed specifically for graduating a recovered conversation (see
+ * recoverOrphanedConversation) when the server assigns a different id for
+ * the re-established live conversation: upsertMessages' `ON CONFLICT
+ * (message_id) DO UPDATE` does not touch conversation_id, so simply
+ * re-appending the old messages under the new id is a no-op for every row
+ * that already exists — they'd silently stay attached to the now-orphaned
+ * old id. A direct UPDATE is the only way to actually move them.
+ *
+ * Deliberately NOT wrapped in a SQL transaction — this file's header already
+ * documents why (the Tauri SQL plugin's connection pool has no session
+ * affinity, so manual BEGIN/COMMIT can silently land on different
+ * connections). Instead the `messages` move — the one table that determines
+ * whether the caller's "migration failed, keep showing the old id" fallback
+ * actually has anything to show — runs LAST. If any earlier statement here
+ * throws, `messages` is guaranteed untouched, so a caller that reacts to the
+ * failure by keeping the old conversationId around still finds the full
+ * history under it. Only once this call returns cleanly has anything
+ * genuinely moved.
+ */
+export async function reassignConversationId(
+	oldConversationId: string,
+	newConversationId: string,
+): Promise<void> {
+	if (oldConversationId === newConversationId) {
+		return;
+	}
+	const db = await getDb();
+	await executeWithLockRetry(db, "reassign-conversation-id", async () => {
+		await db.execute(
+			"UPDATE media_files SET conversation_id = $2 WHERE conversation_id = $1",
+			[oldConversationId, newConversationId],
+		);
+		// albums.album_id is its own primary key (conversation_id is just a
+		// plain column here, unlike conversation_meta below), so a direct
+		// UPDATE can't collide the way the conversation_meta merge below has
+		// to guard against.
+		await db.execute(
+			"UPDATE albums SET conversation_id = $2 WHERE conversation_id = $1",
+			[oldConversationId, newConversationId],
+		);
+		// conversation_meta is keyed by conversation_id as its primary key, so
+		// unlike the two UPDATEs above this can't just rewrite the key in place
+		// if a row for newConversationId already exists — merge instead, keeping
+		// the old (more complete) read timestamp only when it's newer.
+		const oldMeta = await db.select<{ last_read_timestamp: number | null }[]>(
+			"SELECT last_read_timestamp FROM conversation_meta WHERE conversation_id = $1",
+			[oldConversationId],
+		);
+		const oldTimestamp = oldMeta[0]?.last_read_timestamp ?? null;
+		if (oldTimestamp != null) {
+			await db.execute(
+				`
+				INSERT INTO conversation_meta (conversation_id, last_read_timestamp)
+				VALUES ($1, $2)
+				ON CONFLICT(conversation_id) DO UPDATE SET
+					last_read_timestamp = MAX(conversation_meta.last_read_timestamp, excluded.last_read_timestamp)
+				`,
+				[newConversationId, oldTimestamp],
+			);
+		}
+		await db.execute("DELETE FROM conversation_meta WHERE conversation_id = $1", [
+			oldConversationId,
+		]);
+		// Last on purpose — see the doc comment above.
+		await db.execute(
+			"UPDATE messages SET conversation_id = $2 WHERE conversation_id = $1",
+			[oldConversationId, newConversationId],
+		);
 	});
 }
 
@@ -1374,8 +1772,15 @@ export async function getMediaFileByMessageId(
 	messageId: string,
 ): Promise<StoredMediaFile | null> {
 	const db = await getDb();
+	// A single message can own more than one row — replying to a picture with
+	// a picture stores both the reply-quote thumbnail and the message's own
+	// media under the same message_id. Prefer a usable row over a failed one,
+	// and the full-size copy over the thumbnail.
 	const rows = await db.select<MediaFileRow[]>(
-		"SELECT * FROM media_files WHERE message_id = $1 LIMIT 1",
+		`SELECT * FROM media_files
+		 WHERE message_id = $1
+		 ORDER BY (fetch_status = 'ok') DESC, size_bytes DESC, fetched_at DESC
+		 LIMIT 1`,
 		[messageId],
 	);
 	const row = rows[0];

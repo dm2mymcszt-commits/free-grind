@@ -1,5 +1,5 @@
 import { RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition, type TouchEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition, type CSSProperties, type TouchEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useInterestData } from "../../hooks/queries/useInterestQueries";
@@ -11,9 +11,26 @@ import { PullToRefreshContainer } from "./components/PullToRefreshContainer";
 import {
 	type InterestTab,
 	type InterestItem,
+	type InterestViewsCountMode,
+	type InterestViewsSort,
+	type InterestViewsWindow,
+	INTEREST_VIEWS_COUNT_MODE_KEY,
+	INTEREST_VIEWS_SORT_KEY,
+	INTEREST_VIEWS_WINDOW_KEY,
 	PREVIEW_ID_PREFIX,
+	filterViewsByWindow,
+	nextViewsWindow,
+	readStoredViewsCountMode,
+	readStoredViewsSort,
+	readStoredViewsWindow,
+	sortViewItems,
 } from "./interest/interestUtils";
-import { InterestTabs, InterestRow } from "./interest/InterestComponents";
+import {
+	InterestTabs,
+	InterestRow,
+	ViewsSortToggle,
+	ViewsWindowToggle,
+} from "./interest/InterestComponents";
 import { InterestOnboardingModal } from "./interest/InterestOnboardingModal";
 import {
 	SCROLL_RESTORATION_TIMEOUT_MS,
@@ -167,6 +184,47 @@ export function InterestPage() {
 		[blockedByMeProfileIds, blockedByOtherProfileIds],
 	);
 
+	// Viewers we blocked that Grindr has since stopped counting.
+	//
+	// Blocking removes a profile from the server's viewers list, so
+	// `viewedCount` (its own totalViewers) ticks down and stops describing how
+	// many people actually looked at us — the auto-blocker makes that drift
+	// fast. These rows survive locally in the recovery store, so they can be
+	// added back exactly rather than estimated. Anything the server still
+	// lists — including as a locked preview matched on photo hash — is still
+	// inside totalViewers and is skipped, so nobody is counted twice.
+	const hiddenBlockedViewersCount = useMemo(() => {
+		if (blockedByMeProfileIds.size === 0) return 0;
+		const serverProfileIds = new Set(data?.serverProfileIds ?? []);
+		const serverImageHashes = new Set(data?.serverImageHashes ?? []);
+		let hidden = 0;
+		for (const item of views) {
+			if (item.profileId.startsWith(PREVIEW_ID_PREFIX)) continue;
+			if (!blockedByMeProfileIds.has(item.profileId)) continue;
+			if (serverProfileIds.has(item.profileId)) continue;
+			if (item.imageHash && serverImageHashes.has(item.imageHash)) continue;
+			hidden += 1;
+		}
+		return hidden;
+	}, [views, blockedByMeProfileIds, data?.serverProfileIds, data?.serverImageHashes]);
+
+	const realViewedCount = viewedCount + hiddenBlockedViewersCount;
+
+	// How the Views tab is ordered. Persisted, because someone who wants the
+	// leaderboard generally wants it every time they open the tab.
+	const [viewsSort, setViewsSort] = useState<InterestViewsSort>(readStoredViewsSort);
+	// Recency scope for the Views tab, persisted for the same reason as the sort.
+	const [viewsWindow, setViewsWindow] = useState<InterestViewsWindow>(readStoredViewsWindow);
+	// Whether the counter reports Grindr's own total or the real one that still
+	// counts the people we blocked. Persisted like the sort and window above.
+	const [viewsCountMode, setViewsCountMode] =
+		useState<InterestViewsCountMode>(readStoredViewsCountMode);
+	// The two totals only diverge in the unfiltered scope: a windowed count is
+	// computed from the local list, which never lost the blocked rows to begin
+	// with, so there is nothing there to switch between.
+	const canToggleCountMode = activeTab === "views" && viewsWindow === "all";
+	const isRealCount = canToggleCountMode && viewsCountMode === "real";
+
 	const [lastSeenViews, setLastSeenViews] = useState(() => getInterestTabLastSeen("views"));
 	const [lastSeenTaps, setLastSeenTaps] = useState(() => getInterestTabLastSeen("taps"));
 
@@ -250,6 +308,13 @@ export function InterestPage() {
 
 	const [nowTimestamp, setNowTimestamp] = useState(() => Date.now());
 	const [showCountLabel, setShowCountLabel] = useState(false);
+	const countLabelHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	useEffect(
+		() => () => {
+			if (countLabelHideTimerRef.current) clearTimeout(countLabelHideTimerRef.current);
+		},
+		[],
+	);
 
 	// Track the newest activity across both taps and views.
 	const maxInterestTimestamp = useMemo(() => {
@@ -333,10 +398,24 @@ export function InterestPage() {
 	});
 	const [isPending, startTransition] = useTransition();
 
-	const activeItems = useMemo(
-		() => (activeTab === "views" ? views : taps),
-		[activeTab, taps, views],
+	const isRankedViews = activeTab === "views" && viewsSort === "most_viewed";
+
+	// Windowed before ranked, so positions read 1..N within the period rather
+	// than carrying gaps in from the full list.
+	const windowedViews = useMemo(
+		() => filterViewsByWindow(views, viewsWindow, nowTimestamp),
+		[views, viewsWindow, nowTimestamp],
 	);
+
+	const activeItems = useMemo(
+		() => (activeTab === "views" ? sortViewItems(windowedViews, viewsSort) : taps),
+		[activeTab, taps, windowedViews, viewsSort],
+	);
+
+	// Distinguishes "you have no views" from "no views in this period", which
+	// need different empty states.
+	const isWindowEmptied =
+		activeTab === "views" && viewsWindow !== "all" && views.length > 0 && activeItems.length === 0;
 
 	const displayedItems = useMemo(() => {
 		const limit = activeTab === "views" ? viewsLimit : tapsLimit;
@@ -529,6 +608,54 @@ export function InterestPage() {
 		return refetch();
 	}, [activeTab, refetch, ITEMS_PER_PAGE]);
 
+	const handleToggleViewsSort = useCallback(() => {
+		setViewsSort((prev) => {
+			const next: InterestViewsSort = prev === "most_viewed" ? "recent" : "most_viewed";
+			try {
+				window.localStorage.setItem(INTEREST_VIEWS_SORT_KEY, next);
+			} catch {}
+			return next;
+		});
+		// Reordering the whole list makes the old scroll offset meaningless, and
+		// a leaderboard is only worth showing from the top.
+		setViewsLimit(ITEMS_PER_PAGE);
+		sessionStorage.removeItem("interest-scroll-views");
+		setHasRestoredScroll(true);
+		feedContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+	}, [ITEMS_PER_PAGE]);
+
+	const handleCycleViewsWindow = useCallback(() => {
+		setViewsWindow((previous) => {
+			const next = nextViewsWindow(previous);
+			try {
+				window.localStorage.setItem(INTEREST_VIEWS_WINDOW_KEY, next);
+			} catch {}
+			return next;
+		});
+		// Same reasoning as the sort toggle: the list is a different list now.
+		setViewsLimit(ITEMS_PER_PAGE);
+		sessionStorage.removeItem("interest-scroll-views");
+		setHasRestoredScroll(true);
+		feedContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+	}, [ITEMS_PER_PAGE]);
+
+	// Only the counter changes here, never the list — so unlike the sort and
+	// window toggles this deliberately leaves the scroll position alone.
+	const handleToggleViewsCountMode = useCallback(() => {
+		setViewsCountMode((previous) => {
+			const next: InterestViewsCountMode = previous === "real" ? "grindr" : "real";
+			try {
+				window.localStorage.setItem(INTEREST_VIEWS_COUNT_MODE_KEY, next);
+			} catch {}
+			return next;
+		});
+		// Reveal the label for a moment so the mode that was just picked names
+		// itself, rather than leaving two indistinguishable numbers.
+		setShowCountLabel(true);
+		if (countLabelHideTimerRef.current) clearTimeout(countLabelHideTimerRef.current);
+		countLabelHideTimerRef.current = setTimeout(() => setShowCountLabel(false), 2500);
+	}, []);
+
 	const handleSetActiveTab = useCallback(
 		(nextTab: InterestTab) => {
 			const nextParams = new URLSearchParams(searchParams);
@@ -614,22 +741,50 @@ export function InterestPage() {
 					</div>
 
 					<div className="flex flex-col gap-3">
-						<div className="flex h-12 items-center justify-between pl-[var(--app-px)] pr-6 -mt-1">
-							<InterestTabs
-								activeTab={activeTab}
-								onViewsClick={() => handleSetActiveTab("views")}
-								onTapsClick={() => handleSetActiveTab("taps")}
-								firstTab={defaultSetting}
-								shouldBounce={shouldBounce}
-								newViewsCount={newViewsCount}
-								newTapsCount={newTapsCount}
-							/>
-
-							<div
-								className={cn(
-									"glass-pill neutral flex h-8 items-center justify-center overflow-hidden shrink-0 transition-all duration-500 ease-in-out",
-									showCountLabel ? "pl-4 pr-4" : "px-3 min-w-[40px]"
+						<div className="flex h-12 items-center justify-between gap-2 pl-[var(--app-px)] pr-6 -mt-1">
+							{/*
+								Horizontally scrollable rather than wrapping: with both
+								view controls expanded the group can outgrow a narrow
+								phone, and nudging it sideways beats reflowing the
+								header or letting it clip the count pill.
+							*/}
+							<div className="flex min-w-0 items-center gap-2 overflow-x-auto">
+								<InterestTabs
+									activeTab={activeTab}
+									onViewsClick={() => handleSetActiveTab("views")}
+									onTapsClick={() => handleSetActiveTab("taps")}
+									firstTab={defaultSetting}
+									shouldBounce={shouldBounce}
+									newViewsCount={newViewsCount}
+									newTapsCount={newTapsCount}
+								/>
+								{activeTab === "views" && (
+									<>
+										<ViewsSortToggle sort={viewsSort} onToggle={handleToggleViewsSort} />
+										<ViewsWindowToggle
+											viewsWindow={viewsWindow}
+											onToggle={handleCycleViewsWindow}
+										/>
+									</>
 								)}
+							</div>
+
+							{/* Grindr's own total drops people as they're blocked, so in the
+							    unfiltered Views scope this doubles as a switch to the real
+							    total. The windowed counts are already computed from the
+							    local list, which never lost those rows in the first place. */}
+							<button
+								type="button"
+								onClick={canToggleCountMode ? handleToggleViewsCountMode : undefined}
+								title={canToggleCountMode ? t("interest_page.count.toggle_hint", { defaultValue: "Tap to switch between Grindr's count and the real one, which still counts the people you blocked" }) : undefined}
+								aria-label={canToggleCountMode ? t("interest_page.count.toggle_hint", { defaultValue: "Tap to switch between Grindr's count and the real one, which still counts the people you blocked" }) : undefined}
+								className={cn(
+									"glass-pill flex h-8 items-center justify-center overflow-hidden shrink-0 transition-all duration-500 ease-in-out",
+									showCountLabel ? "pl-4 pr-4" : "px-3 min-w-[40px]",
+									isRealCount ? "text-[var(--accent)]" : "neutral",
+									canToggleCountMode ? "active:scale-95" : "cursor-default",
+								)}
+								style={{ "--pill-color": "var(--accent)" } as CSSProperties}
 							>
 								<div className="flex items-center justify-center">
 									<div
@@ -638,16 +793,32 @@ export function InterestPage() {
 											showCountLabel ? "opacity-100 max-w-[200px]" : "opacity-0 max-w-0 pointer-events-none"
 										)}
 									>
-										<p className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] leading-none whitespace-nowrap mr-2">
-											{activeTab === "views" ? t("interest_page.total_viewed_count") : t("interest_page.total_taps_count")}
+										<p className={cn(
+											"text-[10px] font-bold uppercase tracking-widest leading-none whitespace-nowrap mr-2",
+											isRealCount ? "text-[var(--accent)]" : "text-[var(--text-muted)]",
+										)}>
+											{activeTab === "views"
+												? viewsWindow === "all"
+													? isRealCount
+														? t("interest_page.count.real_viewed", { defaultValue: "Real" })
+														: t("interest_page.total_viewed_count")
+													: t("interest_page.shown_count")
+												: t("interest_page.total_taps_count")}
 										</p>
 									</div>
 									<div className="relative flex items-center justify-center">
 										<p className={cn(
-											"text-sm font-bold text-[var(--text-muted)] leading-none tabular-nums shrink-0 transition-opacity duration-300",
+											"text-sm font-bold leading-none tabular-nums shrink-0 transition-opacity duration-300",
+											isRealCount ? "text-[var(--accent)]" : "text-[var(--text-muted)]",
 											(isFetching && !isQueryLoading) || isDemoLoading ? "opacity-0" : "opacity-100"
 										)}>
-											{activeTab === "views" ? viewedCount : taps.length}
+											{activeTab === "views"
+												? viewsWindow === "all"
+													? isRealCount
+														? realViewedCount
+														: viewedCount
+													: activeItems.length
+												: taps.length}
 										</p>
 										{((isFetching && !isQueryLoading) || isDemoLoading) && (
 											<div className="absolute inset-0 flex items-center justify-center">
@@ -656,7 +827,7 @@ export function InterestPage() {
 										)}
 									</div>
 								</div>
-							</div>
+							</button>
 						</div>
 					</div>
 				</div>
@@ -689,8 +860,18 @@ export function InterestPage() {
 
 									{!isLoading && !queryError && activeItems.length === 0 ? (
 										<EmptyState
-											title={t(`interest_page.empty_${activeTab}`)}
-											description={t(`interest_page.empty_${activeTab}_desc`)}
+											title={
+												isWindowEmptied
+													? t("interest_page.empty_window")
+													: t(`interest_page.empty_${activeTab}`)
+											}
+											description={
+												isWindowEmptied
+													? t("interest_page.empty_window_desc", {
+															period: t(`interest_page.window_long.${viewsWindow}`),
+														})
+													: t(`interest_page.empty_${activeTab}_desc`)
+											}
 										/>
 									) : null}
 								</div>
@@ -707,6 +888,7 @@ export function InterestPage() {
 											now={nowTimestamp}
 											isFirst={index === 0}
 											isBlocked={isProfileBlocked(item.profileId)}
+											rank={isRankedViews ? index + 1 : null}
 										/>
 									))}
 

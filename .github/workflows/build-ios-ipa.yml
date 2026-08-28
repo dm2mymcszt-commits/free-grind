@@ -39,9 +39,34 @@ jobs:
           rm -rf src-tauri/gen/apple
           bunx tauri ios init --ci
 
+      - name: Merge app Info.plist
+        run: |
+          # tauri ios init/xcodegen generates its own Info.plist and does not pull in
+          # src-tauri/Info.plist, which holds every NS*UsageDescription key. iOS kills the
+          # app outright the moment it requests location/photos/camera/mic without them,
+          # so merge ours over the generated one before building.
+          GEN_PLIST=$(find src-tauri/gen/apple -maxdepth 2 -name Info.plist | head -n 1)
+          if [ -z "$GEN_PLIST" ]; then
+            echo "Generated Info.plist not found under src-tauri/gen/apple"
+            exit 1
+          fi
+
+          /usr/libexec/PlistBuddy -c "Merge src-tauri/Info.plist" "$GEN_PLIST"
+          plutil -lint "$GEN_PLIST"
+
+          if ! grep -q NSCameraUsageDescription "$GEN_PLIST"; then
+            echo "Info.plist merge did not take effect"
+            exit 1
+          fi
+
+          echo "Merged src-tauri/Info.plist into $GEN_PLIST"
+
       - name: Build iOS Rust static library
         run: |
-          cargo build --manifest-path src-tauri/Cargo.toml --target aarch64-apple-ios --release
+          # custom-protocol must be on: tauri-build derives cfg(dev) from its absence, and a
+          # dev-cfg build loads the frontend from the vite devUrl instead of the bundled
+          # assets, which is a blank screen on a real device.
+          cargo build --manifest-path src-tauri/Cargo.toml --target aarch64-apple-ios --release --features custom-protocol
 
           LIB_PATH="src-tauri/target/aarch64-apple-ios/release/libopen_grind_lib.a"
           if [ ! -f "$LIB_PATH" ]; then

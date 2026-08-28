@@ -17,7 +17,11 @@ import { ProfileImage } from "../../../components/ui/profile-image";
 import freegrindLogo from "../../../images/freegrind-logo.webp";
 import { usePreferences } from "../../../contexts/PreferencesContext";
 import { useLocalMediaCache } from "../../../hooks/useLocalMediaCache";
-import { getCachedMediaUri, getMessageFallbackMediaKey } from "../../../services/mediaStore";
+import {
+    getCachedMediaUri,
+    getMessageFallbackMediaKey,
+    hydrateMediaByMessageId,
+} from "../../../services/mediaStore";
 import { useAlbumCache } from "../../../hooks/useAlbumCache";
 import {
     ensureAlbumCacheChecked,
@@ -38,6 +42,7 @@ import {
 	getMessageAlbumId,
 	getMessageAudioUrl,
 	getMediaCaptureTarget,
+	isMediaMessage,
 	getReplyImageHashTarget,
 	getAlbumContentReplyTarget,
 	getMessageImageCreatedAt,
@@ -905,6 +910,15 @@ export function ChatThreadMessages({
                             if (fallbackUri.startsWith("data:video/")) videoUrl = fallbackUri;
                             else if (fallbackUri.startsWith("data:audio/")) audioUrl = fallbackUri;
                             else imageUrl = fallbackUri;
+                        } else if (isMediaMessage(message)) {
+                            // Nothing in memory yet — pull it from chatDb the same
+                            // way ensureAlbumCacheChecked does for albums below.
+                            // Threads opened straight from local history (archived
+                            // or blocked conversations, offline) never run a capture
+                            // pass, so this render is the only thing that will ever
+                            // ask for these bytes. useLocalMediaCache() above
+                            // re-renders once it lands.
+                            void hydrateMediaByMessageId(message.messageId);
                         }
                     }
                     const location = getMessageLocation(message);

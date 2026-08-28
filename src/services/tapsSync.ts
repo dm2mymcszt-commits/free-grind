@@ -11,6 +11,7 @@
 
 import type { createApiFunctions } from "./apiFunctions";
 import { runAutomationRulesForSender } from "../utils/automationRules";
+import { withPreservingBlock } from "./autoBlockConversation";
 import { appLog } from "../utils/logger";
 
 type ApiFunctions = ReturnType<typeof createApiFunctions>;
@@ -18,9 +19,14 @@ type ApiFunctions = ReturnType<typeof createApiFunctions>;
 export async function runTapsAutomationSync(
 	apiFunctions: ApiFunctions,
 	isStillActive: () => boolean,
+	userId: number | null = null,
 ): Promise<void> {
 	try {
 		const response = await apiFunctions.getTaps();
+		// A tap rule that blocks must still preserve the conversation first —
+		// the sender may well have an existing chat with albums and photos in
+		// it, and the raw endpoint would take it away before anything is saved.
+		const runner = withPreservingBlock(apiFunctions, userId);
 		for (const entry of response.profiles) {
 			if (!isStillActive()) return;
 			const profileId = entry.profileId ?? entry.senderId;
@@ -29,7 +35,7 @@ export async function runTapsAutomationSync(
 			await runAutomationRulesForSender(
 				String(profileId),
 				"tap_received",
-				apiFunctions,
+				runner,
 				{
 					profileImageMediaHash:
 						entry.profileImageMediaHash ?? entry.photoHash ?? entry.mediaHash ?? null,

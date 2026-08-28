@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bell, Flame, MessageCircle, ShieldAlert } from "lucide-react";
+import { Bell, Eye, Flame, MessageCircle, ShieldAlert } from "lucide-react";
 import { BackToSettings } from "../../components/BackToSettings";
 import { ToggleRow } from "../../components/ui/toggle-row";
 import { useTranslation } from "react-i18next";
@@ -12,16 +12,24 @@ import {
 	isTapNotificationsEnabled,
 	syncNotificationSettingsToNative,
 } from "../../utils/notificationSettings";
+import {
+	INBOX_AUTOBLOCK_NOTIFICATIONS_STORAGE_KEY,
+	INTEREST_VIEW_AUTOBLOCK_NOTIFICATIONS_STORAGE_KEY,
+	isInboxAutoBlockNotificationsEnabled,
+	isInterestViewAutoBlockNotificationsEnabled,
+} from "../../utils/autoblock";
 
 export function NotificationsPage() {
 	const { t } = useTranslation();
 	const [chatEnabled, setChatEnabled] = useState(() => isChatNotificationsEnabled());
 	const [tapsEnabled, setTapsEnabled] = useState(() => isTapNotificationsEnabled());
 	const [foregroundEnabled, setForegroundEnabled] = useState(() => isForegroundNotificationsEnabled());
-	const [notifyAutoBlock, setNotifyAutoBlock] = useState(() => {
-		const stored = window.localStorage.getItem("fg-notify-autoblock");
-		return stored !== "false"; // Default to true
-	});
+	const [notifyInboxAutoBlock, setNotifyInboxAutoBlock] = useState(
+		() => isInboxAutoBlockNotificationsEnabled(),
+	);
+	const [notifyInterestViewAutoBlock, setNotifyInterestViewAutoBlock] = useState(
+		() => isInterestViewAutoBlockNotificationsEnabled(),
+	);
 
 	const setFlag = (key: string, value: boolean) => {
 		window.localStorage.setItem(key, String(value));
@@ -74,12 +82,23 @@ export function NotificationsPage() {
 					<ToggleRow
 						icon={<ShieldAlert className="h-5 w-5" />}
 						iconClass="bg-red-500/15 text-red-400"
-						label={t("notifications.autoblock", { defaultValue: "Auto-Block Alerts" })}
-						description={t("notifications.autoblock_desc", { defaultValue: "Receive alerts when profiles are automatically blocked." })}
-						checked={notifyAutoBlock}
+						label={t("notifications_page.inbox_autoblock", { defaultValue: "Inbox Auto-Block Alerts" })}
+						description={t("notifications_page.inbox_autoblock_desc", { defaultValue: "Get notified when a profile is automatically blocked from your inbox." })}
+						checked={notifyInboxAutoBlock}
 						onChange={(checked) => {
-							setNotifyAutoBlock(checked);
-							window.localStorage.setItem("fg-notify-autoblock", String(checked));
+							setNotifyInboxAutoBlock(checked);
+							window.localStorage.setItem(INBOX_AUTOBLOCK_NOTIFICATIONS_STORAGE_KEY, String(checked));
+						}}
+					/>
+					<ToggleRow
+						icon={<Eye className="h-5 w-5" />}
+						iconClass="bg-violet-500/15 text-violet-400"
+						label={t("notifications_page.interest_autoblock", { defaultValue: "Interest Views Auto-Block Alerts" })}
+						description={t("notifications_page.interest_autoblock_desc", { defaultValue: "Get notified when a viewer is automatically blocked from Interest Views." })}
+						checked={notifyInterestViewAutoBlock}
+						onChange={(checked) => {
+							setNotifyInterestViewAutoBlock(checked);
+							window.localStorage.setItem(INTEREST_VIEW_AUTOBLOCK_NOTIFICATIONS_STORAGE_KEY, String(checked));
 						}}
 					/>
 				</div>

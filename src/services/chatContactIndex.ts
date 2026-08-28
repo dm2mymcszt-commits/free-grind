@@ -242,6 +242,8 @@ export async function upsertChatContactIndexFromGrid(
 	});
 }
 
+const SQLITE_MAX_VARIABLES = 900;
+
 export async function getChatContactIndexForProfiles(
 	profileIds: string[],
 ): Promise<ChatContactIndexRecord[]> {
@@ -255,12 +257,11 @@ export async function getChatContactIndexForProfiles(
 		return [];
 	}
 
-	const rows: ChatContactIndexRow[] = [];
-	const BATCH_SIZE = 250;
-	for (let i = 0; i < ids.length; i += BATCH_SIZE) {
-		const chunk = ids.slice(i, i + BATCH_SIZE);
+	const results: ChatContactIndexRecord[] = [];
+	for (let offset = 0; offset < ids.length; offset += SQLITE_MAX_VARIABLES) {
+		const chunk = ids.slice(offset, offset + SQLITE_MAX_VARIABLES);
 		const placeholders = chunk.map((_, index) => `$${index + 1}`).join(", ");
-		const chunkRows = await db.select<ChatContactIndexRow[]>(
+		const rows = await db.select<ChatContactIndexRow[]>(
 			`
 			SELECT
 				profile_id,
@@ -274,17 +275,20 @@ export async function getChatContactIndexForProfiles(
 			`,
 			chunk,
 		);
-		rows.push(...chunkRows);
+
+		for (const row of rows) {
+			results.push({
+				profileId: row.profile_id,
+				conversationId: row.conversation_id,
+				lastMessageTimestamp: row.last_message_timestamp,
+				unreadCount: row.unread_count,
+				hasChatted: Boolean(row.has_chatted),
+				updatedAt: row.updated_at,
+			});
+		}
 	}
 
-	return rows.map((row) => ({
-		profileId: row.profile_id,
-		conversationId: row.conversation_id,
-		lastMessageTimestamp: row.last_message_timestamp,
-		unreadCount: row.unread_count,
-		hasChatted: Boolean(row.has_chatted),
-		updatedAt: row.updated_at,
-	}));
+	return results;
 }
 
 export function indexChatContactRecordsByProfileId(
@@ -417,12 +421,11 @@ export async function getLocalNicknamesForProfiles(
 	}
 
 	const db = await getDb();
-	const rows: LocalNicknameRow[] = [];
-	const BATCH_SIZE = 250;
-	for (let i = 0; i < ids.length; i += BATCH_SIZE) {
-		const chunk = ids.slice(i, i + BATCH_SIZE);
+	const next: Record<string, string> = {};
+	for (let offset = 0; offset < ids.length; offset += SQLITE_MAX_VARIABLES) {
+		const chunk = ids.slice(offset, offset + SQLITE_MAX_VARIABLES);
 		const placeholders = chunk.map((_, index) => `$${index + 1}`).join(", ");
-		const chunkRows = await db.select<LocalNicknameRow[]>(
+		const rows = await db.select<LocalNicknameRow[]>(
 			`
 			SELECT profile_id, local_nickname
 			FROM chat_local_profile_meta
@@ -430,14 +433,12 @@ export async function getLocalNicknamesForProfiles(
 			`,
 			chunk,
 		);
-		rows.push(...chunkRows);
-	}
 
-	const next: Record<string, string> = {};
-	for (const row of rows) {
-		const nickname = row.local_nickname.trim();
-		if (nickname) {
-			next[row.profile_id] = nickname;
+		for (const row of rows) {
+			const nickname = row.local_nickname.trim();
+			if (nickname) {
+				next[row.profile_id] = nickname;
+			}
 		}
 	}
 

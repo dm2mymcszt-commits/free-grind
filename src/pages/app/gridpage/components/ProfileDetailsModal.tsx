@@ -8,6 +8,7 @@ import {
 	useModalClose,
 } from "../../../../hooks/useModalClose";
 import { usePresenceCheck } from "../../../../hooks/usePresenceCheck";
+import { useProfileViewedMe } from "../../../../hooks/useProfileViewedMe";
 import { useTravelPlans } from "../../../../hooks/queries/useProfileQueries";
 import { useApiFunctions } from "../../../../hooks/useApiFunctions";
 import { useAuth } from "../../../../contexts/useAuth";
@@ -36,7 +37,6 @@ import freegrindLogo from "../../../../images/freegrind-logo.webp";
 import { FreeGrindBadge } from "../../../../components/FreeGrindBadge";
 import { usePreferences } from "../../../../contexts/PreferencesContext";
 import { formatDateTime24 } from "../../chat/chatUtils";
-import { formatRelativeTime } from "../../../../utils/relativeTime";
 import {
 	formatEstimatedAccountCreation,
 	formatDistance,
@@ -49,6 +49,7 @@ import {
 	shouldHideField,
 } from "../utils";
 import { ProfileDetailsContent } from "./ProfileDetailsContent";
+import { ProfileActivityBadges } from "./ProfileActivityBadges";
 import type { ChatContactIndexRecord } from "../../../../types/chat-contact-index";
 import { PhotoViewer } from "../../../../components/PhotoViewer";
 import { PhotoActionBar } from "../../../../components/PhotoActionBar";
@@ -204,6 +205,10 @@ export function ProfileDetailsModal({
 	const { data: travelPlans } = useTravelPlans(activeProfile?.profileId);
 	const isOwnProfile = userId != null && messageProfileId != null && String(userId) === String(messageProfileId);
 	const usesFreegrind = usePresenceCheck(messageProfileId);
+	// "How many times has this person viewed me?" — the same signal the Interest
+	// page's Views tab shows, surfaced here alongside the tap badge. Skipped on
+	// our own profile, which can never appear among our viewers.
+	const viewedMe = useProfileViewedMe(isOwnProfile ? null : messageProfileId);
 	const visualStateValue = typeof tapVisualState === "string" ? tapVisualState : tapVisualState.state;
 	const effectiveTapVisualState = isTappingProfile ? "single" : visualStateValue;
 	const isTapActive = effectiveTapVisualState !== "none";
@@ -1086,14 +1091,11 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 								/>
 							</div>
 						))}
-						{activeProfile.lastReceivedTapTimestamp != null && (
-							<div className="pointer-events-none absolute bottom-3 left-3 z-20 flex flex-row items-center gap-1.5">
-								<div className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
-									<Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" />
-									<span className="text-xs font-medium text-white">{formatRelativeTime(activeProfile.lastReceivedTapTimestamp)}</span>
-								</div>
-							</div>
-						)}
+						<ProfileActivityBadges
+							profileId={messageProfileId}
+							tapTimestamp={activeProfile.lastReceivedTapTimestamp}
+							viewedMe={viewedMe}
+						/>
 						{carouselHashes.length > 1 && (
 							<div className="pointer-events-none absolute inset-y-0 right-3 z-20 flex flex-col items-center justify-center">
 								<div className="flex flex-col items-center gap-1.5 rounded-full bg-black/30 px-[5px] py-[10px] backdrop-blur-sm">
@@ -1425,16 +1427,11 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 								/>
 							</div>
 						))}
-						{activeProfile.lastReceivedTapTimestamp != null && (
-							<div className="pointer-events-none absolute bottom-3 left-3 z-20 flex flex-row items-center gap-1.5">
-								<div className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
-									<Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" />
-									<span className="text-xs font-medium text-white">
-										{formatRelativeTime(activeProfile.lastReceivedTapTimestamp)}
-									</span>
-								</div>
-							</div>
-						)}
+						<ProfileActivityBadges
+							profileId={messageProfileId}
+							tapTimestamp={activeProfile.lastReceivedTapTimestamp}
+							viewedMe={viewedMe}
+						/>
 						{carouselHashes.length > 1 && (
 							<div className="pointer-events-none absolute inset-y-0 right-4 z-20 flex flex-col items-center justify-center">
 								<div className="flex flex-col items-center gap-2 rounded-full bg-black/30 px-[7px] py-[14px] backdrop-blur-sm">

@@ -44,6 +44,7 @@ import { runAutomationRulesForSender } from "../utils/automationRules";
 import { isReadReceiptsHidden } from "../utils/privacy";
 import { ApiFunctionError, assertSuccess, parseJsonSafe } from "./apiHelpers";
 import { sendViaRealtime } from "./chatRealtime";
+import { preserveAndAutoBlockConversation } from "./autoBlockConversation";
 
 export { ApiFunctionError as ChatApiError };
 
@@ -260,8 +261,29 @@ export function createChatService(fetchRest: RestFetcher, t: (key: string) => st
 							reason = `Message Keyword: ${msgMatch}`;
 						}
 						
-						notifyAutoBlock(displayName || profileId, reason);
-						fetchRest(`/v3/me/blocks/${encodeURIComponent(profileId)}`, { method: "POST" }).catch(() => {});
+						try {
+							await preserveAndAutoBlockConversation({
+								conversation: entry,
+								profileId: String(profileId),
+								displayName,
+								fetchMessages: () =>
+									serviceInstance.listMessages({ conversationId: data.conversationId }),
+								userId: userId ? Number(userId) : null,
+								getAlbum: (albumId) => serviceInstance.getAlbum(albumId),
+								blockProfile: async () => {
+									const blockResponse = await fetchRest(
+										`/v3/me/blocks/${encodeURIComponent(profileId)}`,
+										{ method: "POST" },
+									);
+									await assertSuccess(blockResponse, t("chat.errors.block_profile"));
+								},
+							});
+							notifyAutoBlock(displayName || String(profileId), reason);
+						} catch {
+							// Keep the entry visible and retry on a later inbox scan if
+							// its history could not be safely captured or blocking failed.
+							safeEntries.push(entry);
+						}
 					}
 					continue; // Do NOT show them in the inbox!
 				}
@@ -273,7 +295,25 @@ export function createChatService(fetchRest: RestFetcher, t: (key: string) => st
 				if (profileId && lastMessageIsIncoming) {
 					const automationRunner = {
 						blockProfile: (pid: string) =>
-							fetchRest(`/v3/me/blocks/${encodeURIComponent(pid)}`, { method: "POST" }),
+							preserveAndAutoBlockConversation({
+								conversation: entry,
+								profileId: pid,
+								displayName,
+								fetchMessages: () =>
+									serviceInstance.listMessages({ conversationId: data.conversationId }),
+								userId: userId ? Number(userId) : null,
+								getAlbum: (albumId) => serviceInstance.getAlbum(albumId),
+								blockProfile: async () => {
+									const blockResponse = await fetchRest(
+										`/v3/me/blocks/${encodeURIComponent(pid)}`,
+										{ method: "POST" },
+									);
+									await assertSuccess(blockResponse, t("chat.errors.block_profile"));
+								},
+								// Automation rules mark a sender seen before acting, so a
+								// deferred block here would never be retried.
+								mayDeferOnIncompleteCapture: false,
+							}),
 						sendText: (payload: SendTextPayload) => serviceInstance.sendText(payload),
 						shareAlbum: (payload: ShareAlbumPayload) => serviceInstance.shareAlbum(payload),
 					};

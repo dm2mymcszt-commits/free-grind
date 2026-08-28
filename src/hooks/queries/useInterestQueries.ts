@@ -2,8 +2,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApiFunctions } from "../useApiFunctions";
 import { useEffect } from "react";
 import { TAP_RECEIVED_EVENT, VIEW_RECEIVED_EVENT } from "../../components/ChatRealtimeBridge";
-import { interestViewsStore } from "../../services/interestViewsStore";
-import { fromStoredView, toStoredView, normalizeViews, normalizeTaps } from "../../pages/app/interest/interestUtils";
+import {
+	getActiveInterestViewsAccount,
+	interestViewsStore,
+} from "../../services/interestViewsStore";
+import { fromStoredView, toStoredView, normalizeViews, normalizeTaps, PREVIEW_ID_PREFIX } from "../../pages/app/interest/interestUtils";
 import { useTranslation } from "react-i18next";
 import { DEFAULT_STALE_TIME_MS } from "../../config/ui-constants";
 
@@ -15,6 +18,10 @@ export function useInterestData() {
 	const query = useQuery({
 		queryKey: ["interest", "list"],
 		queryFn: async () => {
+			// Snapshot the account before any awaiting, so a switch mid-fetch
+			// discards this result rather than filing it under the new account.
+			const account = getActiveInterestViewsAccount();
+
 			// 1. Parallel fetch from API
 			const [tapsResponse, viewsResponse] = await Promise.all([
 				api.getTaps(),
@@ -29,16 +36,39 @@ export function useInterestData() {
 			const normalizedViews = normalizeViews(viewsResponse, cachedViews, t);
 			const normalizedTaps = normalizeTaps(tapsResponse, t);
 
-			// 4. Update persistence store with merged views
+			// 4. Update persistence store with merged views.
+			//    Previews are excluded deliberately: they're locked placeholders
+			//    with no recoverable profile ID, and an unhashed one keys off its
+			//    position in the list, so its synthetic ID changes as the list
+			//    reorders. Persisting them minted new rows on every refresh and
+			//    inflated the saved-profile count with entries nothing could open.
 			await interestViewsStore.upsertMany(
-				normalizedViews.map((item) => toStoredView(item))
+				normalizedViews
+					.filter((item) => !item.profileId.startsWith(PREVIEW_ID_PREFIX))
+					.map((item) => toStoredView(item)),
+				account,
 			);
+
+			// What the server itself is still listing this fetch. `normalizedViews`
+			// above deliberately keeps viewers the server has dropped — that is
+			// the whole point of the recovery store — so telling "Grindr no longer
+			// counts them" from "merely merged in from cache" needs the raw
+			// response's own ids. Hash matching mirrors the background sweep's: a
+			// viewer the server now shows only as a locked preview is still inside
+			// totalViewers, and must not be counted a second time.
+			const incomingViews = normalizeViews(viewsResponse, [], t);
 
 			return {
 				taps: normalizedTaps,
 				views: normalizedViews,
 				// Extract viewedCount from the raw response for the UI
-				viewedCount: (viewsResponse as any)?.totalViewers || (viewsResponse as any)?.data?.totalViewers || 0
+				viewedCount: (viewsResponse as any)?.totalViewers || (viewsResponse as any)?.data?.totalViewers || 0,
+				serverProfileIds: incomingViews
+					.filter((item) => !item.profileId.startsWith(PREVIEW_ID_PREFIX))
+					.map((item) => item.profileId),
+				serverImageHashes: incomingViews.flatMap((item) =>
+					item.imageHash ? [item.imageHash] : [],
+				),
 			};
 		},
 		staleTime: DEFAULT_STALE_TIME_MS,

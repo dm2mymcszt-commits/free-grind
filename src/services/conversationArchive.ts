@@ -484,12 +484,61 @@ export async function reconcileReappearedConversation(
  * chat header, grid, profile page, blocked-list settings — behaves the same
  * way, not just the ones that happen to have a chat thread open.
  */
+export type ApplySelfBlockActionOptions = {
+	/**
+	 * Whether a block for a profile that has no conversation *anywhere* may
+	 * mint a `direct:<profileId>` stand-in to archive.
+	 *
+	 * True (the default) preserves the behaviour every existing caller relies
+	 * on — the manual block mutations and the inbox auto-blocker both act on
+	 * someone the user has a thread with, or is about to see one for.
+	 *
+	 * False is for blocks that start from a profile alone with no chat in
+	 * sight, in particular Interest-view auto-blocking: inventing a
+	 * conversation there fabricates an archived chat, complete with a
+	 * "You blocked this person" marker, for two people who never exchanged a
+	 * word. The block itself still happens; only the local shell is skipped.
+	 */
+	materializeMissingConversation?: boolean;
+};
+
 export async function applySelfBlockAction(
 	profileId: string,
 	action: "block" | "unblock",
+	options?: ApplySelfBlockActionOptions,
 ): Promise<void> {
 	let stored = await chatDb.findConversationByProfileId(profileId).catch(() => null);
+	if (action === "block") {
+		// The realtime bridge can receive and persist the triggering message
+		// before an inbox metadata row exists. Recover that real server
+		// conversation first; otherwise creating `direct:<profileId>` strands
+		// the saved content under its original id and archives an empty shell.
+		const recovered = await chatDb
+			.recoverLatestOrphanedConversationForProfile(profileId)
+			.catch(() => null);
+		const recoveredTimestamp = recovered?.entry.data.lastActivityTimestamp ?? 0;
+		const normalizedRecoveredTimestamp =
+			recoveredTimestamp > 0 && recoveredTimestamp < 100_000_000_000
+				? recoveredTimestamp * 1000
+				: recoveredTimestamp;
+		const isRecentAutoBlockMessage =
+			normalizedRecoveredTimestamp > 0 &&
+			Math.abs(Date.now() - normalizedRecoveredTimestamp) <= 5 * 60_000;
+		if (recovered && isRecentAutoBlockMessage) {
+			await chatDb.upsertConversation(recovered.entry, profileId);
+			stored = await chatDb.getConversation(recovered.conversationId).catch(() => null);
+		}
+	}
 	if (!stored && action === "block") {
+		if (options?.materializeMissingConversation === false) {
+			// Nothing local to archive and nothing lost by not archiving: no
+			// conversation row, no archived entry, no system message. The block
+			// itself was already issued by the caller.
+			appLog.debug(
+				`[conversation-archive] no conversation for ${profileId} — skipping synthetic archive shell`,
+			);
+			return;
+		}
 		const conversationId = `direct:${profileId}`;
 		const pidNum = Number(profileId) || 0;
 		await chatDb.upsertConversation(

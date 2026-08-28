@@ -86,6 +86,7 @@ import {
 	draftToFilters,
 	extractImageHashFromSignedUrl,
 	getMediaCaptureTarget,
+	isMediaMessage,
 	isPreviewUnhelpful,
 	getMessageAlbumId,
 	getMessageImageUrl,
@@ -120,6 +121,7 @@ import type { ChatContactIndexRecord } from "../../types/chat-contact-index";
 import { markInboxSeen, getInboxLastSeen } from "../../services/seenStore";
 import { SCROLL_RESTORATION_TIMEOUT_MS } from "../../config/ui-constants";
 import { clearAutomationSeenHistoryForSender, runAutomationRulesForSender } from "../../utils/automationRules";
+import { withPreservingBlock } from "../../services/autoBlockConversation";
 import { consumeSelfBlockAction } from "../../utils/selfBlockActions";
 import { isReadReceiptsHidden, checkAndAutoWhitelistActiveChat } from "../../utils/privacy";
 import { getDisplayName } from "../../services/conversationDirectory";
@@ -179,7 +181,7 @@ function captureMediaForMessages(
 				viewOnce: target.viewOnce,
 				isOwnMessage: userId != null && message.senderId === userId,
 			});
-		} else if (message.type !== "Giphy") {
+		} else if (isMediaMessage(message)) {
 			// No live URL on this message anymore (expired, archived
 			// conversation, server stopped refreshing it) — fall back to
 			// whatever's already cached for it by message id instead.
@@ -270,6 +272,35 @@ export function ChatPage() {
 	useEffect(() => {
 		archivedConversationsRef.current = archivedConversations;
 	}, [archivedConversations]);
+
+	// Conversations recovered from local history whose `conversations` row is
+	// gone (see chatDb.recoverOrphanedConversation) — distinct from
+	// `archivedConversations`: the profile may still be perfectly reachable
+	// (only the local row/server conversation was deleted, not a block), so
+	// these are NOT read-only. loadThread hydrates them from the local cache
+	// only, skipping the live API entirely, so the "conversation not found"
+	// 404 that a stale conversationId would otherwise produce never fires and
+	// never triggers auto-archival. Sending a message "graduates" the entry
+	// out of this map (see sendMessage) since that always re-establishes a
+	// live conversation via targetProfileId, never the old id directly.
+	const [recoveredConversations, setRecoveredConversations] = useState<
+		Map<string, ConversationEntry>
+	>(new Map());
+	const recoveredConversationsRef = useRef(recoveredConversations);
+	useEffect(() => {
+		recoveredConversationsRef.current = recoveredConversations;
+	}, [recoveredConversations]);
+	// newConversationId -> the recovered id whose local history failed to move
+	// onto it (see graduateRecoveredConversation). Only ever non-empty while a
+	// recovered thread still holds messages the live conversation doesn't, and
+	// it exists purely so profile navigation keeps resolving to the thread that
+	// actually has the history — loadInbox pulls the new live conversation into
+	// `conversations` the moment the send succeeds, and the profile lookup
+	// prefers `conversations` over `recoveredConversations`, so without this the
+	// older messages would be stranded behind an id nothing links to.
+	const [failedHistoryMigrations, setFailedHistoryMigrations] = useState<
+		Map<string, string>
+	>(new Map());
 	const [nextPage, setNextPage] = useState<number | null>(null);
 	const [isLoadingInbox, setIsLoadingInbox] = useState(true);
 	const [isLoadingMoreInbox, setIsLoadingMoreInbox] = useState(false);
@@ -817,7 +848,9 @@ export function ChatPage() {
 				const existing = conversations.find(
 					(conversation) =>
 						conversation.data.conversationId === selectedConversationId,
-				) ?? archivedConversations.get(selectedConversationId)?.entry ?? null;
+				) ?? archivedConversations.get(selectedConversationId)?.entry
+					?? recoveredConversations.get(selectedConversationId)
+					?? null;
 				if (existing) {
 					return existing;
 				}
@@ -875,7 +908,7 @@ export function ChatPage() {
 
 			return null;
 		},
-		[conversations, archivedConversations, selectedConversationId, targetProfileId, targetProfileDetail, userId],
+		[conversations, archivedConversations, recoveredConversations, selectedConversationId, targetProfileId, targetProfileDetail, userId],
 	);
 
 
@@ -1796,11 +1829,16 @@ export function ChatPage() {
 			older: boolean;
 			silent?: boolean;
 		}) => {
-			// Already known to be gone server-side (discovered via an earlier 404)
-			// — skip the doomed network call entirely and page through the local
-			// cache instead, mirroring the live path's pageKey/"load older"
-			// mechanics exactly so the experience is identical either way.
-			if (archivedConversationsRef.current.has(conversationId)) {
+			// Already known to be gone server-side (discovered via an earlier 404),
+			// or recovered from local history with no confirmed live conversation
+			// yet (see recoveredConversations) — skip the doomed/premature network
+			// call entirely and page through the local cache instead, mirroring
+			// the live path's pageKey/"load older" mechanics exactly so the
+			// experience is identical either way.
+			if (
+				archivedConversationsRef.current.has(conversationId) ||
+				recoveredConversationsRef.current.has(conversationId)
+			) {
 				if (older) {
 					if (!messagePageKeyRef.current || isLoadingOlderMessagesRef.current) {
 						return;
@@ -2242,7 +2280,7 @@ export function ChatPage() {
 						runAutomationRulesForSender(
 							String(blockId),
 							"new_chat",
-							service,
+							withPreservingBlock(service, userId),
 							undefined,
 							lastMessageText,
 						).then(({ blocked }) => {
@@ -2271,7 +2309,7 @@ export function ChatPage() {
 						runAutomationRulesForSender(
 							String(blockId),
 							"message_received",
-							service,
+							withPreservingBlock(service, userId),
 							undefined,
 							text,
 							m.messageId,
@@ -2556,6 +2594,12 @@ export function ChatPage() {
 					if (!older && selectedConversationIdRef.current === conversationId) {
 						const localData = await chatLog.readLog(conversationId);
 						setThreadMessages(localData.messages);
+						// This branch is the only load an archived/blocked thread ever
+						// gets, so it also has to do what the success path above does:
+						// pull already-captured media bytes into the in-memory cache.
+						// Their bodies have usually lost their URLs by now, which is
+						// exactly the case the message-id fallback key covers.
+						captureMediaForMessages(localData.messages, conversationId, userId);
 						const rawTs = localData.lastReadTimestamp;
 						if (rawTs != null && rawTs > 0) {
 							const ms = rawTs < 100_000_000_000 ? rawTs * 1000 : rawTs;
@@ -2576,6 +2620,7 @@ export function ChatPage() {
 							selectedConversationIdRef.current === conversationId
 						) {
 							setThreadMessages(localData.messages);
+							captureMediaForMessages(localData.messages, conversationId, userId);
 							const rawTs = localData.lastReadTimestamp;
 							if (rawTs != null && rawTs > 0) {
 								const ms = rawTs < 100_000_000_000 ? rawTs * 1000 : rawTs;
@@ -3793,6 +3838,176 @@ export function ChatPage() {
 		],
 	);
 
+	// Shared by every send path (text, location, giphy, media, album
+	// reactions/replies) — a successful send always goes through
+	// targetProfileId, never the stale recovered conversationId, so any send
+	// from a recoveredConversations thread re-establishes (or confirms) a
+	// live conversation server-side. This "graduates" that thread out of
+	// recoveredConversations so it behaves like a normal live conversation
+	// from here on (live loads again instead of local-cache-only hydration).
+	// Returns false when `sourceEntry` wasn't a recovered thread, so callers
+	// know to fall back to their normal post-send handling.
+	const graduateRecoveredConversation = useCallback(
+		async (
+			sourceEntry: ConversationEntry,
+			sentMessage: Message,
+			previewText: string | null,
+		): Promise<boolean> => {
+			const sourceId = sourceEntry.data.conversationId;
+			if (!recoveredConversationsRef.current.has(sourceId)) {
+				return false;
+			}
+
+			let migrationFailed = false;
+			if (sentMessage.conversationId !== sourceId) {
+				// The server didn't reuse the old id — move the recovered local
+				// history to the new id so it isn't stranded under an id nothing
+				// references anymore. Must be a direct UPDATE, not a read +
+				// chatLog.appendMessages: upsertMessages' `ON CONFLICT(message_id)
+				// DO UPDATE` never touches conversation_id, so re-appending
+				// pre-existing rows under a new id is a silent no-op — they'd stay
+				// attached to the old id regardless.
+				try {
+					await chatDb.reassignConversationId(sourceId, sentMessage.conversationId);
+				} catch {
+					// The send itself already succeeded server-side, so the old
+					// id's history must stay reachable rather than being silently
+					// orphaned under an id nothing points to anymore. Handled by
+					// the migrationFailed branch below: the recovered entry stays,
+					// and this profile keeps resolving to it.
+					migrationFailed = true;
+					toast.error(
+						t("chat.errors.recovered_history_migration_failed", {
+							defaultValue: "Sent, but couldn't restore your older messages in this chat.",
+						}),
+					);
+				}
+			}
+
+			if (migrationFailed) {
+				// Keep the recovered thread selected and keep pointing this
+				// profile at it. Adding/opening the new conversation here would
+				// navigate off the only entry that still reaches the older
+				// messages: recovered threads are never rendered in the inbox
+				// list, so an unselected one is unreachable. The next send from
+				// this thread re-enters here and retries the reassignment.
+				setFailedHistoryMigrations((previous) => {
+					const next = new Map(previous);
+					next.set(sentMessage.conversationId, sourceId);
+					return next;
+				});
+				void loadInbox({ page: 1, replace: true });
+				return true;
+			}
+
+			setRecoveredConversations((previous) => {
+				if (!previous.has(sourceId)) return previous;
+				const next = new Map(previous);
+				next.delete(sourceId);
+				return next;
+			});
+			// A retry that finally succeeded clears the redirect installed above.
+			setFailedHistoryMigrations((previous) => {
+				if (!previous.has(sentMessage.conversationId)) return previous;
+				const next = new Map(previous);
+				next.delete(sentMessage.conversationId);
+				return next;
+			});
+
+			setConversations((previous) =>
+				previous.some((c) => c.data.conversationId === sentMessage.conversationId)
+					? previous
+					: [
+							...previous,
+							{
+								...sourceEntry,
+								data: {
+									...sourceEntry.data,
+									conversationId: sentMessage.conversationId,
+									lastActivityTimestamp: sentMessage.timestamp,
+									preview: previewText
+										? {
+												conversationId: { value: sentMessage.conversationId },
+												messageId: sentMessage.messageId,
+												senderId: sentMessage.senderId,
+												type: sentMessage.type,
+												chat1Type: sentMessage.chat1Type ?? "text",
+												text: previewText,
+												albumId: null,
+												imageHash: null,
+											}
+										: sourceEntry.data.preview,
+								},
+							},
+						],
+			);
+
+			if (sentMessage.conversationId !== sourceId) {
+				openConversationById(sentMessage.conversationId);
+			}
+			void loadInbox({ page: 1, replace: true });
+			return true;
+		},
+		[loadInbox, openConversationById],
+	);
+
+	// Album shares are the one "first action in a recovered thread" that isn't a
+	// send: shareAlbum resolves with nothing, so there's no sentMessage to
+	// graduate against, and both handlers just reload the source id. Because
+	// loadThread short-circuits recovered ids to the local cache, that reload
+	// showed neither the album message nor the live conversation, and the
+	// thread stayed recovered until some later ordinary message. Ask the inbox
+	// which conversation the share actually landed in, then hand it to the
+	// normal graduation path so the history migration and its failure handling
+	// stay in one place.
+	const graduateRecoveredAfterAlbumShare = useCallback(
+		async (
+			sourceEntry: ConversationEntry,
+			recipientProfileId: number,
+		): Promise<boolean> => {
+			if (!recoveredConversationsRef.current.has(sourceEntry.data.conversationId)) {
+				return false;
+			}
+
+			try {
+				const response = await service.listConversations({ page: 1 });
+				const match = (response?.entries || []).find((entry: any) =>
+					entry.data?.participants?.some(
+						(participant: any) =>
+							Number(participant.profileId) === Number(recipientProfileId),
+					),
+				);
+				const liveConversationId: string | undefined = match?.data?.conversationId;
+				if (!liveConversationId) {
+					// The share succeeded but the inbox doesn't show the thread yet.
+					// Leave it recovered; the next send graduates it as before.
+					return false;
+				}
+
+				return await graduateRecoveredConversation(
+					sourceEntry,
+					{
+						messageId: `album-share-${Date.now()}`,
+						conversationId: liveConversationId,
+						senderId: userId ?? 0,
+						timestamp: Date.now(),
+						unsent: false,
+						reactions: [],
+						type: "Album",
+						chat1Type: "album",
+					},
+					// No preview text on purpose: graduation ends in a full inbox
+					// reload, which brings the server's own preview for the album
+					// message rather than a locally invented one.
+					null,
+				);
+			} catch {
+				return false;
+			}
+		},
+		[graduateRecoveredConversation, service, userId],
+	);
+
 	const getProfileReturnToChatPath = useCallback(
 		(profileId: number) => {
 			if (selectedConversationId) {
@@ -3818,8 +4033,19 @@ export function ChatPage() {
 		);
 
 		if (existingConversation) {
-			if (selectedConversationId !== existingConversation.data.conversationId) {
-				openConversationById(existingConversation.data.conversationId);
+			// If this live conversation is one whose recovered history never
+			// made it across, open the recovered id instead — it holds strictly
+			// more of this chat, and nothing else in the UI can reach it.
+			const strandedSourceId = failedHistoryMigrations.get(
+				existingConversation.data.conversationId,
+			);
+			const targetConversationId =
+				strandedSourceId && recoveredConversations.has(strandedSourceId)
+					? strandedSourceId
+					: existingConversation.data.conversationId;
+
+			if (selectedConversationId !== targetConversationId) {
+				openConversationById(targetConversationId);
 			}
 			return;
 		}
@@ -3835,6 +4061,20 @@ export function ChatPage() {
 		if (existingArchived) {
 			if (selectedConversationId !== existingArchived.entry.data.conversationId) {
 				openConversationById(existingArchived.entry.data.conversationId);
+			}
+			return;
+		}
+
+		// Same idea for an already-recovered conversation from a prior visit
+		// this session — avoid re-running the DB/contact-index recovery below.
+		const existingRecovered = [...recoveredConversations.values()].find((entry) =>
+			entry.data.participants.some(
+				(participant) => participant.profileId === targetProfileId,
+			),
+		);
+		if (existingRecovered) {
+			if (selectedConversationId !== existingRecovered.data.conversationId) {
+				openConversationById(existingRecovered.data.conversationId);
 			}
 			return;
 		}
@@ -3867,6 +4107,85 @@ export function ChatPage() {
 				}
 				openConversationById(stored.conversationId);
 				return;
+			}
+
+			// No `conversations` row (e.g. removed via the swipe/multi-select
+			// "delete" action, which only deletes the conversation row and never
+			// touches `messages` — see chatDb.ts deleteConversationOnly). The
+			// contact index may still remember which conversationId this profile
+			// used, and that conversation's messages may still be sitting in
+			// chatDb — recover them into a read-only-hydrated view rather than
+			// silently starting a fresh conversation.
+			const [indexRecord] = await getChatContactIndexForProfiles([String(targetProfileId)]);
+			if (cancelled) return;
+			if (indexRecord?.conversationId) {
+				const recovered = await chatDb.recoverOrphanedConversation(
+					indexRecord.conversationId,
+					String(targetProfileId),
+				);
+				if (cancelled) return;
+				if (recovered) {
+					// chatDb only has the messages, not the profile — its synthesized
+					// entry carries just a bare profileId (see
+					// chatDb.recoverOrphanedConversation), so without this the thread
+					// header would show a blank name/avatar/offline status even though
+					// the profile itself is fully reachable (its own detail view right
+					// next to this one proves that). Fill in real presentation data
+					// from the profile detail cache/API before this ever renders,
+					// same source the "brand new chat" synthetic entry above uses.
+					const profileIdStr = String(targetProfileId);
+					const profileDetail =
+						getCachedProfileDetail(profileIdStr) ??
+						(await service
+							.getProfileDetail(profileIdStr)
+							.then((detail) => {
+								setCachedProfileDetail(profileIdStr, detail);
+								return detail;
+							})
+							.catch(() => null));
+					if (cancelled) return;
+
+					const enrichedEntry: ConversationEntry = profileDetail
+						? {
+								...recovered.entry,
+								data: {
+									...recovered.entry.data,
+									name: profileDetail.displayName || recovered.entry.data.name,
+									participants: recovered.entry.data.participants.map((participant) =>
+										Number(participant.profileId) === targetProfileId
+											? {
+													...participant,
+													primaryMediaHash:
+														profileDetail.profileImageMediaHash ?? participant.primaryMediaHash,
+													lastOnline: profileDetail.seen ?? participant.lastOnline,
+													onlineUntil: profileDetail.onlineUntil ?? participant.onlineUntil,
+													distanceMetres: profileDetail.distance ?? participant.distanceMetres,
+												}
+											: participant,
+									),
+								},
+							}
+						: recovered.entry;
+
+					// This conversation's `conversations` row is gone — the profile
+					// itself may still be perfectly reachable (this recovers from a
+					// local-only "delete", not necessarily a block/removal), so this
+					// must NOT go through `conversations` (loadThread would hit the
+					// live API first and 404-archive it as read-only) nor through
+					// `archivedConversations` (that forces the read-only "archived"
+					// UI even though nothing confirms the profile is actually gone).
+					// `recoveredConversations` hydrates the thread from local history
+					// only, while keeping the composer enabled — sending a message
+					// re-establishes a live conversation via targetProfileId.
+					setRecoveredConversations((previous) => {
+						if (previous.has(recovered.conversationId)) return previous;
+						const next = new Map(previous);
+						next.set(recovered.conversationId, enrichedEntry);
+						return next;
+					});
+					openConversationById(recovered.conversationId);
+					return;
+				}
 			}
 
 			// DB had nothing — paginate through the API inbox to find a
@@ -3910,6 +4229,8 @@ export function ChatPage() {
 	}, [
 		conversations,
 		archivedConversations,
+		recoveredConversations,
+		failedHistoryMigrations,
 		openConversationById,
 		selectedConversationId,
 		targetProfileId,
@@ -4525,7 +4846,11 @@ export function ChatPage() {
 					return [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
 				});
 
-				if (selectedConversation) {
+				const graduated = selectedConversation
+					? await graduateRecoveredConversation(selectedConversation, sentMessage, trimmed)
+					: false;
+
+				if (selectedConversation && !graduated) {
 					syncConversation((conversation) => ({
 						...conversation,
 						data: {
@@ -4545,7 +4870,7 @@ export function ChatPage() {
 							},
 						},
 					}));
-				} else {
+				} else if (!selectedConversation) {
 					openConversationById(sentMessage.conversationId);
 					void loadInbox({ page: 1, replace: true });
 				}
@@ -4585,6 +4910,7 @@ export function ChatPage() {
 			}
 		},
 		[
+			graduateRecoveredConversation,
 			loadInbox,
 			openConversationById,
 			replyTargetMessageId,
@@ -4629,6 +4955,7 @@ export function ChatPage() {
 				setReplyTargetMessageId(null);
 				if (selectedConversation) {
 					setThreadMessages((previous) => [...previous, sentMessage]);
+					void graduateRecoveredConversation(selectedConversation, sentMessage, null);
 				} else {
 					openConversationById(sentMessage.conversationId);
 					void loadInbox({ page: 1, replace: true });
@@ -4639,7 +4966,7 @@ export function ChatPage() {
 				setIsSending(false);
 			}
 		},
-		[loadInbox, openConversationById, selectedConversation, service, t, targetProfileId, userId, replyTargetMessageId, setReplyTargetMessageId],
+		[graduateRecoveredConversation, loadInbox, openConversationById, selectedConversation, service, t, targetProfileId, userId, replyTargetMessageId, setReplyTargetMessageId],
 	);
 
 	const sendGiphyMessage = useCallback(
@@ -4679,6 +5006,7 @@ export function ChatPage() {
 				setReplyTargetMessageId(null);
 				if (selectedConversation) {
 					setThreadMessages((previous) => [...previous, sentMessage]);
+					void graduateRecoveredConversation(selectedConversation, sentMessage, null);
 				} else {
 					openConversationById(sentMessage.conversationId);
 					void loadInbox({ page: 1, replace: true });
@@ -4689,7 +5017,7 @@ export function ChatPage() {
 				setIsSending(false);
 			}
 		},
-		[loadInbox, openConversationById, selectedConversation, service, t, targetProfileId, userId, replyTargetMessageId, setReplyTargetMessageId],
+		[graduateRecoveredConversation, loadInbox, openConversationById, selectedConversation, service, t, targetProfileId, userId, replyTargetMessageId, setReplyTargetMessageId],
 	);
 
 	// Sent from the in-thread album image viewer's reply/react bar — deliberately
@@ -4713,13 +5041,14 @@ export function ChatPage() {
 				});
 				if (selectedConversation) {
 					setThreadMessages((previous) => [...previous, sentMessage]);
+					void graduateRecoveredConversation(selectedConversation, sentMessage, null);
 				}
 				toast.success(t("chat.toasts.album_reaction_sent", { defaultValue: "Reaction sent" }));
 			} catch (error) {
 				toast.error(error instanceof Error ? error.message : t("chat.errors.send_failed"));
 			}
 		},
-		[selectedConversation, service, t, targetProfileId, userId],
+		[graduateRecoveredConversation, selectedConversation, service, t, targetProfileId, userId],
 	);
 
 	const sendAlbumContentReply = useCallback(
@@ -4740,13 +5069,14 @@ export function ChatPage() {
 				});
 				if (selectedConversation) {
 					setThreadMessages((previous) => [...previous, sentMessage]);
+					void graduateRecoveredConversation(selectedConversation, sentMessage, null);
 				}
 				toast.success(t("chat.toasts.album_reply_sent", { defaultValue: "Reply sent" }));
 			} catch (error) {
 				toast.error(error instanceof Error ? error.message : t("chat.errors.send_failed"));
 			}
 		},
-		[selectedConversation, service, t, targetProfileId, userId],
+		[graduateRecoveredConversation, selectedConversation, service, t, targetProfileId, userId],
 	);
 
 	const sendMediaAttachment = useCallback(
@@ -4871,7 +5201,11 @@ export function ChatPage() {
 					return [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
 				});
 
-				if (selectedConversation) {
+				const graduated = selectedConversation
+					? await graduateRecoveredConversation(selectedConversation, sentMessage, null)
+					: false;
+
+				if (selectedConversation && !graduated) {
 					syncConversation((conversation) => ({
 						...conversation,
 						data: {
@@ -4892,7 +5226,7 @@ export function ChatPage() {
 							},
 						},
 					}));
-				} else {
+				} else if (!selectedConversation) {
 					openConversationById(sentMessage.conversationId);
 					void loadInbox({ page: 1, replace: true });
 				}
@@ -4922,6 +5256,7 @@ export function ChatPage() {
 			}
 		},
 		[
+			graduateRecoveredConversation,
 			loadInbox,
 			openConversationById,
 			selectedConversation,
@@ -4992,7 +5327,7 @@ export function ChatPage() {
 				multipart: { body: audioBytes, contentType: blob.type || "audio/webm" },
 				options: { looping: false, takenOnGrindr: false, durationSeconds: durationMs },
 			});
-			await service.sendMessage({
+			const sentMessage = await service.sendMessage({
 				type: "Audio",
 				target: { type: "Direct", targetId: Number(targetIdValue) },
 				body: {
@@ -5006,6 +5341,9 @@ export function ChatPage() {
 				},
 				replyToMessageId: replyTargetMessageId,
 			});
+			if (selectedConversation) {
+				void graduateRecoveredConversation(selectedConversation, sentMessage, null);
+			}
 			setPendingAudioBlob(null);
 			setPendingAudioDuration(0);
 			setPendingAudioWaveform(undefined);
@@ -5023,7 +5361,7 @@ export function ChatPage() {
 		} finally {
 			setIsSendingAudio(false);
 		}
-	}, [userId, selectedConversation, targetProfileId, service, t, replyTargetMessageId, setReplyTargetMessageId]);
+	}, [userId, selectedConversation, targetProfileId, service, t, replyTargetMessageId, setReplyTargetMessageId, graduateRecoveredConversation]);
 
 	const sendAudioBlobRef = useRef(sendAudioBlob);
 	useEffect(() => { sendAudioBlobRef.current = sendAudioBlob; }, [sendAudioBlob]);
@@ -5320,17 +5658,23 @@ export function ChatPage() {
             setPendingAlbumShare(null);
             setIsAlbumPickerOpen(false);
             if (selectedConversation) {
-                void loadThread({
-                    conversationId: selectedConversation.data.conversationId,
-                    older: false,
-                });
+                const graduated = await graduateRecoveredAfterAlbumShare(
+                    selectedConversation,
+                    Number(recipientProfileId),
+                );
+                if (!graduated) {
+                    void loadThread({
+                        conversationId: selectedConversation.data.conversationId,
+                        older: false,
+                    });
+                }
             }
         } catch (error) {
             toast.error(error instanceof Error ? error.message : t("chat.errors.album_share_failed"));
         } finally {
             setIsSharingAlbum(false);
         }
-    }, [loadThread, pendingAlbumShare, selectedConversation, targetProfileId, service, t, userId]);
+    }, [graduateRecoveredAfterAlbumShare, loadThread, pendingAlbumShare, selectedConversation, targetProfileId, service, t, userId]);
 
 	const handleShareAlbumFromDrawer = useCallback(async (albumId: number, expirationType: string) => {
 		const recipientProfileId = selectedConversation
@@ -5345,14 +5689,20 @@ export function ChatPage() {
 			await service.shareAlbum({ albumId, profiles: [{ profileId: recipientProfileId, expirationType: expirationType as any }] });
 			toast.success(t("chat.toasts.album_shared"));
 			if (selectedConversation) {
-				void loadThread({ conversationId: selectedConversation.data.conversationId, older: false });
+				const graduated = await graduateRecoveredAfterAlbumShare(
+					selectedConversation,
+					Number(recipientProfileId),
+				);
+				if (!graduated) {
+					void loadThread({ conversationId: selectedConversation.data.conversationId, older: false });
+				}
 			}
 		} catch (error) {
 			toast.error(error instanceof Error ? error.message : t("chat.errors.album_share_failed"));
 		} finally {
 			setIsSharingAlbum(false);
 		}
-	}, [selectedConversation, targetProfileId, userId, t, loadThread]);
+	}, [graduateRecoveredAfterAlbumShare, selectedConversation, targetProfileId, userId, t, loadThread, service]);
 
 	const openAlbumViewerById = useCallback(
 		async (albumId: number, isOwnAlbum?: boolean) => {
@@ -5556,25 +5906,32 @@ export function ChatPage() {
 				// Update conversation preview with the last sent message
 				if (selectedConversation && finalSentMessage) {
 					const finalMessage = finalSentMessage;
-					syncConversation((conversation) => ({
-						...conversation,
-						data: {
-							...conversation.data,
-							lastActivityTimestamp: finalMessage.timestamp,
-							preview: {
-								conversationId: {
-									value: conversation.data.conversationId,
+					const graduated = await graduateRecoveredConversation(
+						selectedConversation,
+						finalMessage,
+						null,
+					);
+					if (!graduated) {
+						syncConversation((conversation) => ({
+							...conversation,
+							data: {
+								...conversation.data,
+								lastActivityTimestamp: finalMessage.timestamp,
+								preview: {
+									conversationId: {
+										value: conversation.data.conversationId,
+									},
+									messageId: finalMessage.messageId,
+									senderId: finalMessage.senderId,
+									type: finalMessage.type,
+									chat1Type: finalMessage.chat1Type ?? "image",
+									text: null,
+									albumId: null,
+									imageHash: null,
 								},
-								messageId: finalMessage.messageId,
-								senderId: finalMessage.senderId,
-								type: finalMessage.type,
-								chat1Type: finalMessage.chat1Type ?? "image",
-								text: null,
-								albumId: null,
-								imageHash: null,
 							},
-						},
-					}));
+						}));
+					}
 				}
 
 				setReplyTargetMessageId(null);
@@ -5599,6 +5956,7 @@ export function ChatPage() {
 			service,
 			t,
 			syncConversation,
+			graduateRecoveredConversation,
 			loadDrawerMedia,
 			replyTargetMessageId,
 			setReplyTargetMessageId,

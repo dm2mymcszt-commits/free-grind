@@ -13,6 +13,18 @@ export type InterestItem = {
 	tapType: number | null;
 	viewCount: number | null;
 	canOpenProfile: boolean;
+	/**
+	 * Whether `timestamp` is a real view time the server reported, as opposed to
+	 * a stand-in so the row still has something to sort and display by.
+	 *
+	 * Only ever false for a cached row the server never gave a timestamp for:
+	 * fromStoredView falls back to the row's `updatedAt`, which is when the
+	 * cache was last written, not when anyone looked at us. That value used to
+	 * flow back through toStoredView into the store's `viewTimestamps` history,
+	 * so a viewer with no server timestamp grew a precise-looking "viewed you
+	 * at 21:47" entry that was really a database write. undefined means exact.
+	 */
+	hasExactTimestamp?: boolean;
 	isFromCache?: boolean;
 	isMutual?: boolean;
 	onlineUntil?: number | null;
@@ -26,6 +38,7 @@ export function fromStoredView(row: StoredInterestView): InterestItem {
 		displayName: row.displayName,
 		imageHash: row.imageHash,
 		timestamp: row.timestamp ?? row.updatedAt,
+		hasExactTimestamp: row.timestamp != null,
 		tapType: null,
 		viewCount: row.viewCount,
 		canOpenProfile: !row.profileId.startsWith(PREVIEW_ID_PREFIX),
@@ -38,7 +51,11 @@ export function toStoredView(item: InterestItem): Omit<StoredInterestView, "upda
 		profileId: item.profileId,
 		displayName: item.displayName ?? "",
 		imageHash: item.imageHash,
-		timestamp: item.timestamp,
+		// Write back only genuine view times. A stand-in read out of the cache
+		// must not be persisted as though the server had reported it — the
+		// store treats every timestamp it receives as an observed view and
+		// accumulates it into that profile's exact-times history.
+		timestamp: item.hasExactTimestamp === false ? null : item.timestamp,
 		viewCount: item.viewCount,
 	};
 }
@@ -72,6 +89,11 @@ function mergeViewItem(
 				: incoming.displayName,
 		imageHash: incoming.imageHash ?? cached.imageHash,
 		timestamp: incoming.timestamp ?? cached.timestamp,
+		// Exactness travels with whichever timestamp actually won above.
+		hasExactTimestamp:
+			incoming.timestamp != null
+				? incoming.hasExactTimestamp !== false
+				: cached.hasExactTimestamp !== false,
 		tapType: incoming.tapType ?? cached.tapType,
 		viewCount: incoming.viewCount ?? cached.viewCount,
 		canOpenProfile: incoming.canOpenProfile || cached.canOpenProfile,
@@ -327,4 +349,137 @@ export function getTapEmoji(tapType: number | null): string {
 		default:
 			return "🔥";
 	}
+}
+
+/**
+ * How the Views tab orders its list. "recent" is the server/normalizer's own
+ * newest-first order; "most_viewed" turns the tab into a leaderboard of the
+ * people who keep coming back.
+ */
+export type InterestViewsSort = "recent" | "most_viewed";
+
+export const INTEREST_VIEWS_SORT_KEY = "fg-interest-views-sort";
+
+export function readStoredViewsSort(): InterestViewsSort {
+	try {
+		return window.localStorage.getItem(INTEREST_VIEWS_SORT_KEY) === "most_viewed"
+			? "most_viewed"
+			: "recent";
+	} catch {
+		return "recent";
+	}
+}
+
+/**
+ * The view count a row is ranked (and rendered) by. Mirrors the row's own
+ * `viewCount || 1` display: a profile in the views list viewed us at least
+ * once even when the server sent no count, so ranking must agree with the
+ * number the user can see next to it.
+ */
+export function effectiveViewCount(item: InterestItem): number {
+	return item.viewCount != null && item.viewCount > 0 ? item.viewCount : 1;
+}
+
+/**
+ * Orders the views list for the given sort mode. "recent" is returned as-is —
+ * normalizeViews already sorts newest-first, so re-sorting would only risk
+ * disagreeing with it. Ranking ties break on recency, so among equally
+ * persistent viewers the one who looked most recently sits higher.
+ */
+export function sortViewItems(
+	items: InterestItem[],
+	sort: InterestViewsSort,
+): InterestItem[] {
+	if (sort !== "most_viewed") {
+		return items;
+	}
+	return [...items].sort((a, b) => {
+		const byCount = effectiveViewCount(b) - effectiveViewCount(a);
+		if (byCount !== 0) return byCount;
+		return (b.timestamp ?? 0) - (a.timestamp ?? 0);
+	});
+}
+
+/**
+ * Time window the Views tab is scoped to. Applied before ranking, so "most
+ * viewed" in a window means most-viewed among the people who actually showed
+ * up in it, numbered 1..N rather than carrying ranks in from the full list.
+ */
+export type InterestViewsWindow = "all" | "day" | "week";
+
+export const INTEREST_VIEWS_WINDOW_KEY = "fg-interest-views-window";
+
+const VIEWS_WINDOW_MS: Record<Exclude<InterestViewsWindow, "all">, number> = {
+	day: 24 * 60 * 60 * 1000,
+	week: 7 * 24 * 60 * 60 * 1000,
+};
+
+export function readStoredViewsWindow(): InterestViewsWindow {
+	try {
+		const stored = window.localStorage.getItem(INTEREST_VIEWS_WINDOW_KEY);
+		return stored === "day" || stored === "week" ? stored : "all";
+	} catch {
+		return "all";
+	}
+}
+
+/**
+ * Which total the Views counter reports.
+ *
+ * "grindr" is the server's own `totalViewers`, mirrored exactly as stock
+ * Grindr shows it — which means it *drops* a viewer the moment you block
+ * them, since Grindr removes blocked profiles from your viewers list. That is
+ * faithful, but it under-reports how many people actually looked at you, and
+ * the auto-blocker makes it drift fast.
+ *
+ * "real" adds back the viewers we can prove Grindr stopped counting because we
+ * blocked them — they are still in the local recovery store, so no guessing is
+ * involved. It only reaches as far back as that store does (30 days).
+ */
+export type InterestViewsCountMode = "grindr" | "real";
+
+export const INTEREST_VIEWS_COUNT_MODE_KEY = "fg-interest-views-count-mode";
+
+export function readStoredViewsCountMode(): InterestViewsCountMode {
+	try {
+		return window.localStorage.getItem(INTEREST_VIEWS_COUNT_MODE_KEY) === "real"
+			? "real"
+			: "grindr";
+	} catch {
+		return "grindr";
+	}
+}
+
+/** all -> day -> week -> all. */
+export function nextViewsWindow(current: InterestViewsWindow): InterestViewsWindow {
+	if (current === "all") return "day";
+	if (current === "day") return "week";
+	return "all";
+}
+
+/**
+ * Scopes the views list to a recency window, measured on when someone last
+ * viewed us.
+ *
+ * Rows whose timestamp isn't a real server view time are dropped from a narrow
+ * window rather than kept. Their stand-in is the moment the cache was written
+ * (see `hasExactTimestamp`), which is always recent — so keeping them would
+ * quietly file old viewers under "last 24 hours", which is the one thing a
+ * window is supposed to rule out. They're still present under "all".
+ */
+export function filterViewsByWindow(
+	items: InterestItem[],
+	viewsWindow: InterestViewsWindow,
+	now: number,
+): InterestItem[] {
+	if (viewsWindow === "all") {
+		return items;
+	}
+	const maxAge = VIEWS_WINDOW_MS[viewsWindow];
+	return items.filter((item) => {
+		if (item.timestamp == null || item.hasExactTimestamp === false) {
+			return false;
+		}
+		return now - item.timestamp <= maxAge;
+	});
 }

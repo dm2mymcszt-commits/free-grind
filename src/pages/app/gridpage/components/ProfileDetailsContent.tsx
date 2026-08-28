@@ -33,6 +33,8 @@ import { useTranslation } from "react-i18next";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { ProfileDetail } from "../../GridPage.types";
 import type { TravelPlan } from "../../../../types/travel";
+import { useSpotifyTracks } from "../../../../hooks/queries/useProfileQueries";
+import { ProfileMusicSection } from "./ProfileMusicSection";
 import {
 	formatDistance,
 	formatEnumArray,
@@ -197,6 +199,15 @@ export function ProfileDetailsContent({
 		[travelPlans],
 	);
 	const hasTravelPlans = visibleTravelPlans.length > 0;
+	// Fetched here rather than threaded down from ProfileDetailsModal: this
+	// component is rendered twice (stacked + split-pane) and React Query
+	// dedupes both callers onto one request, so keeping it local avoids
+	// having to add props at two separate call sites.
+	const { tracks: musicTracks, songIds: musicSongIds } = useSpotifyTracks(activeProfile.profileId);
+	// Gate on the ids, not the hydrated tracks: the section should claim its
+	// space as soon as we know there is music, rather than popping in after
+	// the Spotify metadata lookups land.
+	const hasMusicContent = musicSongIds.length > 0;
 	const rightNowTextTrimmed = activeProfile.rightNowText?.trim();
 	// rightNowText disappears from the live profile response once the person
 	// goes offline, but rightNowPosted (the post's own timestamp) stays put
@@ -558,10 +569,10 @@ export function ProfileDetailsContent({
 
 			{extraTopSection}
 
-			{(hasTagsContent || hasAboutContent || hasExpectationsFields || hasHealthFields || hasRightNowDetail || hasStatsFields || hasSocialFields) && (
+			{(hasTagsContent || hasAboutContent || hasExpectationsFields || hasHealthFields || hasRightNowDetail || hasStatsFields || hasSocialFields || hasMusicContent) && (
 			<div className="grid gap-8 px-3 lg:grid-cols-[1.25fr_1fr]">
 				{(hasTagsContent || hasAboutContent || hasRightNowDetail || hasExpectationsFields || hasHealthFields) && (
-				<div className="grid gap-8">
+				<div className="grid min-w-0 gap-8">
 					{hasRightNowDetail && (
 						<div>
 							<p
@@ -753,8 +764,8 @@ export function ProfileDetailsContent({
 				</div>
 				)}
 
-				{(hasStatsFields || hasSocialFields) && (
-				<div className="grid gap-8">
+				{(hasStatsFields || hasSocialFields || hasMusicContent) && (
+				<div className="grid min-w-0 gap-8">
 					{hasStatsFields && (
 						<div>
 							<p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
@@ -879,6 +890,8 @@ export function ProfileDetailsContent({
 							</div>
 						</div>
 					)}
+
+					<ProfileMusicSection tracks={musicTracks} songIds={musicSongIds} />
 				</div>
 				)}
 			</div>

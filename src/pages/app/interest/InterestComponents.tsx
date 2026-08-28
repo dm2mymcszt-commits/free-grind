@@ -1,9 +1,17 @@
 import { useLayoutEffect, useRef, useState, memo, type CSSProperties } from "react";
-import { Eye, Lock, Ban, History, MoveHorizontal } from "lucide-react";
+import { Eye, Lock, Ban, History, MoveHorizontal, CalendarDays, Clock, Trophy } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { getThumbImageUrl } from "../../../utils/media";
 import { ProfileImage } from "../../../components/ui/profile-image";
-import { type InterestItem, type InterestTab, formatTimestamp, getTapEmoji, PREVIEW_ID_PREFIX } from "./interestUtils";
+import {
+	type InterestItem,
+	type InterestTab,
+	type InterestViewsSort,
+	type InterestViewsWindow,
+	formatTimestamp,
+	getTapEmoji,
+	PREVIEW_ID_PREFIX,
+} from "./interestUtils";
 import { cn } from "../../../utils/cn";
 import { useRevealOnScroll } from "../../../hooks/useRevealOnScroll";
 
@@ -133,6 +141,100 @@ export const InterestTabs = memo(function InterestTabs({
 	);
 });
 
+/**
+ * Views-tab sort switch: newest-first (the default) versus a leaderboard of
+ * the people who've viewed us most.
+ *
+ * Collapsed to the icon alone in "recent" mode so it stays out of the way of
+ * the tabs pill on narrow screens, and expands to show its label once ranking
+ * is on — the state that isn't the default is the one worth spelling out.
+ */
+export const ViewsSortToggle = memo(function ViewsSortToggle({
+	sort,
+	onToggle,
+}: {
+	sort: InterestViewsSort;
+	onToggle: () => void;
+}) {
+	const { t } = useTranslation();
+	const isRanked = sort === "most_viewed";
+	const label = t(`interest_page.sort.${isRanked ? "most_viewed" : "recent"}`);
+
+	return (
+		<button
+			type="button"
+			onClick={onToggle}
+			title={t("interest_page.sort.toggle_hint")}
+			aria-label={t("interest_page.sort.toggle_hint")}
+			aria-pressed={isRanked}
+			className={cn(
+				"glass-pill flex h-8 shrink-0 items-center justify-center overflow-hidden transition-all duration-500 ease-in-out active:scale-95",
+				isRanked ? "pl-3 pr-3.5" : "neutral px-2.5",
+			)}
+			style={{ "--pill-color": "var(--accent)" } as CSSProperties}
+		>
+			{isRanked ? (
+				<Trophy className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />
+			) : (
+				<Clock className="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
+			)}
+			<span
+				className={cn(
+					"overflow-hidden whitespace-nowrap text-[10px] font-bold uppercase leading-none tracking-widest text-[var(--accent)] transition-all duration-500 ease-in-out",
+					isRanked ? "ml-2 max-w-[140px] opacity-100" : "ml-0 max-w-0 opacity-0",
+				)}
+			>
+				{label}
+			</span>
+		</button>
+	);
+});
+
+/**
+ * Views-tab recency scope: everything, the last 24 hours, or the last 7 days.
+ *
+ * Cycles on tap rather than opening a picker — three options with an obvious
+ * order don't earn a popover, and the tabs pill leaves little room beside it.
+ * The calendar icon appears only while a window is active, so the default
+ * state stays narrow and a filtered list is visibly filtered.
+ */
+export const ViewsWindowToggle = memo(function ViewsWindowToggle({
+	viewsWindow,
+	onToggle,
+}: {
+	viewsWindow: InterestViewsWindow;
+	onToggle: () => void;
+}) {
+	const { t } = useTranslation();
+	const isFiltered = viewsWindow !== "all";
+
+	return (
+		<button
+			type="button"
+			onClick={onToggle}
+			title={t("interest_page.window.toggle_hint")}
+			aria-label={t("interest_page.window.toggle_hint")}
+			className={cn(
+				"glass-pill flex h-8 shrink-0 items-center justify-center gap-1.5 px-2.5 transition-all duration-500 ease-in-out active:scale-95",
+				isFiltered ? "text-[var(--accent)]" : "neutral text-[var(--text-muted)]",
+			)}
+			style={{ "--pill-color": "var(--accent)" } as CSSProperties}
+		>
+			{isFiltered && <CalendarDays className="h-3.5 w-3.5 shrink-0" />}
+			<span className="whitespace-nowrap text-[10px] font-bold uppercase leading-none tracking-widest">
+				{t(`interest_page.window.${viewsWindow}`)}
+			</span>
+		</button>
+	);
+});
+
+/** Medal tints for the podium; everyone below it ranks in muted text. */
+const rankColorMap: Record<number, string> = {
+	1: "#FFC93C",
+	2: "#C7CDD4",
+	3: "#D08A4E",
+};
+
 const emojiColorMap: Record<number, string> = {
 	0: "255, 200, 0", // 👋
 	1: "255, 140, 0", // 🔥
@@ -146,6 +248,7 @@ export const InterestRow = memo(function InterestRow({
 	now,
 	isFirst,
 	isBlocked = false,
+	rank = null,
 }: {
 	item: InterestItem;
 	mode: InterestTab;
@@ -153,6 +256,8 @@ export const InterestRow = memo(function InterestRow({
 	now: number;
 	isFirst?: boolean;
 	isBlocked?: boolean;
+	/** 1-based leaderboard position, or null when the list isn't ranked. */
+	rank?: number | null;
 }) {
 	const { t } = useTranslation();
 	const { ref, revealClass } = useRevealOnScroll();
@@ -178,6 +283,24 @@ export const InterestRow = memo(function InterestRow({
 				revealClass
 			)}
 		>
+			{/* Leaderboard position (ranked views only) */}
+			{rank != null && (
+				<div className="-mr-1 flex min-w-5 shrink-0 items-center justify-center">
+					<span
+						className={cn(
+							"font-black leading-none tabular-nums",
+							rank >= 100 ? "text-[11px]" : "text-sm",
+						)}
+						style={{
+							color: rankColorMap[rank] ?? "var(--text-muted)",
+							textShadow: rankColorMap[rank] ? `0 0 8px ${rankColorMap[rank]}66` : undefined,
+						}}
+					>
+						{rank}
+					</span>
+				</div>
+			)}
+
 			{/* Avatar */}
 			<button
 				type="button"
@@ -249,10 +372,22 @@ export const InterestRow = memo(function InterestRow({
 					) : (
 						<div
 							className="glass-pill flex h-8 items-center gap-1.5 px-3"
-							style={{ "--pill-color": "var(--text-muted)" } as CSSProperties}
+							style={{
+								"--pill-color": rank != null ? "var(--accent)" : "var(--text-muted)",
+							} as CSSProperties}
 						>
-							<Eye className="h-3.5 w-3.5 text-[var(--text-muted)]" />
-							<span className="text-xs font-bold leading-none tabular-nums text-[var(--text)]">
+							<Eye
+								className={cn(
+									"h-3.5 w-3.5",
+									rank != null ? "text-[var(--accent)]" : "text-[var(--text-muted)]",
+								)}
+							/>
+							<span
+								className={cn(
+									"text-xs font-bold leading-none tabular-nums",
+									rank != null ? "text-[var(--accent)]" : "text-[var(--text)]",
+								)}
+							>
 								{item.viewCount || 1}
 							</span>
 						</div>

@@ -1,4 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
+import { fetchSpotifyTracks } from "../../services/spotifyTrackInfo";
 import { useApiFunctions } from "../useApiFunctions";
 import type { TravelPlanPayload } from "../../types/travel";
 import { findConversationByProfileId } from "../../services/chatDb";
@@ -217,5 +219,73 @@ export function useDeleteTravelPlan() {
 		mutationFn: ({ travelPlanId }: { travelPlanId: number; profileId: number }) =>
 			api.deleteTravelPlan(travelPlanId),
 		onSuccess: (_, variables) => invalidateTravelPlans(queryClient, variables.profileId),
+	});
+}
+
+/**
+ * Hook to fetch a profile's Spotify favourite track ids.
+ *
+ * This is an extra request per profile opened, for data that changes rarely
+ * and that most profiles will not have at all, so it caches hard and never
+ * retries. getSpotifyFavorites already swallows its own failures and returns
+ * an empty list, so there is no error state for callers to handle.
+ */
+export function useSpotifyFavorites(profileId: string | number | null | undefined) {
+	const api = useApiFunctions();
+	return useQuery({
+		queryKey: ["spotify-favorites", profileId == null ? null : String(profileId)],
+		queryFn: () => api.getSpotifyFavorites(profileId!),
+		enabled: profileId != null,
+		staleTime: 1000 * 60 * 30,
+		retry: false,
+	});
+}
+
+/**
+ * A profile's Spotify favourites, hydrated into renderable tracks.
+ *
+ * Grindr stores only bare track ids, so this is two stages: the ids from
+ * Grindr, then names and artwork from Spotify's public oEmbed endpoint. The
+ * second stage is keyed on the ids themselves rather than on the profile, so
+ * a track shared between two profiles is only ever looked up once.
+ */
+export function useSpotifyTracks(profileId: string | number | null | undefined) {
+	const { data: favorites, isLoading: isLoadingFavorites } = useSpotifyFavorites(profileId);
+	const songIds = useMemo(() => favorites?.songIds ?? [], [favorites]);
+
+	const { data: tracks, isLoading: isLoadingTracks } = useQuery({
+		queryKey: ["spotify-tracks", songIds.join(",")],
+		queryFn: () => fetchSpotifyTracks(songIds),
+		enabled: songIds.length > 0,
+		// Track metadata is immutable — never refetch it.
+		staleTime: Infinity,
+		retry: false,
+	});
+
+	return {
+		tracks: tracks ?? [],
+		songIds,
+		isLoading: isLoadingFavorites || (songIds.length > 0 && isLoadingTracks),
+	};
+}
+
+/**
+ * Replaces the signed-in user's Spotify favourites.
+ *
+ * The endpoint takes the whole list, so callers pass the full desired set of
+ * track ids, not a delta.
+ */
+export function useSetSpotifyFavorites(profileId: string | number | null | undefined) {
+	const api = useApiFunctions();
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: (songIds: string[]) => api.setSpotifyFavorites(songIds),
+		onSuccess: (_, songIds) => {
+			const key = profileId == null ? null : String(profileId);
+			// Write through rather than invalidate: the server just accepted
+			// this exact list, and refetching would race the read-after-write.
+			queryClient.setQueryData(["spotify-favorites", key], { songIds });
+		},
 	});
 }

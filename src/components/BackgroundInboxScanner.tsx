@@ -11,6 +11,8 @@ import {
 } from "../utils/autoblock";
 import { getOtherParticipant } from "../pages/app/chat/chatUtils";
 import { isProfileAutoblockWhitelisted, checkAndAutoWhitelistActiveChat, getSentMessagesThreshold } from "../utils/privacy";
+import type { ConversationEntry, MessagesResponse } from "../types/messages";
+import { preserveAndAutoBlockConversation } from "../services/autoBlockConversation";
 
 export function BackgroundInboxScanner() {
     const api = useApiFunctions();
@@ -26,6 +28,44 @@ export function BackgroundInboxScanner() {
         if (!api || userId == null) return;
 
         let isCancelled = false;
+
+        const blockConversation = async ({
+            conversation,
+            profileId,
+            displayName,
+            reason,
+            messageSnapshot,
+        }: {
+            conversation: ConversationEntry;
+            profileId: string;
+            displayName: string;
+            reason: string;
+            messageSnapshot?: MessagesResponse;
+        }): Promise<boolean> => {
+            try {
+                await preserveAndAutoBlockConversation({
+                    conversation,
+                    profileId,
+                    displayName,
+                    messageSnapshot,
+                    fetchMessages: () => api.listMessages({
+                        conversationId: conversation.data.conversationId,
+                    }),
+                    userId,
+                    getAlbum: (albumId) => api.getAlbum(albumId),
+                    blockProfile: () => api.blockProfile(profileId),
+                });
+                void notifyAutoBlock(displayName, reason);
+                window.dispatchEvent(new Event("fg-refresh-inbox"));
+                return true;
+            } catch (error) {
+                console.warn(
+                    `[BackgroundInboxScanner] Preserving/blocking ${conversation.data.conversationId} failed; leaving it available for retry:`,
+                    error,
+                );
+                return false;
+            }
+        };
 
         const scanInbox = async () => {
             if (isCancelled || isScanningRef.current) return;
@@ -87,14 +127,15 @@ export function BackgroundInboxScanner() {
                         profileId: getOtherParticipant(c, userId)!.profileId!.toString(),
                         unreadCount: c.data?.unreadCount ?? 0,
                         lastActivityTimestamp: c.data?.lastActivityTimestamp ?? 0,
-                        conversationId: c.data?.conversationId
+                        conversationId: c.data?.conversationId,
+                        conversation: c,
                     }));
 
                 if (toScan.length > 0) {
                     console.log(`[BackgroundInboxScanner] Found ${toScan.length} unscanned/updated profiles in inbox:`, toScan);
                     for (const item of toScan) {
                         if (isCancelled) break;
-                        const { profileId, unreadCount, lastActivityTimestamp, conversationId } = item;
+                        const { profileId, unreadCount, lastActivityTimestamp, conversationId, conversation } = item;
                         scannedProfilesRef.current.set(profileId, { unreadCount, lastActivityTimestamp });
 
                         try {
@@ -110,6 +151,7 @@ export function BackgroundInboxScanner() {
                             let blockReason = "";
                             let messages: any[] = [];
                             let fetchedMessages = false;
+                            let messageSnapshot: MessagesResponse | undefined;
                             let outgoingCount = 0;
 
                             if (isProfileAutoblockWhitelisted(profileId)) {
@@ -124,6 +166,7 @@ export function BackgroundInboxScanner() {
                                     const msgRes = await api.listMessages({ conversationId });
                                     messages = msgRes.messages || [];
                                     fetchedMessages = true;
+                                    messageSnapshot = msgRes;
                                     for (const msg of messages) {
                                         const msgIsMine = userId != null && Number(msg.senderId) === Number(userId);
                                         if (msgIsMine) {
@@ -162,6 +205,7 @@ export function BackgroundInboxScanner() {
                                                 const msgRes = await api.listMessages({ conversationId });
                                                 messages = msgRes.messages || [];
                                                 fetchedMessages = true;
+                                                messageSnapshot = msgRes;
                                             } catch {}
                                         }
                                         for (const msg of messages) {
@@ -185,6 +229,7 @@ export function BackgroundInboxScanner() {
                                             const msgRes = await api.listMessages({ conversationId });
                                             messages = msgRes.messages || [];
                                             fetchedMessages = true;
+                                            messageSnapshot = msgRes;
                                         }
                                         
                                         let hasOutgoing = false;
@@ -260,9 +305,19 @@ export function BackgroundInboxScanner() {
                                                             }
                                                             if (!hasOutgoingNow && !hasIncomingTextNow) {
                                                                 console.log(`[BackgroundInboxScanner] Delayed block: Blocking ${profileId} (${name})`);
-                                                                await api.blockProfile(profileId);
-                                                                void notifyAutoBlock(name, `Scanner: First message was media (Bot evasion)`);
-                                                                window.dispatchEvent(new Event("fg-refresh-inbox"));
+                                                                const delayedBlocked = await blockConversation({
+                                                                    conversation,
+                                                                    profileId,
+                                                                    displayName: name,
+                                                                    reason: "Scanner: First message was media (Bot evasion)",
+                                                                    messageSnapshot: msgRes2,
+                                                                });
+                                                                if (!delayedBlocked) {
+                                                                    // Preserving failed (e.g. an album share we couldn't
+                                                                    // fully download yet) — forget the scan cache entry so
+                                                                    // the next inbox pass re-evaluates and retries.
+                                                                    scannedProfilesRef.current.delete(profileId);
+                                                                }
                                                             }
                                                         } catch (err) {
                                                             console.warn("[BackgroundInboxScanner] Delayed block error:", err);
@@ -284,11 +339,16 @@ export function BackgroundInboxScanner() {
 
                             if (blockReason) {
                                 console.log(`[BackgroundInboxScanner] Blocking ${profileId} (${name}) for: ${blockReason}`);
-                                await api.blockProfile(profileId);
-                                void notifyAutoBlock(name, `Scanner: ${blockReason}`);
-                                
-                                // Dispatch event to refresh the inbox if currently viewing it
-                                window.dispatchEvent(new Event("fg-refresh-inbox"));
+                                const blocked = await blockConversation({
+                                    conversation,
+                                    profileId,
+                                    displayName: name,
+                                    reason: `Scanner: ${blockReason}`,
+                                    messageSnapshot,
+                                });
+                                if (!blocked) {
+                                    scannedProfilesRef.current.delete(profileId);
+                                }
                             }
                         } catch (err) {
                             console.warn(`[BackgroundInboxScanner] Failed to scan profile ${profileId}:`, err);
@@ -375,10 +435,16 @@ export function BackgroundInboxScanner() {
                                     const displayName = c.data?.name || profileId;
                                     const minutesElapsed = Math.round(elapsed / 60000);
                                     console.log(`[BackgroundInboxScanner] Blocking ${profileId} (${displayName}) for: Left on seen for ${minutesElapsed}min`);
-                                    await api.blockProfile(profileId);
-                                    void notifyAutoBlock(displayName, `Left on seen for ${minutesElapsed}min`);
-                                    seenStartTimesRef.current.delete(conversationId);
-                                    window.dispatchEvent(new Event("fg-refresh-inbox"));
+                                    const blocked = await blockConversation({
+                                        conversation: c,
+                                        profileId,
+                                        displayName,
+                                        reason: `Left on seen for ${minutesElapsed}min`,
+                                        messageSnapshot: msgRes,
+                                    });
+                                    if (blocked) {
+                                        seenStartTimesRef.current.delete(conversationId);
+                                    }
                                 }
                             } else {
                                 // They haven't read it yet — no countdown
@@ -494,9 +560,13 @@ export function BackgroundInboxScanner() {
                                 // Block them!
                                 const displayName = c.data?.name || profileId;
                                 console.log(`[BackgroundInboxScanner] Blocking faceless profile ${profileId} (${displayName}) - no media sent after 5 minutes`);
-                                await api.blockProfile(profileId);
-                                void notifyAutoBlock(displayName, `Faceless profile: No media sent 5min after first message`);
-                                window.dispatchEvent(new Event("fg-refresh-inbox"));
+                                await blockConversation({
+                                    conversation: c,
+                                    profileId,
+                                    displayName,
+                                    reason: "Faceless profile: No media sent 5min after first message",
+                                    messageSnapshot: msgRes,
+                                });
                             }
 
                         } catch (err) {
