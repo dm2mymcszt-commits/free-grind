@@ -70,9 +70,6 @@ impl<R: Runtime> Notification<R> {
 mod imp {
     //! Types and functions related to desktop notifications.
 
-    #[cfg(windows)]
-    use std::path::MAIN_SEPARATOR as SEP;
-
     /// The desktop notification definition.
     ///
     /// Allows you to construct a Notification data and send it.
@@ -194,15 +191,21 @@ mod imp {
             }
             #[cfg(windows)]
             {
-                let exe = tauri::utils::platform::current_exe()?;
-                let exe_dir = exe.parent().expect("failed to get exe directory");
-                let curr_dir = exe_dir.display().to_string();
-                // set the notification's System.AppUserModel.ID only when running the installed app
-                if !(curr_dir.ends_with(format!("{SEP}target{SEP}debug").as_str())
-                    || curr_dir.ends_with(format!("{SEP}target{SEP}release").as_str()))
-                {
-                    notification.app_id(&self.identifier);
-                }
+                // Always stamp the notification with our own System.AppUserModel.ID.
+                //
+                // Upstream skips this for `target/debug` and `target/release` builds,
+                // because an AUMID Windows cannot resolve makes it drop the toast
+                // silently — so unpackaged builds fall through to the default AUMID
+                // baked into tauri-winrt-notification, which is PowerShell's. That is
+                // why dev toasts announce themselves as "Windows PowerShell".
+                //
+                // We register `dev.estopia.free-grind` ourselves under
+                // HKCU\Software\Classes\AppUserModelId (see
+                // scripts/register-toast-aumid.ps1), so the ID resolves no matter where
+                // the exe lives and the toast carries the real name and icon. Run that
+                // script once per machine; without it Windows has nothing to resolve
+                // and notifications will not appear at all.
+                notification.app_id(&self.identifier);
             }
             #[cfg(target_os = "macos")]
             {
