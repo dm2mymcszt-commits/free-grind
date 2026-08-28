@@ -934,24 +934,27 @@ export async function repairArchivedConversationPreviews(): Promise<number> {
  * Guards the one-time purge below. Stored per account (settings live in that
  * account's own db file), so each account is cleaned exactly once.
  */
-const SYNTHETIC_PLACEHOLDER_PURGE_KEY = "synthetic-block-placeholder-purge-v1";
+const SYNTHETIC_PLACEHOLDER_PURGE_KEY = "synthetic-block-placeholder-purge-v2";
 
 /**
- * One-time removal of `direct:<profileId>` archive shells that hold nothing.
+ * One-time removal of archive shells for people the user never actually had a
+ * conversation with.
  *
- * Interest-view auto-blocking used to route every block through
- * applySelfBlockAction, which minted one of these for any profile with no
- * conversation — producing archived "chats" reading "No messages yet" with a
- * single "You blocked this person" marker, for people the user never messaged.
- * The service layer no longer creates them (see
- * ApplySelfBlockActionOptions.materializeMissingConversation); this clears the
- * ones already on disk.
+ * Interest-view auto-blocking fabricated these two ways: applySelfBlockAction
+ * minting a `direct:<profileId>` row, and — the one that actually fired in
+ * practice — preserveAndAutoBlockProfile accepting an empty message list from
+ * a *derived* `<a>:<b>` id as proof that a conversation existed. Both produced
+ * archived "chats" reading "No messages yet" carrying a single "You blocked
+ * this person" marker. Neither path creates them any more; this clears the
+ * ones already on disk, whichever id shape they took.
  *
  * Runs after repairSyntheticBlockedConversations, so any shell whose real
  * conversation could be recovered has already been migrated and is not a
- * candidate here. Every guard below has to hold — content-free, media-free,
- * album-free, and marked as blocked by us — so a legitimate local `direct:*`
- * draft or a preserved thread can never be caught by it.
+ * candidate here. All four guards have to hold: no preview, no content
+ * message, no media, no album. The preview is the load-bearing one — a
+ * conversation that genuinely existed was built from an inbox entry and
+ * carries its last message as a preview, while a fabricated shell is built
+ * with `preview: null` because there was no message to build one from.
  */
 export async function purgeEmptySyntheticBlockedConversations(): Promise<number> {
 	const alreadyPurged = await getSetting<boolean>(SYNTHETIC_PLACEHOLDER_PURGE_KEY).catch(
@@ -964,8 +967,8 @@ export async function purgeEmptySyntheticBlockedConversations(): Promise<number>
 	const candidates = (await listConversations({ includeArchived: true })).filter(
 		(conversation) =>
 			conversation.archived &&
-			conversation.conversationId.startsWith("direct:") &&
-			conversation.blockState === "blocked_by_me",
+			conversation.blockState === "blocked_by_me" &&
+			!conversation.entry.data.preview,
 	);
 
 	let purged = 0;

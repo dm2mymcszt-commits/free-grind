@@ -330,26 +330,34 @@ async function resolveConversationForProfile(
 	profileId: string,
 	options: PreserveAndAutoBlockProfileOptions,
 ): Promise<{ conversation: ConversationEntry; snapshot: MessagesResponse } | null> {
-	const candidates: string[] = [];
-	const addCandidate = (id: string | null | undefined) => {
-		if (id && !id.startsWith("direct:") && !candidates.includes(id)) {
-			candidates.push(id);
+	// `observed` marks an id we have actually seen belong to a conversation —
+	// a stored row, or the local contact index. A *derived* id is only a guess
+	// at what the server would call this pair, and the server answers for any
+	// valid pair whether or not the two have ever spoken (see below).
+	const candidates: { conversationId: string; observed: boolean }[] = [];
+	const addCandidate = (id: string | null | undefined, observed: boolean) => {
+		if (
+			id
+			&& !id.startsWith("direct:")
+			&& !candidates.some((candidate) => candidate.conversationId === id)
+		) {
+			candidates.push({ conversationId: id, observed });
 		}
 	};
 
 	const stored = await chatDb.findConversationByProfileId(profileId).catch(() => null);
-	addCandidate(stored?.conversationId);
+	addCandidate(stored?.conversationId, true);
 
 	if (candidates.length === 0) {
 		const [indexed] = await getChatContactIndexForProfiles([profileId]).catch(() => []);
-		addCandidate(indexed?.conversationId);
+		addCandidate(indexed?.conversationId, true);
 	}
 
 	if (options.userId != null) {
-		addCandidate(buildDirectConversationId(options.userId, profileId));
+		addCandidate(buildDirectConversationId(options.userId, profileId), false);
 	}
 
-	for (const conversationId of candidates) {
+	for (const { conversationId, observed } of candidates) {
 		// The fetch is the confirmation: a conversation id we derived (or
 		// remembered from an index that can outlive the conversation) is only
 		// worth preserving under if the server still answers for it.
@@ -376,6 +384,22 @@ async function resolveConversationForProfile(
 			);
 			continue;
 		}
+
+		// A 200 with an empty thread is NOT confirmation for an id we derived
+		// ourselves: the server answers for any valid pair of profile ids,
+		// including two people who have never exchanged a word. Accepting it
+		// is what turned "block someone who viewed your profile" into a
+		// fabricated archived chat — a conversation row, named after them,
+		// carrying nothing but a "You blocked this person" marker. There is
+		// also nothing to preserve in an empty thread, so falling through to
+		// the plain block loses no history.
+		if (!observed && snapshot.messages.length === 0) {
+			appLog.debug(
+				`[auto-block] derived conversation ${conversationId} for ${profileId} came back empty — treating as no conversation`,
+			);
+			continue;
+		}
+
 		return {
 			conversation:
 				stored?.conversationId === conversationId
@@ -453,6 +477,12 @@ export function withPreservingBlock<
 				blockProfile: () => api.blockProfile(profileId),
 				// One-shot triggers can't retry — see mayDeferOnIncompleteCapture.
 				mayDeferOnIncompleteCapture: false,
+				// A rule that fires on a tap or a view blocks someone there may
+				// be no chat with at all, exactly like the Interest sweep — so it
+				// must not leave an archived chat behind for one that never
+				// existed either. A real conversation still resolves above and is
+				// preserved and archived as before; only the empty shell is gone.
+				materializeMissingConversation: false,
 			}),
 	};
 }
