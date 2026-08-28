@@ -2333,7 +2333,7 @@ export async function countTableRowsSince(
 export async function upsertTableRows(
 	name: string,
 	rows: Record<string, unknown>[],
-	options?: { skipColumns?: string[] },
+	options?: { skipColumns?: string[]; newerThanColumn?: string; maxColumns?: string[] },
 ): Promise<number> {
 	const table = requirePortableTable(name);
 	if (rows.length === 0) {
@@ -2343,14 +2343,39 @@ export async function upsertTableRows(
 	const skip = new Set(options?.skipColumns ?? []);
 	const columns = table.columns.filter((column) => !skip.has(column));
 	const placeholders = columns.map((_, index) => `$${index + 1}`).join(", ");
+
+	// Columns that only ever move forward (a read cursor), merged by taking the
+	// larger side rather than whichever file happened to be imported last.
+	const maxColumns = new Set(
+		(options?.maxColumns ?? []).filter((column) => columns.includes(column)),
+	);
+
 	const updates = columns
 		.filter((column) => column !== table.primaryKey)
-		.map((column) => `${column} = excluded.${column}`)
+		.map((column) =>
+			maxColumns.has(column)
+				? `${column} = MAX(COALESCE(excluded.${column}, 0), COALESCE(${table.name}.${column}, 0))`
+				: `${column} = excluded.${column}`,
+		)
 		.join(", ");
+
+	/**
+	 * Last-writer-wins guard. Without it an import is a blind overwrite, so
+	 * restoring a backup taken on a device that had been sitting closed would
+	 * drag live rows backwards — unread counts, last-activity times and
+	 * conversation previews all regressing to whatever the stale side held.
+	 * Rows the target doesn't have still insert normally; only genuine
+	 * conflicts consult the timestamp.
+	 */
+	const guard =
+		options?.newerThanColumn && columns.includes(options.newerThanColumn)
+			? ` WHERE COALESCE(excluded.${options.newerThanColumn}, 0) >= COALESCE(${table.name}.${options.newerThanColumn}, 0)`
+			: "";
+
 	const sql = `
 		INSERT INTO ${table.name} (${columns.join(", ")})
 		VALUES (${placeholders})
-		ON CONFLICT(${table.primaryKey}) DO UPDATE SET ${updates}
+		ON CONFLICT(${table.primaryKey}) DO UPDATE SET ${updates}${guard}
 	`;
 
 	let written = 0;

@@ -102,6 +102,8 @@ type TableSpec = {
 	 * would buy nothing and risk dropping a row that changed in place.
 	 */
 	sinceColumn?: string;
+	/** Columns merged by keeping the larger of the two values. */
+	maxColumns?: string[];
 };
 
 /**
@@ -113,7 +115,15 @@ type TableSpec = {
  */
 const TABLE_SPECS: TableSpec[] = [
 	{ section: "core", table: "conversations", source: "chatDb", pageSize: 2000, sinceColumn: "updated_at" },
-	{ section: "core", table: "conversation_meta", source: "chatDb", pageSize: 5000 },
+	{
+		section: "core",
+		table: "conversation_meta",
+		source: "chatDb",
+		pageSize: 5000,
+		// A read cursor only ever moves forward, so the two sides are merged
+		// by taking the later mark rather than letting the import win.
+		maxColumns: ["last_read_timestamp"],
+	},
 	{ section: "core", table: "messages", source: "chatDb", pageSize: 2000, sinceColumn: "updated_at" },
 	{ section: "core", table: "settings", source: "chatDb", pageSize: 500 },
 	{ section: "core", table: "saved_phrases", source: "chatDb", pageSize: 2000, sinceColumn: "created_at" },
@@ -777,7 +787,14 @@ export async function importBackup(
 			return 0;
 		}
 		if (spec.source === "chatDb") {
-			return chatDb.upsertTableRows(table, rows, { skipColumns: spec.omitColumns });
+			return chatDb.upsertTableRows(table, rows, {
+				skipColumns: spec.omitColumns,
+				// The same column that identifies a changed row also decides who
+				// wins a conflict, so importing an older backup can't drag live
+				// rows backwards.
+				newerThanColumn: spec.sinceColumn,
+				maxColumns: spec.maxColumns,
+			});
 		}
 		if (contactIndex.isContactIndexTable(table)) {
 			return contactIndex.upsertContactIndexRows(table, rows);

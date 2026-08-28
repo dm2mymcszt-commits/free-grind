@@ -841,7 +841,72 @@ export function exportInterestViewRows(): Promise<StoredInterestView[] | null> {
 	return readAllRows(resolveDbName());
 }
 
-/** Restores rows exactly as exported. Returns false if the write failed. */
-export function importInterestViewRows(rows: StoredInterestView[]): Promise<boolean> {
-	return writeRowsVerbatim(resolveDbName(), rows);
+/**
+ * Folds imported rows into whatever this device already banked.
+ *
+ * Deliberately not a plain `put`. Two devices scanning independently each
+ * observe views the other never saw, so the union is the only result that
+ * satisfies "same stats on both". A blind overwrite would also let a backup
+ * taken on a device that had been closed for days replace a live row with a
+ * staler one, throwing away view history the importing device had collected
+ * in the meantime.
+ *
+ * Field by field: view times are unioned, `firstSeenAt` keeps the earliest
+ * sighting (it is the age anchor the expiry sweep reads, so the older one is
+ * the true one), counters take the larger side, and the descriptive fields
+ * follow whichever row was updated more recently.
+ */
+export function mergeInterestViewRow(
+	existing: StoredInterestView | undefined,
+	incoming: StoredInterestView,
+): StoredInterestView {
+	if (!existing) {
+		return incoming;
+	}
+
+	const times = new Set<number>([
+		...(existing.viewTimestamps ?? []),
+		...(incoming.viewTimestamps ?? []),
+	]);
+	for (const row of [existing, incoming]) {
+		if (row.timestamp != null) {
+			times.add(row.timestamp);
+		}
+	}
+	const viewTimestamps = [...times].sort((a, b) => b - a).slice(0, MAX_VIEW_TIMESTAMPS);
+	const newer = (incoming.updatedAt ?? 0) >= (existing.updatedAt ?? 0) ? incoming : existing;
+
+	return {
+		profileId: existing.profileId,
+		displayName: newer.displayName || existing.displayName || incoming.displayName,
+		imageHash: newer.imageHash ?? existing.imageHash ?? incoming.imageHash,
+		timestamp: Math.max(existing.timestamp ?? 0, incoming.timestamp ?? 0) || null,
+		viewCount: Math.max(existing.viewCount ?? 0, incoming.viewCount ?? 0) || null,
+		viewTimestamps: viewTimestamps.length > 0 ? viewTimestamps : undefined,
+		firstSeenAt:
+			Math.min(
+				existing.firstSeenAt ?? existing.updatedAt ?? Infinity,
+				incoming.firstSeenAt ?? incoming.updatedAt ?? Infinity,
+			) || undefined,
+		updatedAt: Math.max(existing.updatedAt ?? 0, incoming.updatedAt ?? 0),
+	};
+}
+
+/** Merges imported rows into this account's store. False if the write failed. */
+export async function importInterestViewRows(
+	rows: StoredInterestView[],
+): Promise<boolean> {
+	const dbName = resolveDbName();
+	const current = await readAllRows(dbName);
+	if (current === null) {
+		// Can't read what's here, so a write would be a blind overwrite.
+		return false;
+	}
+
+	const byId = new Map(current.map((row) => [row.profileId, row]));
+	const merged = rows
+		.filter((row) => row?.profileId && !isPreviewId(row.profileId))
+		.map((row) => mergeInterestViewRow(byId.get(row.profileId), row));
+
+	return writeRowsVerbatim(dbName, merged);
 }

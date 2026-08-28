@@ -531,10 +531,14 @@ export async function upsertContactIndexRows(
 		.filter((column) => column !== table.primaryKey)
 		.map((column) => `${column} = excluded.${column}`)
 		.join(", ");
+	// Last-writer-wins on updated_at. A blind overwrite here would let a backup
+	// from a device that had been closed for days roll back live unread counts
+	// and last-message times for tens of thousands of profiles.
 	const sql = `
 		INSERT INTO ${name} (${table.columns.join(", ")})
 		VALUES (${placeholders})
 		ON CONFLICT(${table.primaryKey}) DO UPDATE SET ${updates}
+		WHERE COALESCE(excluded.updated_at, 0) >= COALESCE(${name}.updated_at, 0)
 	`;
 
 	let written = 0;
