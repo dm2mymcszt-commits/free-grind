@@ -7,7 +7,7 @@ Last updated: 2026-09-02
 - Branch: `upstream-integrated-features`
 - Baseline commit: `ffb04c3d`
 - Implementation commit: `54968765` (`feat: add encrypted Google Drive sync`).
-- The source implementation is committed locally. At this checkpoint the commit has not yet been pushed, and the credential-enabled CI artifacts have not yet run.
+- The source implementation and checkpoint are committed and pushed to `origin/upstream-integrated-features`.
 - Existing manual backup/import v1/v2 remains unchanged and is the separate disaster-recovery path.
 - Cloud sync remains optional. The complete controller adapter is registered only in the child Tauri app; nothing connects or uploads until the user explicitly connects Google Drive.
 
@@ -27,8 +27,8 @@ Last updated: 2026-09-02
 2. **Complete after store-bound identity hardening:** account-scoped protocol/journal/native prerequisites and profile-isolated data are complete. Schema v4 binds the per-install cloud source ID inside each profile's durable sync store, restores a missing browser copy from that binding, recovers exactly one pre-v4 local counter/outbox source, and fails closed on conflicts, ambiguous legacy sources, or an enrolled unbound store with no recoverable browser ID. Manual backup retains its separate ephemeral fallback.
 3. **Complete after final reset hardening:** pairing rollback floors, direct-create cleanup, and response-lost create recovery all best-effort remove their exact verified pending files when the anchor is absent/revoked; a present conflicting anchor never authorizes deletion.
 4. **Complete after final recovery UX hardening:** lifecycle/cache/UI integration is complete, and every connected device exposes a Google reauthorization action that preserves its namespace, bootstrap identity, and vault key even after the structured error flag is lost on restart.
-5. **Windows complete after schema-v4 identity hardening; platform validation remains:** every Windows-verifiable protocol/controller checkpoint is covered, including pairing rollback, remote fault/reset interruption, the 3 MiB package-size boundary, two-device convergence, store-bound source identity, reauthorization, the full 113-test suite, and a fresh optimized Tauri compile. Only macOS/CI and real-device iOS/TrollStore validation remains.
-6. **Windows security/release review and OAuth provisioning complete; external validation remains:** release-workflow OAuth/iOS packaging fixes are committed and statically verified. Both GitHub repository secret names are configured, the store-bound source-identity P1 is resolved, its independent bounded review found no P0/P1/P2 issue, and the final Windows matrix is green. Credential-enabled Windows/macOS CI and real iPhone/TrollStore validation remain.
+5. **Windows and macOS CI complete after schema-v4 identity hardening; real-device validation remains:** every Windows-verifiable protocol/controller checkpoint is covered, including pairing rollback, remote fault/reset interruption, the 3 MiB package-size boundary, two-device convergence, store-bound source identity, reauthorization, the full 113-test suite, and a fresh optimized Tauri compile. Credential-enabled Windows and unsigned iOS artifacts now build successfully in CI. Real Windows OAuth and iPhone/TrollStore behavior remain.
+6. **Security/release review, OAuth provisioning, and test-artifact packaging complete; external acceptance remains:** release-workflow OAuth/iOS packaging fixes are committed and statically verified. Both GitHub repository secret names are configured, the store-bound source-identity P1 is resolved, its independent bounded review found no P0/P1/P2 issue, and the final Windows matrix is green. Real account authorization, pairing, convergence, refresh, and over-install validation remain.
 
 ## Completed implementation
 
@@ -114,7 +114,7 @@ Last updated: 2026-09-02
 
 ## Exact next action
 
-Do not repeat the completed audits or Windows matrix. Push commits `54968765` and the durable checkpoint to `origin/upstream-integrated-features`, then monitor the safe feature-branch workflow. It must produce `free-grind-windows-x64` and `free-grind-unsigned-ipa` without creating a release or publishing OTA data. Inspect both artifacts, then perform the real Windows install and TrollStore over-install, pairing, key-persistence, token-refresh, laptop-off/phone-offline convergence, and force-quit launch/resume catch-up sequence. Keep media policy forced off and keep manual backup/import untouched.
+Do not repeat the completed audits, Windows matrix, OAuth provisioning, CI build, or artifact inspection. The laptop must first make a fresh manual full backup while the existing app is still running. Then close the existing `src-tauri/target/release/free-grind.exe`, launch or place the credential-enabled test executable under the same `free-grind` instance label, and complete the first real Windows Google authorization and authoritative upload. Only after Windows reports Up to date should the unsigned IPA be over-installed through the same TrollStore entry and paired. Then perform key-persistence, token-refresh, laptop-off/phone-offline convergence, and force-quit launch/resume catch-up. Keep media policy forced off and keep manual backup/import untouched.
 
 ## OAuth activation checkpoint completed on 2026-09-02
 
@@ -122,3 +122,7 @@ Do not repeat the completed audits or Windows matrix. Push commits `54968765` an
 - An independent pre-commit audit found no real OAuth IDs, client secrets, private keys, tokens, generated binaries, or unrelated files in the implementation scope.
 - The existing feature workflow was extended under read-only repository permissions to build and upload a Windows installer/executable alongside the unsigned iOS IPA. It has no release creation or OTA publication step.
 - Both workflow files parse as YAML and `git diff --check` remains clean apart from expected Windows line-ending notices.
+- GitHub Actions run `33638153247` completed successfully: unsigned iOS in 6m03s and credential-enabled Windows in 13m14s. It created no release and published no OTA data.
+- Downloaded artifacts are stored under ignored directory `dist/google-drive-test-86a16ec9`: `free-grind-unsigned.ipa` (SHA-256 `E0CA7CECC40BF6BF1A141C6C0F853ACF25CDF9C7EE8C3F7B555FCD0567A43E05`) and portable `free-grind.exe` (SHA-256 `3AFBF73413A5768B8846AB28D172969756448EF3DE42B2FF7D45E16828FADA2B`).
+- Artifact inspection confirms bundle ID `dev.estopia.free-grind`, iOS 17 compatibility, an unsigned TrollStore payload, required privacy descriptions, one callback scheme matching the embedded iOS client, one separate same-project desktop client, and Windows file/product version 0.5.3. Neither client ID value was printed.
+- The Windows output is the portable child executable rather than an installer. The currently running authoritative app uses `src-tauri/target/release/free-grind.exe`; preserve its `free-grind` instance label when launching or replacing it for the real test.
