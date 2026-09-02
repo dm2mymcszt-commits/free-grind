@@ -1,9 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CheckCheck, Eye, ImageOff, ToggleRight, ScanSearch } from "lucide-react";
 import { BackToSettings } from "../../components/BackToSettings";
 import { ToggleRow } from "../../components/ui/toggle-row";
 import { usePreferences } from "../../contexts/PreferencesContext";
+import { useAuth } from "../../contexts/useAuth";
+import {
+	GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+	type GoogleDriveSyncDataAppliedDetail,
+} from "../../services/googleDriveSyncRuntime";
 import {
 	getHideReadReceiptsGlobal,
 	getShowReadReceiptToggle,
@@ -16,11 +21,38 @@ import {
 export function SettingsPrivacyPage() {
 	const { t } = useTranslation();
 	const { blurIncomingMedia, setPreferences } = usePreferences();
+	const { userId, settingsReady } = useAuth();
 
 	const [readReceiptsEnabled, setReadReceiptsEnabled] = useState(() => !getHideReadReceiptsGlobal());
 	const [showReadReceiptToggle, setShowReadReceiptToggle] = useState(() => getShowReadReceiptToggle());
 	const [recordProfileViews, setRecordProfileViews] = useState(() => isRecordProfileViewsEnabled());
 	const [imageScannerEnabled, setImageScannerEnabled] = useState(() => window.localStorage.getItem("fg-image-scanner-enabled") === "true");
+
+	useEffect(() => {
+		if (!settingsReady || userId == null) return;
+		const refreshPrivacySettings = () => {
+			setReadReceiptsEnabled(!getHideReadReceiptsGlobal());
+			setShowReadReceiptToggle(getShowReadReceiptToggle());
+			setRecordProfileViews(isRecordProfileViewsEnabled());
+		};
+		const handleCloudDataApplied = (event: Event) => {
+			const detail = (event as CustomEvent<GoogleDriveSyncDataAppliedDetail>).detail;
+			if (detail?.profileId !== userId) return;
+			refreshPrivacySettings();
+		};
+
+		refreshPrivacySettings();
+		window.addEventListener(
+			GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+			handleCloudDataApplied,
+		);
+		return () => {
+			window.removeEventListener(
+				GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+				handleCloudDataApplied,
+			);
+		};
+	}, [settingsReady, userId]);
 
 	return (
 		<section className="app-screen">

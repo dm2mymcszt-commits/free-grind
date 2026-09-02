@@ -56,6 +56,10 @@ import {
 	isBlockConfirmSkipped,
 	isUnblockConfirmSkipped,
 } from "../../utils/blockConfirm";
+import {
+	GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+	type GoogleDriveSyncDataAppliedDetail,
+} from "../../services/googleDriveSyncRuntime";
 
 const EXPLORE_LOCATION_STORAGE_KEY = "grid_explore_location_v1";
 
@@ -281,6 +285,20 @@ export function GridPage() {
 		nicknameFilter,
 		applyDraft,
 	} = useBrowseFilters(getDefaultBrowseFiltersDraft());
+	const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+	const [isLocationOpen, setIsLocationOpen] = useState(false);
+	const pendingCloudBrowseFiltersRef = useRef(false);
+	const browseFiltersLoadGenerationRef = useRef(0);
+	const applyBrowseFiltersDraftRef = useRef(applyDraft);
+	applyBrowseFiltersDraftRef.current = applyDraft;
+	const reloadPersistedBrowseFilters = useCallback(() => {
+		const generation = ++browseFiltersLoadGenerationRef.current;
+		void loadBrowseFiltersDraft().then((draft) => {
+			if (generation === browseFiltersLoadGenerationRef.current) {
+				applyBrowseFiltersDraftRef.current(draft);
+			}
+		});
+	}, []);
 
 	// Reload whenever the active account's chatDb is ready (settingsReady),
 	// so switching accounts from GridPage's own account switcher also
@@ -289,8 +307,11 @@ export function GridPage() {
 	// reload in PreferencesContext.tsx).
 	useEffect(() => {
 		if (!settingsReady) {
+			browseFiltersLoadGenerationRef.current += 1;
 			return;
 		}
+		pendingCloudBrowseFiltersRef.current = false;
+		browseFiltersLoadGenerationRef.current += 1;
 		// Skip if we just navigated in with an explicit filter draft (e.g. tag-click
 		// from a profile) — otherwise this clobbers it with the stale persisted draft
 		// once the async load resolves, right after it was applied.
@@ -302,12 +323,44 @@ export function GridPage() {
 		if (hasPendingDraft) {
 			return;
 		}
-		void loadBrowseFiltersDraft().then(applyDraft);
+		reloadPersistedBrowseFilters();
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [userId, settingsReady]);
 
-	const [isFiltersOpen, setIsFiltersOpen] = useState(false);
-	const [isLocationOpen, setIsLocationOpen] = useState(false);
+	useEffect(() => {
+		const handleCloudDataApplied = (event: Event) => {
+			const detail = (event as CustomEvent<GoogleDriveSyncDataAppliedDetail>).detail;
+			if (!settingsReady || userId == null || detail?.profileId !== userId) {
+				return;
+			}
+			// The overlay owns a private draft while it is open. Defer the remote
+			// value until a cancel/close so an in-progress edit is never discarded.
+			if (isFiltersOpen) {
+				pendingCloudBrowseFiltersRef.current = true;
+				return;
+			}
+			reloadPersistedBrowseFilters();
+		};
+
+		window.addEventListener(
+			GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+			handleCloudDataApplied,
+		);
+		return () => {
+			window.removeEventListener(
+				GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+				handleCloudDataApplied,
+			);
+		};
+	}, [isFiltersOpen, reloadPersistedBrowseFilters, settingsReady, userId]);
+
+	useEffect(() => {
+		if (isFiltersOpen || !pendingCloudBrowseFiltersRef.current) {
+			return;
+		}
+		pendingCloudBrowseFiltersRef.current = false;
+		reloadPersistedBrowseFilters();
+	}, [isFiltersOpen, reloadPersistedBrowseFilters]);
 
 	useEffect(() => {
 		const handleOpenLocation = () => setIsLocationOpen(true);
@@ -739,28 +792,49 @@ export function GridPage() {
 	}, []);
 
 	useEffect(() => {
-		const profileIds = cards.map((card) => card.profileId);
-		if (profileIds.length === 0) {
+		if (!settingsReady || userId == null) {
 			setChatContactIndexByProfileId({});
 			return;
 		}
-
 		let cancelled = false;
-		void getChatContactIndexForProfiles(profileIds)
-			.then((records) => {
+		const hydrateChatContactIndex = async () => {
+			const profileIds = cards.map((card) => card.profileId);
+			if (profileIds.length === 0) {
+				if (!cancelled) setChatContactIndexByProfileId({});
+				return;
+			}
+
+			try {
+				const records = await getChatContactIndexForProfiles(profileIds);
 				if (cancelled || !isMountedRef.current) {
 					return;
 				}
 				setChatContactIndexByProfileId(indexChatContactRecordsByProfileId(records));
-			})
-			.catch((error) => {
+			} catch (error) {
 				appLog.warn("[chat-index] failed to hydrate grid contact index", error);
-			});
+			}
+		};
+		const handleCloudDataApplied = (event: Event) => {
+			const detail = (event as CustomEvent<GoogleDriveSyncDataAppliedDetail>).detail;
+			if (!settingsReady || userId == null || detail?.profileId !== userId) {
+				return;
+			}
+			void hydrateChatContactIndex();
+		};
 
+		void hydrateChatContactIndex();
+		window.addEventListener(
+			GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+			handleCloudDataApplied,
+		);
 		return () => {
 			cancelled = true;
+			window.removeEventListener(
+				GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+				handleCloudDataApplied,
+			);
 		};
-	}, [cards]);
+	}, [cards, settingsReady, userId]);
 
 	useEffect(() => {
 		if (!isLoadingCards || cardsError || isLoadingPreferences) {
@@ -1741,6 +1815,8 @@ export function GridPage() {
 					} satisfies BrowseFiltersDraft}
 					onClose={() => setIsFiltersOpen(false)}
 					onApply={(draft) => {
+						pendingCloudBrowseFiltersRef.current = false;
+						browseFiltersLoadGenerationRef.current += 1;
 						applyDraft(draft);
 						setIsFiltersOpen(false);
 					}}

@@ -1484,6 +1484,7 @@ version = "0.5.3"
 dependencies = [
  "android-native-keyring-store",
  "apple-native-keyring-store",
+ "base64 0.22.1",
  "chrono",
  "futures-util",
  "http",
@@ -1492,6 +1493,7 @@ dependencies = [
  "linux-keyutils-keyring-store",
  "rand 0.10.1",
  "reqwest 0.12.28",
+ "ring",
  "rmp-serde",
  "rustls",
  "serde",
@@ -1504,6 +1506,7 @@ dependencies = [
  "tauri-plugin-geolocation",
  "tauri-plugin-hotswap",
  "tauri-plugin-http",
+ "tauri-plugin-ios-google-oauth",
  "tauri-plugin-ios-keyboard-fix",
  "tauri-plugin-ios-photos",
  "tauri-plugin-notification",
@@ -1519,6 +1522,7 @@ dependencies = [
  "windows",
  "windows-native-keyring-store",
  "wreq",
+ "zeroize",
 ]
 
 [[package]]
@@ -5730,6 +5734,15 @@ dependencies = [
  "tokio",
  "url",
  "urlpattern",
+]
+
+[[package]]
+name = "tauri-plugin-ios-google-oauth"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "tauri",
+ "tauri-plugin",
 ]
 
 [[package]]

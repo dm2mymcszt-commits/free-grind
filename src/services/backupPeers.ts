@@ -90,6 +90,94 @@ export function getDeviceId(): string {
 	return created;
 }
 
+/**
+ * Stable per-install id for Google Drive sync.
+ *
+ * Automatic cloud sync cannot safely use getDeviceId's ephemeral fallback: a
+ * new source id after storage loss would let one installation fork its own
+ * immutable history. Prove that the chosen id can be written and read back
+ * before returning it, and otherwise stop cloud sync.
+ */
+export function getGoogleDriveSyncDeviceId(): string {
+	try {
+		const storage = window.localStorage;
+		const deviceId = storage.getItem(DEVICE_ID_KEY) || randomId();
+		storage.setItem(DEVICE_ID_KEY, deviceId);
+		if (storage.getItem(DEVICE_ID_KEY) !== deviceId) {
+			throw new Error("Local storage did not retain the device id");
+		}
+		return deviceId;
+	} catch (error) {
+		appLog.warn("[backupPeers] cloud sync device id is not durable", error);
+		throw new Error(
+			"Google Drive sync requires durable local storage for this device id",
+		);
+	}
+}
+
+/**
+ * Resolve the browser copy of the cloud source identity against its durable
+ * per-profile store binding.
+ *
+ * Once a store binding exists it is authoritative: a missing browser value is
+ * repaired from it, while a different browser value is never overwritten. An
+ * unbound store may opt out of minting when it already contains pre-v4 sync
+ * state, so losing localStorage cannot silently create a new source history.
+ */
+export function resolveGoogleDriveSyncDeviceId(
+	boundDeviceId: string | null,
+	allowCreate: boolean,
+): string | null {
+	if (boundDeviceId === null) {
+		if (allowCreate) return getGoogleDriveSyncDeviceId();
+		try {
+			const storage = window.localStorage;
+			const existing = storage.getItem(DEVICE_ID_KEY);
+			if (existing === null) return null;
+			storage.setItem(DEVICE_ID_KEY, existing);
+			if (storage.getItem(DEVICE_ID_KEY) !== existing) {
+				throw new Error("Local storage did not retain the device id");
+			}
+			return existing;
+		} catch (error) {
+			appLog.warn("[backupPeers] cloud sync device id is not durable", error);
+			throw new Error(
+				"Google Drive sync requires durable local storage for this device id",
+			);
+		}
+	}
+
+	let existing: string | null;
+	try {
+		existing = window.localStorage.getItem(DEVICE_ID_KEY);
+	} catch (error) {
+		appLog.warn("[backupPeers] cloud sync device id is not readable", error);
+		throw new Error(
+			"Google Drive sync requires durable local storage for this device id",
+		);
+	}
+	if (existing !== null && existing !== boundDeviceId) {
+		appLog.warn("[backupPeers] browser and bound cloud sync device ids conflict");
+		throw new Error(
+			"Google Drive sync stopped because the browser and bound device ids conflict",
+		);
+	}
+	try {
+		if (existing === null) {
+			window.localStorage.setItem(DEVICE_ID_KEY, boundDeviceId);
+		}
+		if (window.localStorage.getItem(DEVICE_ID_KEY) !== boundDeviceId) {
+			throw new Error("Local storage did not retain the bound device id");
+		}
+		return boundDeviceId;
+	} catch (error) {
+		appLog.warn("[backupPeers] bound cloud sync device id is not durable", error);
+		throw new Error(
+			"Google Drive sync requires durable local storage for this device id",
+		);
+	}
+}
+
 const PLATFORM_LABELS: Record<string, string> = {
 	windows: "Windows PC",
 	macos: "Mac",

@@ -9,6 +9,16 @@ FREE_SCHEME="$SCHEME_DIR/free-grind_iOS.xcscheme"
 PBXPROJ="$XCODEPROJ_DIR/project.pbxproj"
 SOURCES_DIR="$ROOT_DIR/src-tauri/gen/apple/Sources/free-grind"
 INFO_PLIST="$ROOT_DIR/src-tauri/gen/apple/free-grind_iOS/Info.plist"
+PROJECT_YML="$ROOT_DIR/src-tauri/gen/apple/project.yml"
+
+if [ -f "$PROJECT_YML" ]; then
+  sh "$ROOT_DIR/scripts/configure-ios-google-oauth.sh" --project-yml "$PROJECT_YML"
+  if ! command -v xcodegen >/dev/null 2>&1; then
+    echo "xcodegen is required after changing the generated iOS project" >&2
+    exit 1
+  fi
+  xcodegen generate --spec "$PROJECT_YML"
+fi
 
 # Boot the preferred simulator if it's not running
 # Resolve the simulator UDID dynamically by name; allow override via $IOS_SIMULATOR
@@ -67,6 +77,7 @@ fi
 if [ -f "$INFO_PLIST" ]; then
   /usr/libexec/PlistBuddy -c "Set :NSLocationWhenInUseUsageDescription Free Grind uses your location to show nearby profiles and distance." "$INFO_PLIST" 2>/dev/null \
     || /usr/libexec/PlistBuddy -c "Add :NSLocationWhenInUseUsageDescription string Free Grind uses your location to show nearby profiles and distance." "$INFO_PLIST"
+  sh "$ROOT_DIR/scripts/configure-ios-google-oauth.sh" --info-plist "$INFO_PLIST"
 fi
 
 # Create/restore stub Logger.swift that disables stdout redirection (crashes on iOS simulator)

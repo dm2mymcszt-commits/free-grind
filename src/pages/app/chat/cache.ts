@@ -8,6 +8,15 @@ import { getMessageText } from "../../../utils/messageText";
 
 const conversationIndex = new Map<string, IndexedConversation>();
 const messageIndex = new Map<string, IndexedMessage>();
+const revisionListeners = new Set<() => void>();
+let revision = 0;
+
+function publishRevision(): void {
+	revision += 1;
+	for (const listener of revisionListeners) {
+		listener();
+	}
+}
 
 function normalize(input: string): string {
 	return input.trim().toLowerCase();
@@ -23,7 +32,7 @@ function scoreMatch(haystack: string, needle: string): number {
 	return startsWith + proximity;
 }
 
-export function indexConversations(entries: ConversationEntry[]) {
+function addConversationsToIndex(entries: ConversationEntry[]): void {
 	for (const entry of entries) {
 		const conversationId = entry.data.conversationId;
 		const name = entry.data.name ?? "Unknown";
@@ -39,10 +48,12 @@ export function indexConversations(entries: ConversationEntry[]) {
 	}
 }
 
-export function indexMessages(messages: Message[]) {
+function addMessagesToIndex(messages: Message[]): void {
 	for (const message of messages) {
 		const text = getMessageText(message);
 		if (!text) {
+			// An unsend/content deletion must evict an older searchable copy.
+			messageIndex.delete(message.messageId);
 			continue;
 		}
 
@@ -55,6 +66,49 @@ export function indexMessages(messages: Message[]) {
 			searchText: normalize(text),
 		});
 	}
+}
+
+export function indexConversations(entries: ConversationEntry[]): void {
+	addConversationsToIndex(entries);
+	publishRevision();
+}
+
+export function indexMessages(messages: Message[]): void {
+	addMessagesToIndex(messages);
+	publishRevision();
+}
+
+/**
+ * Atomically replaces the process-local search snapshot after a durable
+ * database refresh. Unlike the incremental indexers used by live chat, this
+ * removes rows deleted on another device before notifying search surfaces.
+ */
+export function replaceChatSearchIndex(
+	entries: ConversationEntry[],
+	messages: Message[],
+): void {
+	conversationIndex.clear();
+	messageIndex.clear();
+	addConversationsToIndex(entries);
+	addMessagesToIndex(messages);
+	publishRevision();
+}
+
+export function clearChatSearchIndex(): void {
+	conversationIndex.clear();
+	messageIndex.clear();
+	publishRevision();
+}
+
+export function getChatSearchIndexRevision(): number {
+	return revision;
+}
+
+export function subscribeChatSearchIndex(listener: () => void): () => void {
+	revisionListeners.add(listener);
+	return () => {
+		revisionListeners.delete(listener);
+	};
 }
 
 export function searchConversationsLocal(query: string, limit = 24) {

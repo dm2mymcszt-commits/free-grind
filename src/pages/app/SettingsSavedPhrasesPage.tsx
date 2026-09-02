@@ -3,6 +3,11 @@ import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { useTranslation } from "react-i18next";
 import { BackToSettings } from "../../components/BackToSettings";
+import { useAuth } from "../../contexts/useAuth";
+import {
+	GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+	type GoogleDriveSyncDataAppliedDetail,
+} from "../../services/googleDriveSyncRuntime";
 import {
 	loadSavedPhrases,
 	parsePhrasesFromTxt,
@@ -12,14 +17,38 @@ import {
 
 export function SettingsSavedPhrasesPage() {
 	const { t } = useTranslation();
+	const { userId, settingsReady } = useAuth();
 	const [savedPhrases, setSavedPhrases] = useState<string[]>([]);
 	const [newPhrase, setNewPhrase] = useState("");
 	const [isImporting, setIsImporting] = useState(false);
 	const importInputRef = useRef<HTMLInputElement | null>(null);
 
 	useEffect(() => {
-		void loadSavedPhrases().then(setSavedPhrases);
-	}, []);
+		if (!settingsReady || userId == null) return;
+		let cancelled = false;
+		const refreshSavedPhrases = async () => {
+			const phrases = await loadSavedPhrases();
+			if (!cancelled) setSavedPhrases(phrases);
+		};
+		const handleCloudDataApplied = (event: Event) => {
+			const detail = (event as CustomEvent<GoogleDriveSyncDataAppliedDetail>).detail;
+			if (detail?.profileId !== userId) return;
+			void refreshSavedPhrases();
+		};
+
+		void refreshSavedPhrases();
+		window.addEventListener(
+			GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+			handleCloudDataApplied,
+		);
+		return () => {
+			cancelled = true;
+			window.removeEventListener(
+				GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+				handleCloudDataApplied,
+			);
+		};
+	}, [settingsReady, userId]);
 
 	const handleAddPhrase = async () => {
 		if (!newPhrase.trim()) return;

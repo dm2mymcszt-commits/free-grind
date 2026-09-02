@@ -183,6 +183,24 @@ pub fn run() {
                 api::websocket::ws_disconnect,
                 api::websocket::ws_status,
                 commands::fingerprint::check_fingerprint,
+                commands::google_drive::google_drive_config_status,
+                commands::google_drive::google_drive_connection_status,
+                commands::google_drive::google_drive_connect,
+                commands::google_drive::google_drive_disconnect,
+                commands::google_drive::google_drive_vault_key_status,
+                commands::google_drive::google_drive_vault_key_create,
+                commands::google_drive::google_drive_vault_key_import,
+                commands::google_drive::google_drive_vault_key_export_for_pairing,
+                commands::google_drive::google_drive_vault_key_delete,
+                commands::google_drive::google_drive_encrypt,
+                commands::google_drive::google_drive_decrypt,
+                commands::google_drive::google_drive_list_app_data,
+                commands::google_drive::google_drive_get_start_page_token,
+                commands::google_drive::google_drive_list_changes,
+                commands::google_drive::google_drive_download_app_data,
+                commands::google_drive::google_drive_create_app_data,
+                commands::google_drive::google_drive_update_app_data,
+                commands::google_drive::google_drive_delete_app_data,
             ])
             .build(context)
             .expect("error while running tauri application");
@@ -223,7 +241,8 @@ pub fn run() {
         #[cfg(target_os = "ios")]
         let builder = builder
             .plugin(tauri_plugin_ios_photos::init())
-            .plugin(tauri_plugin_ios_keyboard_fix::init());
+            .plugin(tauri_plugin_ios_keyboard_fix::init())
+            .plugin(tauri_plugin_ios_google_oauth::init());
 
         #[cfg(target_os = "android")]
         let builder = builder.plugin(tauri_plugin_android_fs::init());
@@ -254,6 +273,24 @@ pub fn run() {
                 api::websocket::ws_disconnect,
                 api::websocket::ws_status,
                 commands::fingerprint::check_fingerprint,
+                commands::google_drive::google_drive_config_status,
+                commands::google_drive::google_drive_connection_status,
+                commands::google_drive::google_drive_connect,
+                commands::google_drive::google_drive_disconnect,
+                commands::google_drive::google_drive_vault_key_status,
+                commands::google_drive::google_drive_vault_key_create,
+                commands::google_drive::google_drive_vault_key_import,
+                commands::google_drive::google_drive_vault_key_export_for_pairing,
+                commands::google_drive::google_drive_vault_key_delete,
+                commands::google_drive::google_drive_encrypt,
+                commands::google_drive::google_drive_decrypt,
+                commands::google_drive::google_drive_list_app_data,
+                commands::google_drive::google_drive_get_start_page_token,
+                commands::google_drive::google_drive_list_changes,
+                commands::google_drive::google_drive_download_app_data,
+                commands::google_drive::google_drive_create_app_data,
+                commands::google_drive::google_drive_update_app_data,
+                commands::google_drive::google_drive_delete_app_data,
             ])
             .run(context)
             .expect("error while running tauri application");

@@ -1,26 +1,39 @@
 import { ArrowRight, ChevronLeft, Loader2, MessageCircle, Search, User } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useTranslation } from "react-i18next";
 import { useApiFunctions } from "../../hooks/useApiFunctions";
 import { usePreferences } from "../../contexts/PreferencesContext";
+import { useAuth } from "../../contexts/useAuth";
 import type { ConversationEntry } from "../../types/messages";
 import type { ProfileSearchResult, SearchMode } from "../../types/chat-page";
 import { getProfileImageUrl, validateMediaHash } from "../../utils/media";
 import { ProfileImage } from "../../components/ui/profile-image";
 import { formatDistance } from "./gridpage/utils";
 import {
+	getChatSearchIndexRevision,
 	indexConversations,
+	replaceChatSearchIndex,
 	searchConversationsLocal,
 	searchMessagesLocal,
+	subscribeChatSearchIndex,
 } from "./chat/cache";
 import { highlightMatch } from "./chat/highlightMatch";
+import * as chatDb from "../../services/chatDb";
+import type { IndexedMessage } from "../../types/chat-cache";
+import { appLog } from "../../utils/logger";
+import {
+	GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+	type GoogleDriveSyncDataAppliedDetail,
+} from "../../services/googleDriveSyncRuntime";
+import { shouldRefreshChatAfterGoogleDriveApply } from "./chat/googleDriveRefresh";
 
 export function ChatSearchPage() {
 	const navigate = useNavigate();
 	const service = useApiFunctions();
 	const { geohash, unitsPreset } = usePreferences();
+	const { userId, settingsReady } = useAuth();
 	const { t } = useTranslation();
 
 	const [searchQuery, setSearchQuery] = useState("");
@@ -33,6 +46,13 @@ export function ChatSearchPage() {
 	const [isSearchingProfiles, setIsSearchingProfiles] = useState(false);
 	const [profileSearchAfterDistance, setProfileSearchAfterDistance] = useState<string | null>(null);
 	const [profileSearchAfterProfileId, setProfileSearchAfterProfileId] = useState<string | null>(null);
+	const [dbMessageResults, setDbMessageResults] = useState<IndexedMessage[]>([]);
+	const inboxLoadGenerationRef = useRef(0);
+	const searchIndexRevision = useSyncExternalStore(
+		subscribeChatSearchIndex,
+		getChatSearchIndexRevision,
+		getChatSearchIndexRevision,
+	);
 
 	const searchedProfileId = useMemo(() => {
 		const parsed = Number(searchQuery.trim());
@@ -44,13 +64,41 @@ export function ChatSearchPage() {
 
 	const conversationSearchResults = useMemo(
 		() => searchConversationsLocal(searchQuery, 30),
-		[searchQuery],
+		[searchIndexRevision, searchQuery],
 	);
 
-	const messageSearchResults = useMemo(
-		() => searchMessagesLocal(searchQuery, { limit: 80 }),
-		[searchQuery],
-	);
+	const messageSearchResults = useMemo(() => {
+		const merged = new Map<string, IndexedMessage>();
+		for (const result of dbMessageResults) merged.set(result.messageId, result);
+		for (const result of searchMessagesLocal(searchQuery, { limit: 80 })) {
+			merged.set(result.messageId, result);
+		}
+		return [...merged.values()]
+			.sort((a, b) => b.timestamp - a.timestamp)
+			.slice(0, 80);
+	}, [dbMessageResults, searchIndexRevision, searchQuery]);
+
+	useEffect(() => {
+		if (searchQuery.trim().length < 2) {
+			setDbMessageResults([]);
+			return;
+		}
+		let active = true;
+		const timeoutId = window.setTimeout(() => {
+			void chatDb
+				.searchMessages(searchQuery, { limit: 80 })
+				.then((results) => {
+					if (active) setDbMessageResults(results);
+				})
+				.catch((error) => {
+					appLog.warn("[chat-search] db message search failed", error);
+				});
+		}, 200);
+		return () => {
+			active = false;
+			window.clearTimeout(timeoutId);
+		};
+	}, [searchIndexRevision, searchQuery]);
 
 	const getSearchProfileImage = useCallback((hash: string | null | undefined) => {
 		if (!hash || !validateMediaHash(hash)) {
@@ -66,24 +114,25 @@ export function ChatSearchPage() {
 
 	useEffect(() => {
 		let active = true;
+		const generation = ++inboxLoadGenerationRef.current;
 		setIsLoadingInbox(true);
 		setInboxError(null);
 		void service
 			.listConversations({ page: 1, filters: undefined })
 			.then((response) => {
-				if (!active) {
+				if (!active || generation !== inboxLoadGenerationRef.current) {
 					return;
 				}
 				setConversations(response.entries);
 			})
 			.catch((error) => {
-				if (!active) {
+				if (!active || generation !== inboxLoadGenerationRef.current) {
 					return;
 				}
 				setInboxError(error instanceof Error ? error.message : t("chat_search.error_load_inbox"));
 			})
 			.finally(() => {
-				if (active) {
+				if (active && generation === inboxLoadGenerationRef.current) {
 					setIsLoadingInbox(false);
 				}
 			});
@@ -92,6 +141,78 @@ export function ChatSearchPage() {
 			active = false;
 		};
 	}, [service]);
+
+	// This route can be mounted without ChatPage, so it needs its own refresh
+	// listener. Rebuild from the already-applied local database and immediately
+	// replace query results; account switching clears the shared cache centrally
+	// in AuthContext.
+	useEffect(() => {
+		const activeProfileId = userId == null ? null : Number(userId);
+		if (
+			!settingsReady ||
+			activeProfileId === null ||
+			!Number.isSafeInteger(activeProfileId)
+		) {
+			return;
+		}
+
+		let disposed = false;
+		let refreshQueue = Promise.resolve();
+		const profileStillActive = () =>
+			!disposed && chatDb.getActiveChatDbUser() === activeProfileId;
+
+		const refreshFromSyncedStores = async () => {
+			if (!profileStillActive()) return;
+			const normalizedQuery = searchQuery.trim();
+			const [stored, nextMessageResults] = await Promise.all([
+				chatDb.listConversations({ includeArchived: true }),
+				normalizedQuery.length >= 2
+					? chatDb.searchMessages(normalizedQuery, { limit: 80 })
+					: Promise.resolve([]),
+			]);
+			if (!profileStillActive()) return;
+
+			const entries = stored.map((item) => item.entry);
+			setConversations(entries);
+			setDbMessageResults(nextMessageResults);
+			setInboxError(null);
+			replaceChatSearchIndex(entries, []);
+		};
+
+		const onGoogleDriveDataApplied = (event: Event) => {
+			const detail = (event as CustomEvent<GoogleDriveSyncDataAppliedDetail>).detail;
+			if (
+				!shouldRefreshChatAfterGoogleDriveApply(
+					detail,
+					activeProfileId,
+					settingsReady,
+				)
+			) {
+				return;
+			}
+			// An older server inbox request must not overwrite the just-applied
+			// local Drive snapshot when it resolves later.
+			inboxLoadGenerationRef.current += 1;
+			setIsLoadingInbox(false);
+			refreshQueue = refreshQueue
+				.then(refreshFromSyncedStores)
+				.catch((error) => {
+					appLog.warn("[chat-search] Google Drive refresh failed", error);
+				});
+		};
+
+		window.addEventListener(
+			GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+			onGoogleDriveDataApplied as EventListener,
+		);
+		return () => {
+			disposed = true;
+			window.removeEventListener(
+				GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+				onGoogleDriveDataApplied as EventListener,
+			);
+		};
+	}, [searchQuery, settingsReady, userId]);
 
 	const runProfileSearch = useCallback(
 		async ({ loadMore }: { loadMore: boolean }) => {

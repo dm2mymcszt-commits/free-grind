@@ -449,6 +449,13 @@ export function getActiveInterestViewsAccount(): string {
 	return resolveDbName();
 }
 
+/** Stable account token used by callers that must reject account-switch races. */
+export function getInterestViewsAccountForUser(
+	profileId: number | string | null,
+): string {
+	return dbNameForUser(profileId) ?? LEGACY_DB_NAME;
+}
+
 export const interestViewsStore = {
 	/**
 	 * Raw row count, including preview placeholders and rows past the age
@@ -890,6 +897,121 @@ export function mergeInterestViewRow(
 			) || undefined,
 		updatedAt: Math.max(existing.updatedAt ?? 0, incoming.updatedAt ?? 0),
 	};
+}
+
+export type InterestViewRowMutation =
+	| { kind: "upsert"; row: StoredInterestView }
+	| { kind: "delete" };
+
+export type InterestViewCompareAndApplyResult =
+	| "already-current"
+	| "changed"
+	| "applied";
+
+export type InterestViewRowPredicate = (
+	currentRow: Readonly<StoredInterestView> | null,
+) => boolean;
+
+/**
+ * Compares and mutates one viewer row inside a single IndexedDB read/write
+ * transaction. Transactions touching the same object store are ordered by
+ * IndexedDB, so a concurrent local write is either visible to the predicates
+ * or runs afterwards and remains the final value.
+ */
+export async function compareAndApplyInterestViewRow(
+	profileId: string,
+	mutation: InterestViewRowMutation,
+	options: Readonly<{
+		matchesIncoming: InterestViewRowPredicate;
+		matchesExpected: InterestViewRowPredicate;
+	}>,
+): Promise<InterestViewCompareAndApplyResult> {
+	if (!profileId || isPreviewId(profileId)) {
+		throw new Error("A synchronized viewed-profile row requires a real profile id");
+	}
+	if (mutation.kind === "upsert" && mutation.row.profileId !== profileId) {
+		throw new Error("The synchronized viewed-profile row does not match its profile id");
+	}
+
+	const db = await openDatabase();
+	if (!db) {
+		throw new Error("The viewed-profile database could not be opened");
+	}
+
+	return new Promise<InterestViewCompareAndApplyResult>((resolve, reject) => {
+		let result: InterestViewCompareAndApplyResult | null = null;
+		let failure: unknown = null;
+		let settled = false;
+		const fail = (error: unknown) => {
+			failure ??= error;
+		};
+		const finish = (
+			complete: (value: InterestViewCompareAndApplyResult) => void,
+		) => {
+			if (settled) return;
+			settled = true;
+			try {
+				db.close();
+			} catch {
+				// The transaction result is already authoritative.
+			}
+			if (failure !== null || result === null) {
+				reject(
+					failure instanceof Error
+						? failure
+						: new Error("The viewed-profile compare-and-apply transaction failed"),
+				);
+				return;
+			}
+			complete(result);
+		};
+
+		try {
+			const transaction = db.transaction(STORE_NAME, "readwrite");
+			const store = transaction.objectStore(STORE_NAME);
+			const request = store.get(profileId);
+			request.onsuccess = () => {
+				try {
+					const current = (request.result as StoredInterestView | undefined) ?? null;
+					if (options.matchesIncoming(current)) {
+						result = "already-current";
+						return;
+					}
+					if (!options.matchesExpected(current)) {
+						result = "changed";
+						return;
+					}
+					if (mutation.kind === "delete") {
+						store.delete(profileId);
+					} else {
+						store.put(
+							mergeInterestViewRow(current ?? undefined, mutation.row),
+						);
+					}
+					result = "applied";
+				} catch (error) {
+					fail(error);
+					transaction.abort();
+				}
+			};
+			request.onerror = () => {
+				fail(request.error ?? new Error("The viewed-profile row could not be read"));
+				transaction.abort();
+			};
+			transaction.oncomplete = () => finish(resolve);
+			transaction.onerror = () => {
+				fail(transaction.error);
+				finish(resolve);
+			};
+			transaction.onabort = () => {
+				fail(transaction.error);
+				finish(resolve);
+			};
+		} catch (error) {
+			fail(error);
+			finish(resolve);
+		}
+	});
 }
 
 /** Merges imported rows into this account's store. False if the write failed. */

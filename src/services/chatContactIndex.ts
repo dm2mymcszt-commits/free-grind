@@ -1,4 +1,5 @@
 import Database from "@tauri-apps/plugin-sql";
+import { BaseDirectory, exists, rename } from "@tauri-apps/plugin-fs";
 import type {
 	ChatContactIndexRecord,
 	GridContactIndexInput,
@@ -7,7 +8,8 @@ import type {
 import { appLog } from "../utils/logger";
 import { guardAgainstClosedPool } from "./sqlitePoolGuard";
 
-const CHAT_INDEX_DB = "sqlite:chat_contact_index.sqlite3";
+const LEGACY_CHAT_INDEX_DB_FILENAME = "chat_contact_index.sqlite3";
+const LEGACY_CHAT_INDEX_DB = `sqlite:${LEGACY_CHAT_INDEX_DB_FILENAME}`;
 const SQLITE_BUSY_TIMEOUT_MS = 5_000;
 const SQLITE_LOCK_RETRY_DELAYS_MS = [30, 80, 180, 350] as const;
 
@@ -27,11 +29,13 @@ type LocalNicknameRow = {
 
 let dbPromise: Promise<Database> | null = null;
 let writeQueue: Promise<void> = Promise.resolve();
+let activeChatIndexDbName = LEGACY_CHAT_INDEX_DB;
+let activeChatIndexProfileId: number | null = null;
 
 async function getDb(): Promise<Database> {
 	if (!dbPromise) {
 		dbPromise = (async () => {
-			const db = guardAgainstClosedPool(await Database.load(CHAT_INDEX_DB), "chat-index");
+			const db = guardAgainstClosedPool(await Database.load(activeChatIndexDbName), "chat-index");
 			// Enable WAL mode and a reasonable busy timeout to improve concurrency.
 			// Note: We avoid manual BEGIN transactions because the Tauri plugin uses a connection pool
 			// without session affinity, which makes manual transactions unreliable.
@@ -140,6 +144,63 @@ async function executeWithLockRetry(
 
 export async function initChatContactIndex(): Promise<void> {
 	await getDb();
+}
+
+async function migrateLegacyContactIndexIfNeeded(profileId: number): Promise<void> {
+	const targetFilename = `chat-contact-index-${profileId}.sqlite3`;
+	try {
+		const [targetExists, legacyExists] = await Promise.all([
+			exists(targetFilename, { baseDir: BaseDirectory.AppData }),
+			exists(LEGACY_CHAT_INDEX_DB_FILENAME, { baseDir: BaseDirectory.AppData }),
+		]);
+		if (!targetExists && legacyExists) {
+			await rename(LEGACY_CHAT_INDEX_DB_FILENAME, targetFilename, {
+				oldPathBaseDir: BaseDirectory.AppData,
+				newPathBaseDir: BaseDirectory.AppData,
+			});
+			appLog.info(`[chat-index] migrated legacy contact index -> ${targetFilename}`);
+		}
+	} catch (error) {
+		appLog.warn("[chat-index] legacy database migration check failed", error);
+	}
+}
+
+/**
+ * Selects the contact/nickname index belonging to the active Grindr profile.
+ * The legacy shared database is adopted only once, by the first signed-in
+ * profile that does not already have an account-specific index.
+ */
+export async function setActiveChatContactIndexUser(profileId: number | null): Promise<void> {
+	const nextDbName =
+		profileId != null
+			? `sqlite:chat-contact-index-${profileId}.sqlite3`
+			: LEGACY_CHAT_INDEX_DB;
+	if (nextDbName === activeChatIndexDbName && dbPromise) {
+		return;
+	}
+
+	if (dbPromise) {
+		try {
+			const db = await dbPromise;
+			await db.close(db.path);
+		} catch (error) {
+			appLog.warn("[chat-index] failed to close previous connection", error);
+		}
+	}
+
+	dbPromise = null;
+	writeQueue = Promise.resolve();
+	activeChatIndexDbName = nextDbName;
+	activeChatIndexProfileId = profileId;
+
+	if (profileId != null) {
+		await migrateLegacyContactIndexIfNeeded(profileId);
+	}
+	await getDb();
+}
+
+export function getActiveChatContactIndexUser(): number | null {
+	return activeChatIndexProfileId;
 }
 
 export async function upsertChatContactIndexFromInbox(
@@ -448,8 +509,7 @@ export async function getLocalNicknamesForProfiles(
 // ---------------------------------------------------------------------------
 // Backup export/import
 //
-// This database is deliberately device-global (no per-account suffix, unlike
-// chatDb), and until now nothing ever exported it. It is by far the largest
+// This database is account-scoped (matching chatDb). It is by far the largest
 // contributor to "profiles my laptop knows about and my phone doesn't": every
 // grid tile's chatted/unread badge is resolved from chat_contact_index, so a
 // fresh install renders tens of thousands of profiles as never-contacted.
@@ -471,6 +531,34 @@ const INDEX_TABLES = {
 } as const;
 
 export type ContactIndexTableName = keyof typeof INDEX_TABLES;
+
+export type ContactIndexPortableRow = Record<string, unknown>;
+
+export type ContactIndexUpsertOptions = { respectUpdatedAt?: boolean };
+
+export type ContactIndexRowMutation =
+	| {
+			kind: "upsert";
+			row: ContactIndexPortableRow;
+			options?: ContactIndexUpsertOptions;
+	  }
+	| { kind: "delete" };
+
+export type ContactIndexCompareAndApplyResult =
+	| "already-current"
+	| "changed"
+	| "applied";
+
+export type ContactIndexRowPredicate = (
+	currentRow: Readonly<ContactIndexPortableRow> | null,
+) => boolean;
+
+export type ContactIndexCompareAndApplyOptions = {
+	/** Checked first so replaying an operation that already landed is a no-op. */
+	matchesIncoming: ContactIndexRowPredicate;
+	/** The local row observed before the remote winner was selected. */
+	matchesExpected: ContactIndexRowPredicate;
+};
 
 export const CONTACT_INDEX_TABLE_NAMES = Object.keys(INDEX_TABLES) as ContactIndexTableName[];
 
@@ -518,13 +606,12 @@ export async function countContactIndexRowsSince(
 	return rows[0]?.count ?? 0;
 }
 
-export async function upsertContactIndexRows(
+async function upsertContactIndexRowsUnlocked(
+	db: Database,
 	name: ContactIndexTableName,
-	rows: Record<string, unknown>[],
+	rows: ContactIndexPortableRow[],
+	options: ContactIndexUpsertOptions,
 ): Promise<number> {
-	if (rows.length === 0) {
-		return 0;
-	}
 	const table = INDEX_TABLES[name];
 	const placeholders = table.columns.map((_, index) => `$${index + 1}`).join(", ");
 	const updates = table.columns
@@ -534,25 +621,151 @@ export async function upsertContactIndexRows(
 	// Last-writer-wins on updated_at. A blind overwrite here would let a backup
 	// from a device that had been closed for days roll back live unread counts
 	// and last-message times for tens of thousands of profiles.
+	const guard =
+		options.respectUpdatedAt === false
+			? ""
+			: ` WHERE COALESCE(excluded.updated_at, 0) >= COALESCE(${name}.updated_at, 0)`;
 	const sql = `
 		INSERT INTO ${name} (${table.columns.join(", ")})
 		VALUES (${placeholders})
-		ON CONFLICT(${table.primaryKey}) DO UPDATE SET ${updates}
-		WHERE COALESCE(excluded.updated_at, 0) >= COALESCE(${name}.updated_at, 0)
+		ON CONFLICT(${table.primaryKey}) DO UPDATE SET ${updates}${guard}
 	`;
+
+	let written = 0;
+	for (const row of rows) {
+		if (!row || typeof row !== "object" || row[table.primaryKey] == null) {
+			continue;
+		}
+		await db.execute(sql, table.columns.map((column) => row[column] ?? null));
+		written += 1;
+	}
+	return written;
+}
+
+export async function upsertContactIndexRows(
+	name: ContactIndexTableName,
+	rows: ContactIndexPortableRow[],
+	options: ContactIndexUpsertOptions = {},
+): Promise<number> {
+	if (rows.length === 0) {
+		return 0;
+	}
 
 	let written = 0;
 	const db = await getDb();
 	await executeWithLockRetry(db, `import-${name}`, async () => {
-		for (const row of rows) {
-			if (!row || typeof row !== "object" || row[table.primaryKey] == null) {
-				continue;
-			}
-			await db.execute(sql, table.columns.map((column) => row[column] ?? null));
-			written += 1;
-		}
+		written = await upsertContactIndexRowsUnlocked(db, name, rows, options);
 	});
 	return written;
+}
+
+/** Stable keyset paging for cloud reconciliation scans. */
+export async function selectContactIndexPageAfter(
+	name: ContactIndexTableName,
+	afterProfileId: string | null,
+	limit: number,
+): Promise<Record<string, unknown>[]> {
+	const table = INDEX_TABLES[name];
+	const where = afterProfileId == null ? "" : "WHERE profile_id > $1";
+	const params = afterProfileId == null ? [] : [afterProfileId];
+	const db = await getDb();
+	return db.select<Record<string, unknown>[]>(
+		`SELECT ${table.columns.join(", ")} FROM ${name} ${where}
+		 ORDER BY profile_id LIMIT ${Math.max(1, Math.trunc(limit))}`,
+		params,
+	);
+}
+
+async function selectContactIndexRowUnlocked(
+	db: Database,
+	name: ContactIndexTableName,
+	profileId: string,
+): Promise<ContactIndexPortableRow | null> {
+	const table = INDEX_TABLES[name];
+	const rows = await db.select<ContactIndexPortableRow[]>(
+		`SELECT ${table.columns.join(", ")} FROM ${name}
+		 WHERE ${table.primaryKey} = $1 LIMIT 1`,
+		[profileId],
+	);
+	return rows[0] ?? null;
+}
+
+async function deleteContactIndexRowUnlocked(
+	db: Database,
+	name: ContactIndexTableName,
+	profileId: string,
+): Promise<void> {
+	await db.execute(`DELETE FROM ${name} WHERE profile_id = $1`, [profileId]);
+}
+
+/**
+ * Atomically compares and applies one portable index row relative to this
+ * module's serialized write queue. Predicates are synchronous and must be
+ * pure because the whole unit can be repeated after a transient SQLite lock.
+ */
+export async function compareAndApplyContactIndexRow(
+	name: ContactIndexTableName,
+	profileId: string,
+	mutation: ContactIndexRowMutation,
+	options: ContactIndexCompareAndApplyOptions,
+): Promise<ContactIndexCompareAndApplyResult> {
+	if (!profileId) {
+		throw new Error(`Cannot compare ${name} without a profile id`);
+	}
+	const table = INDEX_TABLES[name];
+	if (
+		mutation.kind === "upsert" &&
+		(
+			mutation.row[table.primaryKey] == null ||
+			String(mutation.row[table.primaryKey]) !== profileId
+		)
+	) {
+		throw new Error(`The ${name} upsert row does not match its profile id`);
+	}
+
+	const db = await getDb();
+	let result: ContactIndexCompareAndApplyResult | null = null;
+	await executeWithLockRetry(db, `compare-and-apply-${name}`, async () => {
+		result = null;
+		const currentRow = await selectContactIndexRowUnlocked(db, name, profileId);
+		if (options.matchesIncoming(currentRow)) {
+			result = "already-current";
+			return;
+		}
+		if (!options.matchesExpected(currentRow)) {
+			result = "changed";
+			return;
+		}
+
+		if (mutation.kind === "upsert") {
+			await upsertContactIndexRowsUnlocked(
+				db,
+				name,
+				[mutation.row],
+				mutation.options ?? {},
+			);
+		} else {
+			await deleteContactIndexRowUnlocked(db, name, profileId);
+		}
+		result = "applied";
+	});
+	if (result == null) {
+		throw new Error(`The ${name} compare-and-apply operation did not complete`);
+	}
+	return result;
+}
+
+export async function deleteContactIndexRow(
+	name: ContactIndexTableName,
+	profileId: string,
+): Promise<void> {
+	if (!profileId) {
+		return;
+	}
+	const db = await getDb();
+	await executeWithLockRetry(db, `delete-${name}-row`, async () => {
+		await deleteContactIndexRowUnlocked(db, name, profileId);
+	});
 }
 
 export async function clearContactIndexTables(names: ContactIndexTableName[]): Promise<void> {

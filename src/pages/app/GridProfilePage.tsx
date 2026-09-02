@@ -38,6 +38,11 @@ import {
 	isBlockConfirmSkipped,
 	isUnblockConfirmSkipped,
 } from "../../utils/blockConfirm";
+import { useAuth } from "../../contexts/useAuth";
+import {
+	GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+	type GoogleDriveSyncDataAppliedDetail,
+} from "../../services/googleDriveSyncRuntime";
 
 const profileRouteParamsSchema = z.object({
 	profileId: z.string().min(1),
@@ -82,6 +87,7 @@ export function GridProfilePage() {
 	const [searchParams] = useSearchParams();
 	const apiFunctions = useApiFunctions();
 	const { geohash } = usePreferences();
+	const { userId, settingsReady } = useAuth();
 
 	const { data: managedGenders } = useManagedGenders();
 	const { data: managedPronouns } = useManagedPronouns();
@@ -138,31 +144,48 @@ export function GridProfilePage() {
 	const profileId = parsedParams.success ? parsedParams.data.profileId : null;
 
 	useEffect(() => {
-		if (!profileId) {
+		if (!profileId || !settingsReady || userId == null) {
 			setChatContactStatus(null);
 			return;
 		}
 
-		setChatContactStatus(null);
 		let cancelled = false;
-		void getChatContactIndexForProfiles([profileId])
-			.then((records) => {
-				if (cancelled) {
-					return;
+		const hydrateChatContactStatus = async () => {
+			try {
+				const records = await getChatContactIndexForProfiles([profileId]);
+				if (!cancelled) {
+					setChatContactStatus(records[0] ?? null);
 				}
-				setChatContactStatus(records[0] ?? null);
-			})
-			.catch((error) => {
+			} catch (error) {
 				if (!cancelled) {
 					setChatContactStatus(null);
 				}
 				appLog.warn("[chat-index] failed to hydrate profile chat metadata", error);
-			});
+			}
+		};
+		const handleCloudDataApplied = (event: Event) => {
+			const detail = (event as CustomEvent<GoogleDriveSyncDataAppliedDetail>).detail;
+			if (!settingsReady || userId == null || detail?.profileId !== userId) {
+				return;
+			}
+			void hydrateChatContactStatus();
+		};
+
+		setChatContactStatus(null);
+		void hydrateChatContactStatus();
+		window.addEventListener(
+			GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+			handleCloudDataApplied,
+		);
 
 		return () => {
 			cancelled = true;
+			window.removeEventListener(
+				GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+				handleCloudDataApplied,
+			);
 		};
-	}, [profileId]);
+	}, [profileId, settingsReady, userId]);
 
 	const {
 		tappingProfileId,

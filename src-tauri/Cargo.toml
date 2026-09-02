@@ -31,7 +31,7 @@ tauri = { version = "2", features = ["devtools"] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["sync", "rt", "macros", "time", "net"] }
+tokio = { version = "1", features = ["sync", "rt", "macros", "time", "net", "io-util"] }
 uuid = { version = "1", features = ["v4"] }
 jsonwebtoken = "10.3.0"
 rand = "0.10.1"
@@ -49,10 +49,13 @@ http = "1"
 url = "2"
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 wreq = { version = "5.3", features = ["gzip", "json"] }
-# Blocking HTTP client for version fetching (non-critical, doesn't affect auth fingerprint)
-reqwest = { version = "0.12", features = ["json", "blocking"], default-features = false }
+# Independent HTTP client for version fetching and Google Drive; Grindr traffic still uses wreq.
+reqwest = { version = "0.12", features = ["json", "blocking", "rustls-tls", "stream"], default-features = false }
 tauri-plugin-hotswap = { path = "hotswap-patched" }
 rustls = { version = "0.23", features = ["ring"] }
+ring = "0.17"
+base64 = "0.22"
+zeroize = "1"
 
 # Platform-specific dependencies
 [target.'cfg(target_os = "windows")'.dependencies]
@@ -74,6 +77,7 @@ tauri-plugin-android-fs = { version = "=28.2.2", features = ["legacy_storage_per
 [target.'cfg(target_os = "ios")'.dependencies]
 tauri-plugin-ios-photos = "0.3"
 tauri-plugin-ios-keyboard-fix = { path = "ios-keyboard-fix" }
+tauri-plugin-ios-google-oauth = { path = "ios-google-oauth" }
 apple-native-keyring-store = { version = "0.2.3", features = ["protected"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ShieldCheck, ShieldOff } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -10,6 +10,11 @@ import { listBlockEvents } from "../../services/chatDb";
 import type { StoredBlockEvent } from "../../types/chat-db";
 import { resolveAvatarSrc } from "../../services/avatarStore";
 import { getParticipantAvatarUrl } from "./chat/chatUtils";
+import { useAuth } from "../../contexts/useAuth";
+import {
+	GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+	type GoogleDriveSyncDataAppliedDetail,
+} from "../../services/googleDriveSyncRuntime";
 
 function formatEventTimestamp(timestamp: number): string {
 	return new Date(timestamp).toLocaleString(undefined, {
@@ -25,29 +30,67 @@ export function SettingsBlockHistoryPage() {
 	const { t } = useTranslation();
 	const navigate = useNavigate();
 	const location = useLocation();
+	const { userId, settingsReady } = useAuth();
 
 	const [events, setEvents] = useState<StoredBlockEvent[] | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
+	const loadGenerationRef = useRef(0);
 
 	const load = useCallback(async () => {
+		const generation = ++loadGenerationRef.current;
 		setError(null);
 		try {
 			const stored = await listBlockEvents();
+			if (generation !== loadGenerationRef.current) return;
 			setEvents(stored);
 		} catch (loadError) {
+			if (generation !== loadGenerationRef.current) return;
 			setEvents([]);
 			setError(
 				loadError instanceof Error ? loadError.message : t("settings_block_history.error_load"),
 			);
 		} finally {
-			setIsLoading(false);
+			if (generation === loadGenerationRef.current) {
+				setIsLoading(false);
+			}
 		}
 	}, [t]);
 
 	useEffect(() => {
+		if (!settingsReady || userId == null) {
+			loadGenerationRef.current += 1;
+			setEvents(null);
+			setError(null);
+			setIsLoading(true);
+			return;
+		}
 		void load();
-	}, [load]);
+		return () => {
+			loadGenerationRef.current += 1;
+		};
+	}, [load, settingsReady, userId]);
+
+	useEffect(() => {
+		const handleCloudDataApplied = (event: Event) => {
+			const detail = (event as CustomEvent<GoogleDriveSyncDataAppliedDetail>).detail;
+			if (!settingsReady || userId == null || detail?.profileId !== userId) {
+				return;
+			}
+			void load();
+		};
+
+		window.addEventListener(
+			GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+			handleCloudDataApplied,
+		);
+		return () => {
+			window.removeEventListener(
+				GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+				handleCloudDataApplied,
+			);
+		};
+	}, [load, settingsReady, userId]);
 
 	return (
 		<PullToRefreshContainer

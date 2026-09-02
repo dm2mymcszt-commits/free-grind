@@ -39,6 +39,11 @@ import { cn } from "../../utils/cn";
 import { PageHeaderBackground } from "../../components/ui/PageHeaderBackground";
 import { FeedScrollContainer } from "../../components/ui/FeedScrollContainer";
 import { usePreferences } from "../../contexts/PreferencesContext";
+import { useAuth } from "../../contexts/useAuth";
+import {
+	GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+	type GoogleDriveSyncDataAppliedDetail,
+} from "../../services/googleDriveSyncRuntime";
 
 const ONBOARDING_KEY = "fg-interest-onboarding-seen";
 
@@ -70,6 +75,7 @@ export function InterestPage() {
 	const { t } = useTranslation();
 	const navigate = useNavigate();
 	const location = useLocation();
+	const { userId, settingsReady } = useAuth();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const defaultSetting = window.localStorage.getItem("fg-interest-default-tab") === "views" ? "views" : "taps";
 	const activeTab: InterestTab = searchParams.get("tab") === "taps" || searchParams.get("tab") === "views"
@@ -227,6 +233,29 @@ export function InterestPage() {
 
 	const [lastSeenViews, setLastSeenViews] = useState(() => getInterestTabLastSeen("views"));
 	const [lastSeenTaps, setLastSeenTaps] = useState(() => getInterestTabLastSeen("taps"));
+
+	useEffect(() => {
+		if (!settingsReady || userId == null) return;
+		const handleCloudDataApplied = (event: Event) => {
+			const detail = (event as CustomEvent<GoogleDriveSyncDataAppliedDetail>).detail;
+			if (detail?.profileId !== userId) return;
+			setViewsSort(readStoredViewsSort());
+			setViewsWindow(readStoredViewsWindow());
+			setViewsCountMode(readStoredViewsCountMode());
+			setLastSeenViews(getInterestTabLastSeen("views"));
+			setLastSeenTaps(getInterestTabLastSeen("taps"));
+		};
+		window.addEventListener(
+			GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+			handleCloudDataApplied,
+		);
+		return () => {
+			window.removeEventListener(
+				GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+				handleCloudDataApplied,
+			);
+		};
+	}, [settingsReady, userId]);
 
 	// Tabs the user has just switched to: their badge is hidden immediately (in
 	// the same render as the switch) so the pill slide and the badge collapse

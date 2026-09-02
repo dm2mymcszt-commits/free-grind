@@ -21,6 +21,11 @@ import {
 	loadSavedLocations,
 	type SavedLocation,
 } from "../../services/savedLocations";
+import { useAuth } from "../../contexts/useAuth";
+import {
+	GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+	type GoogleDriveSyncDataAppliedDetail,
+} from "../../services/googleDriveSyncRuntime";
 
 export type ExploreLocation = { geohash: string; label: string } | null;
 
@@ -110,6 +115,7 @@ function SavedLocationRow({
 export function LocationOverlay({ onClose, exploreLocation, onSetExploreLocation }: LocationOverlayProps) {
 	const { t } = useTranslation();
 	const { setPreferences, geohash, locationName, useAutoLocation } = usePreferences();
+	const { userId, settingsReady } = useAuth();
 	const [isClosing, setIsClosing] = useState(false);
 	const isClosingRef = useRef(false);
 	const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -135,8 +141,38 @@ export function LocationOverlay({ onClose, exploreLocation, onSetExploreLocation
 	const [savedLocations, setSavedLocations] = useState<SavedLocation[]>([]);
 
 	useEffect(() => {
-		void loadSavedLocations().then(setSavedLocations);
-	}, []);
+		let cancelled = false;
+		const refreshSavedLocations = async () => {
+			const locations = await loadSavedLocations();
+			if (!cancelled) {
+				setSavedLocations(locations);
+			}
+		};
+		const handleCloudDataApplied = (event: Event) => {
+			const detail = (event as CustomEvent<GoogleDriveSyncDataAppliedDetail>).detail;
+			if (!settingsReady || userId == null || detail?.profileId !== userId) {
+				return;
+			}
+			void refreshSavedLocations();
+		};
+
+		if (settingsReady && userId != null) {
+			void refreshSavedLocations();
+		} else {
+			setSavedLocations([]);
+		}
+		window.addEventListener(
+			GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+			handleCloudDataApplied,
+		);
+		return () => {
+			cancelled = true;
+			window.removeEventListener(
+				GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+				handleCloudDataApplied,
+			);
+		};
+	}, [settingsReady, userId]);
 	const [isNamingLocation, setIsNamingLocation] = useState(false);
 	const [newLocationName, setNewLocationName] = useState("");
 	const searchInputRef = useRef<HTMLInputElement>(null);

@@ -68,6 +68,7 @@ import type { DrawerMedia } from "./chat/ChatDrawerPanel";
 import {
 	indexConversations,
 	indexMessages,
+	replaceChatSearchIndex,
 	searchMessagesLocal,
 } from "./chat/cache";
 import { ChatInboxPanel } from "./chat/ChatInboxPanel";
@@ -129,6 +130,11 @@ import freegrindLogo from "../../images/freegrind-logo.webp";
 import { removeProfileFromBrowseCache, getCachedProfileDetail, setCachedProfileDetail } from "./gridpage/cache";
 import type { ProfileDetail } from "../../types/grid";
 import { getThumbImageUrl, validateMediaHash } from "../../utils/media";
+import {
+	GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+	type GoogleDriveSyncDataAppliedDetail,
+} from "../../services/googleDriveSyncRuntime";
+import { shouldRefreshChatAfterGoogleDriveApply } from "./chat/googleDriveRefresh";
 
 // Local pagination for archived threads (chatDb has no server to ask, so we
 // page through it ourselves) — a "pageKey" here is this prefix + a cursor
@@ -581,16 +587,37 @@ export function ChatPage() {
 		conversationProfileIds.length > 0 ? conversationProfileIds : null,
 	);
 
-	const conversationProfileIdsJson = JSON.stringify(conversationProfileIds);
+	// Contact/nickname state also backs archived and locally-recovered rows;
+	// unlike presence polling, this is a local database read and can safely
+	// cover the complete mounted chat state.
+	const chatStateProfileIds = useMemo(() => {
+		const ids = new Set<string>();
+		const addEntry = (entry: ConversationEntry) => {
+			const participant = getOtherParticipant(entry, userId);
+			if (participant?.profileId != null) ids.add(String(participant.profileId));
+		};
+		conversations.forEach(addEntry);
+		archivedConversations.forEach(({ entry }) => addEntry(entry));
+		recoveredConversations.forEach(addEntry);
+		if (targetProfileId != null) ids.add(String(targetProfileId));
+		return [...ids];
+	}, [
+		archivedConversations,
+		conversations,
+		recoveredConversations,
+		targetProfileId,
+		userId,
+	]);
+	const chatStateProfileIdsJson = JSON.stringify(chatStateProfileIds);
 
 	useEffect(() => {
-		if (conversationProfileIds.length === 0) {
+		if (!settingsReady || userId == null || chatStateProfileIds.length === 0) {
 			setChatContactIndexByProfileId({});
 			return;
 		}
 
 		let cancelled = false;
-		void getChatContactIndexForProfiles(conversationProfileIds)
+		void getChatContactIndexForProfiles(chatStateProfileIds)
 			.then((records) => {
 				if (cancelled) {
 					return;
@@ -604,7 +631,7 @@ export function ChatPage() {
 		return () => {
 			cancelled = true;
 		};
-	}, [conversationProfileIdsJson]);
+	}, [chatStateProfileIdsJson, settingsReady, userId]);
 
 	const reactionBurstTimeoutRef = useRef<number | null>(null);
 
@@ -1005,29 +1032,13 @@ export function ChatPage() {
 	}, [selectedConversationOtherProfileId, blockedProfileIdsData]);
 
 	useEffect(() => {
-		const profileIds = conversations
-			.map((conversation) => {
-				if (userId == null) {
-					return null;
-				}
-				const otherParticipant = getOtherParticipant(conversation, userId);
-				return otherParticipant?.profileId != null
-					? String(otherParticipant.profileId)
-					: null;
-			})
-			.filter((id): id is string => id !== null);
-
-		if (targetProfileId && !profileIds.includes(String(targetProfileId))) {
-			profileIds.push(String(targetProfileId));
-		}
-
-		if (profileIds.length === 0) {
+		if (!settingsReady || userId == null || chatStateProfileIds.length === 0) {
 			setLocalNicknamesByProfileId({});
 			return;
 		}
 
 		let cancelled = false;
-		void getLocalNicknamesForProfiles(profileIds)
+		void getLocalNicknamesForProfiles(chatStateProfileIds)
 			.then((nicknames) => {
 				if (cancelled) {
 					return;
@@ -1041,7 +1052,7 @@ export function ChatPage() {
 		return () => {
 			cancelled = true;
 		};
-	}, [conversations, userId, targetProfileId]);
+	}, [chatStateProfileIdsJson, settingsReady, userId]);
 
 
 	useEffect(() => {
@@ -3163,6 +3174,193 @@ export function ChatPage() {
 		}
 		void loadInbox({ page: 1, replace: true });
 	}, [loadInbox, activeInboxFilters, settingsReady]);
+
+	// A cloud apply mutates the active profile's databases underneath this
+	// mounted page. Re-read those durable stores directly instead of remounting
+	// the route: the composer draft, selection, scroll containers, and open
+	// sheets stay intact while imported inbox/thread/filter/contact state becomes
+	// visible immediately. Events for a previous/next account are ignored both
+	// before and after every awaited read.
+	useEffect(() => {
+		const activeProfileId = userId == null ? null : Number(userId);
+		if (
+			!settingsReady ||
+			activeProfileId === null ||
+			!Number.isSafeInteger(activeProfileId)
+		) {
+			return;
+		}
+
+		let disposed = false;
+		let refreshQueue = Promise.resolve();
+		const profileStillActive = () =>
+			!disposed && chatDb.getActiveChatDbUser() === activeProfileId;
+
+		const refreshFromSyncedStores = async () => {
+			if (!profileStillActive()) return;
+
+			const selectedAtStart = selectedConversationIdRef.current;
+			const visibleMessageCount = selectedAtStart
+				? threadMessagesRef.current.filter(
+						(message) => message.conversationId === selectedAtStart,
+					).length
+				: 0;
+			const recoveredAtStart = new Map(recoveredConversationsRef.current);
+
+			const [stored, filtersDraft, hiddenIds] = await Promise.all([
+				chatDb.listConversations({ includeArchived: true }),
+				loadChatFiltersDraft(),
+				chatDb.listHiddenConversationIds(),
+			]);
+			if (!profileStillActive()) return;
+
+			const storedIds = new Set(stored.map((item) => item.conversationId));
+			const recoveredChecks = await Promise.all(
+				[...recoveredAtStart].map(async ([conversationId, entry]) => {
+					if (storedIds.has(conversationId)) return null;
+					const [latest] = await chatDb.getMessagesPage(conversationId, { limit: 1 });
+					if (!latest) return null;
+					const refreshedEntry =
+						latest.timestamp > (entry.data.lastActivityTimestamp ?? 0)
+							? {
+									...entry,
+									data: {
+										...entry.data,
+										lastActivityTimestamp: latest.timestamp,
+										preview: buildPreviewFromMessage(latest, t),
+									},
+								}
+							: entry;
+					return [conversationId, refreshedEntry] as const;
+				}),
+			);
+			if (!profileStillActive()) return;
+
+			const nextRecovered = new Map(
+				recoveredChecks.filter(
+					(item): item is NonNullable<typeof item> => item !== null,
+				),
+			);
+			const profileIds = new Set<string>();
+			for (const item of stored) {
+				const participant = getOtherParticipant(item.entry, activeProfileId);
+				if (participant?.profileId != null) {
+					profileIds.add(String(participant.profileId));
+				}
+			}
+			for (const entry of nextRecovered.values()) {
+				const participant = getOtherParticipant(entry, activeProfileId);
+				if (participant?.profileId != null) {
+					profileIds.add(String(participant.profileId));
+				}
+			}
+			if (targetProfileId != null) profileIds.add(String(targetProfileId));
+
+			const selectedMessageLimit = Math.max(
+				ARCHIVED_THREAD_PAGE_SIZE,
+				visibleMessageCount,
+			);
+			const [contactRecords, nicknames, selectedMessages, selectedLastRead] =
+				await Promise.all([
+					profileIds.size > 0
+						? getChatContactIndexForProfiles([...profileIds])
+						: Promise.resolve([]),
+					profileIds.size > 0
+						? getLocalNicknamesForProfiles([...profileIds])
+						: Promise.resolve({}),
+					selectedAtStart
+						? chatDb.getMessagesPage(selectedAtStart, {
+								limit: selectedMessageLimit,
+							})
+						: Promise.resolve([]),
+					selectedAtStart
+						? chatDb.getLastReadTimestamp(selectedAtStart)
+						: Promise.resolve(null),
+				]);
+			if (!profileStillActive()) return;
+
+			const nextArchived = new Map<
+				string,
+				{ reason: ArchivedReason; entry: ConversationEntry }
+			>();
+			const nextActive: ConversationEntry[] = [];
+			for (const item of stored) {
+				if (item.archived) {
+					nextArchived.set(item.conversationId, {
+						reason: item.archivedReason ?? "ws_delete",
+						entry: item.entry,
+					});
+				} else {
+					nextActive.push(item.entry);
+				}
+			}
+
+			// Keep the inbox bounded like its existing offline fallback, while
+			// retaining however many pages the user had already loaded.
+			const inboxLimit = Math.max(
+				OFFLINE_INBOX_FALLBACK_LIMIT,
+				conversationsRef.current.length,
+			);
+			setConversations(nextActive.slice(0, inboxLimit));
+			setArchivedConversations(nextArchived);
+			setRecoveredConversations(nextRecovered);
+			setHiddenConversationIds(new Set(hiddenIds));
+			setInboxFilters(draftToFilters(filtersDraft));
+			setPinnedFilter(filtersDraft.pinnedFilter);
+			setArchivedFilter(filtersDraft.archivedFilter);
+			setHiddenFilter(filtersDraft.hiddenFilter);
+			setChatContactIndexByProfileId(
+				indexChatContactRecordsByProfileId(contactRecords),
+			);
+			setLocalNicknamesByProfileId(nicknames);
+
+			if (
+				selectedAtStart &&
+				selectedConversationIdRef.current === selectedAtStart
+			) {
+				setThreadMessages(selectedMessages);
+				setThreadLastReadTimestamp(selectedLastRead ?? null);
+			}
+
+			replaceChatSearchIndex(
+				[
+					...stored.map((item) => item.entry),
+					...nextRecovered.values(),
+				],
+				selectedMessages,
+			);
+		};
+
+		const onGoogleDriveDataApplied = (event: Event) => {
+			const detail = (event as CustomEvent<GoogleDriveSyncDataAppliedDetail>).detail;
+			if (
+				!shouldRefreshChatAfterGoogleDriveApply(
+					detail,
+					activeProfileId,
+					settingsReady,
+				)
+			) {
+				return;
+			}
+			refreshQueue = refreshQueue
+				.then(refreshFromSyncedStores)
+				.catch((error) => {
+					appLog.warn("[ChatPage] failed to refresh Google Drive data", error);
+				});
+		};
+
+		window.addEventListener(
+			GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+			onGoogleDriveDataApplied as EventListener,
+		);
+		return () => {
+			disposed = true;
+			window.removeEventListener(
+				GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+				onGoogleDriveDataApplied as EventListener,
+			);
+		};
+	}, [settingsReady, t, targetProfileId, userId]);
 
 	// Re-verify the blocked-profile list fresh from the server every time the
 	// inbox screen opens, instead of trusting whatever's cached for up to its

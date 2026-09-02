@@ -1,6 +1,11 @@
 #!/usr/bin/env sh
 set -eu
 
+if [ -z "${FREE_GRIND_GOOGLE_IOS_CLIENT_ID:-}" ]; then
+	echo "FREE_GRIND_GOOGLE_IOS_CLIENT_ID is required for a Drive-capable IPA build" >&2
+	exit 1
+fi
+
 sh scripts/tauri.sh ios init --ci
 bun run build
 
@@ -8,6 +13,8 @@ PROJECT_SPEC="src-tauri/gen/apple/project.yml"
 TEMP_SPEC="src-tauri/gen/apple/project.unsigned.yml"
 DERIVED_DATA_PATH="src-tauri/gen/apple/.deriveddata_unsigned"
 APP_PATH="$DERIVED_DATA_PATH/Build/Products/release-iphoneos/Free Grind.app"
+
+sh scripts/configure-ios-google-oauth.sh --project-yml "$PROJECT_SPEC"
 
 # this shi strips phases that enforce the signing or trigger tauri xcode script
 awk '
@@ -30,6 +37,8 @@ xcodegen generate --spec "$TEMP_SPEC"
 # tauri ios init/xcodegen doesnt merge src-taur/info.plist for ios, and xcodegen
 # overwrites free-grind_iOS/Info.plist as part of generate, so we merge ours in after,
 /usr/libexec/PlistBuddy -c "Merge src-tauri/Info.plist" src-tauri/gen/apple/free-grind_iOS/Info.plist
+sh scripts/configure-ios-google-oauth.sh \
+	--info-plist src-tauri/gen/apple/free-grind_iOS/Info.plist
 
 # i downgraded the mium version of xcode cuz i wanted
 sed -i '' 's/objectVersion = 77;/objectVersion = 60;/' src-tauri/gen/apple/free-grind.xcodeproj/project.pbxproj

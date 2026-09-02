@@ -17,9 +17,22 @@ import {
 	type SavedAccountMeta,
 } from "./auth-context";
 import { appLog } from "../utils/logger";
-import { setActiveChatDbUser, migrateLegacySettingsIfNeeded } from "../services/chatDb";
-import { setActiveInterestViewsUser } from "../services/interestViewsStore";
+import {
+	getActiveChatDbUser,
+	migrateLegacySettingsIfNeeded,
+	setActiveChatDbUser,
+} from "../services/chatDb";
+import {
+	getActiveChatContactIndexUser,
+	setActiveChatContactIndexUser,
+} from "../services/chatContactIndex";
+import {
+	getActiveInterestViewsAccount,
+	getInterestViewsAccountForUser,
+	setActiveInterestViewsUser,
+} from "../services/interestViewsStore";
 import { clearAllCaches } from "../pages/app/gridpage/cache";
+import { clearChatSearchIndex } from "../pages/app/chat/cache";
 import { loadAutomationCache } from "../utils/autoblock";
 import { loadAutomationRulesCache } from "../utils/automationRules";
 import { loadMediaSettingsCache } from "../utils/mediaSettings";
@@ -28,6 +41,10 @@ import { loadSeenCache } from "../services/seenStore";
 import { runInboxSync } from "../services/inboxSync";
 import { runTapsAutomationSync } from "../services/tapsSync";
 import { syncSavedPhrasesFromServer } from "../services/savedPhrases";
+import {
+	closeGoogleDriveSyncProfilesExcept,
+	invalidateGoogleDriveSyncProfile,
+} from "../services/googleDriveSyncRuntime";
 
 const AUTH_USER_ID_STORAGE_KEY = "fg-user-id";
 const PUSH_TOKEN_STORAGE_KEY = "fg-fcm-token";
@@ -63,9 +80,14 @@ type AuthAction =
 function authReducer(state: AuthState, action: AuthAction): AuthState {
 	switch (action.type) {
 		case "SET_USER":
-			return { ...state, userId: action.payload, error: null };
+			return {
+				...state,
+				userId: action.payload,
+				error: null,
+				settingsReady: false,
+			};
 		case "CLEAR_USER":
-			return { ...state, userId: null };
+			return { ...state, userId: null, settingsReady: false };
 		case "SET_LOADING":
 			return { ...state, isLoading: action.payload };
 		case "SET_ERROR":
@@ -97,6 +119,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 	// check below — a plain closure over state.userId would only ever see
 	// the value from the render that kicked the sync off.
 	const currentUserIdRef = useRef<number | null>(state.userId);
+	// Invalidates asynchronous account setup from an older render. Without this,
+	// a slow cache/database setup for profile A can mark profile B ready after a
+	// rapid switch, which is an unsafe point to start account-scoped background work.
+	const profileSetupGenerationRef = useRef(0);
+	const completedProfileSetupRef = useRef<number | null | undefined>(undefined);
+	// Database switches share module-level connections, so serialize profile
+	// setup as well as invalidating stale work. The newest setup always runs
+	// after an older in-flight close/migration has settled and therefore wins.
+	const profileSetupQueueRef = useRef<Promise<void>>(Promise.resolve());
 	useEffect(() => {
 		currentUserIdRef.current = state.userId;
 	}, [state.userId]);
@@ -264,20 +295,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			return;
 		}
 
+		const profileId = state.userId;
 		const previousUserId = previousUserIdRef.current;
-		previousUserIdRef.current = state.userId;
+		previousUserIdRef.current = profileId;
 
-		if (previousUserId === state.userId) {
+		if (
+			previousUserId === profileId &&
+			completedProfileSetupRef.current === profileId &&
+			state.settingsReady
+		) {
 			return;
+		}
+		if (previousUserId != null && previousUserId !== profileId) {
+			// Stop old-profile cloud work immediately. The serialized setup task
+			// below then drains and closes it before chat/contact stores are swapped.
+			invalidateGoogleDriveSyncProfile(previousUserId);
 		}
 
 		const isActualAccountChange = previousUserId !== undefined && previousUserId != null;
 		if (isActualAccountChange) {
 			clearAllCaches();
+			clearChatSearchIndex();
 			queryClient.clear();
 		}
 
 		dispatch({ type: "SET_SETTINGS_READY", payload: false });
+		completedProfileSetupRef.current = undefined;
+		const setupGeneration = ++profileSetupGenerationRef.current;
+		const isCurrentSetup = () =>
+			profileSetupGenerationRef.current === setupGeneration &&
+			currentUserIdRef.current === profileId;
+		const activeStoresMatch = () =>
+			getActiveChatDbUser() === profileId &&
+			getActiveChatContactIndexUser() === profileId &&
+			getActiveInterestViewsAccount() === getInterestViewsAccountForUser(profileId);
 
 		// Viewer history is account-scoped for the same reason chats are: its
 		// own IndexedDB per account, so a profile that viewed the previous
@@ -289,12 +340,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		// aimed at the new account. The call itself switches synchronously;
 		// only the one-time legacy adoption is async, and store operations
 		// await that internally.
-		void setActiveInterestViewsUser(state.userId);
+		const interestViewsReady = setActiveInterestViewsUser(profileId);
 
-		void (async () => {
-			await setActiveChatDbUser(state.userId);
-			if (state.userId != null) {
-				await migrateLegacySettingsIfNeeded(state.userId);
+		const setupTask = profileSetupQueueRef.current.catch(() => undefined).then(async () => {
+			await closeGoogleDriveSyncProfilesExcept(profileId);
+			if (!isCurrentSetup()) return;
+			await Promise.all([
+				setActiveChatDbUser(profileId),
+				setActiveChatContactIndexUser(profileId),
+				interestViewsReady,
+			]);
+			if (!isCurrentSetup() || !activeStoresMatch()) return;
+			if (profileId != null) {
+				await migrateLegacySettingsIfNeeded(profileId);
+				if (!isCurrentSetup() || !activeStoresMatch()) return;
 			}
 
 			// Fire-and-forget: throttled background sync of the chat list and
@@ -313,8 +372,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			// run per profile walks the whole inbox — every run after that
 			// stops as soon as it hits unchanged conversations (see
 			// inboxSync.ts).
-			if (state.userId != null) {
-				const userId = state.userId;
+			if (profileId != null) {
+				const userId = profileId;
 				void runInboxSync(apiFunctions, userId, () => currentUserIdRef.current === userId);
 				// Fire-and-forget: pulls this account's saved phrases from Grindr and
 				// unions them into the local list. Guarded by the same "still the
@@ -343,9 +402,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 				loadPrivacyCache(),
 				loadSeenCache(),
 			]);
+			if (!isCurrentSetup() || !activeStoresMatch()) return;
+			completedProfileSetupRef.current = profileId;
 			dispatch({ type: "SET_SETTINGS_READY", payload: true });
-		})();
-	}, [state.userId, state.isLoading, queryClient, apiFunctions]);
+		});
+		profileSetupQueueRef.current = setupTask.then(
+			() => undefined,
+			() => undefined,
+		);
+		void setupTask.catch((error) => {
+			if (isCurrentSetup()) {
+				appLog.error("[Auth] account-scoped store setup failed", error);
+			}
+		});
+
+		return () => {
+			if (profileSetupGenerationRef.current === setupGeneration) {
+				profileSetupGenerationRef.current += 1;
+			}
+		};
+	}, [state.userId, state.isLoading, state.settingsReady, queryClient, apiFunctions]);
 
 	// Register presence with Free Grind backend when a logged-in session is active.
 	// This must not depend only on `state.userId`, because consent/discovery settings can

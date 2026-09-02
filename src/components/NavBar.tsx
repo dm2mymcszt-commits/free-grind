@@ -19,6 +19,10 @@ import { CHAT_REALTIME_EVENT } from "./ChatRealtimeBridge";
 import { messageSchema, type Message } from "../types/messages";
 import type { RealtimeEnvelope } from "../types/chat-realtime";
 import { useInterestData } from "../hooks/queries/useInterestQueries";
+import {
+    GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+    type GoogleDriveSyncDataAppliedDetail,
+} from "../services/googleDriveSyncRuntime";
 
 /**
  * Extracts and validates chat messages from a variety of possible realtime envelope formats.
@@ -66,7 +70,7 @@ export function NavBar() {
     const navigate = useNavigate();
     const location = useLocation();
     const apiFunctions = useApiFunctions();
-    const { userId } = useAuth();
+    const { userId, settingsReady } = useAuth();
     const { data: interestData } = useInterestData();
 
     const pathRef = useRef(location.pathname);
@@ -232,10 +236,16 @@ export function NavBar() {
                 void refreshInboxState();
             }
         };
+        const onCloudDataApplied = (event: Event) => {
+            const detail = (event as CustomEvent<GoogleDriveSyncDataAppliedDetail>).detail;
+            if (!settingsReady || userId == null || detail?.profileId !== userId) return;
+            void refreshInboxState();
+        };
 
         window.addEventListener(CHAT_REALTIME_EVENT, handleRealtime);
         window.addEventListener(INBOX_SEEN_EVENT, onSeen as EventListener);
         window.addEventListener("visibilitychange", onVisibilityChange);
+        window.addEventListener(GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT, onCloudDataApplied);
 
         return () => {
             cancelled = true;
@@ -243,8 +253,9 @@ export function NavBar() {
             window.removeEventListener(CHAT_REALTIME_EVENT, handleRealtime as EventListener);
             window.removeEventListener(INBOX_SEEN_EVENT, onSeen as EventListener);
             window.removeEventListener("visibilitychange", onVisibilityChange);
+            window.removeEventListener(GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT, onCloudDataApplied);
         };
-    }, [apiFunctions, userId]);
+    }, [apiFunctions, settingsReady, userId]);
 
     // Clear the inbox dot immediately when navigating to the chat section or shared albums
     useEffect(() => {
@@ -289,12 +300,19 @@ export function NavBar() {
         refreshInterestUnseen();
 
         const onSeen = () => setInterestUnseen(false);
+        const onCloudDataApplied = (event: Event) => {
+            const detail = (event as CustomEvent<GoogleDriveSyncDataAppliedDetail>).detail;
+            if (!settingsReady || userId == null || detail?.profileId !== userId) return;
+            refreshInterestUnseen();
+        };
         window.addEventListener(INTEREST_SEEN_EVENT, onSeen as EventListener);
+        window.addEventListener(GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT, onCloudDataApplied);
 
         return () => {
             window.removeEventListener(INTEREST_SEEN_EVENT, onSeen as EventListener);
+            window.removeEventListener(GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT, onCloudDataApplied);
         };
-    }, [interestData]);
+    }, [interestData, settingsReady, userId]);
 
     // Clear the interest dot immediately when navigating to the interest section
     useEffect(() => {

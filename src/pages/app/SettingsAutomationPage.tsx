@@ -23,12 +23,18 @@ import {
     INTEREST_VIEW_SCAN_EVENT,
     setForbiddenWords as setForbiddenWordsInStore,
 } from "../../utils/autoblock";
+import { useAuth } from "../../contexts/useAuth";
+import {
+    GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+    type GoogleDriveSyncDataAppliedDetail,
+} from "../../services/googleDriveSyncRuntime";
 
 export function SettingsAutomationPage() {
     const { t } = useTranslation();
     const queryClient = useQueryClient();
     const navigate = useNavigate();
     const apiFunctions = useApiFunctions();
+    const { userId, settingsReady } = useAuth();
 
     // --- AUTO-BLOCK STATE ---
     const [blockOnChat, setBlockOnChat] = useState(() => window.localStorage.getItem("fg-block-chat") === "true");
@@ -76,19 +82,6 @@ export function SettingsAutomationPage() {
         };
         window.addEventListener(AUTO_BLOCK_WHITELIST_UPDATED_EVENT, handleWhitelistUpdated);
         return () => window.removeEventListener(AUTO_BLOCK_WHITELIST_UPDATED_EVENT, handleWhitelistUpdated);
-    }, []);
-
-    useEffect(() => {
-        const handleWordsUpdated = (e: Event) => {
-            const detail = (e as CustomEvent<string>).detail;
-            if (typeof detail === "string") {
-                setForbiddenWords(detail);
-            } else {
-                setForbiddenWords(getForbiddenWords());
-            }
-        };
-        window.addEventListener("fg-forbidden-words-updated", handleWordsUpdated);
-        return () => window.removeEventListener("fg-forbidden-words-updated", handleWordsUpdated);
     }, []);
 
     useEffect(() => {
@@ -157,6 +150,47 @@ export function SettingsAutomationPage() {
             return [];
         }
     });
+
+    useEffect(() => {
+        const handleWordsUpdated = (e: Event) => {
+            const detail = (e as CustomEvent<string>).detail;
+            if (typeof detail === "string") {
+                setForbiddenWords(detail);
+            } else {
+                setForbiddenWords(getForbiddenWords());
+            }
+        };
+        window.addEventListener("fg-forbidden-words-updated", handleWordsUpdated);
+        return () => window.removeEventListener("fg-forbidden-words-updated", handleWordsUpdated);
+    }, []);
+
+    useEffect(() => {
+        const handleCloudDataApplied = (event: Event) => {
+            const detail = (event as CustomEvent<GoogleDriveSyncDataAppliedDetail>).detail;
+            if (!settingsReady || userId == null || detail?.profileId !== userId) {
+                return;
+            }
+
+            // These controls persist immediately, so refreshing them cannot
+            // discard an unsaved rules draft.
+            setBlockOnChat(window.localStorage.getItem("fg-block-chat") === "true");
+            setBlockOnInterestViews(
+                window.localStorage.getItem(INTEREST_VIEW_AUTOBLOCK_STORAGE_KEY) === "true",
+            );
+            setWhitelist(getAutoBlockWhitelist());
+        };
+
+        window.addEventListener(
+            GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+            handleCloudDataApplied,
+        );
+        return () => {
+            window.removeEventListener(
+                GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+                handleCloudDataApplied,
+            );
+        };
+    }, [settingsReady, userId]);
 
     // --- VIEWS RECOVERY STATE ---
     const [viewScannerEnabled, setViewScannerEnabled] = useState(() => window.localStorage.getItem("fg-view-scanner") !== "false");

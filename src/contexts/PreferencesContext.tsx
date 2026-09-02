@@ -14,6 +14,10 @@ import { geohashSchema } from "../utils/geohash";
 import { UNIT_PRESETS, type UnitsPreset } from "../utils/units";
 import { REVEAL_STRENGTH_SUBTLE, REVEAL_STRENGTH_PRONOUNCED, type RevealStrength } from "../config/ui-constants";
 import { getSetting, setSetting } from "../services/chatDb";
+import {
+	GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+	type GoogleDriveSyncDataAppliedDetail,
+} from "../services/googleDriveSyncRuntime";
 import { useAuth } from "./useAuth";
 
 export const COLOR_SCHEMES = ["system", "light", "dark"] as const;
@@ -375,11 +379,11 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
 	const { userId, settingsReady } = useAuth();
 	const [isLocationLoaded, setIsLocationLoaded] = useState(false);
 	useEffect(() => {
-		if (!settingsReady) {
+		if (!settingsReady || userId == null) {
 			return;
 		}
 		let cancelled = false;
-		void (async () => {
+		const loadLocationPreferences = async () => {
 			const stored = await getSetting<Partial<StoredLocationPrefs>>(LOCATION_SETTINGS_KEY);
 			if (cancelled) {
 				return;
@@ -388,9 +392,26 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
 			dispatch({ type: "SET_LOCATION_NAME", payload: stored?.locationName ?? null });
 			dispatch({ type: "SET_AUTO_LOCATION", payload: stored?.useAutoLocation ?? false });
 			setIsLocationLoaded(true);
-		})();
+		};
+		const handleCloudDataApplied = (event: Event) => {
+			const detail = (event as CustomEvent<GoogleDriveSyncDataAppliedDetail>).detail;
+			if (!settingsReady || detail?.profileId !== userId) {
+				return;
+			}
+			void loadLocationPreferences();
+		};
+
+		void loadLocationPreferences();
+		window.addEventListener(
+			GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+			handleCloudDataApplied,
+		);
 		return () => {
 			cancelled = true;
+			window.removeEventListener(
+				GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
+				handleCloudDataApplied,
+			);
 		};
 	}, [userId, settingsReady]);
 

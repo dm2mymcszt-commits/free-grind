@@ -56,6 +56,7 @@ import { VERSION_ANNOUNCEMENTS } from "./data/versionAnnouncements";
 import { useRenderPhase } from "./hooks/useRenderPhase";
 import { MultiSelectProvider } from "./contexts/MultiSelectContext";
 import { MultiSelectOverlay } from "./components/multi-select/MultiSelectOverlay";
+import { GoogleDriveSyncLifecycleBridge } from "./components/GoogleDriveSyncLifecycleBridge";
 
 function ErrorPage() {
 	const { t } = useTranslation();
@@ -173,6 +174,7 @@ export default function App() {
 		<AuthProvider>
 			<SplashReadyBridge />
 			<PreferencesProvider>
+				<GoogleDriveSyncLifecycleBridge />
 				<SmoothScroll>
 					<MultiSelectProvider>
 						{showOnboarding ? (

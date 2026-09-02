@@ -1,4 +1,4 @@
-name: Build iOS IPA
+name: Build Windows + iOS Test Artifacts
 
 on:
   push:
@@ -10,8 +10,51 @@ permissions:
   contents: read
 
 jobs:
+  build-windows:
+    runs-on: windows-latest
+    env:
+      FREE_GRIND_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.FREE_GRIND_GOOGLE_DESKTOP_CLIENT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Validate Windows Google OAuth client ID
+        shell: pwsh
+        run: |
+          if ($env:FREE_GRIND_GOOGLE_DESKTOP_CLIENT_ID -notmatch '^[^.]+\.apps\.googleusercontent\.com$') {
+            throw 'FREE_GRIND_GOOGLE_DESKTOP_CLIENT_ID must be configured for a Drive-capable Windows build'
+          }
+
+      - name: Build Windows artifacts
+        run: bunx tauri build
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: free-grind-windows-x64
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/free-grind.exe
+          if-no-files-found: error
+
   build-ios:
     runs-on: macos-latest
+    env:
+      FREE_GRIND_GOOGLE_IOS_CLIENT_ID: ${{ secrets.FREE_GRIND_GOOGLE_IOS_CLIENT_ID }}
     steps:
       - uses: actions/checkout@v4
 
@@ -31,6 +74,13 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
+      - name: Validate iOS Google OAuth client ID
+        run: |
+          if [ -z "$FREE_GRIND_GOOGLE_IOS_CLIENT_ID" ]; then
+            echo "FREE_GRIND_GOOGLE_IOS_CLIENT_ID must be configured for a Drive-capable iOS build"
+            exit 1
+          fi
+
       - name: Build frontend assets
         run: bun run build
 
@@ -38,6 +88,12 @@ jobs:
         run: |
           rm -rf src-tauri/gen/apple
           bunx tauri ios init --ci
+
+      - name: Configure iOS authentication framework
+        run: |
+          sh scripts/configure-ios-google-oauth.sh \
+            --project-yml src-tauri/gen/apple/project.yml
+          xcodegen generate --spec src-tauri/gen/apple/project.yml
 
       - name: Merge app Info.plist
         run: |
@@ -52,6 +108,7 @@ jobs:
           fi
 
           /usr/libexec/PlistBuddy -c "Merge src-tauri/Info.plist" "$GEN_PLIST"
+          sh scripts/configure-ios-google-oauth.sh --info-plist "$GEN_PLIST"
           plutil -lint "$GEN_PLIST"
 
           if ! grep -q NSCameraUsageDescription "$GEN_PLIST"; then

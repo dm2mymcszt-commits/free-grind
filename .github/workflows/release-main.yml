@@ -178,10 +178,25 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
+      - name: Validate Windows Google OAuth client ID
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          FREE_GRIND_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.FREE_GRIND_GOOGLE_DESKTOP_CLIENT_ID }}
+        run: |
+          case "$FREE_GRIND_GOOGLE_DESKTOP_CLIENT_ID" in
+            ?*.apps.googleusercontent.com) ;;
+            *)
+              echo "FREE_GRIND_GOOGLE_DESKTOP_CLIENT_ID must be configured for a Drive-capable Windows build"
+              exit 1
+              ;;
+          esac
+
       - name: Build desktop artifacts
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FREE_GRIND_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.FREE_GRIND_GOOGLE_DESKTOP_CLIENT_ID }}
         with:
           tauriScript: bunx tauri
           args: ${{ matrix.args }}
@@ -494,6 +509,8 @@ jobs:
   build-ios:
     needs: create-release
     runs-on: macos-latest
+    env:
+      FREE_GRIND_GOOGLE_IOS_CLIENT_ID: ${{ secrets.FREE_GRIND_GOOGLE_IOS_CLIENT_ID }}
     steps:
       - uses: actions/checkout@v4
 
@@ -513,6 +530,13 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
+      - name: Validate iOS Google OAuth client ID
+        run: |
+          if [ -z "$FREE_GRIND_GOOGLE_IOS_CLIENT_ID" ]; then
+            echo "FREE_GRIND_GOOGLE_IOS_CLIENT_ID must be configured for a Drive-capable iOS release"
+            exit 1
+          fi
+
       - name: Build frontend assets
         run: bun run build
 
@@ -521,9 +545,35 @@ jobs:
           rm -rf src-tauri/gen/apple
           bunx tauri ios init --ci
 
+      - name: Configure iOS authentication framework
+        run: |
+          sh scripts/configure-ios-google-oauth.sh \
+            --project-yml src-tauri/gen/apple/project.yml
+          xcodegen generate --spec src-tauri/gen/apple/project.yml
+
+      - name: Merge app Info.plist
+        run: |
+          GEN_PLIST=$(find src-tauri/gen/apple -maxdepth 2 -name Info.plist | head -n 1)
+          if [ -z "$GEN_PLIST" ]; then
+            echo "Generated Info.plist not found under src-tauri/gen/apple"
+            exit 1
+          fi
+
+          /usr/libexec/PlistBuddy -c "Merge src-tauri/Info.plist" "$GEN_PLIST"
+          sh scripts/configure-ios-google-oauth.sh --info-plist "$GEN_PLIST"
+          plutil -lint "$GEN_PLIST"
+
+          if ! grep -q NSCameraUsageDescription "$GEN_PLIST"; then
+            echo "Info.plist merge did not take effect"
+            exit 1
+          fi
+
+          echo "Merged src-tauri/Info.plist into $GEN_PLIST"
+
       - name: Build iOS Rust static library
         run: |
-          cargo build --manifest-path src-tauri/Cargo.toml --target aarch64-apple-ios --release
+          # Keep custom-protocol enabled so a real device loads bundled assets.
+          cargo build --manifest-path src-tauri/Cargo.toml --target aarch64-apple-ios --release --features custom-protocol
 
           LIB_PATH="src-tauri/target/aarch64-apple-ios/release/libopen_grind_lib.a"
           if [ ! -f "$LIB_PATH" ]; then

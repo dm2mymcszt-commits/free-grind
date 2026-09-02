@@ -53,6 +53,7 @@ const SQLITE_BUSY_TIMEOUT_MS = 5_000;
 const SQLITE_LOCK_RETRY_DELAYS_MS = [30, 80, 180, 350] as const;
 
 let activeChatDbName = LEGACY_CHAT_DB;
+let activeChatDbProfileId: number | null = null;
 
 type ConversationRow = {
 	conversation_id: string;
@@ -503,6 +504,7 @@ export async function setActiveChatDbUser(profileId: number | null): Promise<voi
 	dbPromise = null;
 	writeQueue = Promise.resolve();
 	activeChatDbName = nextDbName;
+	activeChatDbProfileId = profileId;
 
 	if (profileId != null) {
 		await migrateLegacyDbIfNeeded(profileId);
@@ -517,6 +519,10 @@ export async function setActiveChatDbUser(profileId: number | null): Promise<voi
 			appLog.warn("[chat-db] failed to purge empty synthetic blocked conversations", error);
 		});
 	}
+}
+
+export function getActiveChatDbUser(): number | null {
+	return activeChatDbProfileId;
 }
 
 // ---------------------------------------------------------------------------
@@ -2228,6 +2234,41 @@ const FULL_EXPORT_TABLES: {
 
 export type PortableTable = (typeof FULL_EXPORT_TABLES)[number];
 
+export type PortableTableRow = Record<string, unknown>;
+
+export type PortableTableUpsertOptions = {
+	skipColumns?: string[];
+	newerThanColumn?: string;
+	maxColumns?: string[];
+	preserveExistingOnNullOrEmptyColumns?: string[];
+};
+
+export type PortableTableRowMutation =
+	| {
+			kind: "upsert";
+			row: PortableTableRow;
+			options?: PortableTableUpsertOptions;
+	  }
+	| { kind: "delete" };
+
+export type PortableTableCompareAndApplyResult =
+	| "already-current"
+	| "changed"
+	| "applied";
+
+export type PortableTableRowPredicate = (
+	currentRow: Readonly<PortableTableRow> | null,
+) => boolean;
+
+export type PortableTableCompareAndApplyOptions = {
+	/** Columns excluded from the row passed to both predicates, as in a sync scan. */
+	omitColumns?: string[];
+	/** Checked first so replaying an operation that already landed is a no-op. */
+	matchesIncoming: PortableTableRowPredicate;
+	/** The local row observed before the remote winner was selected. */
+	matchesExpected: PortableTableRowPredicate;
+};
+
 /**
  * Table descriptors keyed by name. Every generic read/write below resolves
  * its table through this map rather than accepting a caller-supplied name,
@@ -2333,16 +2374,12 @@ export async function countTableRowsSince(
  * omits them; a section that deliberately skips a heavy column (album cover
  * art, say) passes it in `skipColumns` so the existing value survives.
  */
-export async function upsertTableRows(
-	name: string,
-	rows: Record<string, unknown>[],
-	options?: { skipColumns?: string[]; newerThanColumn?: string; maxColumns?: string[] },
+async function upsertTableRowsUnlocked(
+	db: Database,
+	table: PortableTable,
+	rows: PortableTableRow[],
+	options?: PortableTableUpsertOptions,
 ): Promise<number> {
-	const table = requirePortableTable(name);
-	if (rows.length === 0) {
-		return 0;
-	}
-
 	const skip = new Set(options?.skipColumns ?? []);
 	const columns = table.columns.filter((column) => !skip.has(column));
 	const placeholders = columns.map((_, index) => `$${index + 1}`).join(", ");
@@ -2352,14 +2389,23 @@ export async function upsertTableRows(
 	const maxColumns = new Set(
 		(options?.maxColumns ?? []).filter((column) => columns.includes(column)),
 	);
+	const preserveColumns = new Set(
+		(options?.preserveExistingOnNullOrEmptyColumns ?? []).filter((column) =>
+			columns.includes(column),
+		),
+	);
 
 	const updates = columns
 		.filter((column) => column !== table.primaryKey)
-		.map((column) =>
-			maxColumns.has(column)
-				? `${column} = MAX(COALESCE(excluded.${column}, 0), COALESCE(${table.name}.${column}, 0))`
-				: `${column} = excluded.${column}`,
-		)
+		.map((column) => {
+			if (maxColumns.has(column)) {
+				return `${column} = MAX(COALESCE(excluded.${column}, 0), COALESCE(${table.name}.${column}, 0))`;
+			}
+			if (preserveColumns.has(column)) {
+				return `${column} = CASE WHEN excluded.${column} IS NULL OR excluded.${column} = '' THEN ${table.name}.${column} ELSE excluded.${column} END`;
+			}
+			return `${column} = excluded.${column}`;
+		})
 		.join(", ");
 
 	/**
@@ -2382,17 +2428,159 @@ export async function upsertTableRows(
 	`;
 
 	let written = 0;
+	for (const row of rows) {
+		if (!row || typeof row !== "object" || row[table.primaryKey] == null) {
+			continue;
+		}
+		await db.execute(sql, columns.map((column) => row[column] ?? null));
+		written += 1;
+	}
+	return written;
+}
+
+export async function upsertTableRows(
+	name: string,
+	rows: PortableTableRow[],
+	options?: PortableTableUpsertOptions,
+): Promise<number> {
+	const table = requirePortableTable(name);
+	if (rows.length === 0) {
+		return 0;
+	}
+
+	let written = 0;
 	const db = await getDb();
 	await executeWithLockRetry(db, `import-${table.name}`, async () => {
-		for (const row of rows) {
-			if (!row || typeof row !== "object" || row[table.primaryKey] == null) {
-				continue;
-			}
-			await db.execute(sql, columns.map((column) => row[column] ?? null));
-			written += 1;
-		}
+		written = await upsertTableRowsUnlocked(db, table, rows, options);
 	});
 	return written;
+}
+
+/**
+ * Keyset-paged variant used by unattended sync. Unlike OFFSET paging it
+ * cannot skip a surviving row when another row is inserted or deleted while
+ * a long reconciliation scan is running.
+ */
+export async function selectTablePageAfter(
+	name: string,
+	afterPrimaryKey: string | null,
+	limit: number,
+	options?: { omitColumns?: string[] },
+): Promise<Record<string, unknown>[]> {
+	const table = requirePortableTable(name);
+	const omit = new Set(options?.omitColumns ?? []);
+	const columns = table.columns.filter((column) => !omit.has(column));
+	const where = afterPrimaryKey == null ? "" : `WHERE ${table.primaryKey} > $1`;
+	const params = afterPrimaryKey == null ? [] : [afterPrimaryKey];
+	const db = await getDb();
+	return db.select<Record<string, unknown>[]>(
+		`SELECT ${columns.join(", ")} FROM ${table.name} ${where}
+		 ORDER BY ${table.primaryKey} LIMIT ${Math.max(1, Math.trunc(limit))}`,
+		params,
+	);
+}
+
+async function selectPortableTableRowUnlocked(
+	db: Database,
+	table: PortableTable,
+	primaryKeyValue: unknown,
+	omitColumns?: string[],
+): Promise<PortableTableRow | null> {
+	const omit = new Set(omitColumns ?? []);
+	const columns = table.columns.filter((column) => !omit.has(column));
+	if (columns.length === 0) {
+		throw new Error(`Cannot compare ${table.name} without any portable columns`);
+	}
+	const rows = await db.select<PortableTableRow[]>(
+		`SELECT ${columns.join(", ")} FROM ${table.name}
+		 WHERE ${table.primaryKey} = $1 LIMIT 1`,
+		[primaryKeyValue],
+	);
+	return rows[0] ?? null;
+}
+
+async function deletePortableTableRowUnlocked(
+	db: Database,
+	table: PortableTable,
+	primaryKeyValue: unknown,
+): Promise<void> {
+	await db.execute(
+		`DELETE FROM ${table.name} WHERE ${table.primaryKey} = $1`,
+		[primaryKeyValue],
+	);
+}
+
+/**
+ * Atomically compares and applies one portable row relative to this module's
+ * serialized write queue. Predicates are synchronous and must be pure because
+ * the whole compare/write unit can be repeated after a transient SQLite lock.
+ *
+ * The incoming predicate runs first, making a replay that is already present
+ * an idempotent no-op. A failed expected predicate means the row changed since
+ * the caller observed it, so the requested mutation is deliberately skipped.
+ */
+export async function compareAndApplyPortableTableRow(
+	name: string,
+	primaryKeyValue: unknown,
+	mutation: PortableTableRowMutation,
+	options: PortableTableCompareAndApplyOptions,
+): Promise<PortableTableCompareAndApplyResult> {
+	const table = requirePortableTable(name);
+	if (primaryKeyValue == null) {
+		throw new Error(`Cannot compare ${table.name} without a primary key`);
+	}
+	if (
+		mutation.kind === "upsert" &&
+		(
+			mutation.row[table.primaryKey] == null ||
+			String(mutation.row[table.primaryKey]) !== String(primaryKeyValue)
+		)
+	) {
+		throw new Error(`The ${table.name} upsert row does not match its primary key`);
+	}
+
+	const db = await getDb();
+	let result: PortableTableCompareAndApplyResult | null = null;
+	await executeWithLockRetry(db, `compare-and-apply-${table.name}`, async () => {
+		result = null;
+		const currentRow = await selectPortableTableRowUnlocked(
+			db,
+			table,
+			primaryKeyValue,
+			options.omitColumns,
+		);
+		if (options.matchesIncoming(currentRow)) {
+			result = "already-current";
+			return;
+		}
+		if (!options.matchesExpected(currentRow)) {
+			result = "changed";
+			return;
+		}
+
+		if (mutation.kind === "upsert") {
+			await upsertTableRowsUnlocked(db, table, [mutation.row], mutation.options);
+		} else {
+			await deletePortableTableRowUnlocked(db, table, primaryKeyValue);
+		}
+		result = "applied";
+	});
+	if (result == null) {
+		throw new Error(`The ${table.name} compare-and-apply operation did not complete`);
+	}
+	return result;
+}
+
+/** Deletes one row through the same table allowlist used by backup import. */
+export async function deletePortableTableRow(name: string, primaryKeyValue: unknown): Promise<void> {
+	const table = requirePortableTable(name);
+	if (primaryKeyValue == null) {
+		return;
+	}
+	const db = await getDb();
+	await executeWithLockRetry(db, `delete-${table.name}-row`, async () => {
+		await deletePortableTableRowUnlocked(db, table, primaryKeyValue);
+	});
 }
 
 /** Empties the named portable tables — the "replace everything" import path. */

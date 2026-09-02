@@ -5,7 +5,7 @@ use tokio::sync::{Mutex, RwLock};
 use crate::error::AppError;
 
 use super::auth::{AuthStorage, Session};
-use super::headers::{build_headers, build_grindr_client, DeviceInfo};
+use super::headers::{build_grindr_client, build_headers, DeviceInfo};
 
 pub const BASE_URL: &str = "https://grindr.mobi";
 
@@ -18,6 +18,14 @@ pub struct GrindrClient {
 }
 
 impl GrindrClient {
+    pub(crate) async fn authenticated_profile_id(&self) -> Option<String> {
+        self.session
+            .read()
+            .await
+            .as_ref()
+            .map(|session| session.profile_id.clone())
+    }
+
     pub fn user_agent(&self) -> &str {
         &self.user_agent
     }

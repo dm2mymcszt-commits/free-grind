@@ -1,5 +1,5 @@
 import { Loader2, MessageCircle } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../../contexts/useAuth";
 import * as chatDb from "../../../services/chatDb";
@@ -10,7 +10,11 @@ import { ProfileImage } from "../../../components/ui/profile-image";
 import { useAvatarCache } from "../../../hooks/useAvatarCache";
 import { resolveAvatarSrc } from "../../../services/avatarStore";
 import { getOtherParticipant, getParticipantAvatarUrl, formatConversationTime } from "./chatUtils";
-import { searchMessagesLocal } from "./cache";
+import {
+	getChatSearchIndexRevision,
+	searchMessagesLocal,
+	subscribeChatSearchIndex,
+} from "./cache";
 import { highlightMatch } from "./highlightMatch";
 
 type Props = {
@@ -37,6 +41,11 @@ export function ChatSearchPanel({ isDesktop, searchQuery, onClose, onOpenConvers
 	const [inboxError, setInboxError] = useState<string | null>(null);
 
 	const [dbMessageResults, setDbMessageResults] = useState<IndexedMessage[]>([]);
+	const searchIndexRevision = useSyncExternalStore(
+		subscribeChatSearchIndex,
+		getChatSearchIndexRevision,
+		getChatSearchIndexRevision,
+	);
 
 	useEffect(() => {
 		if (searchQuery.trim().length < 2) {
@@ -62,7 +71,7 @@ export function ChatSearchPanel({ isDesktop, searchQuery, onClose, onOpenConvers
 			active = false;
 			window.clearTimeout(timeoutId);
 		};
-	}, [searchQuery]);
+	}, [searchIndexRevision, searchQuery]);
 
 	const messageSearchResults = useMemo(() => {
 		const merged = new Map<string, IndexedMessage>();
@@ -78,7 +87,7 @@ export function ChatSearchPanel({ isDesktop, searchQuery, onClose, onOpenConvers
 		return [...merged.values()]
 			.sort((a, b) => b.timestamp - a.timestamp)
 			.slice(0, 80);
-	}, [searchQuery, dbMessageResults]);
+	}, [searchQuery, dbMessageResults, searchIndexRevision]);
 
 	// Message search results only carry a flat text index (see cache.ts), not
 	// the participant data needed to show a real avatar/name like the normal
@@ -125,7 +134,7 @@ export function ChatSearchPanel({ isDesktop, searchQuery, onClose, onOpenConvers
 				if (active) setIsLoadingInbox(false);
 			});
 		return () => { active = false; };
-	}, [t]);
+	}, [searchIndexRevision, t]);
 
 	const openConversationById = useCallback(
 		(conversationId: string) => {

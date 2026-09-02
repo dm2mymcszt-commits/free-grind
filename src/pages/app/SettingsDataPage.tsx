@@ -11,6 +11,7 @@ import {
 import toast from "react-hot-toast";
 import { useTranslation } from "react-i18next";
 import { BackToSettings } from "../../components/BackToSettings";
+import { GoogleDriveSyncCard } from "../../components/settings/GoogleDriveSyncCard";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { ToggleRow } from "../../components/ui/toggle-row";
 import { useAuth } from "../../contexts/useAuth";
@@ -48,7 +49,7 @@ function getErrorMessage(error: unknown, fallback: string): string {
 
 export function SettingsDataPage() {
 	const { t } = useTranslation();
-	const { userId } = useAuth();
+	const { userId, settingsReady } = useAuth();
 
 	const sectionLabels: Record<BackupSection, { label: string; description: string }> = {
 		core: {
@@ -435,6 +436,8 @@ export function SettingsDataPage() {
 						</div>
 					</div>
 				</div>
+
+				<GoogleDriveSyncCard profileId={settingsReady ? userId : null} />
 
 				{/* Backup */}
 				<div>
