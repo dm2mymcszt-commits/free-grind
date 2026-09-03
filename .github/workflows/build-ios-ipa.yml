@@ -12,8 +12,6 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
-    env:
-      FREE_GRIND_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.FREE_GRIND_GOOGLE_DESKTOP_CLIENT_ID }}
     steps:
       - uses: actions/checkout@v4
 
@@ -31,14 +29,23 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
-      - name: Validate Windows Google OAuth client ID
+      - name: Validate Windows Google OAuth client credentials
         shell: pwsh
+        env:
+          FREE_GRIND_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.FREE_GRIND_GOOGLE_DESKTOP_CLIENT_ID }}
+          FREE_GRIND_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.FREE_GRIND_GOOGLE_DESKTOP_CLIENT_SECRET }}
         run: |
           if ($env:FREE_GRIND_GOOGLE_DESKTOP_CLIENT_ID -notmatch '^[^.]+\.apps\.googleusercontent\.com$') {
             throw 'FREE_GRIND_GOOGLE_DESKTOP_CLIENT_ID must be configured for a Drive-capable Windows build'
           }
+          if ($env:FREE_GRIND_GOOGLE_DESKTOP_CLIENT_SECRET -notmatch '^[\x21-\x7e]{1,512}$') {
+            throw 'FREE_GRIND_GOOGLE_DESKTOP_CLIENT_SECRET must be configured for a Drive-capable Windows build'
+          }
 
       - name: Build Windows artifacts
+        env:
+          FREE_GRIND_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.FREE_GRIND_GOOGLE_DESKTOP_CLIENT_ID }}
+          FREE_GRIND_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.FREE_GRIND_GOOGLE_DESKTOP_CLIENT_SECRET }}
         run: bunx tauri build
 
       - name: Upload Windows artifacts

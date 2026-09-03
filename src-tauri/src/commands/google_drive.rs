@@ -329,6 +329,19 @@ fn validate_configured_client_id(client_id: &str) -> Result<(), GoogleDriveError
     Ok(())
 }
 
+#[cfg(any(target_os = "windows", test))]
+fn validate_configured_client_secret(client_secret: &str) -> Result<(), GoogleDriveError> {
+    if client_secret.is_empty()
+        || client_secret.len() > 512
+        || !client_secret.bytes().all(|byte| byte.is_ascii_graphic())
+    {
+        return Err(GoogleDriveError::Configuration(
+            "The configured Google desktop OAuth client secret is invalid".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 fn configured_client_id() -> Result<String, GoogleDriveError> {
     #[cfg(target_os = "windows")]
     let value = option_env!("FREE_GRIND_GOOGLE_DESKTOP_CLIENT_ID")
@@ -356,6 +369,24 @@ fn configured_client_id() -> Result<String, GoogleDriveError> {
     validate_configured_client_id(&client_id)?;
 
     Ok(client_id)
+}
+
+#[cfg(target_os = "windows")]
+fn configured_desktop_client_secret() -> Result<Zeroizing<String>, GoogleDriveError> {
+    let value = option_env!("FREE_GRIND_GOOGLE_DESKTOP_CLIENT_SECRET")
+        .map(|value| Zeroizing::new(value.to_owned()))
+        .or_else(|| {
+            std::env::var("FREE_GRIND_GOOGLE_DESKTOP_CLIENT_SECRET")
+                .ok()
+                .map(Zeroizing::new)
+        })
+        .ok_or_else(|| {
+            GoogleDriveError::Configuration(
+                "Google Drive OAuth is missing the Windows desktop client secret".to_owned(),
+            )
+        })?;
+    validate_configured_client_secret(value.as_str())?;
+    Ok(value)
 }
 
 fn validate_profile_id(profile_id: &str) -> Result<&str, GoogleDriveError> {
@@ -719,10 +750,16 @@ fn http_client() -> Result<Client, GoogleDriveError> {
         })
 }
 
-fn form_body(fields: &[(&str, &str)]) -> Zeroizing<String> {
+fn oauth_token_form_body(
+    fields: &[(&str, &str)],
+    client_secret: Option<&str>,
+) -> Zeroizing<String> {
     let mut serializer = url::form_urlencoded::Serializer::new(String::new());
     for (name, value) in fields {
         serializer.append_pair(name, value);
+    }
+    if let Some(client_secret) = client_secret {
+        serializer.append_pair("client_secret", client_secret);
     }
     Zeroizing::new(serializer.finish())
 }
@@ -805,11 +842,18 @@ async fn refresh_access_token(
         ));
     }
 
-    let body = form_body(&[
-        ("client_id", &client_id),
-        ("refresh_token", &credentials.refresh_token),
-        ("grant_type", "refresh_token"),
-    ]);
+    #[cfg(target_os = "windows")]
+    let client_secret = Some(configured_desktop_client_secret()?);
+    #[cfg(not(target_os = "windows"))]
+    let client_secret: Option<Zeroizing<String>> = None;
+    let body = oauth_token_form_body(
+        &[
+            ("client_id", &client_id),
+            ("refresh_token", &credentials.refresh_token),
+            ("grant_type", "refresh_token"),
+        ],
+        client_secret.as_ref().map(|value| value.as_str()),
+    );
     let response = http_client()?
         .post(TOKEN_ENDPOINT)
         .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
@@ -890,6 +934,11 @@ where
 #[tauri::command]
 pub fn google_drive_config_status() -> GoogleDriveConfigStatus {
     let config = configured_client_id();
+    #[cfg(target_os = "windows")]
+    let config = config.and_then(|client_id| {
+        configured_desktop_client_secret()?;
+        Ok(client_id)
+    });
     #[cfg(target_os = "ios")]
     let config = config.and_then(|client_id| {
         ios_callback_scheme(&client_id)?;
@@ -1290,18 +1339,22 @@ async fn receive_oauth_callback(
 async fn exchange_authorization_code(
     profile_id: &str,
     client_id: &str,
+    client_secret: Option<&str>,
     redirect_uri: &str,
     code: &str,
     verifier: &str,
     expected_epoch: u64,
 ) -> Result<(), GoogleDriveError> {
-    let body = form_body(&[
-        ("client_id", client_id),
-        ("code", code),
-        ("code_verifier", verifier),
-        ("grant_type", "authorization_code"),
-        ("redirect_uri", redirect_uri),
-    ]);
+    let body = oauth_token_form_body(
+        &[
+            ("client_id", client_id),
+            ("code", code),
+            ("code_verifier", verifier),
+            ("grant_type", "authorization_code"),
+            ("redirect_uri", redirect_uri),
+        ],
+        client_secret,
+    );
     let response = http_client()?
         .post(TOKEN_ENDPOINT)
         .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
@@ -1393,6 +1446,7 @@ pub async fn google_drive_connect(
         let _guard = OAuthProgressGuard::acquire()?;
         let expected_epoch = credential_epoch(&profile_id)?;
         let client_id = configured_client_id()?;
+        let client_secret = configured_desktop_client_secret()?;
         let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
             .await
             .map_err(|_| {
@@ -1430,6 +1484,7 @@ pub async fn google_drive_connect(
         exchange_authorization_code(
             &profile_id,
             &client_id,
+            Some(client_secret.as_str()),
             &redirect_uri,
             code.as_str(),
             verifier.as_str(),
@@ -1495,6 +1550,7 @@ pub async fn google_drive_connect(
         exchange_authorization_code(
             &profile_id,
             &client_id,
+            None,
             &redirect_uri,
             code.as_str(),
             verifier.as_str(),
@@ -2078,6 +2134,71 @@ mod tests {
                 "accepted invalid client ID: {invalid}"
             );
         }
+    }
+
+    #[test]
+    fn configured_desktop_client_secrets_are_bounded_graphic_ascii() {
+        assert!(validate_configured_client_secret("GOCSPX-fake_desktop-secret").is_ok());
+        for invalid in [
+            "".to_owned(),
+            "contains space".to_owned(),
+            "contains\nnewline".to_owned(),
+            "contains\ttab".to_owned(),
+            "non-ascii-é".to_owned(),
+            "a".repeat(513),
+        ] {
+            assert!(
+                validate_configured_client_secret(&invalid).is_err(),
+                "accepted an invalid desktop client secret"
+            );
+        }
+    }
+
+    #[test]
+    fn oauth_token_forms_include_the_desktop_secret_only_when_supplied() {
+        let code_body = oauth_token_form_body(
+            &[
+                ("client_id", "example.apps.googleusercontent.com"),
+                ("code", "fake-code"),
+                ("code_verifier", "fake-verifier"),
+                ("grant_type", "authorization_code"),
+                ("redirect_uri", "http://127.0.0.1:4567/oauth2/callback"),
+            ],
+            Some("fake-desktop-secret"),
+        );
+        let code_fields: std::collections::HashMap<_, _> =
+            url::form_urlencoded::parse(code_body.as_bytes())
+                .into_owned()
+                .collect();
+        assert_eq!(
+            code_fields.get("client_secret").map(String::as_str),
+            Some("fake-desktop-secret")
+        );
+
+        let refresh_body = oauth_token_form_body(
+            &[
+                ("client_id", "example.apps.googleusercontent.com"),
+                ("refresh_token", "fake-refresh-token"),
+                ("grant_type", "refresh_token"),
+            ],
+            Some("fake-desktop-secret"),
+        );
+        let refresh_fields: std::collections::HashMap<_, _> =
+            url::form_urlencoded::parse(refresh_body.as_bytes())
+                .into_owned()
+                .collect();
+        assert_eq!(
+            refresh_fields.get("client_secret").map(String::as_str),
+            Some("fake-desktop-secret")
+        );
+
+        let ios_body =
+            oauth_token_form_body(&[("client_id", "example.apps.googleusercontent.com")], None);
+        let ios_fields: std::collections::HashMap<_, _> =
+            url::form_urlencoded::parse(ios_body.as_bytes())
+                .into_owned()
+                .collect();
+        assert!(!ios_fields.contains_key("client_secret"));
     }
 
     #[test]

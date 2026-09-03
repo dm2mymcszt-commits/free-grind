@@ -178,16 +178,27 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
-      - name: Validate Windows Google OAuth client ID
+      - name: Validate Windows Google OAuth client credentials
         if: runner.os == 'Windows'
         shell: bash
         env:
           FREE_GRIND_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.FREE_GRIND_GOOGLE_DESKTOP_CLIENT_ID }}
+          FREE_GRIND_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.FREE_GRIND_GOOGLE_DESKTOP_CLIENT_SECRET }}
         run: |
           case "$FREE_GRIND_GOOGLE_DESKTOP_CLIENT_ID" in
             ?*.apps.googleusercontent.com) ;;
             *)
               echo "FREE_GRIND_GOOGLE_DESKTOP_CLIENT_ID must be configured for a Drive-capable Windows build"
+              exit 1
+              ;;
+          esac
+          if [ -z "$FREE_GRIND_GOOGLE_DESKTOP_CLIENT_SECRET" ] || [ "${#FREE_GRIND_GOOGLE_DESKTOP_CLIENT_SECRET}" -gt 512 ]; then
+            echo "FREE_GRIND_GOOGLE_DESKTOP_CLIENT_SECRET must be configured for a Drive-capable Windows build"
+            exit 1
+          fi
+          case "$FREE_GRIND_GOOGLE_DESKTOP_CLIENT_SECRET" in
+            *[[:space:]]*|*[[:cntrl:]]*)
+              echo "FREE_GRIND_GOOGLE_DESKTOP_CLIENT_SECRET must be configured for a Drive-capable Windows build"
               exit 1
               ;;
           esac
@@ -197,6 +208,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FREE_GRIND_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.FREE_GRIND_GOOGLE_DESKTOP_CLIENT_ID }}
+          FREE_GRIND_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ runner.os == 'Windows' && secrets.FREE_GRIND_GOOGLE_DESKTOP_CLIENT_SECRET || '' }}
         with:
           tauriScript: bunx tauri
           args: ${{ matrix.args }}
