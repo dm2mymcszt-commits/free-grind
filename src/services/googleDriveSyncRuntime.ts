@@ -1,4 +1,5 @@
 import { isTauri } from "@tauri-apps/api/core";
+import type { ContactIndexSyncScope } from "./chatContactIndex";
 import { getActiveChatContactIndexUser } from "./chatContactIndex";
 import { getActiveChatDbUser } from "./chatDb";
 import {
@@ -51,6 +52,53 @@ function readPersistedAutoSyncPaused(): boolean {
  * such as revealing a pairing code. This is deliberately an app-global
  * browser preference: it is never scanned, journaled or uploaded.
  */
+const CONTACT_SCOPE_STORAGE_KEY = "fg:google-drive-contact-scope";
+const contactScopeListeners = new Set<(scope: ContactIndexSyncScope) => void>();
+let contactScope: ContactIndexSyncScope = readPersistedContactScope();
+
+function readPersistedContactScope(): ContactIndexSyncScope {
+	try {
+		const stored = globalThis.localStorage?.getItem(CONTACT_SCOPE_STORAGE_KEY);
+		if (
+			stored === "conversations" ||
+			stored === "conversations-and-recent" ||
+			stored === "everything"
+		) {
+			return stored;
+		}
+	} catch {
+		// A blocked store falls through to the default.
+	}
+	return "conversations";
+}
+
+/**
+ * How much of the contact index this device contributes. Profiles that were
+ * only browsed dominate that table, so the default keeps sync to people the
+ * user has actually messaged.
+ */
+export function getGoogleDriveContactScope(): ContactIndexSyncScope {
+	return contactScope;
+}
+
+export function setGoogleDriveContactScope(scope: ContactIndexSyncScope): void {
+	if (contactScope === scope) return;
+	contactScope = scope;
+	try {
+		globalThis.localStorage?.setItem(CONTACT_SCOPE_STORAGE_KEY, scope);
+	} catch {
+		// The in-memory value still applies for this session.
+	}
+	for (const listener of contactScopeListeners) listener(scope);
+}
+
+export function subscribeGoogleDriveContactScope(
+	listener: (scope: ContactIndexSyncScope) => void,
+): () => void {
+	contactScopeListeners.add(listener);
+	return () => contactScopeListeners.delete(listener);
+}
+
 export function isGoogleDriveAutoSyncPaused(): boolean {
 	return autoSyncPaused;
 }
@@ -156,6 +204,7 @@ export async function refreshAfterGoogleDriveRemoteApply(
 }
 
 const controllerManager = createGoogleDriveSyncControllerAdapter({
+	contactScope: getGoogleDriveContactScope,
 	isActiveProfile: isGoogleDriveSyncProfileReady,
 	onRemoteApplied: async (profileId) => {
 		await refreshAfterGoogleDriveRemoteApply(profileId);

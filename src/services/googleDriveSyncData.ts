@@ -2,6 +2,7 @@ import type { ImmutableSyncOperation, JsonValue, SyncSection } from "./cloudSync
 import { canonicalJson } from "./cloudSync/canonicalJson";
 import * as chatDb from "./chatDb";
 import * as contactIndex from "./chatContactIndex";
+import type { ContactIndexSyncScope } from "./chatContactIndex";
 import {
 	compareAndApplyInterestViewRow,
 	exportInterestViewRows,
@@ -237,12 +238,23 @@ async function scanChatEntities(
 async function scanContactEntities(
 	profileId: number,
 	onEntity: (entity: GoogleDriveSyncEntity) => Promise<void>,
+	contactScope: ContactIndexSyncScope = "everything",
 ): Promise<void> {
 	for (const spec of CONTACT_ENTITY_SPECS) {
 		let after: string | null = null;
+		// The window is resolved once so paging cannot drift across the boundary
+		// and return the same row twice or skip one.
+		const recentSinceMs =
+			Date.now() - contactIndex.CONTACT_INDEX_RECENT_WINDOW_MS;
 		for (;;) {
 			assertActiveProfile(profileId);
-			const rows = await contactIndex.selectContactIndexPageAfter(spec.table, after, 2_000);
+			const rows = await contactIndex.selectContactIndexPageAfter(
+				spec.table,
+				after,
+				2_000,
+				contactScope,
+				recentSinceMs,
+			);
 			if (rows.length === 0) break;
 			for (const row of rows) {
 				const key = row[spec.primaryKey];
@@ -297,10 +309,11 @@ export async function scanGoogleDriveSyncEntities(
 	profileId: number,
 	includeMedia: boolean,
 	onEntity: (entity: GoogleDriveSyncEntity) => Promise<void>,
+	contactScope: ContactIndexSyncScope = "everything",
 ): Promise<void> {
 	assertActiveProfile(profileId);
 	await scanChatEntities(profileId, includeMedia, onEntity);
-	await scanContactEntities(profileId, onEntity);
+	await scanContactEntities(profileId, onEntity, contactScope);
 	await scanInterestEntities(profileId, onEntity);
 	await scanPreferenceEntities(profileId, onEntity);
 }

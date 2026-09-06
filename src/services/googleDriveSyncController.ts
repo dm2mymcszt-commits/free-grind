@@ -5,7 +5,10 @@ import {
 	type SyncPackage,
 } from "./cloudSync";
 import { getDeviceName, resolveGoogleDriveSyncDeviceId } from "./backupPeers";
-import { getActiveChatContactIndexUser } from "./chatContactIndex";
+import {
+	getActiveChatContactIndexUser,
+	type ContactIndexSyncScope,
+} from "./chatContactIndex";
 import { getActiveChatDbUser } from "./chatDb";
 import {
 	getActiveInterestViewsAccount,
@@ -108,6 +111,7 @@ export interface GoogleDriveSyncControllerDependencies {
 	onRemoteApplied?: (profileId: number) => void | Promise<void>;
 	deviceId?: (boundDeviceId: string | null, allowCreate: boolean) => string | null;
 	deviceName?: () => string;
+	contactScope?: () => ContactIndexSyncScope;
 }
 
 type RequiredControllerDependencies = Required<GoogleDriveSyncControllerDependencies>;
@@ -233,6 +237,8 @@ function dependenciesWithDefaults(
 			((boundDeviceId, allowCreate) =>
 				resolveGoogleDriveSyncDeviceId(boundDeviceId, allowCreate)),
 		deviceName: dependencies.deviceName ?? getDeviceName,
+		// A controller built without the setting keeps today's behaviour.
+		contactScope: dependencies.contactScope ?? (() => "everything"),
 	};
 }
 
@@ -1078,6 +1084,7 @@ export class GoogleDriveSyncProfileController {
 						accountNamespace,
 						sourceDeviceId,
 						includeMedia: false,
+						contactScope: this.#dependencies.contactScope(),
 					}),
 				),
 				generation,
@@ -1152,6 +1159,7 @@ export class GoogleDriveSyncProfileController {
 							accountNamespace,
 							sourceDeviceId,
 							includeMedia: false,
+							contactScope: this.#dependencies.contactScope(),
 						}),
 					),
 					generation,
@@ -1279,6 +1287,7 @@ export class GoogleDriveSyncProfileController {
 							accountNamespace,
 							sourceDeviceId,
 							includeMedia: false,
+							contactScope: this.#dependencies.contactScope(),
 						}),
 					),
 					generation,

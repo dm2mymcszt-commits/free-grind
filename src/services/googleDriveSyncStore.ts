@@ -1,4 +1,5 @@
 import Database from "@tauri-apps/plugin-sql";
+import type { ContactIndexSyncScope } from "./chatContactIndex";
 import {
 	MAX_SYNC_PACKAGE_OPERATIONS,
 	MAX_SYNC_PACKAGE_BYTES,
@@ -110,12 +111,20 @@ export type ReconcileGoogleDriveSyncInput = Readonly<{
 	accountNamespace: string;
 	sourceDeviceId: string;
 	includeMedia: boolean;
+	contactScope?: ContactIndexSyncScope;
 }>;
 
 export type ReconcileGoogleDriveSyncScanInput = Readonly<{
 	accountNamespace: string;
 	sourceDeviceId: string;
 	scannedSections: readonly SyncSection[];
+	/**
+	 * Sections where a scanned entity's absence means it was deleted. A section
+	 * scanned through a filter must be excluded: its unscanned rows still exist,
+	 * and inferring deletions from them would tombstone tens of thousands of
+	 * live rows on every other device. Defaults to scannedSections.
+	 */
+	deletionSections?: readonly SyncSection[];
 	scan: (onEntity: (entity: GoogleDriveSyncEntity) => Promise<void>) => Promise<void>;
 }>;
 
@@ -652,14 +661,29 @@ export class GoogleDriveSyncStore implements SyncApplyStore {
 	async reconcileCurrentData(
 		input: ReconcileGoogleDriveSyncInput,
 	): Promise<ReconcileGoogleDriveSyncResult> {
+		const contactScope = input.contactScope ?? "everything";
 		return this.reconcileWithScanner({
 			accountNamespace: input.accountNamespace,
 			sourceDeviceId: input.sourceDeviceId,
 			scannedSections: input.includeMedia
 				? [...CORE_SCAN_SECTIONS, "media"]
 				: CORE_SCAN_SECTIONS,
+			deletionSections:
+				contactScope === "everything"
+					? undefined
+					: (input.includeMedia
+							? [...CORE_SCAN_SECTIONS, "media"]
+							: CORE_SCAN_SECTIONS
+						).filter(
+							(section): section is SyncSection => section !== "contact-index",
+						),
 			scan: (onEntity) =>
-				scanGoogleDriveSyncEntities(this.profileId, input.includeMedia, onEntity),
+				scanGoogleDriveSyncEntities(
+					this.profileId,
+					input.includeMedia,
+					onEntity,
+					contactScope,
+				),
 		});
 	}
 
@@ -678,6 +702,17 @@ export class GoogleDriveSyncStore implements SyncApplyStore {
 			throw new Error("A completed sync scan must cover at least one section");
 		}
 		for (const section of scannedSections) syncSectionSchema.parse(section);
+		const deletionSections = Array.from(
+			new Set(input.deletionSections ?? scannedSections),
+		);
+		for (const section of deletionSections) {
+			syncSectionSchema.parse(section);
+			if (!scannedSections.includes(section)) {
+				throw new Error(
+					"A deletion section must also be scanned in the same reconciliation",
+				);
+			}
+		}
 
 		return this.#serializedWrite("reconcile-domain-scan", async () => {
 			await this.#repairOutboxShadow(input.accountNamespace, input.sourceDeviceId);
@@ -732,7 +767,7 @@ export class GoogleDriveSyncStore implements SyncApplyStore {
 				if (
 					previous.mutation_kind !== "upsert" ||
 					seen.has(key) ||
-					!scannedSections.includes(previous.section as SyncSection)
+					!deletionSections.includes(previous.section as SyncSection)
 				) {
 					continue;
 				}

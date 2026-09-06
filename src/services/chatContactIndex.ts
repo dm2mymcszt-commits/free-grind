@@ -660,14 +660,45 @@ export async function upsertContactIndexRows(
 }
 
 /** Stable keyset paging for cloud reconciliation scans. */
+/**
+ * How much of the contact index a device contributes to cloud sync. The index
+ * is dominated by profiles that were only ever browsed, so a phone otherwise
+ * spends every cycle scanning tens of thousands of rows it will never use.
+ */
+export type ContactIndexSyncScope =
+	| "conversations"
+	| "conversations-and-recent"
+	| "everything";
+
+export const CONTACT_INDEX_RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1_000;
+
 export async function selectContactIndexPageAfter(
 	name: ContactIndexTableName,
 	afterProfileId: string | null,
 	limit: number,
+	scope: ContactIndexSyncScope = "everything",
+	recentSinceMs?: number,
 ): Promise<Record<string, unknown>[]> {
 	const table = INDEX_TABLES[name];
-	const where = afterProfileId == null ? "" : "WHERE profile_id > $1";
-	const params = afterProfileId == null ? [] : [afterProfileId];
+	const clauses: string[] = [];
+	const params: unknown[] = [];
+	if (afterProfileId != null) {
+		params.push(afterProfileId);
+		clauses.push(`profile_id > $${params.length}`);
+	}
+	// Only the contact index carries these columns, and every fragment below is
+	// a code constant with bound parameters - no caller-supplied SQL.
+	if (name === "chat_contact_index" && scope !== "everything") {
+		if (scope === "conversations") {
+			clauses.push("has_chatted = 1");
+		} else {
+			params.push(
+				recentSinceMs ?? Date.now() - CONTACT_INDEX_RECENT_WINDOW_MS,
+			);
+			clauses.push(`(has_chatted = 1 OR updated_at > $${params.length})`);
+		}
+	}
+	const where = clauses.length === 0 ? "" : `WHERE ${clauses.join(" AND ")}`;
 	const db = await getDb();
 	return db.select<Record<string, unknown>[]>(
 		`SELECT ${table.columns.join(", ")} FROM ${name} ${where}

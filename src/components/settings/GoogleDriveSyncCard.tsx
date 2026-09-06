@@ -33,7 +33,11 @@ import {
 	type GoogleDrivePairingCode,
 	type GoogleDriveSyncStatus,
 } from "../../services/googleDriveSync";
+import type { ContactIndexSyncScope } from "../../services/chatContactIndex";
 import {
+	getGoogleDriveContactScope,
+	setGoogleDriveContactScope,
+	subscribeGoogleDriveContactScope,
 	isGoogleDriveAutoSyncPaused,
 	setGoogleDriveAutoSyncPaused,
 	subscribeGoogleDriveAutoSyncPaused,
@@ -176,6 +180,15 @@ export function GoogleDriveSyncCard({
 
 	useEffect(
 		() => subscribeGoogleDriveAutoSyncPaused(setAutoSyncPausedState),
+		[],
+	);
+
+	const [contactScope, setContactScopeState] = useState<ContactIndexSyncScope>(
+		getGoogleDriveContactScope,
+	);
+
+	useEffect(
+		() => subscribeGoogleDriveContactScope(setContactScopeState),
 		[],
 	);
 	const actionLockRef = useRef(false);
@@ -606,6 +619,45 @@ export function GoogleDriveSyncCard({
 										})}
 									</Button>
 								)}
+							</div>
+
+							<div className="rounded-xl border border-[var(--border)] p-3">
+								<p className="text-sm font-medium">
+									{t("data_backup.drive_sync.contact_scope", {
+										defaultValue: "Profile index to sync",
+									})}
+								</p>
+								<p className="mt-0.5 text-xs leading-relaxed text-[var(--text-muted)]">
+									{t("data_backup.drive_sync.contact_scope_desc", {
+										defaultValue:
+											"Most of this index is profiles you only browsed past. Syncing just your conversations keeps phones fast; widen it if you want your browsing history on every device.",
+									})}
+								</p>
+								<select
+									value={contactScope}
+									onChange={(event) =>
+										setGoogleDriveContactScope(
+											event.target.value as ContactIndexSyncScope,
+										)
+									}
+									className="mt-2.5 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)] outline-none focus:border-violet-400"
+								>
+									<option value="conversations">
+										{t("data_backup.drive_sync.contact_scope_conversations", {
+											defaultValue: "Conversations only (recommended)",
+										})}
+									</option>
+									<option value="conversations-and-recent">
+										{t("data_backup.drive_sync.contact_scope_recent", {
+											defaultValue: "Conversations and the last 7 days",
+										})}
+									</option>
+									<option value="everything">
+										{t("data_backup.drive_sync.contact_scope_everything", {
+											defaultValue: "Every profile ever seen (slow on phones)",
+										})}
+									</option>
+								</select>
 							</div>
 
 							<label className="flex items-start gap-3 rounded-xl border border-[var(--border)] p-3">

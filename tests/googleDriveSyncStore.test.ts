@@ -90,11 +90,13 @@ async function reconcile(
 	store: GoogleDriveSyncStore,
 	entities: readonly GoogleDriveSyncEntity[],
 	scannedSections: readonly SyncSection[] = ["core"],
+	deletionSections?: readonly SyncSection[],
 ) {
 	return store.reconcileWithScanner({
 		accountNamespace: ACCOUNT,
 		sourceDeviceId: LOCAL_DEVICE,
 		scannedSections,
+		deletionSections,
 		scan: async (onEntity) => {
 			for (const current of entities) await onEntity(current);
 		},
@@ -117,6 +119,44 @@ async function readConversationShadow(
 }
 
 describe("durable Google Drive reconciliation store", () => {
+	test("a filtered section keeps its unscanned rows instead of tombstoning them", async () => {
+		const { store } = await openTestStore();
+		const both = [
+			entity("core", "conversation", "kept", { id: "kept" }),
+			entity("core", "conversation", "narrowed-away", { id: "narrowed-away" }),
+		];
+		expect(await reconcile(store, both)).toMatchObject({
+			createdUpserts: 2,
+			createdTombstones: 0,
+		});
+
+		// The same section is scanned again, but through a narrower filter, so the
+		// second entity is simply out of scope rather than deleted. Inferring a
+		// deletion here would tombstone every row the filter excludes and delete
+		// them on every other device.
+		expect(
+			await reconcile(store, [both[0]], ["core"], []),
+		).toMatchObject({
+			createdUpserts: 0,
+			createdTombstones: 0,
+			unchangedEntities: 1,
+		});
+
+		// Without the narrowing, absence still means deletion.
+		expect(await reconcile(store, [both[0]], ["core"])).toMatchObject({
+			createdTombstones: 1,
+		});
+		await store.close();
+	});
+
+	test("a deletion section must also be scanned", async () => {
+		const { store } = await openTestStore();
+		await expect(
+			reconcile(store, [], ["core"], ["interest-views"]),
+		).rejects.toThrow("must also be scanned");
+		await store.close();
+	});
+
 	test("emits changed rows and tombstones only after a completed scan", async () => {
 		const { store } = await openTestStore();
 		try {
