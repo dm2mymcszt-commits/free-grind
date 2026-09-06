@@ -532,6 +532,22 @@ export class GoogleDriveSyncStore implements SyncApplyStore {
 		});
 	}
 
+	/**
+	 * Diagnostic only. Phase durations for the most recent cycle go into the
+	 * existing key/value meta table, so slow-cycle analysis needs no schema
+	 * change and nothing user facing.
+	 */
+	async recordCycleTimings(timingsJson: string): Promise<void> {
+		if (timingsJson.length > 8_192) return;
+		await this.#serializedWrite("record-cycle-timings", async () => {
+			await this.#db.execute(
+				"INSERT INTO sync_meta(key, value) VALUES ('last_cycle_timings', ?) " +
+					"ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+				[timingsJson],
+			);
+		});
+	}
+
 	async updateConfig(
 		patch: GoogleDriveSyncStoreConfigPatch,
 	): Promise<GoogleDriveSyncStoreConfig> {

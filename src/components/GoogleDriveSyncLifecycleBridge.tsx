@@ -5,6 +5,7 @@ import {
 	GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
 	googleDriveSyncStoresMatch,
 	installGoogleDriveSyncRuntime,
+	isGoogleDriveAutoSyncPaused,
 	runReadyGoogleDriveSync,
 	setGoogleDriveSyncReadyProfile,
 	type GoogleDriveSyncDataAppliedDetail,
@@ -44,6 +45,9 @@ export function GoogleDriveSyncLifecycleBridge() {
 
 		const requestSync = (bypassBurstGuard = false) => {
 			if (disposed) return;
+			// Explicit user actions share the controller's serialized queue, so a
+			// paused device must not keep enqueueing background catch-up work.
+			if (isGoogleDriveAutoSyncPaused()) return;
 			const now = Date.now();
 			if (
 				!bypassBurstGuard &&

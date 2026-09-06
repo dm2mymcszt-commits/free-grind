@@ -90,7 +90,8 @@ export type GoogleDriveSyncControllerStore = Pick<
 	| "listPendingOutboundPackages"
 	| "markOutboundPackageUploaded"
 	| "applyIncomingPackage"
->;
+> &
+	Partial<Pick<GoogleDriveSyncStore, "recordCycleTimings">>;
 
 export type GoogleDriveSyncControllerStoreFactory = (
 	profileId: number,
@@ -351,6 +352,9 @@ export class GoogleDriveSyncProfileController {
 	// reloads the same history again; without this each pass re-downloaded,
 	// decrypted, parsed and re-verified the entire remote history.
 	readonly #packageCache = new Map<string, RemotePackage>();
+	// Diagnostic only. Populated for the duration of one sync cycle so slow
+	// phases can be identified from the durable store instead of guessed at.
+	#cycleTimings: Map<string, { ms: number; calls: number }> | null = null;
 	#generation = 0;
 	#closed = false;
 	#status: GoogleDriveSyncStatus;
@@ -360,6 +364,26 @@ export class GoogleDriveSyncProfileController {
 		this.profileId = profileId;
 		this.#dependencies = dependencies;
 		this.#status = this.#blankStatus();
+	}
+
+	#timedPhase<T>(bucket: string, work: () => Promise<T>): Promise<T> {
+		const timings = this.#cycleTimings;
+		if (!timings) return work();
+		const started = Date.now();
+		return work().finally(() => {
+			const entry = timings.get(bucket) ?? { ms: 0, calls: 0 };
+			entry.ms += Date.now() - started;
+			entry.calls += 1;
+			timings.set(bucket, entry);
+		});
+	}
+
+	#countCycleEvent(bucket: string): void {
+		const timings = this.#cycleTimings;
+		if (!timings) return;
+		const entry = timings.get(bucket) ?? { ms: 0, calls: 0 };
+		entry.calls += 1;
+		timings.set(bucket, entry);
 	}
 
 	invalidate(): void {
@@ -1012,15 +1036,19 @@ export class GoogleDriveSyncProfileController {
 			}
 
 			const accountNamespace = config.accountNamespace;
+			const cycleStartedAt = Date.now();
+			this.#cycleTimings = new Map();
 
 			// This ordering is the data-loss boundary: offline local state enters the
 			// durable outbox before any remote winner can mutate the domain stores.
 			await this.#activeAwait(
-				store.reconcileCurrentData({
-					accountNamespace,
-					sourceDeviceId,
-					includeMedia: false,
-				}),
+				this.#timedPhase("reconcile", () =>
+					store.reconcileCurrentData({
+						accountNamespace,
+						sourceDeviceId,
+						includeMedia: false,
+					}),
+				),
 				generation,
 			);
 
@@ -1082,11 +1110,13 @@ export class GoogleDriveSyncProfileController {
 			);
 
 			await this.#activeAwait(
-				store.reconcileCurrentData({
-					accountNamespace,
-					sourceDeviceId,
-					includeMedia: false,
-				}),
+				this.#timedPhase("reconcile", () =>
+					store.reconcileCurrentData({
+						accountNamespace,
+						sourceDeviceId,
+						includeMedia: false,
+					}),
+				),
 				generation,
 			);
 
@@ -1202,11 +1232,13 @@ export class GoogleDriveSyncProfileController {
 			// Journal it now, above every observed remote Lamport clock, so it cannot be
 			// forgotten merely because this app is force-quit before the next cycle.
 			await this.#activeAwait(
-				store.reconcileCurrentData({
-					accountNamespace,
-					sourceDeviceId,
-					includeMedia: false,
-				}),
+				this.#timedPhase("reconcile", () =>
+					store.reconcileCurrentData({
+						accountNamespace,
+						sourceDeviceId,
+						includeMedia: false,
+					}),
+				),
 				generation,
 			);
 			if (remoteMutations > 0) {
@@ -1223,6 +1255,19 @@ export class GoogleDriveSyncProfileController {
 				}),
 				generation,
 			);
+			const timings = this.#cycleTimings;
+			this.#cycleTimings = null;
+			if (timings) {
+				await store
+					.recordCycleTimings?.(
+						JSON.stringify({
+							finishedAtMs: Date.now(),
+							totalMs: Date.now() - cycleStartedAt,
+							phases: Object.fromEntries(timings),
+						}),
+					)
+					.catch(() => undefined);
+			}
 			await this.#refreshStatus(generation, configStatus, connection);
 			return { remoteMutations };
 		} catch (error) {
@@ -1238,7 +1283,20 @@ export class GoogleDriveSyncProfileController {
 		}
 	}
 
-	async #applyInventory(
+	#applyInventory(
+		store: GoogleDriveSyncControllerStore,
+		accountNamespace: string,
+		localDeviceId: string,
+		initialBootstrap: GoogleDriveSyncBootstrapState,
+		inventory: RemoteInventory,
+		generation: number,
+	): Promise<number> {
+		return this.#timedPhase("apply", () =>
+			this.#applyInventoryUntimed(store, accountNamespace, localDeviceId, initialBootstrap, inventory, generation),
+		);
+	}
+
+	async #applyInventoryUntimed(
 		store: GoogleDriveSyncControllerStore,
 		accountNamespace: string,
 		localDeviceId: string,
@@ -1490,7 +1548,19 @@ export class GoogleDriveSyncProfileController {
 		);
 	}
 
-	async #uploadPendingPackages(
+	#uploadPendingPackages(
+		store: GoogleDriveSyncControllerStore,
+		accountNamespace: string,
+		sourceDeviceId: string,
+		requiredAnchor: GoogleDriveSyncBootstrapState | null,
+		generation: number,
+	): Promise<void> {
+		return this.#timedPhase("upload", () =>
+			this.#uploadPendingPackagesUntimed(store, accountNamespace, sourceDeviceId, requiredAnchor, generation),
+		);
+	}
+
+	async #uploadPendingPackagesUntimed(
 		store: GoogleDriveSyncControllerStore,
 		accountNamespace: string,
 		sourceDeviceId: string,
@@ -1790,7 +1860,16 @@ export class GoogleDriveSyncProfileController {
 		}
 	}
 
-	async #loadInventory(
+	#loadInventory(
+		accountNamespace: string,
+		generation: number,
+	): Promise<RemoteInventory> {
+		return this.#timedPhase("inventory", () =>
+			this.#loadInventoryUntimed(accountNamespace, generation),
+		);
+	}
+
+	async #loadInventoryUntimed(
 		accountNamespace: string,
 		generation: number,
 	): Promise<RemoteInventory> {
@@ -1819,9 +1898,11 @@ export class GoogleDriveSyncProfileController {
 				seenPackageKeys.add(cacheKey);
 				const cached = this.#packageCache.get(cacheKey);
 				if (cached) {
+					this.#countCycleEvent("packageCacheHit");
 					packages.push(cached);
 					continue;
 				}
+				this.#countCycleEvent("packageDownload");
 				const downloaded = await this.#downloadPackage(
 					file.metadata,
 					accountNamespace,

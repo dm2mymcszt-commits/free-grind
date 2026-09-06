@@ -33,6 +33,50 @@ export interface GoogleDriveRemoteApplyRefreshDependencies {
 
 let readyProfileId: number | null = null;
 
+const AUTO_SYNC_PAUSED_STORAGE_KEY = "fg:google-drive-auto-sync-paused";
+const autoSyncPausedListeners = new Set<(paused: boolean) => void>();
+let autoSyncPaused = readPersistedAutoSyncPaused();
+
+function readPersistedAutoSyncPaused(): boolean {
+	try {
+		return globalThis.localStorage?.getItem(AUTO_SYNC_PAUSED_STORAGE_KEY) === "1";
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Device-local pause for background catch-up. A long cycle otherwise keeps
+ * the serialized controller queue busy, which delays explicit user actions
+ * such as revealing a pairing code. This is deliberately an app-global
+ * browser preference: it is never scanned, journaled or uploaded.
+ */
+export function isGoogleDriveAutoSyncPaused(): boolean {
+	return autoSyncPaused;
+}
+
+export function setGoogleDriveAutoSyncPaused(paused: boolean): void {
+	if (autoSyncPaused === paused) return;
+	autoSyncPaused = paused;
+	try {
+		if (paused) {
+			globalThis.localStorage?.setItem(AUTO_SYNC_PAUSED_STORAGE_KEY, "1");
+		} else {
+			globalThis.localStorage?.removeItem(AUTO_SYNC_PAUSED_STORAGE_KEY);
+		}
+	} catch {
+		// A private/blocked store still honours the in-memory pause.
+	}
+	for (const listener of autoSyncPausedListeners) listener(paused);
+}
+
+export function subscribeGoogleDriveAutoSyncPaused(
+	listener: (paused: boolean) => void,
+): () => void {
+	autoSyncPausedListeners.add(listener);
+	return () => autoSyncPausedListeners.delete(listener);
+}
+
 export function googleDriveSyncStoresMatch(profileId: number): boolean {
 	return (
 		getActiveChatDbUser() === profileId &&

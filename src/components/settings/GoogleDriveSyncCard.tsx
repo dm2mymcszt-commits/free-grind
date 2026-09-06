@@ -33,6 +33,11 @@ import {
 	type GoogleDrivePairingCode,
 	type GoogleDriveSyncStatus,
 } from "../../services/googleDriveSync";
+import {
+	isGoogleDriveAutoSyncPaused,
+	setGoogleDriveAutoSyncPaused,
+	subscribeGoogleDriveAutoSyncPaused,
+} from "../../services/googleDriveSyncRuntime";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 
@@ -157,6 +162,14 @@ export function GoogleDriveSyncCard({
 	);
 	const [pairingCodeInput, setPairingCodeInput] = useState("");
 	const profileGenerationRef = useRef(0);
+	const [autoSyncPaused, setAutoSyncPausedState] = useState(
+		isGoogleDriveAutoSyncPaused,
+	);
+
+	useEffect(
+		() => subscribeGoogleDriveAutoSyncPaused(setAutoSyncPausedState),
+		[],
+	);
 	const actionLockRef = useRef(false);
 
 	const refreshStatus = useCallback(async () => {
@@ -551,6 +564,30 @@ export function GoogleDriveSyncCard({
 									</Button>
 								)}
 							</div>
+
+							<label className="flex items-start gap-3 rounded-xl border border-[var(--border)] p-3">
+								<input
+									type="checkbox"
+									className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent)]"
+									checked={autoSyncPaused}
+									onChange={(event) =>
+										setGoogleDriveAutoSyncPaused(event.target.checked)
+									}
+								/>
+								<span className="min-w-0 flex-1">
+									<span className="block text-sm font-medium">
+										{t("data_backup.drive_sync.pause_auto", {
+											defaultValue: "Pause automatic sync",
+										})}
+									</span>
+									<span className="mt-0.5 block text-xs leading-relaxed text-[var(--text-muted)]">
+										{t("data_backup.drive_sync.pause_auto_desc", {
+											defaultValue:
+												"Stops background catch-up on this device so pairing and Sync now respond immediately. Nothing is lost; changes are still queued and sent on the next sync.",
+										})}
+									</span>
+								</span>
+							</label>
 
 							<Button
 								variant="primary"
