@@ -35,6 +35,12 @@ export interface GoogleDriveSyncError {
 
 export interface GoogleDriveSyncStatus {
 	phase: GoogleDriveSyncPhase;
+	/**
+	 * False until the device's real state has been read. The phase alone cannot
+	 * carry this: a cycle overwrites it with "syncing", which would otherwise
+	 * make placeholder values look established.
+	 */
+	determined: boolean;
 	/** False when this platform/build has not installed a native adapter. */
 	available: boolean;
 	unavailableReason?: string;
@@ -118,6 +124,8 @@ function unavailableStatus(): GoogleDriveSyncStatus {
 		available: false,
 		unavailableReason: UNAVAILABLE_REASON,
 		syncStep: null,
+		// A build with no adapter is a known answer, not a pending one.
+		determined: true,
 		googleConnected: false,
 		vaultState: "none",
 		vaultFingerprint: null,

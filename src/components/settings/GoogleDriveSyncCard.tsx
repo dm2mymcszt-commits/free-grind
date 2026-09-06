@@ -345,7 +345,10 @@ export function GoogleDriveSyncCard({
 	const isUserActionPending = activeAction != null;
 	// Nothing has been determined yet. Rendering the setup UI here claims a
 	// disconnection that was never checked and offers a button that cannot work.
-	const isStatusLoading = phase === "loading";
+	// Not phase-based: a background cycle overwrites the phase with "syncing"
+	// while the real status is still unread, which previously brought the whole
+	// setup block back on a device that was already paired and working.
+	const isStatusLoading = status != null && !status.determined;
 	const syncStepLabel =
 		status?.syncStep === "scanning"
 			? t("data_backup.drive_sync.step_scanning", {

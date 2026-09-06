@@ -2249,6 +2249,7 @@ export class GoogleDriveSyncProfileController {
 			pendingBytes: pending.bytes,
 			mediaPolicy: "off",
 			syncStep: null,
+			determined: true,
 			error: config.lastError ? { message: config.lastError } : null,
 		};
 	}
@@ -2259,6 +2260,7 @@ export class GoogleDriveSyncProfileController {
 			// "disconnected" here made the card offer an inert connect button and
 			// claim a state it had not verified.
 			phase: "loading",
+			determined: false,
 			available: false,
 			unavailableReason: "Google Drive sync status has not been loaded yet.",
 			googleConnected: false,
