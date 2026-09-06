@@ -35,11 +35,26 @@ export interface SyncApplyTransaction {
 	): Promise<AppliedOperationReceipt | undefined>;
 	applyOperation(operation: ImmutableSyncOperation): Promise<void>;
 	recordAppliedOperation(receipt: AppliedOperationReceipt): Promise<void>;
+	/**
+	 * Optional bulk forms. Applying a package one operation at a time costs a
+	 * round trip per receipt read and per receipt write, which on a phone turns
+	 * a large first bootstrap into hours. A store that implements these collapses
+	 * both into a handful of statements per package.
+	 */
+	getAppliedOperations?(
+		operationIds: readonly string[],
+	): Promise<ReadonlyMap<string, AppliedOperationReceipt>>;
+	recordAppliedOperations?(
+		receipts: readonly AppliedOperationReceipt[],
+	): Promise<void>;
 	getAppliedPackage(
 		packageId: string,
 	): Promise<AppliedPackageReceipt | undefined>;
 	recordAppliedPackage(receipt: AppliedPackageReceipt): Promise<void>;
 }
+
+/** Receipts staged before a write. Bounds how much a crash can replay. */
+const APPLY_RECEIPT_BATCH_SIZE = 250;
 
 export interface SyncApplyStore {
 	transaction<T>(
@@ -167,12 +182,34 @@ export async function applySyncPackageIdempotently(
 
 			let appliedOperations = 0;
 			let duplicateOperations = 0;
+			// One read for the whole package instead of one per operation.
+			const prefetchedReceipts = transaction.getAppliedOperations
+				? await transaction.getAppliedOperations(
+						syncPackage.operations.map((entry) => entry.operationId),
+					)
+				: null;
+			// Receipts are still written only after the domain mutations they
+			// describe have succeeded, so an interruption replays at most this many
+			// operations - which the idempotent apply contract already requires.
+			let unflushedReceipts: AppliedOperationReceipt[] = [];
+			const flushReceipts = async (): Promise<void> => {
+				if (unflushedReceipts.length === 0) return;
+				const batch = unflushedReceipts;
+				unflushedReceipts = [];
+				if (transaction.recordAppliedOperations) {
+					await transaction.recordAppliedOperations(batch);
+					return;
+				}
+				for (const receipt of batch) {
+					await transaction.recordAppliedOperation(receipt);
+				}
+			};
 			for (let index = 0; index < syncPackage.operations.length; index += 1) {
 				const operation = syncPackage.operations[index];
 				const fingerprint = fingerprints[index];
-				const existingOperation = await transaction.getAppliedOperation(
-					operation.operationId,
-				);
+				const existingOperation = prefetchedReceipts
+					? prefetchedReceipts.get(operation.operationId)
+					: await transaction.getAppliedOperation(operation.operationId);
 				if (existingOperation) {
 					if (
 						existingOperation.accountNamespace !== operation.accountNamespace ||
@@ -188,7 +225,7 @@ export async function applySyncPackageIdempotently(
 				}
 
 				await transaction.applyOperation(operation);
-				await transaction.recordAppliedOperation({
+				unflushedReceipts.push({
 					operationId: operation.operationId,
 					accountNamespace: operation.accountNamespace,
 					sourceDeviceId: operation.sourceDeviceId,
@@ -196,8 +233,14 @@ export async function applySyncPackageIdempotently(
 					fingerprint,
 					appliedAtMs: now(),
 				});
+				if (unflushedReceipts.length >= APPLY_RECEIPT_BATCH_SIZE) {
+					await flushReceipts();
+				}
 				appliedOperations += 1;
 			}
+			// Every receipt must be durable before the package receipt claims the
+			// whole package was applied.
+			await flushReceipts();
 
 			await transaction.recordAppliedPackage({
 				packageId: syncPackage.packageId,

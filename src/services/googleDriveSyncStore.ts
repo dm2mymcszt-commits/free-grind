@@ -1376,6 +1376,10 @@ export class GoogleDriveSyncStore implements SyncApplyStore {
 					),
 				recordAppliedOperation: (receipt) =>
 					this.#recordAppliedOperation(accountNamespace, receipt),
+				getAppliedOperations: (operationIds) =>
+					this.#getAppliedOperations(accountNamespace, operationIds),
+				recordAppliedOperations: (receipts) =>
+					this.#recordAppliedOperations(accountNamespace, receipts),
 				getAppliedPackage: (packageId) =>
 					this.#getAppliedPackage(accountNamespace, packageId),
 				recordAppliedPackage: (receipt) =>
@@ -2038,6 +2042,81 @@ export class GoogleDriveSyncStore implements SyncApplyStore {
 		const domainApplied = await this.#applyDomainOperation(operation, previous);
 		if (domainApplied !== false) {
 			await this.#writeShadow(operation);
+		}
+	}
+
+	/**
+	 * Bulk receipt read. SQLite caps bound parameters, so ids are queried in
+	 * chunks; the result is still one map for the whole package.
+	 */
+	async #getAppliedOperations(
+		accountNamespace: string,
+		operationIds: readonly string[],
+	): Promise<ReadonlyMap<string, AppliedOperationReceipt>> {
+		const found = new Map<string, AppliedOperationReceipt>();
+		const unique = [...new Set(operationIds)];
+		for (let start = 0; start < unique.length; start += 400) {
+			const chunk = unique.slice(start, start + 400);
+			if (chunk.length === 0) continue;
+			const placeholders = chunk.map(() => "?").join(", ");
+			const rows = await this.#db.select<AppliedOperationRow[]>(
+				`SELECT operation_id, account_namespace, source_device_id,
+					origin_sequence, fingerprint, applied_at_ms
+				 FROM sync_applied_operations WHERE operation_id IN (${placeholders})`,
+				chunk as unknown[],
+			);
+			for (const row of rows) {
+				if (row.account_namespace !== accountNamespace) {
+					throw new Error("An applied operation ID belongs to a different account");
+				}
+				found.set(
+					row.operation_id,
+					Object.freeze({
+						operationId: row.operation_id,
+						accountNamespace: row.account_namespace,
+						sourceDeviceId: row.source_device_id,
+						originSequence: row.origin_sequence,
+						fingerprint: row.fingerprint,
+						appliedAtMs: row.applied_at_ms,
+					}),
+				);
+			}
+		}
+		return found;
+	}
+
+	/** Bulk receipt write, in multi-row statements rather than one per row. */
+	async #recordAppliedOperations(
+		accountNamespace: string,
+		receipts: readonly AppliedOperationReceipt[],
+	): Promise<void> {
+		for (const receipt of receipts) {
+			if (receipt.accountNamespace !== accountNamespace) {
+				throw new Error("Refusing to record a receipt for a different account");
+			}
+		}
+		for (let start = 0; start < receipts.length; start += 100) {
+			const chunk = receipts.slice(start, start + 100);
+			if (chunk.length === 0) continue;
+			const values = chunk.map(() => "(?, ?, ?, ?, ?, ?)").join(", ");
+			const parameters: unknown[] = [];
+			for (const receipt of chunk) {
+				parameters.push(
+					receipt.operationId,
+					receipt.accountNamespace,
+					receipt.sourceDeviceId,
+					receipt.originSequence,
+					receipt.fingerprint,
+					receipt.appliedAtMs,
+				);
+			}
+			await this.#db.execute(
+				`INSERT INTO sync_applied_operations (
+					operation_id, account_namespace, source_device_id,
+					origin_sequence, fingerprint, applied_at_ms
+				) VALUES ${values}`,
+				parameters,
+			);
 		}
 	}
 

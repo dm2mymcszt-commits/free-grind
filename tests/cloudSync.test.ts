@@ -78,6 +78,38 @@ class MemoryApplyStore implements SyncApplyStore, SyncApplyTransaction {
 	}
 }
 
+class BulkApplyStore extends MemoryApplyStore {
+	singleReadCalls = 0;
+	singleWriteCalls = 0;
+	bulkReadCalls = 0;
+	bulkWriteCalls = 0;
+
+	override async getAppliedOperation(operationId: string) {
+		this.singleReadCalls += 1;
+		return super.getAppliedOperation(operationId);
+	}
+
+	override async recordAppliedOperation(receipt: AppliedOperationReceipt) {
+		this.singleWriteCalls += 1;
+		return super.recordAppliedOperation(receipt);
+	}
+
+	async getAppliedOperations(operationIds: readonly string[]) {
+		this.bulkReadCalls += 1;
+		const found = new Map<string, AppliedOperationReceipt>();
+		for (const operationId of operationIds) {
+			const receipt = this.operations.get(operationId);
+			if (receipt) found.set(operationId, receipt);
+		}
+		return found;
+	}
+
+	async recordAppliedOperations(receipts: readonly AppliedOperationReceipt[]) {
+		this.bulkWriteCalls += 1;
+		for (const receipt of receipts) this.operations.set(receipt.operationId, receipt);
+	}
+}
+
 describe("cloud sync protocol foundation", () => {
 	test("creates, hashes, freezes, serializes, and strictly verifies immutable packages", async () => {
 		const operations = await makeOperations();
@@ -162,6 +194,50 @@ describe("cloud sync protocol foundation", () => {
 			mutation: { kind: "delete" as const },
 		};
 		expect(selectWinningOperation(base, tombstone)).toBe(tombstone);
+	});
+
+	test("a bulk-capable store applies a large package without a round trip per operation", async () => {
+		const operations = [];
+		for (let index = 1; index <= 600; index += 1) {
+			operations.push(
+				await createSyncOperation({
+					operationId: `op-bulk-${index}`,
+					accountNamespace: ACCOUNT,
+					sourceDeviceId: DEVICE,
+					sequence: { originSequence: index, logicalClock: index },
+					section: "core",
+					entityType: "conversation",
+					entityId: `entity-${index}`,
+					createdAtMs: index,
+					mutation: { kind: "upsert", value: { id: `entity-${index}` } },
+				}),
+			);
+		}
+		const syncPackage = await createSyncPackage({
+			packageId: "pkg-bulk",
+			accountNamespace: ACCOUNT,
+			sourceDeviceId: DEVICE,
+			createdAtMs: 10,
+			operations,
+		});
+		const store = new BulkApplyStore();
+
+		const result = await applySyncPackageIdempotently(syncPackage, store, {
+			expectedAccountNamespace: ACCOUNT,
+			expectedPreviousPackageDigest: null,
+			expectedNextSequence: 1,
+			now: () => 50,
+		});
+
+		expect(result.appliedOperations).toBe(600);
+		expect(store.operations.size).toBe(600);
+		// Every operation is still applied and receipted; only the number of
+		// database round trips changes. One read per operation plus one write per
+		// operation is what made a large first bootstrap take hours on a phone.
+		expect(store.singleReadCalls).toBe(0);
+		expect(store.singleWriteCalls).toBe(0);
+		expect(store.bulkReadCalls).toBe(1);
+		expect(store.bulkWriteCalls).toBeLessThan(10);
 	});
 
 	test("applies each operation once and rejects package identifier reuse", async () => {
