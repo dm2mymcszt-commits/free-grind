@@ -770,7 +770,34 @@ describe("Google Drive sync controller", () => {
 		await adapter(native, store).syncNow({ profileId: PROFILE_ID });
 		expect(events.indexOf("reconcile")).toBeGreaterThanOrEqual(0);
 		expect(events.indexOf("reconcile")).toBeLessThan(events.indexOf("list"));
-		expect(events.lastIndexOf("reconcile")).toBeGreaterThan(events.lastIndexOf("list"));
+		// The full domain scan is the most expensive step of a cycle, so when no
+		// remote work is applied it runs once rather than after every inventory
+		// read. The leading reconcile above remains the data-loss boundary.
+		expect(events.filter((event) => event === "reconcile")).toHaveLength(1);
+	});
+
+	test("a cycle that applies remote work still reconciles after the final apply", async () => {
+		const events: string[] = [];
+		const native = await FakeNative.create(events);
+		await native.seedAnchor(anchor());
+		const remote = await syncPackage(ACCOUNT, AUTHORITY_DEVICE, [
+			await operation(ACCOUNT, AUTHORITY_DEVICE, 1, "remote-entity"),
+		]);
+		await native.seedPackage(remote, "package-1");
+		const store = configuredStore(events);
+
+		await adapter(native, store).syncNow({ profileId: PROFILE_ID });
+
+		// A conditional apply can preserve a concurrent local write, and only a
+		// reconcile after that apply promotes it above the remote clock, so newly
+		// applied work must still open a follow-up scan.
+		const firstApply = events.findIndex((event) => event.startsWith("apply:"));
+		expect(firstApply).toBeGreaterThanOrEqual(0);
+		expect(events.lastIndexOf("reconcile")).toBeGreaterThan(firstApply);
+		// Exactly two: the leading data-loss boundary and the one the applied work
+		// opened. The trailing duplicate replay applies nothing new, so it adds no
+		// third full scan of every entity.
+		expect(events.filter((event) => event === "reconcile")).toHaveLength(2);
 	});
 
 	test("a missing required anchor hard-stops before any upload or deletion", async () => {

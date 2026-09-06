@@ -1109,16 +1109,23 @@ export class GoogleDriveSyncProfileController {
 				generation,
 			);
 
-			await this.#activeAwait(
-				this.#timedPhase("reconcile", () =>
-					store.reconcileCurrentData({
-						accountNamespace,
-						sourceDeviceId,
-						includeMedia: false,
-					}),
-				),
-				generation,
-			);
+			// A full domain scan is the most expensive step of a cycle, so it runs
+			// again only when the apply above actually journaled remote work. When
+			// nothing was applied the domain is unchanged since the reconcile that
+			// opened this cycle, and a concurrent local edit is still picked up by
+			// the next cycle's leading reconcile, which always runs.
+			if (remoteMutations > 0) {
+				await this.#activeAwait(
+					this.#timedPhase("reconcile", () =>
+						store.reconcileCurrentData({
+							accountNamespace,
+							sourceDeviceId,
+							includeMedia: false,
+						}),
+					),
+					generation,
+				);
+			}
 
 			// Re-read immediately before staging/uploading. A stale local sync database
 			// must not append a fork if Drive contains a same-device successor this
@@ -1220,6 +1227,7 @@ export class GoogleDriveSyncProfileController {
 				inventory,
 				generation,
 			);
+			const mutationsBeforeFinalApply = remoteMutations;
 			remoteMutations += await this.#applyInventory(
 				store,
 				accountNamespace,
@@ -1231,16 +1239,20 @@ export class GoogleDriveSyncProfileController {
 			// A conditional apply may deliberately preserve a concurrent local write.
 			// Journal it now, above every observed remote Lamport clock, so it cannot be
 			// forgotten merely because this app is force-quit before the next cycle.
-			await this.#activeAwait(
-				this.#timedPhase("reconcile", () =>
-					store.reconcileCurrentData({
-						accountNamespace,
-						sourceDeviceId,
-						includeMedia: false,
-					}),
-				),
-				generation,
-			);
+			// Only a final apply can create that case; with nothing applied there is
+			// no preserved write to promote and the scan would be pure cost.
+			if (remoteMutations > mutationsBeforeFinalApply) {
+				await this.#activeAwait(
+					this.#timedPhase("reconcile", () =>
+						store.reconcileCurrentData({
+							accountNamespace,
+							sourceDeviceId,
+							includeMedia: false,
+						}),
+					),
+					generation,
+				);
+			}
 			if (remoteMutations > 0) {
 				await this.#activeAwait(
 					Promise.resolve(this.#dependencies.onRemoteApplied(this.profileId)),
