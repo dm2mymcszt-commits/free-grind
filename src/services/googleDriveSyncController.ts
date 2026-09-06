@@ -96,6 +96,7 @@ export type GoogleDriveSyncControllerStore = Pick<
 	| "applyIncomingPackage"
 	| "clearAccountState"
 > &
+	Partial<Pick<GoogleDriveSyncStore, "getStatusSnapshot">> &
 	Partial<Pick<GoogleDriveSyncStore, "recordCycleTimings">>;
 
 export type GoogleDriveSyncControllerStoreFactory = (
@@ -450,16 +451,27 @@ export class GoogleDriveSyncProfileController {
 					]),
 					generation,
 				);
-				const [config, bootstrap] = await this.#activeAwait(
-					Promise.all([store.getConfig(), store.getBootstrapState()]),
-					generation,
-				);
-				const pending = config.accountNamespace
-					? await this.#activeAwait(
-							store.getPendingCounts(config.accountNamespace),
+				// One snapshot that does not wait on the store's write queue. Reading
+				// config, bootstrap and counters separately blocked the whole status
+				// behind any running reconcile, which is exactly when the user is
+				// looking at the card to find out what is happening.
+				const snapshot = store.getStatusSnapshot
+					? await this.#activeAwait(store.getStatusSnapshot(), generation)
+					: null;
+				const [config, bootstrap] = snapshot
+					? [snapshot.config, snapshot.bootstrap]
+					: await this.#activeAwait(
+							Promise.all([store.getConfig(), store.getBootstrapState()]),
 							generation,
-						)
-					: { changes: 0, bytes: 0 };
+						);
+				const pending = snapshot
+					? snapshot.pending
+					: config.accountNamespace
+						? await this.#activeAwait(
+								store.getPendingCounts(config.accountNamespace),
+								generation,
+							)
+						: { changes: 0, bytes: 0 };
 				const runningPhase =
 					this.#status.phase === "syncing" || this.#status.phase === "connecting"
 						? this.#status.phase

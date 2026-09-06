@@ -107,6 +107,12 @@ export type GoogleDriveSyncPendingCounts = Readonly<{
 	bytes: number;
 }>;
 
+export type GoogleDriveSyncStatusSnapshot = Readonly<{
+	config: GoogleDriveSyncStoreConfig;
+	bootstrap: GoogleDriveSyncBootstrapState;
+	pending: GoogleDriveSyncPendingCounts;
+}>;
+
 export type ReconcileGoogleDriveSyncInput = Readonly<{
 	accountNamespace: string;
 	sourceDeviceId: string;
@@ -827,9 +833,37 @@ export class GoogleDriveSyncStore implements SyncApplyStore {
 		});
 	}
 
+	/**
+	 * Everything the status display needs, read without waiting on the write
+	 * queue. Those reads are otherwise blocked for as long as a reconcile holds
+	 * it, which on a large profile is minutes, and the card then cannot say what
+	 * the device is doing precisely while the user is waiting to find out. WAL
+	 * gives a committed snapshot; momentarily stale counters are the right trade
+	 * for a read whose only consumer is the UI.
+	 */
+	async getStatusSnapshot(): Promise<GoogleDriveSyncStatusSnapshot> {
+		this.#assertOpen();
+		const config = await this.#readConfigUnlocked();
+		const bootstrap = validateBootstrapState(
+			await this.#readBootstrapStateUnlocked(),
+		);
+		const pending = config.accountNamespace
+			? await this.#readPendingCountsUnlocked(config.accountNamespace)
+			: Object.freeze({ changes: 0, bytes: 0 });
+		return Object.freeze({ config, bootstrap, pending });
+	}
+
 	async getPendingCounts(accountNamespace: string): Promise<GoogleDriveSyncPendingCounts> {
 		accountNamespaceSchema.parse(accountNamespace);
-		return this.#afterWrites(async () => {
+		return this.#afterWrites(() =>
+			this.#readPendingCountsUnlocked(accountNamespace),
+		);
+	}
+
+	async #readPendingCountsUnlocked(
+		accountNamespace: string,
+	): Promise<GoogleDriveSyncPendingCounts> {
+		{
 			const rows = await this.#db.select<CountRow[]>(
 				`SELECT COUNT(*) AS changes,
 						COALESCE(SUM(o.estimated_bytes), 0) AS bytes
@@ -845,7 +879,7 @@ export class GoogleDriveSyncStore implements SyncApplyStore {
 				changes: asSafeNonNegativeInteger(row.changes),
 				bytes: asSafeNonNegativeInteger(row.bytes),
 			});
-		});
+		}
 	}
 
 	async listUnpackagedOperations(

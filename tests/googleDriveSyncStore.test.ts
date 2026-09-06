@@ -119,6 +119,36 @@ async function readConversationShadow(
 }
 
 describe("durable Google Drive reconciliation store", () => {
+	test("a status snapshot is readable while a long write holds the queue", async () => {
+		const { store } = await openTestStore();
+		let releaseScan = (): void => undefined;
+		const scanGate = new Promise<void>((resolve) => {
+			releaseScan = resolve;
+		});
+
+		// A real reconcile holds the store's write queue for its whole duration.
+		const writing = store.reconcileWithScanner({
+			accountNamespace: ACCOUNT,
+			sourceDeviceId: LOCAL_DEVICE,
+			scannedSections: ["core"],
+			scan: async (onEntity) => {
+				await scanGate;
+				await onEntity(entity("core", "conversation", "c1", { id: "c1" }));
+			},
+		});
+
+		// Reads that wait on that queue leave the card unable to say what the
+		// device is doing for as long as the scan runs, which on a large profile
+		// is minutes and is indistinguishable from a hang.
+		const snapshot = await store.getStatusSnapshot();
+		expect(snapshot.config).toBeDefined();
+		expect(snapshot.pending).toBeDefined();
+
+		releaseScan();
+		await writing;
+		await store.close();
+	});
+
 	test("a filtered section keeps its unscanned rows instead of tombstoning them", async () => {
 		const { store } = await openTestStore();
 		const both = [
