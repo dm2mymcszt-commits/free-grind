@@ -800,6 +800,25 @@ describe("Google Drive sync controller", () => {
 		expect(events.filter((event) => event === "reconcile")).toHaveLength(2);
 	});
 
+	test("an unenrolled device never announces the syncing phase", async () => {
+		const native = await FakeNative.create();
+		// A second device that has authenticated Google but holds no vault yet.
+		const store = new FakeStore();
+		const manager = adapter(native, store);
+		const seenPhases: string[] = [];
+		const unsubscribe = manager.subscribe({ profileId: PROFILE_ID }, (status) => {
+			seenPhases.push(status.phase);
+		});
+
+		await manager.syncNow({ profileId: PROFILE_ID });
+		unsubscribe();
+
+		// Announcing "syncing" here makes the card treat the device as busy and
+		// disables the connect and pairing controls, which are the only way to
+		// finish enrolling it. That is an unrecoverable state on a fresh device.
+		expect(seenPhases).not.toContain("syncing");
+	});
+
 	test("a missing required anchor hard-stops before any upload or deletion", async () => {
 		const events: string[] = [];
 		const native = await FakeNative.create(events);

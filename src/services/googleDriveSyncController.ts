@@ -1000,7 +1000,6 @@ export class GoogleDriveSyncProfileController {
 		knownSourceDeviceId?: string,
 	): Promise<CycleResult> {
 		this.#assertActive(generation);
-		this.#setPhase("syncing");
 		try {
 			const configStatus =
 				knownConfigStatus ??
@@ -1028,6 +1027,11 @@ export class GoogleDriveSyncProfileController {
 				await this.#refreshStatus(generation, configStatus, connection);
 				return { remoteMutations: 0 };
 			}
+			// Only now is there real work to do. Announcing the syncing phase any
+			// earlier makes an unenrolled device look busy, and the card disables
+			// its setup actions while busy - including the connect button that is
+			// the only way to finish enrolling it.
+			this.#setPhase("syncing");
 			const sourceDeviceId =
 				knownSourceDeviceId ??
 				(await this.#resolveLocalSourceDeviceId(store, generation));

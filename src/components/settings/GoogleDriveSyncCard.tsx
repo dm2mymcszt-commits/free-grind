@@ -330,6 +330,11 @@ export function GoogleDriveSyncCard({
 	const displayedError = actionError ?? status?.error?.message ?? loadError;
 	const isBusy =
 		activeAction != null || phase === "connecting" || phase === "syncing";
+	// Setup actions stay available while a background catch-up runs. The
+	// controller queue serializes them behind the running cycle, so they are
+	// honoured in order; disabling them can strand a device that has to
+	// connect or pair before it can ever stop syncing.
+	const isUserActionPending = activeAction != null;
 
 	const lastSyncLabel = status?.lastSuccessfulSyncAt
 		? formatRelativeTime(status.lastSuccessfulSyncAt)
@@ -678,7 +683,9 @@ export function GoogleDriveSyncCard({
 								variant="primary"
 								className="w-full rounded-full"
 								loading={activeAction === "import-key"}
-								disabled={pairingCodeInput.trim().length === 0 || isBusy}
+								disabled={
+									pairingCodeInput.trim().length === 0 || isUserActionPending
+								}
 								leftIcon={<KeyRound className="h-4 w-4" />}
 								onClick={() => {
 									const code = pairingCodeInput.trim();
@@ -728,7 +735,7 @@ export function GoogleDriveSyncCard({
 								variant="secondary"
 								size="sm"
 								loading={activeAction === "reauthorize"}
-								disabled={!status.available || isBusy}
+								disabled={!status.available || isUserActionPending}
 								leftIcon={<Cloud className="h-4 w-4" />}
 								onClick={() =>
 									void runAction(
@@ -775,7 +782,7 @@ export function GoogleDriveSyncCard({
 								variant="primary"
 								className="w-full rounded-full"
 								loading={activeAction === "connect" || phase === "connecting"}
-								disabled={!status.available || isBusy}
+								disabled={!status.available || isUserActionPending}
 								leftIcon={<Cloud className="h-4 w-4" />}
 								onClick={() =>
 									void runAction("connect", (activeProfileId) =>
