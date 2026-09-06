@@ -426,8 +426,13 @@ export class GoogleDriveSyncProfileController {
 		return () => this.#listeners.delete(listener);
 	}
 
+	// Deliberately not enqueued. Every step here is a read, and serializing a
+	// read behind the write queue meant the card could not describe the device
+	// until any running cycle finished. On a cold device that is minutes, and it
+	// is indistinguishable from a hang: the status is exactly what a user needs
+	// while the cycle they are waiting on is still running.
 	getStatus(): Promise<GoogleDriveSyncStatus> {
-		return this.#enqueue(async () => {
+		return (async () => {
 			try {
 				const generation = this.#generation;
 				const [configStatus, connection, store] = await this.#activeAwait(
@@ -448,16 +453,23 @@ export class GoogleDriveSyncProfileController {
 							generation,
 						)
 					: { changes: 0, bytes: 0 };
-				this.#status = this.#statusFrom(
-					configStatus,
-					connection,
-					config,
-					bootstrap,
-					pending,
+				const runningPhase =
 					this.#status.phase === "syncing" || this.#status.phase === "connecting"
 						? this.#status.phase
-						: undefined,
-				);
+						: undefined;
+				this.#status = {
+					...this.#statusFrom(
+						configStatus,
+						connection,
+						config,
+						bootstrap,
+						pending,
+						runningPhase,
+					),
+					// A concurrent read must not erase the step the running cycle is
+					// reporting; that is the only progress the user can see.
+					syncStep: runningPhase ? this.#status.syncStep : null,
+				};
 				this.#publish();
 				return this.#status;
 			} catch (error) {
@@ -465,7 +477,7 @@ export class GoogleDriveSyncProfileController {
 				this.#setError(error);
 				return this.#status;
 			}
-		});
+		})();
 	}
 
 	connect(): Promise<GoogleDriveSyncStatus> {

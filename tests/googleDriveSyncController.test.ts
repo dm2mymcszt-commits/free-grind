@@ -819,6 +819,43 @@ describe("Google Drive sync controller", () => {
 		expect(seenPhases).not.toContain("syncing");
 	});
 
+	test("status is readable while a cycle is still running", async () => {
+		const native = await FakeNative.create();
+		await native.seedAnchor(anchor());
+		const store = configuredStore([]);
+		const manager = adapter(native, store);
+
+		// Hold the cycle open inside its first remote read.
+		let releaseList = (): void => undefined;
+		const listGate = new Promise<void>((resolve) => {
+			releaseList = resolve;
+		});
+		const realList = native.listAppData.bind(native);
+		let gated = false;
+		native.listAppData = async (
+			profileId: Parameters<typeof realList>[0],
+			pageToken?: Parameters<typeof realList>[1],
+		) => {
+			if (!gated) {
+				gated = true;
+				await listGate;
+			}
+			return realList(profileId, pageToken);
+		};
+
+		const running = manager.syncNow({ profileId: PROFILE_ID });
+
+		// A read must not wait on the write queue. Before this, the card could not
+		// describe the device until the cycle finished, which on a cold device is
+		// minutes and looks exactly like a hang.
+		const status = await manager.getStatus({ profileId: PROFILE_ID });
+		expect(status.phase).not.toBe("loading");
+		expect(status.googleConnected).toBe(true);
+
+		releaseList();
+		await running;
+	});
+
 	test("a missing required anchor hard-stops before any upload or deletion", async () => {
 		const events: string[] = [];
 		const native = await FakeNative.create(events);
