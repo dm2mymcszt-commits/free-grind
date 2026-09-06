@@ -77,6 +77,14 @@ function StatusBadge({
 
 	const presentation = useMemo(() => {
 		switch (phase) {
+			case "loading":
+				return {
+					label: t("data_backup.drive_sync.status_loading", {
+						defaultValue: "Checking",
+					}),
+					className: "bg-[var(--surface-2)] text-[var(--text-muted)]",
+					icon: <Loader2 className="h-3 w-3 animate-spin" />,
+				};
 			case "connecting":
 				return {
 					label: t("data_backup.drive_sync.status_connecting", {
@@ -335,6 +343,27 @@ export function GoogleDriveSyncCard({
 	// honoured in order; disabling them can strand a device that has to
 	// connect or pair before it can ever stop syncing.
 	const isUserActionPending = activeAction != null;
+	// Nothing has been determined yet. Rendering the setup UI here claims a
+	// disconnection that was never checked and offers a button that cannot work.
+	const isStatusLoading = phase === "loading";
+	const syncStepLabel =
+		status?.syncStep === "scanning"
+			? t("data_backup.drive_sync.step_scanning", {
+					defaultValue: "Scanning local changes",
+				})
+			: status?.syncStep === "reading"
+				? t("data_backup.drive_sync.step_reading", {
+						defaultValue: "Reading remote history",
+					})
+				: status?.syncStep === "applying"
+					? t("data_backup.drive_sync.step_applying", {
+							defaultValue: "Applying remote changes",
+						})
+					: status?.syncStep === "uploading"
+						? t("data_backup.drive_sync.step_uploading", {
+								defaultValue: "Uploading changes",
+							})
+						: null;
 
 	const lastSyncLabel = status?.lastSuccessfulSyncAt
 		? formatRelativeTime(status.lastSuccessfulSyncAt)
@@ -371,10 +400,16 @@ export function GoogleDriveSyncCard({
 										"Automatically exchange encrypted changes between this profile's devices. Manual exports remain available as a separate recovery backup.",
 								})}
 							</p>
+							{syncStepLabel ? (
+								<p className="mt-1.5 flex items-center gap-1.5 text-xs text-sky-400">
+									<Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+									{syncStepLabel}
+								</p>
+							) : null}
 						</div>
 					</div>
 
-					{status == null && !displayedError ? (
+					{(status == null || isStatusLoading) && !displayedError ? (
 						<div className="flex items-center justify-center gap-2 py-7 text-sm text-[var(--text-muted)]">
 							<Loader2 className="h-4 w-4 animate-spin" />
 							{t("data_backup.drive_sync.loading", {
@@ -392,7 +427,7 @@ export function GoogleDriveSyncCard({
 						</div>
 					) : null}
 
-					{status && !status.available ? (
+					{status && !status.available && !isStatusLoading ? (
 						<div className="mt-4 flex items-start gap-2.5 rounded-xl bg-[var(--surface-2)] p-3">
 							<HardDrive className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-muted)]" />
 							<p className="text-xs leading-relaxed text-[var(--text-muted)]">
@@ -756,7 +791,7 @@ export function GoogleDriveSyncCard({
 						</div>
 					) : null}
 
-					{status && !isGoogleConnected ? (
+					{status && !isGoogleConnected && !isStatusLoading ? (
 						<div className="mt-4 grid gap-3">
 							<div className="grid gap-2 rounded-xl bg-[var(--surface-2)] p-3">
 								<div className="flex items-start gap-2.5">

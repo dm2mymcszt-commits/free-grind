@@ -20,6 +20,7 @@ import type {
 	GoogleDriveSyncProfileInput,
 	GoogleDriveSyncStatus,
 	GoogleDriveSyncStatusListener,
+	GoogleDriveSyncStep,
 } from "./googleDriveSync";
 import {
 	GoogleDriveNativeError,
@@ -110,6 +111,13 @@ export interface GoogleDriveSyncControllerDependencies {
 }
 
 type RequiredControllerDependencies = Required<GoogleDriveSyncControllerDependencies>;
+
+const CYCLE_STEP_BY_BUCKET: Readonly<Record<string, GoogleDriveSyncStep>> = {
+	reconcile: "scanning",
+	inventory: "reading",
+	apply: "applying",
+	upload: "uploading",
+};
 
 function remotePackageCacheKey(
 	accountNamespace: string,
@@ -367,10 +375,17 @@ export class GoogleDriveSyncProfileController {
 	}
 
 	#timedPhase<T>(bucket: string, work: () => Promise<T>): Promise<T> {
+		const step = CYCLE_STEP_BY_BUCKET[bucket];
+		// Restored rather than cleared: these also run outside a sync cycle, such
+		// as the inventory read behind a pairing-code export, and the step must
+		// not be left showing once the work that set it has finished.
+		const previousStep = this.#status.syncStep;
+		if (step) this.#setSyncStep(step);
 		const timings = this.#cycleTimings;
-		if (!timings) return work();
 		const started = Date.now();
 		return work().finally(() => {
+			if (step) this.#setSyncStep(previousStep);
+			if (!timings) return;
 			const entry = timings.get(bucket) ?? { ms: 0, calls: 0 };
 			entry.ms += Date.now() - started;
 			entry.calls += 1;
@@ -2221,13 +2236,17 @@ export class GoogleDriveSyncProfileController {
 			pendingChanges: pending.changes,
 			pendingBytes: pending.bytes,
 			mediaPolicy: "off",
+			syncStep: null,
 			error: config.lastError ? { message: config.lastError } : null,
 		};
 	}
 
 	#blankStatus(): GoogleDriveSyncStatus {
 		return {
-			phase: "disconnected",
+			// Not a checked disconnection: nothing has been determined yet. Saying
+			// "disconnected" here made the card offer an inert connect button and
+			// claim a state it had not verified.
+			phase: "loading",
 			available: false,
 			unavailableReason: "Google Drive sync status has not been loaded yet.",
 			googleConnected: false,
@@ -2239,12 +2258,19 @@ export class GoogleDriveSyncProfileController {
 			pendingChanges: 0,
 			pendingBytes: 0,
 			mediaPolicy: "off",
+			syncStep: null,
 			error: null,
 		};
 	}
 
 	#setPhase(phase: "connecting" | "syncing"): void {
 		this.#status = { ...this.#status, phase, error: null };
+		this.#publish();
+	}
+
+	#setSyncStep(syncStep: GoogleDriveSyncStep | null): void {
+		if (this.#status.syncStep === syncStep) return;
+		this.#status = { ...this.#status, syncStep };
 		this.#publish();
 	}
 

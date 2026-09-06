@@ -9,12 +9,21 @@
  */
 
 export type GoogleDriveSyncPhase =
+	/** Nothing has been determined yet; distinct from a checked disconnection. */
+	| "loading"
 	| "disconnected"
 	| "connecting"
 	| "pairing"
 	| "paired"
 	| "syncing"
 	| "error";
+
+/** Coarse step of the running cycle, for progress the user can read. */
+export type GoogleDriveSyncStep =
+	| "scanning"
+	| "reading"
+	| "applying"
+	| "uploading";
 
 export type GoogleDriveMediaPolicy = "off" | "wifi-only";
 export type GoogleDriveVaultState = "none" | "awaiting-key" | "ready";
@@ -39,6 +48,8 @@ export interface GoogleDriveSyncStatus {
 	pendingChanges: number;
 	pendingBytes: number;
 	mediaPolicy: GoogleDriveMediaPolicy;
+	/** Set only while a cycle is running, so the UI can show real progress. */
+	syncStep: GoogleDriveSyncStep | null;
 	error: GoogleDriveSyncError | null;
 }
 
@@ -106,6 +117,7 @@ function unavailableStatus(): GoogleDriveSyncStatus {
 		phase: "disconnected",
 		available: false,
 		unavailableReason: UNAVAILABLE_REASON,
+		syncStep: null,
 		googleConnected: false,
 		vaultState: "none",
 		vaultFingerprint: null,
