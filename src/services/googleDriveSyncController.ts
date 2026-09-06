@@ -110,6 +110,28 @@ export interface GoogleDriveSyncControllerDependencies {
 
 type RequiredControllerDependencies = Required<GoogleDriveSyncControllerDependencies>;
 
+function remotePackageCacheKey(
+	accountNamespace: string,
+	metadata: GoogleDriveFileMetadata,
+): string {
+	// Packages are immutable and content addressed: the authenticated filename is
+	// derived from the namespace, source device, package id and content digest,
+	// and #downloadPackage rejects any file whose verified content does not
+	// reproduce that exact name. Identical identity therefore implies identical
+	// verified content, so a decoded package is safe to memoize against this key.
+	// Length prefixes keep the key injective without relying on a separator
+	// that cannot occur inside a Drive id, filename, size or checksum.
+	return [
+		accountNamespace,
+		metadata.id,
+		metadata.name,
+		metadata.size ?? "",
+		metadata.md5Checksum ?? "",
+	]
+		.map((part) => `${part.length}:${part}`)
+		.join("|");
+}
+
 type RemoteInventory = Readonly<{
 	allExactFiles: readonly ClassifiedRemoteFile[];
 	anchor: GoogleDriveSyncAnchorV1 | null;
@@ -324,6 +346,11 @@ export class GoogleDriveSyncProfileController {
 	#storePromise: Promise<GoogleDriveSyncControllerStore> | null = null;
 	#queue: Promise<void> = Promise.resolve();
 	#coalescedSync: Promise<GoogleDriveSyncStatus> | null = null;
+	// Verified immutable packages memoized by content-addressed identity. One
+	// sync cycle loads the inventory three times and the five-minute catch-up
+	// reloads the same history again; without this each pass re-downloaded,
+	// decrypted, parsed and re-verified the entire remote history.
+	readonly #packageCache = new Map<string, RemotePackage>();
 	#generation = 0;
 	#closed = false;
 	#status: GoogleDriveSyncStatus;
@@ -337,6 +364,7 @@ export class GoogleDriveSyncProfileController {
 
 	invalidate(): void {
 		this.#generation += 1;
+		this.#packageCache.clear();
 	}
 
 	async close(): Promise<void> {
@@ -1772,9 +1800,12 @@ export class GoogleDriveSyncProfileController {
 			value: GoogleDriveSyncAnchorV1;
 		}>> = [];
 		const packages: RemotePackage[] = [];
+		const seenPackageKeys = new Set<string>();
 		for (const file of exact) {
 			this.#assertActive(generation);
 			if (file.kind === "anchor") {
+				// Anchors are never cached. They are small and they are the freshness
+				// signal the rollback, conflict and race checks depend on.
 				anchors.push({
 					file,
 					value: await this.#downloadAnchor(
@@ -1784,10 +1815,28 @@ export class GoogleDriveSyncProfileController {
 					),
 				});
 			} else {
-				packages.push(
-					await this.#downloadPackage(file.metadata, accountNamespace, generation),
+				const cacheKey = remotePackageCacheKey(accountNamespace, file.metadata);
+				seenPackageKeys.add(cacheKey);
+				const cached = this.#packageCache.get(cacheKey);
+				if (cached) {
+					packages.push(cached);
+					continue;
+				}
+				const downloaded = await this.#downloadPackage(
+					file.metadata,
+					accountNamespace,
+					generation,
 				);
+				this.#packageCache.set(cacheKey, downloaded);
+				packages.push(downloaded);
 			}
+		}
+
+		// Keep the cache bounded by the history that still exists remotely. The
+		// listing above is always fetched fresh, so new and deleted remote packages
+		// are still detected; only already-verified immutable bodies are reused.
+		for (const key of this.#packageCache.keys()) {
+			if (!seenPackageKeys.has(key)) this.#packageCache.delete(key);
 		}
 
 		let anchor: GoogleDriveSyncAnchorV1 | null = null;

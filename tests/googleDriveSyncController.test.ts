@@ -2281,3 +2281,73 @@ describe("Google Drive sync controller", () => {
 		);
 	});
 });
+
+describe("immutable package reuse", () => {
+	test("one cycle downloads each package body once and still re-reads the anchor", async () => {
+		const events: string[] = [];
+		const native = await FakeNative.create(events);
+		await native.seedAnchor(anchor());
+		const remote = await syncPackage(ACCOUNT, AUTHORITY_DEVICE, [
+			await operation(ACCOUNT, AUTHORITY_DEVICE, 1, "remote-entity"),
+		]);
+		await native.seedPackage(remote, "package-1");
+		const store = configuredStore(events);
+
+		await adapter(native, store).syncNow({ profileId: PROFILE_ID });
+
+		// A cycle loads the inventory three times. The anchor is the freshness
+		// signal every rollback and race check depends on, so it is still re-read.
+		expect(
+			events.filter((event) => event === "download:anchor-id").length,
+		).toBeGreaterThan(1);
+		// The package body is content addressed and immutable, so it is decrypted
+		// and verified once and reused for the remaining loads.
+		expect(events.filter((event) => event === "download:package-1")).toHaveLength(1);
+		expect(store.config.lastError).toBeNull();
+	});
+
+	test("a later cycle on the same controller reuses verified package bodies", async () => {
+		const events: string[] = [];
+		const native = await FakeNative.create(events);
+		await native.seedAnchor(anchor());
+		const remote = await syncPackage(ACCOUNT, AUTHORITY_DEVICE, [
+			await operation(ACCOUNT, AUTHORITY_DEVICE, 1, "remote-entity"),
+		]);
+		await native.seedPackage(remote, "package-1");
+		const store = configuredStore(events);
+		const sync = adapter(native, store);
+
+		await sync.syncNow({ profileId: PROFILE_ID });
+		await sync.syncNow({ profileId: PROFILE_ID });
+
+		expect(events.filter((event) => event === "download:package-1")).toHaveLength(1);
+		expect(store.config.lastError).toBeNull();
+	});
+
+	test("a newly published package is still downloaded while cached bodies are reused", async () => {
+		const events: string[] = [];
+		const native = await FakeNative.create(events);
+		await native.seedAnchor(anchor());
+		const first = await syncPackage(ACCOUNT, AUTHORITY_DEVICE, [
+			await operation(ACCOUNT, AUTHORITY_DEVICE, 1, "remote-entity"),
+		]);
+		await native.seedPackage(first, "package-1");
+		const store = configuredStore(events);
+		const sync = adapter(native, store);
+
+		await sync.syncNow({ profileId: PROFILE_ID });
+
+		const second = await syncPackage(
+			ACCOUNT,
+			AUTHORITY_DEVICE,
+			[await operation(ACCOUNT, AUTHORITY_DEVICE, 2, "second-entity")],
+			first.contentDigest,
+		);
+		await native.seedPackage(second, "package-2");
+		await sync.syncNow({ profileId: PROFILE_ID });
+
+		expect(events.filter((event) => event === "download:package-1")).toHaveLength(1);
+		expect(events.filter((event) => event === "download:package-2")).toHaveLength(1);
+		expect(store.config.lastError).toBeNull();
+	});
+});

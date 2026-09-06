@@ -538,7 +538,10 @@ export function GoogleDriveSyncCard({
 										size="sm"
 										className="mt-3 w-full"
 										loading={activeAction === "export-key"}
-										disabled={isBusy}
+										// A background catch-up must not lock pairing out. The
+										// controller queue serializes this behind the running
+										// cycle, so the click is honoured as soon as it ends.
+										disabled={activeAction != null || phase === "connecting"}
 										leftIcon={<KeyRound className="h-4 w-4" />}
 										onClick={() => void revealPairingCode()}
 									>
