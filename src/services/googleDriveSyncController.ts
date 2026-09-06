@@ -94,6 +94,7 @@ export type GoogleDriveSyncControllerStore = Pick<
 	| "listPendingOutboundPackages"
 	| "markOutboundPackageUploaded"
 	| "applyIncomingPackage"
+	| "clearAccountState"
 > &
 	Partial<Pick<GoogleDriveSyncStore, "recordCycleTimings">>;
 
@@ -788,6 +789,7 @@ export class GoogleDriveSyncProfileController {
 							accountNamespace: pairing.accountNamespace,
 							sourceDeviceId,
 							includeMedia: false,
+							contactScope: this.#dependencies.contactScope(),
 						}),
 						generation,
 					);
@@ -893,6 +895,13 @@ export class GoogleDriveSyncProfileController {
 			if (config.accountNamespace) {
 				await this.#deleteAndVerifyRemoteNamespace(
 					config.accountNamespace,
+					generation,
+				);
+				// Only after the remote namespace is verifiably gone. A failed or
+				// interrupted delete throws above and leaves the local ledger intact
+				// so the reset can be retried against real history.
+				await this.#activeAwait(
+					store.clearAccountState(config.accountNamespace),
 					generation,
 				);
 			}

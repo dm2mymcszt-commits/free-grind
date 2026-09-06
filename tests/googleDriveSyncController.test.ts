@@ -521,7 +521,10 @@ class FakeStore implements GoogleDriveSyncControllerStore {
 		return this.localSequence;
 	}
 
-	async reconcileCurrentData() {
+	reconcileScopes: (string | undefined)[] = [];
+
+	async reconcileCurrentData(input?: { contactScope?: string }) {
+		this.reconcileScopes.push(input?.contactScope);
 		this.events.push("reconcile");
 		await this.onReconcile?.();
 		return {
@@ -531,6 +534,14 @@ class FakeStore implements GoogleDriveSyncControllerStore {
 			firstSequence: null,
 			lastSequence: null,
 		};
+	}
+
+	clearedAccountNamespaces: string[] = [];
+
+	async clearAccountState(accountNamespace: string) {
+		this.clearedAccountNamespaces.push(accountNamespace);
+		this.events.push("clear-account-state");
+		this.pending.length = 0;
 	}
 
 	async getPendingCounts() {
@@ -854,6 +865,67 @@ describe("Google Drive sync controller", () => {
 
 		releaseList();
 		await running;
+	});
+
+	test("every reconcile carries the configured contact scope, pairing included", async () => {
+		const events: string[] = [];
+		const native = await FakeNative.create(events);
+		native.platform = "ios";
+		native.connected = false;
+		native.vaultPresent = false;
+		await native.seedAnchor(anchor(AUTHORITY_DEVICE));
+		const store = new FakeStore(events);
+		const manager = createGoogleDriveSyncControllerAdapter({
+			native,
+			storeFactory: async () => store,
+			isActiveProfile: () => true,
+			deviceId: () => LOCAL_DEVICE,
+			deviceName: () => "iPhone",
+			generateNamespace: () => ACCOUNT,
+			now: () => 1_000,
+			sleep: async () => undefined,
+			onRemoteApplied: () => undefined,
+			contactScope: () => "conversations",
+		});
+
+		await manager.connect({ profileId: PROFILE_ID });
+		const code = await encodeGoogleDriveSyncPairingCode({
+			kind: GOOGLE_DRIVE_SYNC_PAIRING_KIND,
+			version: GOOGLE_DRIVE_SYNC_WIRE_VERSION,
+			profileId: String(PROFILE_ID),
+			accountNamespace: ACCOUNT,
+			vaultKey: native.vaultKey,
+			bootstrapAuthorityDeviceId: AUTHORITY_DEVICE,
+			bootstrapSequenceEnd: 0,
+			bootstrapHeadDigest: null,
+			observedSourceHeads: [],
+		});
+		await manager.importPairingCode({ profileId: PROFILE_ID, pairingCode: code });
+
+		// The pairing baseline scan snapshots this device's local entities. Running
+		// it unscoped published tens of thousands of browse-only rows the setting
+		// was meant to exclude, and that baseline is what a phone then uploads.
+		expect(store.reconcileScopes.length).toBeGreaterThan(0);
+		expect(store.reconcileScopes).not.toContain(undefined);
+		for (const scope of store.reconcileScopes) {
+			expect(scope).toBe("conversations");
+		}
+	});
+
+	test("a successful reset clears the local ledger for the destroyed vault", async () => {
+		const events: string[] = [];
+		const native = await FakeNative.create(events);
+		await native.seedAnchor(anchor());
+		const store = configuredStore(events);
+
+		await adapter(native, store).resetCloudData({ profileId: PROFILE_ID });
+
+		// Journal rows are unreadable once the key is gone, and a device that
+		// re-paired used to inherit them as pending uploads.
+		expect(store.clearedAccountNamespaces).toEqual([ACCOUNT]);
+		expect(events.indexOf("clear-account-state")).toBeGreaterThan(
+			events.lastIndexOf("delete:anchor-id"),
+		);
 	});
 
 	test("a missing required anchor hard-stops before any upload or deletion", async () => {

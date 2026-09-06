@@ -797,6 +797,36 @@ export class GoogleDriveSyncStore implements SyncApplyStore {
 		});
 	}
 
+	/**
+	 * Drop every trace of one sync account after its vault has been destroyed.
+	 * Reset already deletes the remote namespace, the encryption key and the
+	 * configuration, but previously left the journal, shadow and receipts
+	 * behind. Those rows are unreadable without the deleted key, and a device
+	 * that re-paired inherited them as pending work: after a reset intended to
+	 * shrink a vault, a phone still tried to publish the old, unfiltered
+	 * baseline. The device's own source identity is deliberately preserved.
+	 */
+	async clearAccountState(accountNamespace: string): Promise<void> {
+		accountNamespaceSchema.parse(accountNamespace);
+		await this.#serializedWrite("clear-account-state", async () => {
+			for (const table of [
+				"sync_outbound_operations",
+				"sync_outbound_packages",
+				"sync_entity_shadow",
+				"sync_applied_operations",
+				"sync_applied_packages",
+				"sync_remote_head_commitments",
+				"sync_counters",
+				"sync_account_clocks",
+			] as const) {
+				await this.#db.execute(
+					`DELETE FROM ${table} WHERE account_namespace = ?`,
+					[accountNamespace],
+				);
+			}
+		});
+	}
+
 	async getPendingCounts(accountNamespace: string): Promise<GoogleDriveSyncPendingCounts> {
 		accountNamespaceSchema.parse(accountNamespace);
 		return this.#afterWrites(async () => {
