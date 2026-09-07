@@ -2584,6 +2584,25 @@ export async function deletePortableTableRow(name: string, primaryKeyValue: unkn
 }
 
 /** Empties the named portable tables — the "replace everything" import path. */
+/**
+ * Blank cached media columns while keeping the rows. The albums table carries
+ * both album metadata and its cached cover image, so freeing the cover must
+ * not delete the album it belongs to.
+ */
+export async function blankPortableTableColumns(
+	name: string,
+	columns: readonly string[],
+): Promise<void> {
+	const table = requirePortableTable(name);
+	const known = columns.filter((column) => table.columns.includes(column));
+	if (known.length === 0) return;
+	const assignments = known.map((column) => `${column} = NULL`).join(", ");
+	const db = await getDb();
+	await executeWithLockRetry(db, "blank-portable-columns", async () => {
+		await db.execute(`UPDATE ${table.name} SET ${assignments}`);
+	});
+}
+
 export async function clearPortableTables(names: string[]): Promise<void> {
 	const tables = names.map(requirePortableTable);
 	if (tables.length === 0) {

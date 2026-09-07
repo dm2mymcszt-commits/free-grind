@@ -355,6 +355,60 @@ async function estimateSection(
 	return { section, rows, bytes };
 }
 
+/**
+ * Sections a user may remove from this device. "core" is deliberately absent:
+ * it is the account itself, and the export screen does not offer it as a choice
+ * for the same reason. "local" is a settings reset rather than stored data.
+ */
+export const DELETABLE_BACKUP_SECTIONS: readonly BackupSection[] = [
+	"index",
+	"views",
+	"chatMedia",
+	"albumMedia",
+	"avatars",
+];
+
+/** Sections cloud sync carries, so removing them can reach other devices. */
+export const SYNCED_BACKUP_SECTIONS: readonly BackupSection[] = ["index", "views"];
+
+/**
+ * Remove stored data for the chosen sections. Media rows are dropped outright;
+ * cached columns on a shared table are blanked so the rows that own them
+ * survive. Sections outside the deletable set are ignored rather than trusted.
+ */
+export async function deleteStoredSections(
+	sections: readonly BackupSection[],
+): Promise<void> {
+	const chosen = new Set(
+		sections.filter((section) => DELETABLE_BACKUP_SECTIONS.includes(section)),
+	);
+	if (chosen.size === 0) return;
+
+	if (chosen.has("index")) {
+		await contactIndex.clearContactIndexTables([
+			"chat_contact_index",
+			"chat_local_profile_meta",
+		]);
+	}
+	if (chosen.has("views")) {
+		await interestViewsStore.clear();
+	}
+
+	const tables: string[] = [];
+	if (chosen.has("chatMedia")) tables.push("media_files");
+	if (chosen.has("albumMedia")) tables.push("album_media");
+	if (chosen.has("avatars")) tables.push("avatars");
+	if (tables.length > 0) await chatDb.clearPortableTables(tables);
+
+	if (chosen.has("albumMedia")) {
+		// The album rows themselves belong to "core" and must survive.
+		await chatDb.blankPortableTableColumns("albums", [
+			"preview_cover_base64",
+			"preview_cover_mime_type",
+		]);
+	}
+}
+
 export async function estimateBackupSections(since = 0): Promise<SectionEstimate[]> {
 	const estimates: SectionEstimate[] = [];
 	for (const section of BACKUP_SECTIONS) {

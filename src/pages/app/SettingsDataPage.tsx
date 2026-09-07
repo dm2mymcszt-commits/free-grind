@@ -20,6 +20,9 @@ import {
 	BACKUP_SECTIONS,
 	REQUIRED_SECTIONS,
 	estimateBackupSections,
+	deleteStoredSections,
+	DELETABLE_BACKUP_SECTIONS,
+	SYNCED_BACKUP_SECTIONS,
 	exportBackup,
 	importBackup,
 	isBackupV2File,
@@ -115,6 +118,11 @@ export function SettingsDataPage() {
 	const [fullExport, setFullExport] = useState(false);
 	const [pendingFile, setPendingFile] = useState<File | null>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
+	const [purgeSelected, setPurgeSelected] = useState<Set<BackupSection>>(
+		() => new Set<BackupSection>(),
+	);
+	const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
+	const [isPurging, setIsPurging] = useState(false);
 
 	const loadUsage = useCallback(async () => {
 		setIsLoadingUsage(true);
@@ -190,6 +198,51 @@ export function SettingsDataPage() {
 			}
 			return next;
 		});
+	};
+
+	const togglePurgeSection = (section: BackupSection) => {
+		setPurgeSelected((current) => {
+			const next = new Set(current);
+			if (next.has(section)) next.delete(section);
+			else next.add(section);
+			return next;
+		});
+	};
+
+	const purgeBytes = useMemo(
+		() =>
+			(estimates ?? [])
+				.filter((estimate) => purgeSelected.has(estimate.section))
+				.reduce((total, estimate) => total + estimate.bytes, 0),
+		[estimates, purgeSelected],
+	);
+
+	const purgeTouchesSynced = useMemo(
+		() => [...purgeSelected].some((section) => SYNCED_BACKUP_SECTIONS.includes(section)),
+		[purgeSelected],
+	);
+
+	const handlePurge = async () => {
+		setIsPurging(true);
+		try {
+			await deleteStoredSections([...purgeSelected]);
+			setPurgeSelected(new Set<BackupSection>());
+			setShowPurgeConfirm(false);
+			await loadUsage();
+			setEstimates(await estimateBackupSections(0));
+			toast.success(
+				t("data_backup.purge_done", { defaultValue: "Selected data removed." }),
+			);
+		} catch (error) {
+			appLog.error("[SettingsDataPage] failed to delete stored sections", error);
+			toast.error(
+				t("data_backup.purge_failed", {
+					defaultValue: "Could not remove that data.",
+				}),
+			);
+		} finally {
+			setIsPurging(false);
+		}
 	};
 
 	const handleDeleteAll = async () => {
@@ -661,6 +714,88 @@ export function SettingsDataPage() {
 				</div>
 			</div>
 
+			<div className="mt-4">
+				<p className="mb-2 px-1 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+					{t("data_backup.manage_title", { defaultValue: "Stored data" })}
+				</p>
+				<div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
+					<div className="px-4 py-3.5">
+						<p className="text-sm font-semibold">
+							{t("data_backup.manage_heading", {
+								defaultValue: "Free up space on this device",
+							})}
+						</p>
+						<p className="mt-0.5 text-xs leading-relaxed text-[var(--text-muted)]">
+							{t("data_backup.manage_desc", {
+								defaultValue:
+									"Remove data you no longer need here. Conversations, messages and settings are never removed. Export first if you want a copy.",
+							})}
+						</p>
+
+						<div className="mt-3 grid gap-1.5">
+							{DELETABLE_BACKUP_SECTIONS.map((section) => {
+								const estimate = estimates?.find((item) => item.section === section);
+								const synced = SYNCED_BACKUP_SECTIONS.includes(section);
+								return (
+									<label
+										key={section}
+										className="flex cursor-pointer items-start gap-2.5 rounded-xl px-2.5 py-2 transition-colors hover:bg-[var(--surface-2)]"
+									>
+										<input
+											type="checkbox"
+											checked={purgeSelected.has(section)}
+											disabled={busy || isPurging}
+											onChange={() => togglePurgeSection(section)}
+											className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent)]"
+										/>
+										<span className="min-w-0 flex-1">
+											<span className="flex items-baseline justify-between gap-2">
+												<span className="text-xs font-semibold text-[var(--text)]">
+													{sectionLabels[section].label}
+												</span>
+												<span className="shrink-0 text-[11px] tabular-nums text-[var(--text-muted)]">
+													{estimate
+														? `${estimate.rows.toLocaleString()} · ${formatBytes(estimate.bytes)}`
+														: "…"}
+												</span>
+											</span>
+											<span className="mt-0.5 block text-[11px] leading-snug text-[var(--text-muted)]">
+												{synced
+													? t("data_backup.manage_synced_hint", {
+															defaultValue:
+																"Cloud sync carries this. Removing it here can also remove it from your other devices.",
+														})
+													: t("data_backup.manage_local_hint", {
+															defaultValue:
+																"This device only. Media is never uploaded by cloud sync.",
+														})}
+											</span>
+										</span>
+									</label>
+								);
+							})}
+						</div>
+
+						<button
+							type="button"
+							onClick={() => setShowPurgeConfirm(true)}
+							disabled={purgeSelected.size === 0 || busy || isPurging}
+							className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-full border border-red-500/30 bg-red-500/10 px-4 text-sm font-semibold text-red-300 transition disabled:opacity-40"
+						>
+							{isPurging ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+							{purgeSelected.size === 0
+								? t("data_backup.manage_action_empty", {
+										defaultValue: "Select what to remove",
+									})
+								: t("data_backup.manage_action", {
+										defaultValue: "Remove selected — frees about {{size}}",
+										size: formatBytes(purgeBytes),
+									})}
+						</button>
+					</div>
+				</div>
+			</div>
+
 			<ConfirmDialog
 				isOpen={showDeleteConfirm}
 				title={t("data_backup.delete_confirm_title", { defaultValue: "Delete all downloaded media?" })}
@@ -688,6 +823,30 @@ export function SettingsDataPage() {
 				onConfirm={() => void confirmMirrorImport()}
 				onCancel={() => setPendingFile(null)}
 			/>
+			<ConfirmDialog
+				isOpen={showPurgeConfirm}
+				title={t("data_backup.manage_confirm_title", {
+					defaultValue: "Remove the selected data?",
+				})}
+				message={
+					purgeTouchesSynced
+						? t("data_backup.manage_confirm_synced", {
+								defaultValue:
+									"This permanently removes the selected data from this device. You picked a category that cloud sync carries, so the removal can reach your other devices on the next sync. Conversations, messages and settings are not touched.",
+							})
+						: t("data_backup.manage_confirm_local", {
+								defaultValue:
+									"This permanently removes the selected data from this device. Cached media is not carried by cloud sync, so your other devices keep their own copies. Conversations, messages and settings are not touched.",
+							})
+				}
+				confirmLabel={t("data_backup.manage_confirm_action", { defaultValue: "Remove" })}
+				cancelLabel={t("common.cancel", { defaultValue: "Cancel" })}
+				confirmTone="danger"
+				isProcessing={isPurging}
+				onConfirm={() => void handlePurge()}
+				onCancel={() => setShowPurgeConfirm(false)}
+			/>
+
 		</section>
 	);
 }
