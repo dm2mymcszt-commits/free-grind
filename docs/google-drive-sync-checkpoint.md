@@ -168,3 +168,64 @@ Do not repeat the completed audits, Windows matrix, OAuth provisioning, secret s
 - Windows OAuth, encrypted authoritative upload, restart, stored authorization/token refresh, catch-up, and background scheduling are accepted. The browser callback page is intentionally static and may be closed after it reports that authorization was received.
 - The current progress UX is weak: `Connecting` covers the whole first sync, and this approximately 61,000-operation dataset can make initial and routine cycles take roughly 10–15 minutes because local state and immutable remote history are fully revalidated. This is a follow-up performance/feedback improvement, not a failed integrity check.
 - No Drive payload, Grindr content, credential, token, encryption key, or pairing code was inspected. The verified manual backups remain untouched, and no iPhone installation or pairing has occurred.
+
+## Windows and iPhone acceptance completed on 2026-09-07
+
+This session took the feature from "Windows-only and unusably slow" to two-device convergence proven on real hardware. Fifteen commits, `b282a0c9` through `7d4dba21`. Every fix carries a regression test that was confirmed to fail without it.
+
+### What was actually wrong
+
+The protocol design was sound and needed no changes. Every defect was in the integration around it, plus one scaling assumption that only breaks on phone hardware.
+
+**One mistake accounted for four separate symptoms:** user-facing reads and setup actions were serialized behind sync writes. Revealing a pairing code queued behind a running cycle; the connect button was disabled by a sync that existed only because the device was unenrolled; `getStatus` sat on the controller's queue; and after that was fixed it sat on the store's write queue one layer down. Each was fixed in isolation before the pattern was named, which is why it recurred. The rule is that a read or a setup action must never wait on a cycle.
+
+### Correctness fixes
+
+- A fresh device could not enrol at all. `#cycle` announced the syncing phase before checking whether the device was enrolled, and the card disables setup actions while busy, so connect was disabled by a sync that only ran because the device was not connected. Every relaunch repeated it.
+- `getStatus` is a pure read and no longer waits on either queue. A snapshot reads config, bootstrap and counters without the store's write lock, which a reconcile holds for its whole duration.
+- Placeholder status is no longer rendered as fact. `#blankStatus` reported phase `disconnected`, indistinguishable from a checked disconnection, so the card offered an inert connect button on a device that was already paired. A `loading` phase and an explicit `determined` flag now carry that state; the phase alone cannot, because a cycle overwrites it with `syncing`.
+- The contact scope reached the three reconciles inside a cycle but not the one in `importPairingCode`, which fixes a device's pre-pairing baseline. It fell back to `everything` exactly when the setting mattered most, and a phone published 56,558 operations against a 12,936-operation vault.
+- Reset left the journal, shadow and receipts behind, so a device that re-paired inherited them as pending uploads and resetting to shrink a vault could not shrink what a device published.
+
+### Performance
+
+Measured on the real install, not estimated. Instrumentation came first; three earlier hypotheses formed without it were all wrong.
+
+| Phase | Before | After |
+| --- | --- | --- |
+| Sync cycle | 443.7s | 25.4s |
+| Inventory, warm | 79.2s | 3.1s |
+| Reconcile | 357.8s over 3 calls | ~21s over 1 |
+| Cold-start pairing export | ~60s | served from disk |
+| Sync database | 367.9 MB | 82.7 MB |
+
+- Verified immutable packages are memoized by content-addressed identity, in memory and now durably. A restored body runs the identical verification a fresh download does, so reuse skips the network and the decrypt but never the content digest or the authenticated filename. A body that fails is discarded.
+- The domain scan runs again only when an apply journaled remote work. The leading reconcile is the data-loss boundary and still always runs, so a skipped scan costs at most one cycle of propagation delay.
+- Applying a package reads receipts once and writes them in batches instead of once per operation. The domain stores and the sync store are separate SQLite files, so a mutation and its receipt can never share a transaction; the existing contract already requires `applyOperation` to be idempotent for that reason, which is what makes batching safe.
+- Per-cycle phase durations are recorded to `sync_meta`, and open-path housekeeping records whether it ran and why not.
+
+### Product changes
+
+- **Profile index scope.** The contact index was 52,771 rows on this account, of which 3,208 had `has_chatted`. The other 94% were profiles browsed past and never messaged, and a phone rescanned all of them every cycle. A device now chooses: conversations only (default), conversations plus the last seven days, or everything. Filtering is applied in SQL, so excluded rows are never read. Chosen over a time window because `has_chatted` never flips back, so nothing ages out of scope; a moving window would tombstone rows as they aged and delete them on every other device.
+- Narrowing scope must not look like deletion. Reconciliation separates the sections it scanned from the sections where absence means deleted.
+- **Stored data management.** The export screen could pick categories to include but nothing could remove them. A card now removes them, with live counts. Conversations, messages and settings are never offered. Album covers share the albums table with metadata that belongs to that untouchable section, so that category blanks the cached columns rather than dropping the table.
+- **Pausable catch-up** and readable progress: scanning local changes, reading remote history, applying remote changes, uploading changes.
+- Reset now clears the vault's local ledger, and opening the store drops state from vaults the device has left.
+
+### Verified on real devices
+
+- Two-device convergence: 56 packages and counting applied from the iPhone. Both devices report the same vault ID.
+- The iPhone bootstrap completes in roughly eight minutes against a filtered baseline, having previously not completed at all.
+- Only 112 operations came back from the phone rather than the ~10,000 it held. The bootstrap authority mechanism recognised its pre-pairing data as superseded and published only genuine differences.
+
+### Operational notes
+
+- The OAuth app is in Testing status, so refresh tokens expire in about seven days on each device. Recovery is the existing refresh action, which preserves the namespace, bootstrap identity and vault key. Publishing to production is blocked because the consent screen requires an authorized domain the developer owns; `drive.appdata` is classified non-sensitive, so verification itself is not the obstacle.
+- Do not run a release Tauri or Cargo build in this workspace while `src-tauri/target/release/free-grind.exe` is the launched binary: it is overwritten with a build that has no OAuth credentials compiled in, which presents as "Google Drive OAuth is not configured for windows". That symptom opened this session.
+- `npm run dev` builds a debug binary under `target/debug` and does not touch that file.
+
+### Still open
+
+- A single reconcile is ~21s on Windows and remains the largest phase. Reducing it needs incremental change detection rather than hashing every entity.
+- Uploaded-history compaction is still unimplemented, so remote package count grows without bound and a cold cache still costs one full history read.
+- Media transport remains intentionally off.
