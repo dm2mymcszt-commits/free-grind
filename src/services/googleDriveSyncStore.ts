@@ -440,17 +440,33 @@ export class GoogleDriveSyncStore implements SyncApplyStore {
 			// After initialize, so this runs outside its write lock. Self-healing
 			// and best effort: a device that has been reset more than once carries
 			// every earlier vault's rows, and nothing else ever removes them.
+			// Housekeeping must never stop the store from opening, but silently
+			// swallowing its failure left no way to tell a prune that did nothing
+			// from one that never ran, so the outcome is recorded either way.
+			let outcome: Record<string, unknown> = { stage: "start" };
 			try {
 				const config = await store.getConfig();
+				outcome = { stage: "config", hasNamespace: config.accountNamespace !== null };
 				if (config.accountNamespace) {
 					const removed = await store.pruneForeignAccountState(
 						config.accountNamespace,
 					);
-					if (removed) await store.compact();
+					outcome = { stage: "pruned", removed };
+					if (removed) {
+						await store.compact();
+						outcome = { stage: "compacted", removed };
+					}
 				}
-			} catch {
-				// Housekeeping must never stop the store from opening.
+			} catch (error) {
+				outcome = {
+					...outcome,
+					failed: true,
+					error: error instanceof Error ? error.message : String(error),
+				};
 			}
+			await store
+				.recordMaintenanceOutcome(JSON.stringify({ ...outcome, atMs: Date.now() }))
+				.catch(() => undefined);
 			return store;
 		} catch (error) {
 			await db.close?.(db.path).catch(() => undefined);
@@ -566,6 +582,18 @@ export class GoogleDriveSyncStore implements SyncApplyStore {
 	 * existing key/value meta table, so slow-cycle analysis needs no schema
 	 * change and nothing user facing.
 	 */
+	/** Diagnostic only: what the open-path housekeeping did, or why it did not. */
+	async recordMaintenanceOutcome(outcomeJson: string): Promise<void> {
+		if (outcomeJson.length > 4_096) return;
+		await this.#serializedWrite("record-maintenance-outcome", async () => {
+			await this.#db.execute(
+				"INSERT INTO sync_meta(key, value) VALUES ('last_maintenance', ?) " +
+					"ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+				[outcomeJson],
+			);
+		});
+	}
+
 	async recordCycleTimings(timingsJson: string): Promise<void> {
 		if (timingsJson.length > 8_192) return;
 		await this.#serializedWrite("record-cycle-timings", async () => {

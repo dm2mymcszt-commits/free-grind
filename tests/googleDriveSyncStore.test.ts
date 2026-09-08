@@ -149,6 +149,32 @@ describe("durable Google Drive reconciliation store", () => {
 		await store.close();
 	});
 
+	test("reopening a store prunes vaults it has left", async () => {
+		const first = await openTestStore();
+		await first.store.updateConfig({ enabled: true, accountNamespace: ACCOUNT });
+		await first.adapter.execute(
+			"INSERT INTO sync_account_clocks (account_namespace, observed_logical_clock) VALUES (?, 1)",
+			[ACCOUNT],
+		);
+		await first.adapter.execute(
+			"INSERT INTO sync_account_clocks (account_namespace, observed_logical_clock) VALUES ('ns-dead-vault', 1)",
+		);
+
+		// Opening the store is the only thing that removes state from vaults this
+		// device has left, so it has to actually happen on the open path.
+		const second = await openTestStore({ adapter: first.adapter });
+		const dead = await first.adapter.select<Array<{ count: number }>>(
+			"SELECT COUNT(*) AS count FROM sync_account_clocks WHERE account_namespace = 'ns-dead-vault'",
+		);
+		expect(dead[0].count).toBe(0);
+		const live = await first.adapter.select<Array<{ count: number }>>(
+			"SELECT COUNT(*) AS count FROM sync_account_clocks WHERE account_namespace = ?",
+			[ACCOUNT],
+		);
+		expect(live[0].count).toBe(1);
+		await second.store.close();
+	});
+
 	test("state from vaults this device left is pruned, the live vault is kept", async () => {
 		const { store, adapter } = await openTestStore();
 		await store.updateConfig({ enabled: true, accountNamespace: ACCOUNT });
