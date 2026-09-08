@@ -1,17 +1,16 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
-// autoblock.ts pulls in the Tauri notification plugin and the chat database
-// purely for the notify/persist halves of the module. The keyword matcher
-// itself touches neither, so stub them rather than stand up a runtime.
+// autoblock.ts imports the Tauri notification plugin for the notify half of
+// the module, which has no browserless implementation to import. `mock.module`
+// is process-wide and permanent in bun — it replaces the module for every file
+// that runs afterwards too — so stub the one thing that genuinely cannot be
+// loaded and nothing else. In particular chatDb must NOT be stubbed here: the
+// Drive-sync and backup suites import the real one, and a partial stub of it
+// silently strips exports out from under them.
 mock.module("@tauri-apps/plugin-notification", () => ({
 	isPermissionGranted: async () => false,
 	requestPermission: async () => "denied",
 	sendNotification: () => {},
-}));
-mock.module("../src/services/tauriWebSocket", () => ({ isTauriRuntime: () => false }));
-mock.module("../src/services/chatDb", () => ({
-	getSetting: async () => null,
-	setSetting: async () => {},
 }));
 
 const store = new Map<string, string>();
