@@ -536,6 +536,33 @@ class FakeStore implements GoogleDriveSyncControllerStore {
 		};
 	}
 
+	readonly remotePackageCache = new Map<string, string>();
+
+	async readCachedRemotePackages(_namespace: string, keys: readonly string[]) {
+		const found = new Map<string, string>();
+		for (const key of keys) {
+			const body = this.remotePackageCache.get(key);
+			if (body !== undefined) found.set(key, body);
+		}
+		return found;
+	}
+
+	async writeCachedRemotePackages(
+		_namespace: string,
+		entries: readonly { cacheKey: string; serialized: string }[],
+	) {
+		for (const entry of entries) {
+			this.remotePackageCache.set(entry.cacheKey, entry.serialized);
+		}
+	}
+
+	async pruneCachedRemotePackages(_namespace: string, live: readonly string[]) {
+		const keep = new Set(live);
+		for (const key of [...this.remotePackageCache.keys()]) {
+			if (!keep.has(key)) this.remotePackageCache.delete(key);
+		}
+	}
+
 	clearedAccountNamespaces: string[] = [];
 
 	async clearAccountState(accountNamespace: string) {
@@ -926,6 +953,52 @@ describe("Google Drive sync controller", () => {
 		expect(events.indexOf("clear-account-state")).toBeGreaterThan(
 			events.lastIndexOf("delete:anchor-id"),
 		);
+	});
+
+	test("a restarted controller reuses persisted package bodies", async () => {
+		const events: string[] = [];
+		const native = await FakeNative.create(events);
+		await native.seedAnchor(anchor());
+		const remote = await syncPackage(ACCOUNT, AUTHORITY_DEVICE, [
+			await operation(ACCOUNT, AUTHORITY_DEVICE, 1, "remote-entity"),
+		]);
+		await native.seedPackage(remote, "package-1");
+		const store = configuredStore(events);
+
+		await adapter(native, store).syncNow({ profileId: PROFILE_ID });
+		expect(events.filter((event) => event === "download:package-1")).toHaveLength(1);
+		expect(store.remotePackageCache.size).toBe(1);
+
+		// A new adapter is a new controller with an empty in-memory cache, which
+		// is what a restarted app has. Without a durable cache it re-downloads and
+		// re-decrypts the entire history before it can do anything at all.
+		await adapter(native, store).syncNow({ profileId: PROFILE_ID });
+		expect(events.filter((event) => event === "download:package-1")).toHaveLength(1);
+		expect(store.config.lastError).toBeNull();
+	});
+
+	test("a persisted body that no longer verifies is re-downloaded, not trusted", async () => {
+		const events: string[] = [];
+		const native = await FakeNative.create(events);
+		await native.seedAnchor(anchor());
+		const remote = await syncPackage(ACCOUNT, AUTHORITY_DEVICE, [
+			await operation(ACCOUNT, AUTHORITY_DEVICE, 1, "remote-entity"),
+		]);
+		await native.seedPackage(remote, "package-1");
+		const store = configuredStore(events);
+
+		await adapter(native, store).syncNow({ profileId: PROFILE_ID });
+		expect(events.filter((event) => event === "download:package-1")).toHaveLength(1);
+
+		// Reuse must never weaken verification: a cached body still has to produce
+		// the content digest its authenticated filename commits to.
+		for (const key of store.remotePackageCache.keys()) {
+			store.remotePackageCache.set(key, '{"tampered":true}');
+		}
+
+		await adapter(native, store).syncNow({ profileId: PROFILE_ID });
+		expect(events.filter((event) => event === "download:package-1")).toHaveLength(2);
+		expect(store.config.lastError).toBeNull();
 	});
 
 	test("a missing required anchor hard-stops before any upload or deletion", async () => {

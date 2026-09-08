@@ -96,7 +96,15 @@ export type GoogleDriveSyncControllerStore = Pick<
 	| "applyIncomingPackage"
 	| "clearAccountState"
 > &
-	Partial<Pick<GoogleDriveSyncStore, "getStatusSnapshot">> &
+	Partial<
+		Pick<
+			GoogleDriveSyncStore,
+			| "getStatusSnapshot"
+			| "readCachedRemotePackages"
+			| "writeCachedRemotePackages"
+			| "pruneCachedRemotePackages"
+		>
+	> &
 	Partial<Pick<GoogleDriveSyncStore, "recordCycleTimings">>;
 
 export type GoogleDriveSyncControllerStoreFactory = (
@@ -1947,6 +1955,31 @@ export class GoogleDriveSyncProfileController {
 		generation: number,
 	): Promise<RemoteInventory> {
 		const exact = await this.#listExactFiles(accountNamespace, generation);
+		// Bodies kept from an earlier run. Reuse still verifies everything a fresh
+		// download does; it only avoids fetching and decrypting what cannot have
+		// changed, which is what made a cold start slow.
+		const persistedKeys = exact
+			.filter((file) => file.kind === "package")
+			.map((file) => remotePackageCacheKey(accountNamespace, file.metadata))
+			.filter((key) => !this.#packageCache.has(key));
+		let persisted: ReadonlyMap<string, string> = new Map();
+		if (persistedKeys.length > 0) {
+			try {
+				const store = await this.#activeAwait(this.#store(), generation);
+				persisted =
+					(await this.#activeAwait(
+						Promise.resolve(
+							store.readCachedRemotePackages?.(accountNamespace, persistedKeys),
+						),
+						generation,
+					)) ?? new Map();
+			} catch (error) {
+				if (error instanceof GoogleDriveSyncCancelledError) throw error;
+				// A cache is an optimisation; losing it only costs a download.
+				persisted = new Map();
+			}
+		}
+		const freshlyDownloaded: Array<{ cacheKey: string; serialized: string }> = [];
 		const anchors: Array<Readonly<{
 			file: ClassifiedRemoteFile;
 			value: GoogleDriveSyncAnchorV1;
@@ -1975,6 +2008,24 @@ export class GoogleDriveSyncProfileController {
 					packages.push(cached);
 					continue;
 				}
+				const storedBody = persisted.get(cacheKey);
+				if (storedBody !== undefined) {
+					try {
+						const restored = await this.#verifyPackageBody(
+							storedBody,
+							file.metadata,
+							accountNamespace,
+						);
+						this.#countCycleEvent("packageCacheRestored");
+						this.#packageCache.set(cacheKey, restored);
+						packages.push(restored);
+						continue;
+					} catch (error) {
+						if (error instanceof GoogleDriveSyncCancelledError) throw error;
+						// A body that no longer verifies is discarded, never trusted.
+						this.#countCycleEvent("packageCacheRejected");
+					}
+				}
 				this.#countCycleEvent("packageDownload");
 				const downloaded = await this.#downloadPackage(
 					file.metadata,
@@ -1982,6 +2033,7 @@ export class GoogleDriveSyncProfileController {
 					generation,
 				);
 				this.#packageCache.set(cacheKey, downloaded);
+				freshlyDownloaded.push({ cacheKey, serialized: downloaded.serialized });
 				packages.push(downloaded);
 			}
 		}
@@ -1991,6 +2043,24 @@ export class GoogleDriveSyncProfileController {
 		// are still detected; only already-verified immutable bodies are reused.
 		for (const key of this.#packageCache.keys()) {
 			if (!seenPackageKeys.has(key)) this.#packageCache.delete(key);
+		}
+
+		if (freshlyDownloaded.length > 0 || persistedKeys.length > 0) {
+			try {
+				const store = await this.#activeAwait(this.#store(), generation);
+				if (freshlyDownloaded.length > 0) {
+					await store.writeCachedRemotePackages?.(
+						accountNamespace,
+						freshlyDownloaded,
+					);
+				}
+				await store.pruneCachedRemotePackages?.(accountNamespace, [
+					...seenPackageKeys,
+				]);
+			} catch (error) {
+				if (error instanceof GoogleDriveSyncCancelledError) throw error;
+				// Failing to persist the cache must not fail the sync itself.
+			}
 		}
 
 		let anchor: GoogleDriveSyncAnchorV1 | null = null;
@@ -2134,6 +2204,19 @@ export class GoogleDriveSyncProfileController {
 			plaintext,
 			MAX_GOOGLE_DRIVE_SYNC_PLAINTEXT_PACKAGE_BYTES,
 		);
+		return this.#verifyPackageBody(serialized, metadata, accountNamespace);
+	}
+
+	/**
+	 * Every check a freshly downloaded package passes. A cached body runs the
+	 * same path, so reuse skips the network and the decrypt but never the
+	 * content digest or the authenticated filename that identifies it.
+	 */
+	async #verifyPackageBody(
+		serialized: string,
+		metadata: GoogleDriveFileMetadata,
+		accountNamespace: string,
+	): Promise<RemotePackage> {
 		const syncPackage = await parseAndVerifySyncPackage(serialized);
 		if (syncPackage.accountNamespace !== accountNamespace) {
 			throw new SyncProtocolError(

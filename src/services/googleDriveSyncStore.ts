@@ -824,6 +824,7 @@ export class GoogleDriveSyncStore implements SyncApplyStore {
 				"sync_remote_head_commitments",
 				"sync_counters",
 				"sync_account_clocks",
+				"sync_remote_package_cache",
 			] as const) {
 				await this.#db.execute(
 					`DELETE FROM ${table} WHERE account_namespace = ?`,
@@ -851,6 +852,93 @@ export class GoogleDriveSyncStore implements SyncApplyStore {
 			? await this.#readPendingCountsUnlocked(config.accountNamespace)
 			: Object.freeze({ changes: 0, bytes: 0 });
 		return Object.freeze({ config, bootstrap, pending });
+	}
+
+	/**
+	 * Verified remote packages, kept across restarts. Packages are immutable and
+	 * content addressed, so a cached body is reusable for as long as the same
+	 * file exists remotely. Without this every fresh process re-downloads and
+	 * re-decrypts the whole history before it can do anything, which is what
+	 * made revealing a pairing code slow on a cold start. Callers still verify
+	 * what they read back; this only replaces the network and the decrypt.
+	 */
+	async readCachedRemotePackages(
+		accountNamespace: string,
+		cacheKeys: readonly string[],
+	): Promise<ReadonlyMap<string, string>> {
+		accountNamespaceSchema.parse(accountNamespace);
+		const found = new Map<string, string>();
+		const unique = [...new Set(cacheKeys)];
+		for (let start = 0; start < unique.length; start += 400) {
+			const chunk = unique.slice(start, start + 400);
+			if (chunk.length === 0) continue;
+			const placeholders = chunk.map(() => "?").join(", ");
+			const rows = await this.#db.select<
+				Array<{ cache_key: string; serialized: string }>
+			>(
+				`SELECT cache_key, serialized FROM sync_remote_package_cache
+				 WHERE account_namespace = ? AND cache_key IN (${placeholders})`,
+				[accountNamespace, ...chunk],
+			);
+			for (const row of rows) found.set(row.cache_key, row.serialized);
+		}
+		return found;
+	}
+
+	async writeCachedRemotePackages(
+		accountNamespace: string,
+		entries: readonly Readonly<{ cacheKey: string; serialized: string }>[],
+	): Promise<void> {
+		accountNamespaceSchema.parse(accountNamespace);
+		if (entries.length === 0) return;
+		const now = Date.now();
+		await this.#serializedWrite("cache-remote-packages", async () => {
+			for (const entry of entries) {
+				await this.#db.execute(
+					`INSERT INTO sync_remote_package_cache
+						(cache_key, account_namespace, serialized, cached_at_ms)
+					 VALUES (?, ?, ?, ?)
+					 ON CONFLICT(cache_key) DO UPDATE SET
+						serialized = excluded.serialized,
+						cached_at_ms = excluded.cached_at_ms`,
+					[entry.cacheKey, accountNamespace, entry.serialized, now],
+				);
+			}
+		});
+	}
+
+	/** Drop cached bodies for files the latest listing no longer reports. */
+	async pruneCachedRemotePackages(
+		accountNamespace: string,
+		liveCacheKeys: readonly string[],
+	): Promise<void> {
+		accountNamespaceSchema.parse(accountNamespace);
+		await this.#serializedWrite("prune-remote-package-cache", async () => {
+			if (liveCacheKeys.length === 0) {
+				await this.#db.execute(
+					"DELETE FROM sync_remote_package_cache WHERE account_namespace = ?",
+					[accountNamespace],
+				);
+				return;
+			}
+			const rows = await this.#db.select<Array<{ cache_key: string }>>(
+				"SELECT cache_key FROM sync_remote_package_cache WHERE account_namespace = ?",
+				[accountNamespace],
+			);
+			const live = new Set(liveCacheKeys);
+			const stale = rows
+				.map((row) => row.cache_key)
+				.filter((key) => !live.has(key));
+			for (let start = 0; start < stale.length; start += 400) {
+				const chunk = stale.slice(start, start + 400);
+				if (chunk.length === 0) continue;
+				const placeholders = chunk.map(() => "?").join(", ");
+				await this.#db.execute(
+					`DELETE FROM sync_remote_package_cache WHERE cache_key IN (${placeholders})`,
+					chunk,
+				);
+			}
+		});
 	}
 
 	async getPendingCounts(accountNamespace: string): Promise<GoogleDriveSyncPendingCounts> {
@@ -1663,6 +1751,14 @@ export class GoogleDriveSyncStore implements SyncApplyStore {
 			await this.#db.execute(
 				"CREATE INDEX IF NOT EXISTS idx_sync_applied_source ON sync_applied_packages(account_namespace, source_device_id, sequence_end)",
 			);
+			await this.#db.execute(`
+				CREATE TABLE IF NOT EXISTS sync_remote_package_cache (
+					cache_key TEXT PRIMARY KEY,
+					account_namespace TEXT NOT NULL,
+					serialized TEXT NOT NULL,
+					cached_at_ms INTEGER NOT NULL
+				)
+			`);
 			await this.#db.execute(`
 				CREATE TABLE IF NOT EXISTS sync_remote_head_commitments (
 					account_namespace TEXT NOT NULL,
