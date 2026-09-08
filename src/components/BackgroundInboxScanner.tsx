@@ -351,7 +351,13 @@ export function BackgroundInboxScanner() {
                                 }
                             }
                         } catch (err) {
-                            console.warn(`[BackgroundInboxScanner] Failed to scan profile ${profileId}:`, err);
+                            // The profile was marked scanned before its detail was
+                            // fetched, so leaving the cache entry in place would
+                            // retire it until its unread count or last activity
+                            // changed — one failed profile request and the rules
+                            // never get to look at that person again.
+                            scannedProfilesRef.current.delete(profileId);
+                            console.warn(`[BackgroundInboxScanner] Failed to scan profile ${profileId}; will retry on the next pass:`, err);
                         }
 
                         // Throttle between fetches

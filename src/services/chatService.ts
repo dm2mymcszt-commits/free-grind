@@ -37,7 +37,8 @@ import type {
 
 
 import { isOutsideAgeLimits, isOutsideDistanceLimits, hasRightNowStatus, notifyAutoBlock, getMatchedForbiddenWord } from "../utils/autoblock";
-import { isProfileAutoblockWhitelisted } from "../utils/privacy";
+import { getSentMessagesThreshold, isProfileAutoblockWhitelisted } from "../utils/privacy";
+import { appLog } from "../utils/logger";
 import * as chatLog from "./chatLog";
 
 import { runAutomationRulesForSender } from "../utils/automationRules";
@@ -200,22 +201,49 @@ export function createChatService(fetchRest: RestFetcher, t: (key: string) => st
 			for (const entry of parsed.entries) {
 				const data: any = entry.data;
 
-				const displayName = data.name || (data.participants && data.participants[0]?.displayName) || "";
-				const aboutMe = data.participants?.[0]?.aboutMe || "";
-				const lastMessageText = data.previewText || (data.lastMessage?.body?.text) || "";
-				const profileAge = data.participants?.[0]?.age;
-				const distance = data.participants?.[0]?.distanceMetres || data.participants?.[0]?.distanceMeters;
-				const profileId = data.participants?.[0]?.profileId;
-
 				// --- 1. LOCAL AUTO BLOCK CHECK (INBOX) ---
 				const userId = window.localStorage.getItem("fg-user-id");
-				const participant = data.participants?.[0];
+				// participants[0] is not reliably the other person — a conversation
+				// can list the signed-in account first, and reading their own age,
+				// bio or id here is how a rule would end up matching against
+				// yourself. Pick the same way every other caller does.
+				const participant =
+					data.participants?.find(
+						(p: any) => userId == null || Number(p?.profileId) !== Number(userId),
+					) ?? data.participants?.[0];
+
+				const displayName = data.name || "";
+				const aboutMe = participant?.aboutMe || "";
+				// The inbox preview is the only message text this endpoint carries
+				// (`previewText`/`lastMessage` never existed on it — see
+				// docs/content/grindr-api/messaging/conversations.md — so the
+				// message rule silently matched an empty string here). Only an
+				// *incoming* preview may be matched: your own last message must
+				// never be what gets someone blocked.
+				const previewSenderId = data.preview?.senderId;
+				const isPreviewIncoming =
+					previewSenderId != null
+					&& (userId == null || Number(previewSenderId) !== Number(userId));
+				const lastMessageText = isPreviewIncoming ? (data.preview?.text || "") : "";
+				const profileAge = participant?.age;
+				const distance = participant?.distanceMetres;
+				const profileId = participant?.profileId;
 				const isWhitelisted = profileId ? isProfileAutoblockWhitelisted(String(profileId)) : false;
 
 				const nameMatch = !isWhitelisted ? getMatchedForbiddenWord(displayName, "name") : null;
 				const bioMatch = !isWhitelisted ? getMatchedForbiddenWord(aboutMe, "bio") : null;
 				const msgMatch = !isWhitelisted ? getMatchedForbiddenWord(lastMessageText, "message") : null;
-				const rightNowMatch = !isWhitelisted ? hasRightNowStatus(participant) : false;
+				// Right Now is a conversation-level field here, not a participant
+				// one (docs/content/grindr-api/messaging/conversations.md), so
+				// reading it off the participant meant this check was never once
+				// true in the inbox — only the background scanner, which has the
+				// full profile, ever enforced the setting. Only HOSTING and
+				// NOT_HOSTING count as an active status; the third value the
+				// server sends, NOT_ACTIVE, does not, so this stays exactly as
+				// selective as the scanner already is.
+				const rightNowMatch = !isWhitelisted
+					? hasRightNowStatus({ rightNow: data.rightNow ?? null })
+					: false;
 
 				const blockOnChat = window.localStorage.getItem("fg-block-chat") !== "false";
 
@@ -238,7 +266,7 @@ export function createChatService(fetchRest: RestFetcher, t: (key: string) => st
 								outgoingCount++;
 							}
 						}
-						if (outgoingCount >= 2) {
+						if (outgoingCount >= getSentMessagesThreshold()) {
 							shouldBlock = false;
 						}
 					} catch {}
@@ -279,7 +307,14 @@ export function createChatService(fetchRest: RestFetcher, t: (key: string) => st
 								},
 							});
 							notifyAutoBlock(displayName || String(profileId), reason);
-						} catch {
+						} catch (error) {
+							// Silence here is what made a permanently failing block
+							// indistinguishable from a rule that never matched: the
+							// profile stayed in the inbox looking un-matched forever.
+							appLog.warn(
+								`[AutoBlock:inbox] matched ${profileId} (${displayName || "unnamed"}) for "${reason}" but could not block yet — leaving it in the inbox to retry`,
+								error,
+							);
 							// Keep the entry visible and retry on a later inbox scan if
 							// its history could not be safely captured or blocking failed.
 							safeEntries.push(entry);

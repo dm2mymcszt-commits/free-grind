@@ -47,11 +47,13 @@ type PreserveAndAutoBlockOptions = {
 	blockProfile: () => Promise<unknown>;
 	/**
 	 * Whether this caller will actually get another chance if the block is
-	 * deferred. True (the default) for the scanners and inbox filters that
-	 * re-evaluate every pass. Must be false for automation rules: those mark a
-	 * sender seen *before* running their actions, so a deferral there means the
-	 * rule never fires again and the profile is silently never blocked —
-	 * strictly worse than blocking with a partial capture.
+	 * deferred because the conversation could not be fully preserved. True
+	 * (the default) for the scanners and inbox filters that re-evaluate every
+	 * pass — and even they only defer MAX_PRESERVE_ATTEMPTS times. Must be
+	 * false for automation rules: those mark a sender seen *before* running
+	 * their actions, so a deferral there means the rule never fires again and
+	 * the profile is silently never blocked — strictly worse than blocking
+	 * with a partial capture.
 	 */
 	mayDeferOnIncompleteCapture?: boolean;
 };
@@ -72,8 +74,10 @@ const inFlightBlocks = new Map<string, Promise<void>>();
 export class ContentCaptureIncompleteError extends Error {
 	readonly albumIds: number[];
 	readonly messageIds: string[];
+	/** Albums with not a single byte stored locally — the ones a block actually loses. */
+	readonly albumsWithoutAnyLocalCopy: number[];
 
-	constructor(albumIds: number[], messageIds: string[]) {
+	constructor(albumIds: number[], messageIds: string[], albumsWithoutAnyLocalCopy: number[] = []) {
 		const parts = [
 			albumIds.length > 0 ? `album(s) ${albumIds.join(", ")}` : null,
 			messageIds.length > 0 ? `message(s) ${messageIds.join(", ")}` : null,
@@ -82,15 +86,24 @@ export class ContentCaptureIncompleteError extends Error {
 		this.name = "ContentCaptureIncompleteError";
 		this.albumIds = albumIds;
 		this.messageIds = messageIds;
+		this.albumsWithoutAnyLocalCopy = albumsWithoutAnyLocalCopy;
 	}
 }
 
-// A conversation whose content never becomes capturable (a permanently odd
-// album item, a CDN that keeps failing) must not wedge the auto-blocker
-// forever. After this many deferrals we block anyway, keeping whatever was
-// captured — the teaser cover and any bytes that did come down.
-const MAX_CONTENT_CAPTURE_ATTEMPTS = 3;
-const contentCaptureAttempts = new Map<string, number>();
+// A conversation whose history never becomes fully preservable (a permanently
+// odd album item, a CDN that keeps failing, a chatDb write that keeps losing a
+// lock race to a running sync) must not wedge the auto-blocker forever. After
+// this many deferrals we block anyway, keeping whatever was captured — the
+// teaser cover and any bytes that did come down.
+//
+// This counts the *whole* preserve step, not just the content capture. A
+// failure in the earlier steps (fetching the thread, writing it to chatDb)
+// used to defer with no cap at all, which is how a profile that plainly
+// matched a forbidden keyword could sit in the inbox indefinitely: every pass
+// re-matched it, re-tried the preserve, threw in the same place, and left it
+// exactly where it was, with nothing logged to say so.
+const MAX_PRESERVE_ATTEMPTS = 3;
+const preserveAttempts = new Map<string, number>();
 
 /**
  * Downloads and stores everything in this conversation that the block is
@@ -108,7 +121,6 @@ async function captureContentBeforeBlock(
 	messages: Message[],
 	userId: number | null,
 	getAlbum: (albumId: number) => Promise<AlbumDetailsResponse>,
-	mayDefer: boolean,
 ): Promise<void> {
 	const byMessageId = new Map<string, UiMessage>();
 	for (const message of await chatDb.getMessages(conversationId).catch(() => [])) {
@@ -132,29 +144,13 @@ async function captureContentBeforeBlock(
 	const retryableAlbums = albumResults.filter((r) => !r.complete && !r.unavailable);
 	const retryableMedia = mediaResults.filter((r) => !r.captured && !r.unavailable);
 	if (retryableAlbums.length === 0 && retryableMedia.length === 0) {
-		contentCaptureAttempts.delete(conversationId);
 		return;
 	}
 
-	const attempts = (contentCaptureAttempts.get(conversationId) ?? 0) + 1;
-	if (mayDefer && attempts < MAX_CONTENT_CAPTURE_ATTEMPTS) {
-		contentCaptureAttempts.set(conversationId, attempts);
-		throw new ContentCaptureIncompleteError(
-			retryableAlbums.map((r) => r.albumId),
-			retryableMedia.map((r) => r.messageId),
-		);
-	}
-
-	contentCaptureAttempts.delete(conversationId);
-	appLog.warn(
-		`[auto-block] content capture for ${conversationId} incomplete${mayDefer ? ` after ${attempts} attempts` : " and not retryable by this caller"} — blocking anyway, keeping what was captured`,
-		{
-			albumIds: retryableAlbums.map((r) => r.albumId),
-			albumsWithoutAnyLocalCopy: retryableAlbums
-				.filter((r) => !r.hasLocalContent)
-				.map((r) => r.albumId),
-			mediaMessageIds: retryableMedia.map((r) => r.messageId),
-		},
+	throw new ContentCaptureIncompleteError(
+		retryableAlbums.map((r) => r.albumId),
+		retryableMedia.map((r) => r.messageId),
+		retryableAlbums.filter((r) => !r.hasLocalContent).map((r) => r.albumId),
 	);
 }
 
@@ -178,42 +174,65 @@ export function preserveAndAutoBlockConversation(
 					}
 				: options.conversation;
 
-		// Persist the inbox metadata before the extra message request. If that
-		// request fails, the block is deliberately not attempted and the next
-		// scan can retry while the server conversation is still available.
-		await chatDb.upsertConversation(conversation, options.profileId);
+		const mayDefer = options.mayDeferOnIncompleteCapture ?? true;
+		const attempt = (preserveAttempts.get(conversationId) ?? 0) + 1;
 
-		const snapshot = options.messageSnapshot ?? (await options.fetchMessages());
-		// The realtime message that triggered the block can still be missing
-		// from the snapshot — the block path runs before the bridge's own
-		// persistence, so it has to be folded in here or it is lost outright.
-		const liveMessages = [...snapshot.messages, ...(options.additionalMessages ?? [])];
-		if (liveMessages.length > 0) {
-			await chatDb.upsertMessages(conversationId, liveMessages);
-		}
-		if (snapshot.lastReadTimestamp !== undefined) {
-			await chatDb.setLastReadTimestamp(
+		try {
+			// Persist the inbox metadata before the extra message request. If
+			// that request fails, the block is deliberately not attempted and
+			// the next scan can retry while the server conversation is still
+			// available.
+			await chatDb.upsertConversation(conversation, options.profileId);
+
+			const snapshot = options.messageSnapshot ?? (await options.fetchMessages());
+			// The realtime message that triggered the block can still be missing
+			// from the snapshot — the block path runs before the bridge's own
+			// persistence, so it has to be folded in here or it is lost outright.
+			const liveMessages = [...snapshot.messages, ...(options.additionalMessages ?? [])];
+			if (liveMessages.length > 0) {
+				await chatDb.upsertMessages(conversationId, liveMessages);
+			}
+			if (snapshot.lastReadTimestamp !== undefined) {
+				await chatDb.setLastReadTimestamp(
+					conversationId,
+					snapshot.lastReadTimestamp ?? null,
+				);
+			}
+			await chatDb.markConversationMessagesSynced(
 				conversationId,
-				snapshot.lastReadTimestamp ?? null,
+				conversation.data.lastActivityTimestamp ?? null,
+			);
+
+			// Album and attachment bytes live behind signed URLs the block
+			// revokes along with the conversation, and nothing else in the
+			// background path fetches them — an open ChatPage is what normally
+			// triggers the capture. Await it here, before the block, or the
+			// archived thread keeps bubbles whose content is gone for good.
+			await captureContentBeforeBlock(
+				conversationId,
+				liveMessages,
+				options.userId ?? null,
+				options.getAlbum,
+			);
+		} catch (error) {
+			// A caller that gets another pass takes one — but only a bounded
+			// number of them. Past that the match has been sitting unenforced
+			// for several cycles and blocking with a partial capture is the
+			// lesser loss; the profile matched the user's rules either way.
+			if (mayDefer && attempt < MAX_PRESERVE_ATTEMPTS) {
+				preserveAttempts.set(conversationId, attempt);
+				appLog.warn(
+					`[auto-block] could not fully preserve ${conversationId} (attempt ${attempt}/${MAX_PRESERVE_ATTEMPTS}) — deferring the block to the next pass`,
+					error,
+				);
+				throw error;
+			}
+			appLog.warn(
+				`[auto-block] preserving ${conversationId} still failing${mayDefer ? ` after ${attempt} attempts` : " and this caller cannot retry"} — blocking anyway, keeping whatever was captured`,
+				error,
 			);
 		}
-		await chatDb.markConversationMessagesSynced(
-			conversationId,
-			conversation.data.lastActivityTimestamp ?? null,
-		);
-
-		// Album and attachment bytes live behind signed URLs the block revokes
-		// along with the conversation, and nothing else in the background path
-		// fetches them — an open ChatPage is what normally triggers the capture.
-		// Await it here, before the block, or the archived thread keeps bubbles
-		// whose content is gone for good.
-		await captureContentBeforeBlock(
-			conversationId,
-			liveMessages,
-			options.userId ?? null,
-			options.getAlbum,
-			options.mayDeferOnIncompleteCapture ?? true,
-		);
+		preserveAttempts.delete(conversationId);
 
 		// Mark before the request leaves, matching the manual-block mutation's
 		// ordering. The websocket delete echo can otherwise win the race and be

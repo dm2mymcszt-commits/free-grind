@@ -170,21 +170,36 @@ export function getMatchedForbiddenWord(text: string | null | undefined, target:
 
     // Jay's Cache Logic: Only re-compile the Regexes if you changed your settings!
     if (savedWords !== lastSavedWords) {
-        lastSavedWords = savedWords;
-        cachedRegexes = savedWords.split(',')
-            .map(word => word.trim().toLowerCase())
-            .filter(word => word.length > 0)
-            .map(keyword => {
-                const cleanKeyword = keyword.replace(/\s+/g, ' ');
-                const escaped = cleanKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                return {
+        const compiled: { keyword: string, regex: RegExp }[] = [];
+        const uncompilable: string[] = [];
+        for (const word of savedWords.split(',')) {
+            const keyword = word.trim().toLowerCase();
+            if (keyword.length === 0) continue;
+            const cleanKeyword = keyword.replace(/\s+/g, ' ');
+            const escaped = cleanKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            try {
+                compiled.push({
                     keyword: cleanKeyword,
                     // Unicode-aware word boundaries (\p{L} = Any Unicode Letter, \p{N} = Number)
                     // Prevents accidental partial matches (e.g. "sub" matching "submit") while matching
                     // French words with accents (é, è, à, ç) and multi-word phrases cleanly.
                     regex: new RegExp(`(?:^|[^\\p{L}\\p{N}_])${escaped}(?:$|[^\\p{L}\\p{N}_])`, 'ui')
-                };
-            });
+                });
+            } catch {
+                // One entry the 'u' flag refuses (a half emoji from a pasted or
+                // imported list is the realistic way in) must not take the other
+                // 250 with it. Compiling the list in one expression meant the
+                // throw escaped *after* lastSavedWords had already been updated,
+                // so the cache stayed empty and every keyword silently stopped
+                // blocking for the rest of the session.
+                uncompilable.push(cleanKeyword);
+            }
+        }
+        if (uncompilable.length > 0) {
+            appLog.warn("[AutoBlock] ignoring forbidden keyword(s) that cannot be compiled", uncompilable);
+        }
+        cachedRegexes = compiled;
+        lastSavedWords = savedWords;
     }
 
     if (cachedRegexes.length === 0) return null;
