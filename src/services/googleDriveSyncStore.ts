@@ -437,6 +437,20 @@ export class GoogleDriveSyncStore implements SyncApplyStore {
 		);
 		try {
 			await store.#initialize();
+			// After initialize, so this runs outside its write lock. Self-healing
+			// and best effort: a device that has been reset more than once carries
+			// every earlier vault's rows, and nothing else ever removes them.
+			try {
+				const config = await store.getConfig();
+				if (config.accountNamespace) {
+					const removed = await store.pruneForeignAccountState(
+						config.accountNamespace,
+					);
+					if (removed) await store.compact();
+				}
+			} catch {
+				// Housekeeping must never stop the store from opening.
+			}
 			return store;
 		} catch (error) {
 			await db.close?.(db.path).catch(() => undefined);
@@ -812,20 +826,62 @@ export class GoogleDriveSyncStore implements SyncApplyStore {
 	 * shrink a vault, a phone still tried to publish the old, unfiltered
 	 * baseline. The device's own source identity is deliberately preserved.
 	 */
+	/** Namespace-scoped tables, in the order a teardown should clear them. */
+	static readonly #ACCOUNT_SCOPED_TABLES = [
+		"sync_outbound_operations",
+		"sync_outbound_packages",
+		"sync_entity_shadow",
+		"sync_applied_operations",
+		"sync_applied_packages",
+		"sync_remote_head_commitments",
+		"sync_counters",
+		"sync_account_clocks",
+		"sync_remote_package_cache",
+	] as const;
+
+	/**
+	 * Drop state belonging to vaults this device is no longer enrolled in.
+	 * Resetting a vault clears its own rows, but a device that has been reset
+	 * more than once still carried every earlier vault: unreadable without the
+	 * deleted keys, unreachable because every query filters on the live
+	 * namespace, and heavy enough to dominate the database. Returns whether
+	 * anything was removed so the caller can decide to reclaim the space.
+	 */
+	async pruneForeignAccountState(liveNamespace: string): Promise<boolean> {
+		accountNamespaceSchema.parse(liveNamespace);
+		return this.#serializedWrite("prune-foreign-account-state", async () => {
+			let removedAny = false;
+			for (const table of GoogleDriveSyncStore.#ACCOUNT_SCOPED_TABLES) {
+				const rows = await this.#db.select<Array<{ count: number }>>(
+					`SELECT COUNT(*) AS count FROM ${table} WHERE account_namespace != ?`,
+					[liveNamespace],
+				);
+				if ((rows[0]?.count ?? 0) === 0) continue;
+				removedAny = true;
+				await this.#db.execute(
+					`DELETE FROM ${table} WHERE account_namespace != ?`,
+					[liveNamespace],
+				);
+			}
+			return removedAny;
+		});
+	}
+
+	/**
+	 * Return freed pages to the filesystem. Deleting rows alone leaves the file
+	 * at its high-water mark, so a database that has been mostly emptied still
+	 * costs what it did before.
+	 */
+	async compact(): Promise<void> {
+		await this.#serializedWrite("compact", async () => {
+			await this.#db.execute("VACUUM");
+		});
+	}
+
 	async clearAccountState(accountNamespace: string): Promise<void> {
 		accountNamespaceSchema.parse(accountNamespace);
 		await this.#serializedWrite("clear-account-state", async () => {
-			for (const table of [
-				"sync_outbound_operations",
-				"sync_outbound_packages",
-				"sync_entity_shadow",
-				"sync_applied_operations",
-				"sync_applied_packages",
-				"sync_remote_head_commitments",
-				"sync_counters",
-				"sync_account_clocks",
-				"sync_remote_package_cache",
-			] as const) {
+			for (const table of GoogleDriveSyncStore.#ACCOUNT_SCOPED_TABLES) {
 				await this.#db.execute(
 					`DELETE FROM ${table} WHERE account_namespace = ?`,
 					[accountNamespace],

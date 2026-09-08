@@ -149,6 +149,47 @@ describe("durable Google Drive reconciliation store", () => {
 		await store.close();
 	});
 
+	test("state from vaults this device left is pruned, the live vault is kept", async () => {
+		const { store, adapter } = await openTestStore();
+		await store.updateConfig({ enabled: true, accountNamespace: ACCOUNT });
+		await reconcile(store, [entity("core", "conversation", "live", { id: "live" })]);
+
+		// A device reset more than once keeps every earlier vault's rows. They are
+		// unreadable without the deleted keys and unreachable because every query
+		// filters on the live namespace, but they still dominate the database.
+		await adapter.execute(
+			`INSERT INTO sync_outbound_operations (
+				operation_id, account_namespace, source_device_id, origin_sequence,
+				logical_clock, section, entity_type, entity_id, operation_json,
+				estimated_bytes, created_at_ms
+			) VALUES ('op-dead', 'ns-dead-vault', ?, 1, 1, 'core', 'conversation', 'x', '{}', 10, 1)`,
+			[LOCAL_DEVICE],
+		);
+
+		const beforeRows = await adapter.select<Array<{ count: number }>>(
+			"SELECT COUNT(*) AS count FROM sync_outbound_operations",
+		);
+		expect(beforeRows[0].count).toBeGreaterThan(1);
+
+		const removed = await store.pruneForeignAccountState(ACCOUNT);
+		expect(removed).toBe(true);
+
+		const dead = await adapter.select<Array<{ count: number }>>(
+			"SELECT COUNT(*) AS count FROM sync_outbound_operations WHERE account_namespace = 'ns-dead-vault'",
+		);
+		expect(dead[0].count).toBe(0);
+		const live = await adapter.select<Array<{ count: number }>>(
+			"SELECT COUNT(*) AS count FROM sync_outbound_operations WHERE account_namespace = ?",
+			[ACCOUNT],
+		);
+		expect(live[0].count).toBeGreaterThan(0);
+
+		// Nothing foreign left, so a second pass reports no work rather than
+		// vacuuming the database on every launch.
+		expect(await store.pruneForeignAccountState(ACCOUNT)).toBe(false);
+		await store.close();
+	});
+
 	test("a filtered section keeps its unscanned rows instead of tombstoning them", async () => {
 		const { store } = await openTestStore();
 		const both = [
