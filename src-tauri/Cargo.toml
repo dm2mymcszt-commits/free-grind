@@ -51,7 +51,6 @@ tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 wreq = { version = "5.3", features = ["gzip", "json"] }
 # Independent HTTP client for version fetching and Google Drive; Grindr traffic still uses wreq.
 reqwest = { version = "0.12", features = ["json", "blocking", "rustls-tls", "stream"], default-features = false }
-tauri-plugin-hotswap = { path = "hotswap-patched" }
 rustls = { version = "0.23", features = ["ring"] }
 ring = "0.17"
 base64 = "0.22"
