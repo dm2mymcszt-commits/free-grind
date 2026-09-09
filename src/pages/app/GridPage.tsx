@@ -1269,6 +1269,11 @@ export function GridPage() {
 					await apiFunctions.addFavorite(targetProfileId);
 				}
 
+				// The inbox filters on the conversation's own favorite flag, which it
+				// only learns from a fresh /v4/inbox response — without this, a chat
+				// with someone favourited here stays missing under the Favorites
+				// filter until something else happens to reload the list.
+				window.dispatchEvent(new Event("fg-refresh-inbox"));
 				setCards((previous) =>
 					previous.map((card) => {
 						if (card.profileId !== targetProfileId) {

@@ -3862,11 +3862,25 @@ export function ChatPage() {
 
 		}
 
+		// favoritesOnly and unreadOnly are sent to /v4/inbox, so the live entries
+		// in this list have already been filtered by the server. Re-checking them
+		// against data.favorite / data.unreadCount only works if the response
+		// populates those fields on a filtered request — when it does not, this
+		// dropped every row the server had just correctly selected, and the list
+		// read "no conversations match your filters" while the filter itself was
+		// working. Archived entries are merged in from chatDb and never went
+		// through that request, so they still have to be checked here.
+		const liveIds = new Set(liveConversations.map((c) => c.data.conversationId));
 		if (activeInboxFilters.favoritesOnly) {
-			result = result.filter((c) => c.data.favorite);
+			result = result.filter(
+				(c) => liveIds.has(c.data.conversationId) || c.data.favorite,
+			);
 		}
 		if (activeInboxFilters.unreadOnly) {
-			result = result.filter((c) => (c.data.unreadCount ?? 0) > 0);
+			result = result.filter(
+				(c) =>
+					liveIds.has(c.data.conversationId) || (c.data.unreadCount ?? 0) > 0,
+			);
 		}
 		if (pinnedFilter === "hide") {
 			result = result.filter((c) => !c.data.pinned);
@@ -3920,6 +3934,20 @@ export function ChatPage() {
 		hiddenConversationIdsLoaded,
 	]);
 
+	// "fg-refresh-inbox" had no listener anywhere: the auto-blocker and the view
+	// scanner have both been firing it after changing something the inbox shows,
+	// and nothing ever reloaded. Favouriting from the grid or an Interest view is
+	// the same shape of problem — it updates that screen's own state, while the
+	// inbox keeps entries whose favorite flag still says false.
+	useEffect(() => {
+		const reload = () => {
+			void loadInbox({ page: 1, replace: true, silent: true });
+		};
+		window.addEventListener("fg-refresh-inbox", reload);
+		return () => {
+			window.removeEventListener("fg-refresh-inbox", reload);
+		};
+	}, [loadInbox]);
 	const activeHiddenCount = useMemo(() => {
 		if (hiddenConversationIds.size === 0) return 0;
 		const liveConversations = conversations.filter(
