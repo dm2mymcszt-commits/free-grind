@@ -36,7 +36,8 @@ globalScope.window = {
 	dispatchEvent: () => true,
 };
 
-const { getMatchedForbiddenWord, hasRightNowStatus } = await import("../src/utils/autoblock");
+const { getMatchedForbiddenWord, getMatchedFirstMessageWord, hasRightNowStatus } =
+	await import("../src/utils/autoblock");
 
 function setKeywords(list: string): void {
 	store.set("fg-forbidden-words", list);
@@ -106,5 +107,48 @@ describe("right now status", () => {
 	test("the setting still gates it", () => {
 		store.set("fg-block-right-now", "false");
 		expect(hasRightNowStatus({ rightNow: "HOSTING" })).toBe(false);
+	});
+});
+
+// The openers list exists precisely because these words are unremarkable in
+// the middle of a conversation — matching must be the whole message, not a
+// substring, or it collapses back into the forbidden-keywords rule.
+describe("first-message-only openers", () => {
+	beforeEach(() => {
+		store.clear();
+		store.set("fg-first-message-words", "hot, hey sexy, ?");
+	});
+
+	test("matches an opener that is exactly the entry", () => {
+		expect(getMatchedFirstMessageWord("hot")).toBe("hot");
+		expect(getMatchedFirstMessageWord("Hot")).toBe("hot");
+		expect(getMatchedFirstMessageWord("  Hot  ")).toBe("hot");
+		expect(getMatchedFirstMessageWord("hey sexy")).toBe("hey sexy");
+	});
+
+	test("ignores the punctuation people put around a one-word opener", () => {
+		expect(getMatchedFirstMessageWord("Hot!")).toBe("hot");
+		expect(getMatchedFirstMessageWord("hot...")).toBe("hot");
+		expect(getMatchedFirstMessageWord("*hot*")).toBe("hot");
+		expect(getMatchedFirstMessageWord("?")).toBe("?");
+	});
+
+	test("does not match when the word is only part of the message", () => {
+		expect(getMatchedFirstMessageWord("Hello, hot")).toBeNull();
+		expect(getMatchedFirstMessageWord("hot?? you free")).toBeNull();
+		expect(getMatchedFirstMessageWord("you look hot")).toBeNull();
+		expect(getMatchedFirstMessageWord("hotel")).toBeNull();
+	});
+
+	test("is independent of the forbidden keyword list", () => {
+		store.clear();
+		store.set("fg-forbidden-words", "hot");
+		expect(getMatchedFirstMessageWord("hot")).toBeNull();
+	});
+
+	test("an empty list matches nothing", () => {
+		store.clear();
+		expect(getMatchedFirstMessageWord("hot")).toBeNull();
+		expect(getMatchedFirstMessageWord("")).toBeNull();
 	});
 });

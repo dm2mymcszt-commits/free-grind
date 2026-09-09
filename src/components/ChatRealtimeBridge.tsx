@@ -59,7 +59,8 @@ import { captureReplyPreviewsForMessages } from "../services/replyMediaStore";
 import { getConversation, getDisplayName } from "../services/conversationDirectory";
 import { runAutomationRulesForSender } from "../utils/automationRules";
 import { 
-	getMatchedForbiddenWord, 
+	getMatchedForbiddenWord,
+	getMatchedFirstMessageWord, 
 	notifyAutoBlock, 
 	isOutsideAgeLimits, 
 	isOutsideDistanceLimits, 
@@ -811,8 +812,26 @@ export function ChatRealtimeBridge() {
 								let blockReason = "";
 								let detectedDisplayName = knownDisplayName;
 								const matchedMessage = messageText ? getMatchedForbiddenWord(messageText, "message") : null;
+								// Openers are only judged when this really is the first thing this
+								// person has said. chatDb is the record of what they sent before —
+								// the bridge has not persisted the current message yet, so an empty
+								// result here means this one is their opener. A failed read counts as
+								// "not the first", since blocking on a message that merely looks like
+								// an opener is the mistake worth avoiding.
+								const matchedOpener = messageText && !matchedMessage
+									? await chatDb
+											.getMessages(m.conversationId)
+											.then((stored) =>
+												stored.some((entry) => String(entry.senderId) === pidStr)
+													? null
+													: getMatchedFirstMessageWord(messageText),
+											)
+											.catch(() => null)
+									: null;
 								if (matchedMessage) {
 									blockReason = `Message keyword: "${matchedMessage}"`;
+								} else if (matchedOpener) {
+									blockReason = `First message: "${matchedOpener}"`;
 								} else {
 									try {
 										const profile = await apiFunctions.getProfileDetail(pidStr).catch(() => null) as any;

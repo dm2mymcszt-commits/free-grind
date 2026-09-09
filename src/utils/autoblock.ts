@@ -329,12 +329,14 @@ export function toggleChatGhost(conversationId: string): boolean {
 
 export interface AutomationSettings {
     forbiddenWords: string;
+    firstMessageWords: string;
     refreshEnabled: boolean;
     refreshInterval: string;
 }
 
 const DEFAULT_AUTOMATION_SETTINGS: AutomationSettings = {
     forbiddenWords: "",
+    firstMessageWords: "",
     refreshEnabled: false,
     refreshInterval: "5",
 };
@@ -392,6 +394,72 @@ export async function setForbiddenWords(value: string): Promise<void> {
         window.dispatchEvent(new CustomEvent("fg-forbidden-words-updated", { detail: value }));
     }
     await setAutomationSettings({ forbiddenWords: value });
+}
+
+export const FIRST_MESSAGE_WORDS_STORAGE_KEY = "fg-first-message-words";
+
+export function getFirstMessageWords(): string {
+    const fromCache = automationCache.firstMessageWords;
+    if (fromCache && fromCache.trim()) return fromCache;
+    if (typeof window !== "undefined") {
+        return window.localStorage.getItem(FIRST_MESSAGE_WORDS_STORAGE_KEY) || "";
+    }
+    return "";
+}
+
+export async function setFirstMessageWords(value: string): Promise<void> {
+    if (typeof window !== "undefined") {
+        window.localStorage.setItem(FIRST_MESSAGE_WORDS_STORAGE_KEY, value);
+        window.dispatchEvent(new Event("fg-trigger-inbox-scan"));
+    }
+    await setAutomationSettings({ firstMessageWords: value });
+}
+
+/**
+ * Reduces a message to the form the opener list is compared against: trimmed,
+ * whitespace collapsed, lowercased, and stripped of the punctuation people
+ * tack onto a one-word opener. "Hot", "hot!!", " Hot ... " all become "hot".
+ *
+ * Deliberately does not strip anything *inside* the text, so "hello, hot" is
+ * left as "hello, hot" and cannot equal "hot".
+ */
+function normalizeOpener(text: string): string {
+    const collapsed = text.replace(/\s+/g, " ").trim().toLowerCase();
+    const edges = /^[\s.,!?:;\-—–_"'`~()[\]{}<>*]+|[\s.,!?:;\-—–_"'`~()[\]{}<>*]+$/gu;
+    const stripped = collapsed.replace(edges, "").trim();
+    // "?" and "??" are real openers somebody might want on this list, and
+    // stripping their punctuation leaves nothing at all — so only take the
+    // stripped form when there is something left of it.
+    return stripped || collapsed;
+}
+
+/**
+ * Matches a conversation's opening message against the openers list — the
+ * whole message must *be* the entry, not merely contain it.
+ *
+ * That is the entire point of the list being separate from the forbidden
+ * keywords: a word like "hot" is unremarkable mid-conversation and worth
+ * blocking as somebody's entire opening line. Containment would make
+ * "hello, hot" a match and turn this back into the keyword rule.
+ *
+ * The caller decides what counts as an opening message; this only answers
+ * whether the text qualifies.
+ */
+export function getMatchedFirstMessageWord(text: string | null | undefined): string | null {
+    if (!text) return null;
+    const saved = getFirstMessageWords();
+    if (!saved || saved.trim() === "") return null;
+
+    const normalized = normalizeOpener(text);
+    if (!normalized) return null;
+
+    for (const raw of saved.split(",")) {
+        const entry = normalizeOpener(raw);
+        if (entry && entry === normalized) {
+            return entry;
+        }
+    }
+    return null;
 }
 
 export function getAutoRefreshSettings(): { enabled: boolean; intervalMinutes: string } {

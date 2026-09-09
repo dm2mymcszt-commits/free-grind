@@ -19,6 +19,8 @@ import { useNavigate } from "react-router-dom";
 import { useApiFunctions } from "../../hooks/useApiFunctions";
 import {
     getForbiddenWords,
+    getFirstMessageWords,
+    setFirstMessageWords as setFirstMessageWordsInStore,
     INTEREST_VIEW_AUTOBLOCK_STORAGE_KEY,
     INTEREST_VIEW_SCAN_EVENT,
     setForbiddenWords as setForbiddenWordsInStore,
@@ -42,6 +44,7 @@ export function SettingsAutomationPage() {
         () => window.localStorage.getItem(INTEREST_VIEW_AUTOBLOCK_STORAGE_KEY) === "true",
     );
     const [forbiddenWords, setForbiddenWords] = useState(() => getForbiddenWords() || window.localStorage.getItem("fg-forbidden-words") || "");
+    const [firstMessageWords, setFirstMessageWords] = useState(() => getFirstMessageWords());
     const [minAge, setMinAge] = useState(() => window.localStorage.getItem("fg-block-min-age") ?? "18");
     const [maxAge, setMaxAge] = useState(() => window.localStorage.getItem("fg-block-max-age") ?? "99");
     const [blockNoAge, setBlockNoAge] = useState(() => window.localStorage.getItem("fg-block-no-age") === "true");
@@ -286,6 +289,16 @@ export function SettingsAutomationPage() {
         setForbiddenWords(finalWordsString);
         void setForbiddenWordsInStore(finalWordsString);
 
+        const cleanedOpeners = firstMessageWords
+            .split(',')
+            .map((word) => word.trim())
+            .filter((word) => word.length > 0);
+        const finalOpenersString = [...new Set(cleanedOpeners)]
+            .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+            .join(', ');
+        setFirstMessageWords(finalOpenersString);
+        void setFirstMessageWordsInStore(finalOpenersString);
+
         window.localStorage.setItem("fg-block-name", String(blockName));
         window.localStorage.setItem("fg-block-bio", String(blockBio));
         window.localStorage.setItem("fg-block-message", String(blockMessage));
@@ -512,6 +525,30 @@ export function SettingsAutomationPage() {
                                         </div>
                                     </div>
                                 </div>
+
+                                 {/* First-message-only openers */}
+                                 <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                                     <div className="flex items-start gap-3">
+                                         <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--surface-2)] text-[var(--accent)]">
+                                             <MessageSquare className="h-4 w-4" />
+                                         </div>
+                                         <div className="min-w-0 flex-1">
+                                             <p className="text-sm font-semibold">Opening Message Blocklist</p>
+                                             <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+                                                 Blocks someone whose <strong>very first message</strong> is exactly one of these,
+                                                 and only then. The whole message has to match, so &quot;hot&quot; blocks
+                                                 &quot;Hot&quot; and &quot;hot!&quot; but never &quot;Hello, hot&quot; — and never a word
+                                                 said later in the chat. Separate with commas.
+                                             </p>
+                                             <textarea
+                                                 value={firstMessageWords}
+                                                 onChange={(e) => setFirstMessageWords(e.target.value)}
+                                                 placeholder="hot, hey, ?, sup"
+                                                 className="input-field mt-3 min-h-[80px] resize-y"
+                                             />
+                                         </div>
+                                     </div>
+                                 </div>
 
                                  {/* Bot Evasion */}
                                  <div className="flex items-start gap-3 p-4">

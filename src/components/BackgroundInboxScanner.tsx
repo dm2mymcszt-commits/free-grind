@@ -7,7 +7,8 @@ import {
     isForbiddenLookingFor,
     hasRightNowStatus,
     notifyAutoBlock,
-    getMatchedForbiddenWord 
+    getMatchedForbiddenWord,
+    getMatchedFirstMessageWord
 } from "../utils/autoblock";
 import { getOtherParticipant } from "../pages/app/chat/chatUtils";
 import { isProfileAutoblockWhitelisted, checkAndAutoWhitelistActiveChat, getSentMessagesThreshold } from "../utils/privacy";
@@ -208,9 +209,25 @@ export function BackgroundInboxScanner() {
                                                 messageSnapshot = msgRes;
                                             } catch {}
                                         }
+                                        // The openers list is checked against the first message this
+                                        // person ever sent, and only that one: a word like "hot" is
+                                        // unremarkable later in a conversation, which is the whole
+                                        // reason it is not on the forbidden-keywords list.
+                                        let seenFirstIncoming = false;
+
                                         for (const msg of messages) {
                                             const msgIsMine = userId != null && Number(msg.senderId) === Number(userId);
                                             if (!msgIsMine) {
+                                                if (!seenFirstIncoming) {
+                                                    seenFirstIncoming = true;
+                                                    const openerBody: any = msg.body;
+                                                    const openerText = openerBody && typeof openerBody.text === "string" ? openerBody.text : (typeof msg.body === "string" ? msg.body : "");
+                                                    const matchedOpener = getMatchedFirstMessageWord(openerText);
+                                                    if (matchedOpener) {
+                                                        blockReason = `First message: "${matchedOpener}"`;
+                                                        break;
+                                                    }
+                                                }
                                                 const msgBody: any = msg.body;
                                                 const text = msgBody && typeof msgBody.text === "string" ? msgBody.text : (typeof msg.body === "string" ? msg.body : "");
                                                 const matchedMsg = getMatchedForbiddenWord(text, "message");
