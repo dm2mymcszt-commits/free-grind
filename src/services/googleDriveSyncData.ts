@@ -29,8 +29,38 @@ type ChatEntitySpec = Readonly<{
 	omitColumns?: readonly string[];
 }>;
 
+/**
+ * Everything on a conversation row except the hide decision. `hidden` is the
+ * only column there that is a local choice rather than a copy of server state,
+ * and it needs its own entity: the conversation entity's value is the whole
+ * row, so an inbox refresh — new unread count, new preview, new updated_at —
+ * changes its digest and emits an operation carrying whatever `hidden` that
+ * device happened to hold. The other device's routine churn would then
+ * overwrite a hide it never knew about, and a device sitting on a backlog wins
+ * that race outright, because operations are ordered by Lamport clock and a
+ * backlog is exactly what advances one.
+ *
+ * Scanned on its own, `hidden` only produces an operation when it actually
+ * changes, so a device that never hid anything never contests it.
+ */
+const CONVERSATION_NON_HIDDEN_COLUMNS = [
+	"other_profile_id", "name", "participants_json", "last_activity_timestamp",
+	"unread_count", "pinned", "muted", "favorite", "preview_json", "archived",
+	"archived_reason", "archived_at", "block_state",
+	"messages_synced_activity_timestamp", "last_seen_in_inbox_at",
+	"created_at", "updated_at",
+] as const;
+
 const CHAT_ENTITY_SPECS: readonly ChatEntitySpec[] = [
 	{ section: "core", entityType: "conversation", table: "conversations", primaryKey: "conversation_id", pageSize: 1_000 },
+	{
+		section: "core",
+		entityType: "conversation-hidden",
+		table: "conversations",
+		primaryKey: "conversation_id",
+		pageSize: 2_000,
+		omitColumns: CONVERSATION_NON_HIDDEN_COLUMNS,
+	},
 	{ section: "core", entityType: "conversation-meta", table: "conversation_meta", primaryKey: "conversation_id", pageSize: 2_000 },
 	{ section: "core", entityType: "message", table: "messages", primaryKey: "message_id", pageSize: 1_000 },
 	{ section: "core", entityType: "setting", table: "settings", primaryKey: "key", pageSize: 500 },
@@ -363,6 +393,18 @@ function chatUpsertOptions(
 		case "album":
 			return {
 				skipColumns: chatSpec.omitColumns ? [...chatSpec.omitColumns] : undefined,
+			};
+		// `hidden` rides along so a conversation this device has never seen is
+		// created with the right value, but no later conversation write may
+		// touch it again — only the conversation-hidden entity owns it.
+		case "conversation":
+			return { insertOnlyColumns: ["hidden"] };
+		// Owns `hidden` alone, and cannot create the row it lives on: the
+		// conversation entity brings that, in either order.
+		case "conversation-hidden":
+			return {
+				skipColumns: chatSpec.omitColumns ? [...chatSpec.omitColumns] : undefined,
+				updateOnly: true,
 			};
 		case "conversation-meta":
 			return { maxColumns: ["last_read_timestamp"] };

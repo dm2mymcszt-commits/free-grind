@@ -700,3 +700,129 @@ describe("conditional Google Drive sync apply", () => {
 		}
 	});
 });
+
+describe("hidden conversations sync independently of the conversation row", () => {
+	test("the hide decision is scanned as its own entity, carrying nothing else", async () => {
+		const activeProfile = installActiveProfileSpies();
+		const localStorage = installMutableWindow({});
+		const omittedByTable: Record<string, string[] | undefined> = {};
+		const chatPage = spyOn(chatDb, "selectTablePageAfter").mockImplementation(
+			async (table, after, _limit, options) => {
+				if (after !== null) return [];
+				const key = `${table}:${(options?.omitColumns ?? []).length}`;
+				omittedByTable[key] = options?.omitColumns;
+				if (table !== "conversations") return [];
+				const row: Record<string, unknown> = { conversation_id: "c-1", hidden: 1 };
+				for (const column of options?.omitColumns ?? []) {
+					delete row[column];
+				}
+				if (!(options?.omitColumns ?? []).length) {
+					row.unread_count = 3;
+					row.updated_at = 42;
+				}
+				return [row];
+			},
+		);
+		const contactPage = spyOn(
+			contactIndex,
+			"selectContactIndexPageAfter",
+		).mockResolvedValue([]);
+		const exportViews = spyOn(interestViews, "exportInterestViewRows").mockResolvedValue([]);
+		const emitted: GoogleDriveSyncEntity[] = [];
+
+		try {
+			await scanGoogleDriveSyncEntities(TEST_PROFILE_ID, false, async (entity) => {
+				emitted.push(entity);
+			});
+
+			const hidden = emitted.filter((e) => e.entityType === "conversation-hidden");
+			expect(hidden).toHaveLength(1);
+			// Only the id and the flag: an unread count or a new preview must not
+			// be able to change this entity's digest, or it would emit an
+			// operation — and re-assert this device's hide — on every inbox refresh.
+			expect(hidden[0].value).toEqual({ conversation_id: "c-1", hidden: 1 });
+			expect(hidden[0].section).toBe("core");
+
+			const conversation = emitted.filter((e) => e.entityType === "conversation");
+			expect(conversation).toHaveLength(1);
+			expect(conversation[0].value).toMatchObject({ unread_count: 3, updated_at: 42 });
+		} finally {
+			exportViews.mockRestore();
+			contactPage.mockRestore();
+			chatPage.mockRestore();
+			localStorage.restore();
+			activeProfile.restore();
+		}
+	});
+
+	test("a conversation write may create the hide flag but never change it", async () => {
+		const activeProfile = installActiveProfileSpies();
+		const row = { conversation_id: "c-1", hidden: 0, unread_count: 1 };
+		const { expected, incoming } = await makeConditionalOperations(
+			"core",
+			"conversation",
+			"c-1",
+			{ conversation_id: "c-1", hidden: 0, unread_count: 0 },
+			row,
+		);
+		let options: chatDb.PortableTableUpsertOptions | undefined;
+		const compare = spyOn(
+			chatDb,
+			"compareAndApplyPortableTableRow",
+		).mockImplementation(async (_table, _key, mutation) => {
+			if (mutation.kind === "upsert") options = mutation.options;
+			return "applied";
+		});
+
+		try {
+			await applyGoogleDriveSyncOperationConditionally(TEST_PROFILE_ID, incoming, expected);
+			// This is what stops the other device's routine inbox churn from
+			// un-hiding a conversation it never knew was hidden.
+			expect(options?.insertOnlyColumns).toEqual(["hidden"]);
+		} finally {
+			compare.mockRestore();
+			activeProfile.restore();
+		}
+	});
+
+	test("a hide is update-only, so it cannot half-create the conversation row", async () => {
+		const activeProfile = installActiveProfileSpies();
+		const { expected, incoming } = await makeConditionalOperations(
+			"core",
+			"conversation-hidden",
+			"c-1",
+			{ conversation_id: "c-1", hidden: 0 },
+			{ conversation_id: "c-1", hidden: 1 },
+		);
+		let options: chatDb.PortableTableUpsertOptions | undefined;
+		const compare = spyOn(
+			chatDb,
+			"compareAndApplyPortableTableRow",
+		).mockImplementation(async (_table, _key, mutation) => {
+			if (mutation.kind === "upsert") options = mutation.options;
+			return "applied";
+		});
+
+		try {
+			await applyGoogleDriveSyncOperationConditionally(TEST_PROFILE_ID, incoming, expected);
+			expect(options?.updateOnly).toBe(true);
+			expect(options?.skipColumns).not.toContain("hidden");
+			expect(options?.skipColumns).toContain("unread_count");
+			expect(options?.skipColumns).toContain("updated_at");
+		} finally {
+			compare.mockRestore();
+			activeProfile.restore();
+		}
+	});
+
+	test("the hide entity is accepted at the operation boundary", async () => {
+		const { incoming } = await makeConditionalOperations(
+			"core",
+			"conversation-hidden",
+			"c-1",
+			{ conversation_id: "c-1", hidden: 0 },
+			{ conversation_id: "c-1", hidden: 1 },
+		);
+		expect(() => validateGoogleDriveSyncOperationBoundary(incoming)).not.toThrow();
+	});
+});

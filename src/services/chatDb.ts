@@ -2241,6 +2241,20 @@ export type PortableTableUpsertOptions = {
 	newerThanColumn?: string;
 	maxColumns?: string[];
 	preserveExistingOnNullOrEmptyColumns?: string[];
+	/**
+	 * Written when the row is created, then never touched again by this
+	 * mutation. For a column that carries a local user decision rather than
+	 * server state: a new row still arrives with the right value, but every
+	 * later write of the *rest* of the row leaves that decision alone.
+	 */
+	insertOnlyColumns?: string[];
+	/**
+	 * Skip rows that do not exist yet instead of inserting them. For a mutation
+	 * that only owns a couple of a wider table's columns and therefore cannot
+	 * satisfy its NOT NULL constraints on its own — the row's real owner brings
+	 * it into existence, in either order.
+	 */
+	updateOnly?: boolean;
 };
 
 export type PortableTableRowMutation =
@@ -2395,8 +2409,12 @@ async function upsertTableRowsUnlocked(
 		),
 	);
 
+	const insertOnlyColumns = new Set(
+		(options?.insertOnlyColumns ?? []).filter((column) => columns.includes(column)),
+	);
+
 	const updates = columns
-		.filter((column) => column !== table.primaryKey)
+		.filter((column) => column !== table.primaryKey && !insertOnlyColumns.has(column))
 		.map((column) => {
 			if (maxColumns.has(column)) {
 				return `${column} = MAX(COALESCE(excluded.${column}, 0), COALESCE(${table.name}.${column}, 0))`;
@@ -2421,10 +2439,23 @@ async function upsertTableRowsUnlocked(
 			? ` WHERE COALESCE(excluded.${options.newerThanColumn}, 0) >= COALESCE(${table.name}.${options.newerThanColumn}, 0)`
 			: "";
 
+	// An UPDATE keyed on the primary key, so a row the target does not have is
+	// left alone rather than inserted from columns that cannot satisfy the
+	// table's NOT NULL constraints.
+	const updateColumns = columns.filter(
+		(column) => column !== table.primaryKey && !insertOnlyColumns.has(column),
+	);
+	const updateOnlySql = `
+		UPDATE ${table.name} SET ${updateColumns
+			.map((column, index) => `${column} = $${index + 2}`)
+			.join(", ")}
+		WHERE ${table.primaryKey} = $1
+	`;
+
 	const sql = `
 		INSERT INTO ${table.name} (${columns.join(", ")})
 		VALUES (${placeholders})
-		ON CONFLICT(${table.primaryKey}) DO UPDATE SET ${updates}${guard}
+		ON CONFLICT(${table.primaryKey}) DO ${updates ? `UPDATE SET ${updates}${guard}` : "NOTHING"}
 	`;
 
 	let written = 0;
@@ -2432,7 +2463,17 @@ async function upsertTableRowsUnlocked(
 		if (!row || typeof row !== "object" || row[table.primaryKey] == null) {
 			continue;
 		}
-		await db.execute(sql, columns.map((column) => row[column] ?? null));
+		if (options?.updateOnly) {
+			if (updateColumns.length === 0) {
+				continue;
+			}
+			await db.execute(updateOnlySql, [
+				row[table.primaryKey],
+				...updateColumns.map((column) => row[column] ?? null),
+			]);
+		} else {
+			await db.execute(sql, columns.map((column) => row[column] ?? null));
+		}
 		written += 1;
 	}
 	return written;
