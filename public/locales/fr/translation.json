@@ -1103,7 +1103,7 @@
         "include_app_info_hint": "Recommandé pour faciliter le dépannage. Ces informations sont publiques, y compris la branche OTA.",
         "include_logs": "Inclure les journaux locaux de l'application",
         "include_logs_hint": "Envoie les 100 dernières entrées du journal de l'application. Visible uniquement par les collaborateurs et administrateurs.",
-        "meta": "App {{version}} sur {{platform}} · OTA {{otaChannel}}",
+        "meta": "App {{version}} sur {{platform}}",
         "meta_opt_out": "La version et la plateforme ne sont pas incluses dans ce rapport.",
         "submit": "Envoyer le rapport",
         "submitting": "Envoi en cours...",

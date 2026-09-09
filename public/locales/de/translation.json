@@ -788,7 +788,7 @@
         "name_placeholder": "Wie sollen wir dich ansprechen?",
         "contact_label": "Kontakt (optional)",
         "contact_placeholder": "Discord-Tag, E-Mail oder Telegram",
-        "meta": "App {{version}} auf {{platform}} · OTA {{otaChannel}}",
+        "meta": "App {{version}} auf {{platform}}",
         "include_data_label": "Include diagnostic data",
         "include_app_info": "Include app version and platform",
         "include_app_info_hint": "Recommended for easier triage. This data is public on the issue, including the OTA branch.",

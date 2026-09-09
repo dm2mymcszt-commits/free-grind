@@ -537,7 +537,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		};
 	}, [callMethod, asAppError, state.userId, state.isLoading]);
 
-	// Persist current user id so non-React services (e.g. hotswap) can re-register after updates.
+	// Persist current user id so non-React services can read the active account
+	// synchronously (see interestViewsStore, chatService).
 	useEffect(() => {
 		if (state.isLoading) {
 			return;

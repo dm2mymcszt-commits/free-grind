@@ -208,7 +208,6 @@ const LOCAL_STORAGE_DENYLIST = new Set([
 	"fg-fcm-token-synced",
 	// This device's own list of signed-in accounts.
 	"fg-saved-account-profiles",
-	"hotswap-channel",
 	// One-shot migration markers. Carrying a "done" flag to an install that
 	// never ran the migration would skip it permanently.
 	"fg-settings-migrated-to-db",

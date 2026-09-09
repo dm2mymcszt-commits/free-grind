@@ -608,7 +608,7 @@
         "include_app_info_hint": "Recomendado para facilitar a triagem. Esses dados são públicos sobre o assunto, incluindo a ramificação OTA.",
         "include_logs": "Incluir registros de aplicativos locais",
         "include_logs_hint": "Envia as últimas 100 entradas do registro de aplicativos e diagnósticos de tempo de execução. Visível apenas para colaboradores e administradores.",
-        "meta": "App {{version}} na {{platform}} · OTA {{otaChannel}}",
+        "meta": "App {{version}} na {{platform}}",
         "meta_opt_out": "A versão e a plataforma do aplicativo não estão incluídas neste relatório.",
         "submit": "Enviar relatório",
         "submitting": "Enviando...",

@@ -119,7 +119,6 @@ export function ReportIssuePage() {
             : undefined,
           appVersion: includeAppInfo ? appInfo.appVersion : undefined,
           platform: includeAppInfo ? appInfo.platform : undefined,
-          otaChannel: includeAppInfo ? appInfo.otaChannel : undefined,
           clientLogs,
         },
         t,
@@ -431,7 +430,6 @@ export function ReportIssuePage() {
             ? t("issues_form.meta", {
                 version: appInfo.appVersion,
                 platform: appInfo.platform,
-                otaChannel: appInfo.otaChannel,
               })
             : t("issues_form.meta_opt_out")}
         </p>

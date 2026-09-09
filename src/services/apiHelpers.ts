@@ -59,7 +59,6 @@ export async function submitIssueReport(
 		reporterContact?: string;
 		appVersion?: string;
 		platform?: string;
-		otaChannel?: string;
 		clientLogs?: Record<string, unknown>;
 	},
 	t: (key: string) => string,

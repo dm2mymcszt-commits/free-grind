@@ -1107,7 +1107,7 @@
         "include_app_info_hint": "Recomendado para facilitar la búsqueda. Esta información sobre el problema es pública, incluyendo la rama OTA.",
         "include_logs": "Incluir registros locales de la app",
         "include_logs_hint": "Envía las últimas 100 entradas del registro de la aplicación y los diagnósticos de tiempo de ejecución. Visible solo para colaboradores y administradores.",
-        "meta": "App {{version}} en {{platform}} · OTA {{otaChannel}}",
+        "meta": "App {{version}} en {{platform}}",
         "meta_opt_out": "La versión de la app y plataforma no están incluidas en este informe.",
         "submit": "Enviar informe",
         "submitting": "Entregando...",

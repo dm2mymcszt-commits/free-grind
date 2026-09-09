@@ -57,7 +57,7 @@ const STORE_NAME = "views";
 
 /**
  * The active account id, as AuthContext already persists it for exactly this
- * purpose (chatService and hotswap read the same key). Reading it synchronously
+ * purpose (chatService reads the same key). Reading it synchronously
  * is what makes the store self-sufficient: an earlier version waited to be told
  * which account it belonged to, and any path that reached the store first — a
  * cold-start Interest fetch, or a hot-reload that reset module state without
