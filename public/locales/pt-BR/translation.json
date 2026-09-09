@@ -568,15 +568,6 @@
             "light": "Luz",
             "dark": "Escuro"
         },
-        "analytics": {
-            "title": "Análise e Descoberta",
-            "description": "Esta opção controla a análise anônima e a descoberta de usuários do FreeGrind. Se desativada, o aplicativo não usará a API para encontrar outros usuários do FreeGrind.",
-            "note": "Sua escolha de permitir/negar é salva neste dispositivo. Se ativada, a aplicação poderá enviar seu identificador de perfil em solicitações de API usadas para presença e descoberta.",
-            "allow": "Permitir",
-            "deny": "Negar",
-            "current": "Atual",
-            "not_selected": "Ainda não selecionado"
-        },
         "units": "Unidades",
         "units_description": "Escolha como a distância e a altura serão exibidas.",
         "units_world": "Mundo (metros + cm)",

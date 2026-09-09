@@ -645,15 +645,6 @@
             "light": "",
             "dark": ""
         },
-        "analytics": {
-            "description": "",
-            "note": "",
-            "allow": "",
-            "deny": "",
-            "current": "",
-            "not_selected": "",
-            "title": ""
-        },
         "subtitle": "",
         "color_scheme": "",
         "accent_color": ""

@@ -12,8 +12,8 @@
         "behavior_desc": "Bestätigungsabfragen zum Blockieren und Löschen von Chats.",
         "notifications": "Benachrichtigungen",
         "notifications_desc": "Wähle, welche Benachrichtigungen du erhältst und ob sie bei geöffneter App angezeigt werden.",
-        "privacy": "Privatsphäre & Analytics",
-        "privacy_desc": "Lesebestätigungen, Profilaufrufe, Medien-Blur und Analytics.",
+        "privacy": "Privatsphäre",
+        "privacy_desc": "Lesebestätigungen, Profilaufrufe und Medien-Blur.",
         "automation": "Automation",
         "automation_desc": "Baue eigene Chat-Automatisierungsregeln, verwalte deine Forbidden-Keywords-Liste und konfiguriere die automatische Grid-Aktualisierung.",
         "report_issue": "Fehler oder Feature melden",
@@ -748,15 +748,6 @@
             "system": "System",
             "light": "Hell",
             "dark": "Dunkel"
-        },
-        "analytics": {
-            "title": "Analytics & Entdeckung",
-            "description": "Dies steuert anonyme Analytics und die Entdeckung von FreeGrind-Nutzern. Wenn deaktiviert, nutzt die App die API nicht, um andere FreeGrind-Nutzer zu finden.",
-            "note": "Deine Wahl wird auf diesem Gerät gespeichert. Wenn aktiviert, kann die App deine Profil-ID in API-Anfragen senden, die für Präsenz und Entdeckung genutzt werden.",
-            "allow": "Zulassen",
-            "deny": "Ablehnen",
-            "current": "Aktuell",
-            "not_selected": "Noch nicht ausgewählt"
         },
         "blur_incoming_media": "Chat-Medien unscharf",
         "blur_incoming_media_description": "Blendet Bilder und Videos in Chats automatisch unscharf ein. Am Desktop: Hover oder Klick zum Anzeigen. Im Chat wird die Anzeige beim Verlassen wieder zurückgesetzt."

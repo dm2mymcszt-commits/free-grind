@@ -644,15 +644,6 @@
             "light": "",
             "dark": ""
         },
-        "analytics": {
-            "title": "",
-            "description": "",
-            "note": "",
-            "allow": "",
-            "deny": "",
-            "current": "",
-            "not_selected": ""
-        },
         "subtitle": "",
         "apply_hex": "",
         "hex_error": ""

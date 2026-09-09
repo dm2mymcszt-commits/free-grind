@@ -41,8 +41,8 @@
         "issue_board_desc": "Parcourez et recherchez les bugs signalés et les suggestions de fonctionnalités.",
         "automation": "Automatisation",
         "automation_desc": "Configurer les règles de blocage automatisées et l'actualisation automatique de la grille.",
-        "privacy": "Confidentialité et Statistiques",
-        "privacy_desc": "Accusés de lecture, suivi des visites de profil, flou des médias et statistiques.",
+        "privacy": "Confidentialité",
+        "privacy_desc": "Accusés de lecture, suivi des visites de profil et flou des médias.",
         "check_updates_desc": "Télécharger et installer la dernière version de Free Grindr."
     },
     "shared_albums": {
@@ -460,15 +460,6 @@
             "system": "Système",
             "light": "Clair",
             "dark": "Sombre"
-        },
-        "analytics": {
-            "title": "Analyses et Découverte",
-            "description": "Ceci contrôle l'analyse anonyme et la détection des utilisateurs de Free Grind. Si désactivé, l'application n'utilisera pas l'API pour trouver d'autres utilisateurs de Free Grind.",
-            "note": "Votre choix d'autoriser/refuser est enregistré sur cet appareil. Si activé, l'application peut envoyer l'identifiant de votre profil dans les requêtes API utilisées pour la détection de présence et la découverte des utilisateurs.",
-            "allow": "Autoriser",
-            "deny": "Refuser",
-            "current": "Actuel",
-            "not_selected": "Non sélectionné"
         },
         "subtitle": "Personnalisez l'apparence de l'application.",
         "color_scheme": "Thème",

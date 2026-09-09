@@ -41,8 +41,8 @@
         "issue_board_desc": "Descubre y busca los informes de problemas y solicitudes de sugerencias.",
         "automation": "Automatización",
         "automation_desc": "Configura las reglas de bloqueo automáticas y la recarga automática del Navegar.",
-        "privacy": "Privacidad y análisis",
-        "privacy_desc": "Confirmaciones de lectura, vistas de perfil, desenfoque multimedia, y análisis.",
+        "privacy": "Privacidad",
+        "privacy_desc": "Confirmaciones de lectura, vistas de perfil y desenfoque multimedia.",
         "check_updates_desc": "Descarga e instala la última versión de Free Grind."
     },
     "shared_albums": {
@@ -959,15 +959,6 @@
             "system": "Sistema",
             "light": "Claro",
             "dark": "Oscuro"
-        },
-        "analytics": {
-            "title": "Analíticas y Descubrimiento",
-            "note": "Tu elección de permitir/denegar se guarda en este dispositivo. Si está habilitada, la aplicación puede enviar tu identificador de perfil en las solicitudes de API utilizadas para la detección de presencia y el descubrimiento de usuarios.",
-            "allow": "Permitir",
-            "deny": "Denegar",
-            "current": "Actual",
-            "not_selected": "Sin seleccionar todavía",
-            "description": "Esto controla el análisis anónimo y la detección de usuarios de FreeGrind. Si se desactiva, la aplicación no utilizará la API para encontrar otros usuarios de FreeGrind."
         },
         "subtitle": "Personaliza cómo se ve y se siente la app.",
         "color_scheme": "Modo de color",

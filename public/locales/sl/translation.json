@@ -651,15 +651,6 @@
             "light": "",
             "dark": ""
         },
-        "analytics": {
-            "title": "",
-            "description": "",
-            "note": "",
-            "allow": "",
-            "deny": "",
-            "current": "",
-            "not_selected": ""
-        },
         "color_scheme": "",
         "browse_grid_mobile": "",
         "preview": "",

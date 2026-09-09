@@ -12,8 +12,8 @@
         "behavior_desc": "Confirmation prompts for blocking and deleting chats.",
         "notifications": "Notifications",
         "notifications_desc": "Choose which notifications you get, and whether they show up while the app is open.",
-        "privacy": "Privacy & Analytics",
-        "privacy_desc": "Read receipts, profile view tracking, media blur, and analytics.",
+        "privacy": "Privacy",
+        "privacy_desc": "Read receipts, profile view tracking, and media blur.",
         "automation": "Automation",
         "automation_desc": "Build custom chat automation rules, manage your forbidden keyword list, and configure automatic grid refresh.",
         "issue_board": "Issues & Feature Requests",
@@ -816,15 +816,6 @@
             "system": "System",
             "light": "Light",
             "dark": "Dark"
-        },
-        "analytics": {
-            "title": "Analytics & Discovery",
-            "description": "This controls anonymous analytics and FreeGrind user discovery. If disabled, the app will not use the API to find other FreeGrind users.",
-            "note": "Your allow/deny choice is saved on this device. If enabled, the app may send your profile identifier in API requests used for presence and discovery.",
-            "allow": "Allow",
-            "deny": "Deny",
-            "current": "Current",
-            "not_selected": "Not selected yet"
         }
     },
     "behavior": {
