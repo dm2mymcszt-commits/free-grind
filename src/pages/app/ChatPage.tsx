@@ -320,11 +320,24 @@ export function ChatPage() {
 	// feature — unlike pinned/archived, which default to a mixed-in view.
 	const [hiddenFilter, setHiddenFilter] = useState<InboxVisibilityFilter>("hide");
 	const [hiddenConversationIds, setHiddenConversationIds] = useState<Set<string>>(new Set());
+	// The default desktop selection must not run before this is true, or a
+	// still-empty hidden set makes every conversation look visible and the
+	// newest one gets opened even when it is hidden.
+	const [hiddenConversationIdsLoaded, setHiddenConversationIdsLoaded] = useState(false);
+	// One-shot: the first inbox page arms the default selection, and the effect
+	// that applies it disarms it for good. Without that, closing the thread
+	// panel (which sets the selection to null) would immediately reopen a chat.
+	const pendingDefaultSelectionRef = useRef(false);
 
 	useEffect(() => {
-		void chatDb.listHiddenConversationIds().then((ids) => {
-			setHiddenConversationIds(new Set(ids));
-		});
+		void chatDb
+			.listHiddenConversationIds()
+			.then((ids) => {
+				setHiddenConversationIds(new Set(ids));
+			})
+			.finally(() => {
+				setHiddenConversationIdsLoaded(true);
+			});
 	}, []);
 
 	const [isNukeArchivedOpen, setIsNukeArchivedOpen] = useState(false);
@@ -1750,15 +1763,19 @@ export function ChatPage() {
 				});
 
 				setNextPage(response.nextPage ?? null);
-				if (replace && response.entries.length > 0) {
-					setSelectedDesktopConversationId((previous) =>
-						// A selection already made (e.g. via the targetProfileId lookup,
-						// which can resolve through the local DB for a conversation
-						// that isn't on this inbox page) must never be clobbered just
-						// because it's absent from *this* page's entries — only default
-						// to the first conversation when nothing is selected yet.
-						previous ?? (targetProfileId ? null : (response.entries[0]?.data.conversationId ?? null)),
-					);
+				if (replace && response.entries.length > 0 && !targetProfileId) {
+					// Arm the default rather than picking a conversation here.
+					// response.entries is the unfiltered inbox, so entries[0] was
+					// whatever is newest — hidden chats included, which is how a
+					// hidden conversation ended up open beside an empty list. The
+					// effect below chooses from the list the user can actually see,
+					// once the hidden set is known.
+					//
+					// A selection already made (e.g. via the targetProfileId lookup,
+					// which can resolve through the local DB for a conversation that
+					// isn't on this inbox page) is left alone: the effect only acts
+					// when nothing is selected.
+					pendingDefaultSelectionRef.current = true;
 				}
 			} catch (error) {
 				// A real HTTP error response (ChatApiError) should still surface as
@@ -3876,6 +3893,31 @@ export function ChatPage() {
 		archivedFilter,
 		hiddenFilter,
 		hiddenConversationIds,
+	]);
+
+	// Opens the newest conversation the inbox is actually showing when the
+	// desktop pane has nothing selected yet. Reads filteredConversations rather
+	// than the raw inbox page so hidden (and archived, and filtered-out) chats
+	// can never be what greets you, and re-evaluates as the hidden set loads.
+	useEffect(() => {
+		if (!isDesktop || targetProfileId) return;
+		if (!pendingDefaultSelectionRef.current) return;
+		if (selectedDesktopConversationId !== null) {
+			pendingDefaultSelectionRef.current = false;
+			return;
+		}
+		if (!hiddenConversationIdsLoaded) return;
+		pendingDefaultSelectionRef.current = false;
+		const first = filteredConversations[0]?.data.conversationId;
+		if (first) {
+			setSelectedDesktopConversationId(first);
+		}
+	}, [
+		isDesktop,
+		targetProfileId,
+		selectedDesktopConversationId,
+		filteredConversations,
+		hiddenConversationIdsLoaded,
 	]);
 
 	const activeHiddenCount = useMemo(() => {
