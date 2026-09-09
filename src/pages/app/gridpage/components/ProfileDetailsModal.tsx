@@ -7,7 +7,6 @@ import {
 	createBackdropCloseHandler,
 	useModalClose,
 } from "../../../../hooks/useModalClose";
-import { usePresenceCheck } from "../../../../hooks/usePresenceCheck";
 import { useProfileViewedMe } from "../../../../hooks/useProfileViewedMe";
 import { useTravelPlans } from "../../../../hooks/queries/useProfileQueries";
 import { useApiFunctions } from "../../../../hooks/useApiFunctions";
@@ -34,7 +33,6 @@ import {
 import { getProfileImageUrl } from "../../../../utils/media";
 import { ProfileImage } from "../../../../components/ui/profile-image";
 import freegrindLogo from "../../../../images/freegrind-logo.webp";
-import { FreeGrindBadge } from "../../../../components/FreeGrindBadge";
 import { usePreferences } from "../../../../contexts/PreferencesContext";
 import { formatDateTime24 } from "../../chat/chatUtils";
 import {
@@ -204,7 +202,6 @@ export function ProfileDetailsModal({
 	const messageProfileId = activeProfile?.profileId ?? selectedBrowseCard?.profileId ?? null;
 	const { data: travelPlans } = useTravelPlans(activeProfile?.profileId);
 	const isOwnProfile = userId != null && messageProfileId != null && String(userId) === String(messageProfileId);
-	const usesFreegrind = usePresenceCheck(messageProfileId);
 	// "How many times has this person viewed me?" — the same signal the Interest
 	// page's Views tab shows, surfaced here alongside the tap badge. Skipped on
 	// our own profile, which can never appear among our viewers.
@@ -964,9 +961,6 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 					<div className={`min-w-0 flex-1${inlineScrolled ? "" : " drop-shadow-[0_1px_1px_rgba(0,0,0,0.85)]"}`}>
 						<div className="flex items-center gap-1.5 min-w-0">
 							<p className={`truncate text-base font-semibold leading-tight${inlineScrolled ? "" : " text-white"}`}>{activeProfileName}</p>
-							{usesFreegrind && (
-								<FreeGrindBadge size="sm" title={t("profile_details.uses_free_grind")} />
-							)}
 							{activeProfile?.age != null && Number.isFinite(activeProfile.age) && (
 								<span className={`shrink-0 text-sm${inlineScrolled ? " text-[var(--text-muted)]" : " text-white/70"}`}>{activeProfile.age}</span>
 							)}
@@ -1151,7 +1145,6 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 							profileDistance={profileDistance}
 							chatContactStatus={chatContactStatus ?? null}
 							messageProfileId={messageProfileId}
-							usesFreegrind={usesFreegrind ?? false}
 							onMessageProfile={variant === "page" && !isOwnProfile ? onMessageProfile : undefined}
 							onTapProfile={variant === "page" && !isOwnProfile ? onTapProfile : undefined}
 							onTagClick={onTagClick}
@@ -1545,7 +1538,6 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 											profileDistance={profileDistance}
 											chatContactStatus={chatContactStatus ?? null}
 											messageProfileId={messageProfileId}
-											usesFreegrind={usesFreegrind ?? false}
 											onMessageProfile={undefined}
 											onTapProfile={undefined}
 											onTagClick={onTagClick}

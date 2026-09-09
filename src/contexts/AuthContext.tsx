@@ -423,16 +423,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		};
 	}, [state.userId, state.isLoading, state.settingsReady, queryClient, apiFunctions]);
 
-	// Register presence with Free Grind backend when a logged-in session is active.
-	// This must not depend only on `state.userId`, because consent/discovery settings can
-	// change after login while the user id stays the same.
-	useEffect(() => {
-		if (state.isLoading || !state.userId) {
-			return;
-		}
-
-		void apiFunctions.registerPresence(state.userId);
-	}, [state.userId, state.isLoading, apiFunctions]);
 
 	// Receive Android native FCM token and sync it to Grindr once authenticated.
 	useEffect(() => {

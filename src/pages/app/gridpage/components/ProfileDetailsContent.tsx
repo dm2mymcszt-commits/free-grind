@@ -47,7 +47,6 @@ import {
 import { reverseGeocodeCityDistrictForGeohash } from "../geocoding";
 import { getProfileImageUrl, getThumbImageUrl } from "../../../../utils/media";
 import { ProfileImage } from "../../../../components/ui/profile-image";
-import { FreeGrindBadge } from "../../../../components/FreeGrindBadge";
 import { TapSelector } from "./TapSelector";
 import type { ChatContactIndexRecord } from "../../../../types/chat-contact-index";
 import { formatRelativeTime } from "../../../../utils/relativeTime";
@@ -107,7 +106,6 @@ type ProfileDetailsContentProps = {
 	profileDistance: number | null;
 	chatContactStatus: ChatContactIndexRecord | null;
 	messageProfileId: string | null;
-	usesFreegrind: boolean;
 	onMessageProfile?: (profileId: string) => void;
 	onTapProfile?: (profileId: string, tapId?: number) => void;
 	onTagClick?: (tag: string) => void;
@@ -158,7 +156,6 @@ export function ProfileDetailsContent({
 	profileDistance,
 	chatContactStatus,
 	messageProfileId,
-	usesFreegrind,
 	onMessageProfile,
 	onTapProfile,
 	onTagClick,
@@ -526,9 +523,6 @@ export function ProfileDetailsContent({
 							</div>
 						)}
 					</div>
-					{usesFreegrind && (
-						<FreeGrindBadge size="lg" title={t("profile_details.uses_free_grind")} className="mt-1" />
-					)}
 				</div>
 				{hasChatHistory && (
 					<div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[var(--text-muted)]">

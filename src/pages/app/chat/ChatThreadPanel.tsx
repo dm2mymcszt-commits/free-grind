@@ -77,7 +77,6 @@ import {
 import { getThumbImageUrl } from "../../../utils/media";
 import { formatDistance } from "../gridpage/utils";
 import { ProfileImage } from "../../../components/ui/profile-image";
-import { FreeGrindBadge } from "../../../components/FreeGrindBadge";
 import { ChatThreadMessages } from "./ChatThreadMessages";
 import { AudioMessagePlayer } from "./AudioMessagePlayer";
 import { ConfirmDialog } from "../../../components/ui/confirm-dialog";
@@ -137,7 +136,6 @@ type ChatThreadPanelProps = {
 	targetProfileDetail?: ProfileDetail | null;
 	userId: number | null;
 	nowTimestamp: number;
-	presenceResults: Record<string, boolean>;
 	isUpdatingConversationState: boolean;
 	isHeaderActionsMenuOpen: boolean;
 	setIsHeaderActionsMenuOpen: (value: ((current: boolean) => boolean) | boolean) => void;
@@ -581,7 +579,6 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 		targetProfileDetail = null,
 		userId,
 		nowTimestamp,
-		presenceResults,
 		isUpdatingConversationState,
 		isHeaderActionsMenuOpen,
 		setIsHeaderActionsMenuOpen,
@@ -1275,9 +1272,6 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 										<p className="truncate text-lg font-semibold">
 											{displayName}
 										</p>
-										{profileId != null && presenceResults[profileId] ? (
-											<FreeGrindBadge size="md" title={t("profile_details.uses_free_grind")} />
-										) : null}
 									</div>
 									<p className="text-sm text-[var(--text-muted)]">
 										{distanceLabel

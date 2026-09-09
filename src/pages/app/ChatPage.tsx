@@ -18,7 +18,6 @@ import toast from "react-hot-toast";
 import { useApiFunctions } from "../../hooks/useApiFunctions";
 import { useBlockProfile, useUnblockProfile, useBlockedProfileIds, useMyOwnProfile } from "../../hooks/queries/useProfileQueries";
 import { getProfilePhotoHash } from "./profile-editor/profileEditorUtils";
-import { usePresenceCheckBatch } from "../../hooks/usePresenceCheck";
 import { useAuth } from "../../contexts/useAuth";
 import { ChatApiError } from "../../services/chatService";
 import { showAlbumApiWarning } from "../../utils/albumWarning";
@@ -560,32 +559,6 @@ export function ChatPage() {
 		string | null
 	>(null);
 
-	// Extract profile IDs from conversations for batch presence check
-	const conversationProfileIds = useMemo(
-		() => {
-			const ids = conversations
-				.map((conv) => {
-					const otherParticipant = getOtherParticipant(conv, userId);
-					return otherParticipant?.profileId != null
-						? String(otherParticipant.profileId)
-						: null;
-				})
-				.filter((id): id is string => id != null);
-
-			if (targetProfileId) {
-				const targetStr = String(targetProfileId);
-				if (!ids.includes(targetStr)) {
-					ids.push(targetStr);
-				}
-			}
-
-			return ids.slice(0, 50); // Limit to 50
-		},
-		[conversations, userId, targetProfileId],
-	);
-	const presenceResults = usePresenceCheckBatch(
-		conversationProfileIds.length > 0 ? conversationProfileIds : null,
-	);
 
 	// Contact/nickname state also backs archived and locally-recovered rows;
 	// unlike presence polling, this is a local database read and can safely
@@ -6359,7 +6332,6 @@ export function ChatPage() {
 			localNicknamesByProfileId={localNicknamesByProfileId}
 			chatContactIndexByProfileId={chatContactIndexByProfileId}
 			nowTimestamp={nowTimestamp}
-			presenceResults={presenceResults}
 			inboxListRef={inboxListRef}
 			onRefreshInbox={() => loadInbox({ page: 1, replace: true })}
 			onLoadMoreInbox={handleLoadMoreInbox}
@@ -6410,7 +6382,6 @@ export function ChatPage() {
 			targetProfileDetail={targetProfileDetail}
 			userId={userId}
 			nowTimestamp={nowTimestamp}
-			presenceResults={presenceResults}
 			isUpdatingConversationState={isUpdatingConversationState}
 			isHeaderActionsMenuOpen={isHeaderActionsMenuOpen}
 			setIsHeaderActionsMenuOpen={setIsHeaderActionsMenuOpen}

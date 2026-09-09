@@ -1,6 +1,4 @@
-import type { RestFetcher, RestResponse } from "../types/chat-service";
-import { hasAnalyticsConsent } from "../utils/analyticsConsent";
-import { appLog } from "../utils/logger";
+import type { RestResponse } from "../types/chat-service";
 
 export class ApiFunctionError extends Error {
 	status: number;
@@ -13,8 +11,6 @@ export class ApiFunctionError extends Error {
 		this.payload = payload;
 	}
 }
-
-export const GRINDAPI_BASE = "https://grindapi.imaoreo.dev";
 
 export async function parseJsonSafe(response: RestResponse | Response): Promise<unknown> {
 	try {
@@ -43,33 +39,4 @@ export async function assertSuccess(response: RestResponse | Response, fallbackM
 	}
 
 	throw new ApiFunctionError(message, status, payload);
-}
-
-export async function registerPresence(profileId: string | number, fetchRest?: RestFetcher): Promise<void> {
-	if (!hasAnalyticsConsent()) {
-		return;
-	}
-
-	try {
-		const url = `${GRINDAPI_BASE}/api/presence/register`;
-		const body = {
-			profileId: String(profileId),
-		};
-		const response = fetchRest
-			? await fetchRest(url, { method: "POST", body })
-			: await fetch(url, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify(body),
-			});
-
-		const status = "status" in response ? response.status : (response as Response).status;
-		if (status < 200 || status >= 300) {
-			appLog.warn(`Failed to register presence: ${status}`);
-		}
-	} catch (error) {
-		appLog.error("Presence registration error:", error);
-	}
 }
