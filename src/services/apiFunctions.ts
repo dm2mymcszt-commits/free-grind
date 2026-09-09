@@ -2,7 +2,6 @@ import { createChatService } from "./chatService";
 import type { RestFetcher } from "../types/chat-service";
 import {
 	ApiFunctionError,
-	submitIssueReport,
 	trackUpdateCheck,
 	registerPresence,
 } from "./apiHelpers";
@@ -20,7 +19,6 @@ import type { RightNowFeedItem, RightNowCreatePostRequest, RightNowCreatePostMed
 
 export {
 	ApiFunctionError,
-	submitIssueReport,
 	trackUpdateCheck,
 	registerPresence,
 };
