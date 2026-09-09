@@ -738,3 +738,136 @@ export async function reconcileBlockStateWithBlockedList(
 		);
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Counter-block reconciliation
+// ---------------------------------------------------------------------------
+
+/** Probes per sweep. A block is rare; a slow drip beats a burst of requests. */
+const MAX_COUNTER_BLOCK_PROBES = 20;
+
+export type CounterBlockReconcileOptions = {
+	/** Profile ids the server says this account has blocked. */
+	blockedProfileIds: readonly string[];
+	currentUserId: number | null;
+	blockProfile: (profileId: string) => Promise<unknown>;
+	/**
+	 * Only supplied after a sweep that walked the inbox to its last page.
+	 * Without a complete walk, "absent from the inbox" only means "on a page
+	 * this run never asked for".
+	 */
+	missingFromInbox?: {
+		sweepStartedAt: number;
+		checkConversationAccessible: (
+			profileId: string,
+		) => Promise<"accessible" | "not_found" | "blocked">;
+	};
+};
+
+function counterBlockEnabled(): boolean {
+	return (
+		typeof window !== "undefined" &&
+		window.localStorage.getItem("fg-autoblock-counter-block") === "true"
+	);
+}
+
+/**
+ * Blocks back everyone who has blocked this account, as a sweep rather than a
+ * reaction.
+ *
+ * The live path — a chat.v1.conversation.delete arriving over the websocket —
+ * only fires while the app is open, and it counter-blocks by dispatching a DOM
+ * event nothing retries. So a block landing overnight was never seen at all,
+ * and one whose block request failed was lost with a console warning. Both are
+ * repaired here: the state is durable, so re-running is free, and the check
+ * against the server's own blocked list is what stops it repeating work.
+ *
+ * Two sources feed it:
+ *  - conversations already attributed to the other party (blocked_by_other)
+ *    that this account never blocked back;
+ *  - conversations the inbox stopped returning, which is what a block looks
+ *    like when nothing was pushed. Those are only ever acted on when a live
+ *    profile fetch says "blocked" outright — never on a lookup that merely
+ *    failed, and never on "not_found", which is a deleted or banned account
+ *    rather than someone who blocked you.
+ */
+export async function reconcileCounterBlocks(
+	options: CounterBlockReconcileOptions,
+): Promise<{ counterBlocked: string[] }> {
+	const counterBlocked: string[] = [];
+	if (!counterBlockEnabled()) {
+		return { counterBlocked };
+	}
+
+	const alreadyBlocked = new Set(options.blockedProfileIds.map(String));
+	const stored = await chatDb
+		.listConversations({ includeArchived: true })
+		.catch(() => []);
+
+	const targets = new Map<string, string>(); // profileId -> conversationId
+	for (const conversation of stored) {
+		if (conversation.blockState !== "blocked_by_other") continue;
+		const profileId =
+			conversation.otherProfileId ??
+			deriveOtherProfileIdFromConversationId(
+				conversation.conversationId,
+				options.currentUserId,
+			);
+		if (!profileId || alreadyBlocked.has(String(profileId))) continue;
+		targets.set(String(profileId), conversation.conversationId);
+	}
+
+	if (options.missingFromInbox) {
+		const { sweepStartedAt, checkConversationAccessible } = options.missingFromInbox;
+		const missing = await chatDb
+			.listConversationsMissingFromInbox(sweepStartedAt)
+			.catch(() => []);
+		let probes = 0;
+		for (const conversation of missing) {
+			if (probes >= MAX_COUNTER_BLOCK_PROBES) break;
+			const profileId = conversation.otherProfileId;
+			if (!profileId || alreadyBlocked.has(String(profileId))) continue;
+			if (targets.has(String(profileId))) continue;
+			probes += 1;
+			// "accessible" on a failed probe is the deliberate default here and
+			// in the live path: never conclude someone blocked you from a
+			// request that simply did not come back.
+			const status = await checkConversationAccessible(String(profileId)).catch(
+				() => "accessible" as const,
+			);
+			if (status !== "blocked") continue;
+			if (!(await claimBlockStateTransition(conversation.conversationId, "blocked_by_other"))) {
+				continue;
+			}
+			await archiveConversation(conversation.conversationId, "ws_delete").catch(() => {});
+			const message = await chatDb
+				.insertSystemMessage(conversation.conversationId, "SystemBlocked")
+				.catch(() => null);
+			if (message && typeof window !== "undefined") {
+				window.dispatchEvent(
+					new CustomEvent<Message[]>(CHAT_SYSTEM_MESSAGE_EVENT, { detail: [message] }),
+				);
+			}
+			targets.set(String(profileId), conversation.conversationId);
+		}
+	}
+
+	for (const [profileId, conversationId] of targets) {
+		try {
+			await options.blockProfile(profileId);
+			counterBlocked.push(profileId);
+			appLog.info(
+				`[counter-block] blocked ${profileId} back for ${conversationId}`,
+			);
+		} catch (error) {
+			// Left for the next sweep rather than swallowed: the conversation
+			// keeps its blocked_by_other state, so this retries on its own.
+			appLog.warn(
+				`[counter-block] could not block ${profileId} back for ${conversationId}; will retry`,
+				error,
+			);
+		}
+	}
+
+	return { counterBlocked };
+}

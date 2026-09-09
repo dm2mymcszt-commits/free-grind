@@ -1120,15 +1120,63 @@ export async function setBlockState(
 export async function touchConversationSeenInInbox(
 	conversationId: string,
 ): Promise<void> {
-	const db = await getDb();
-	const now = Date.now();
+	await touchConversationsSeenInInbox([conversationId], Date.now());
+}
 
-	await executeWithLockRetry(db, "touch-conversation-seen", async () => {
-		await db.execute(
-			"UPDATE conversations SET last_seen_in_inbox_at = $2 WHERE conversation_id = $1",
-			[conversationId, now],
-		);
+/**
+ * Records that the server's inbox still returns these conversations, as of
+ * `seenAt`. A row that stops being stamped while newer ones are is the only
+ * cheap signal that a conversation went away — which is what being blocked
+ * looks like from this side, since nothing is pushed when it happens off-app.
+ */
+export async function touchConversationsSeenInInbox(
+	conversationIds: string[],
+	seenAt: number,
+): Promise<void> {
+	if (conversationIds.length === 0) {
+		return;
+	}
+	const db = await getDb();
+	await executeWithLockRetry(db, "touch-conversations-seen", async () => {
+		// Chunked: SQLite caps bound parameters, and a full inbox walk can
+		// easily carry more ids than one statement may bind.
+		for (let index = 0; index < conversationIds.length; index += 400) {
+			const chunk = conversationIds.slice(index, index + 400);
+			const placeholders = chunk.map((_, offset) => `$${offset + 2}`).join(", ");
+			await db.execute(
+				`UPDATE conversations SET last_seen_in_inbox_at = $1
+				 WHERE conversation_id IN (${placeholders})`,
+				[seenAt, ...chunk],
+			);
+		}
 	});
+}
+
+/**
+ * Conversations the server's inbox stopped returning: stamped as present at
+ * some point, not stamped by the sweep that started at `sweepStartedAt`, and
+ * not already archived or attributed to a block.
+ *
+ * `last_seen_in_inbox_at IS NOT NULL` is what keeps this safe on upgrade. Every
+ * row predates the stamping, so treating an unstamped row as missing would
+ * accuse the entire inbox at once; a row only becomes eligible after a sweep
+ * has actually observed it present.
+ */
+export async function listConversationsMissingFromInbox(
+	sweepStartedAt: number,
+): Promise<StoredConversation[]> {
+	const db = await getDb();
+	const rows = await db.select<ConversationRow[]>(
+		`SELECT * FROM conversations
+		 WHERE archived = 0
+		   AND block_state IS NULL
+		   AND other_profile_id IS NOT NULL
+		   AND last_seen_in_inbox_at IS NOT NULL
+		   AND last_seen_in_inbox_at < $1
+		 ORDER BY last_activity_timestamp DESC`,
+		[sweepStartedAt],
+	);
+	return rows.map(rowToStoredConversation);
 }
 
 /**

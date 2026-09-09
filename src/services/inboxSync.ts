@@ -39,9 +39,11 @@ import { upsertChatContactIndexFromInbox } from "./chatContactIndex";
 import { getOtherParticipant } from "../pages/app/chat/chatUtils";
 import { appLog } from "../utils/logger";
 import {
+	reconcileCounterBlocks,
 	reconcileReappearedConversation,
 	CHAT_SYSTEM_MESSAGE_EVENT,
 } from "./conversationArchive";
+import { classifyProfileAccess } from "../utils/profileAccessStatus";
 import type { Message } from "../types/messages";
 
 type ApiFunctions = ReturnType<typeof createApiFunctions>;
@@ -144,6 +146,13 @@ async function doSync(
 
 		let conversationsSeen = 0;
 		const changedConversations: { conversationId: string; lastActivityTimestamp: number | null }[] = [];
+		// Counter-block needs to know which conversations the inbox no longer
+		// returns, and "absent" only means anything after a walk that reached
+		// the last page. The early-stop below is what usually prevents that, so
+		// the sweep is only trusted when the loop ran out of pages.
+		const sweepStartedAt = Date.now();
+		const seenConversationIds: string[] = [];
+		let walkedEveryPage = false;
 
 		let page: number | null = 1;
 		while (page != null) {
@@ -219,6 +228,7 @@ async function doSync(
 				}
 
 				conversationsSeen += 1;
+				seenConversationIds.push(entry.data.conversationId);
 				if (isNewOrChanged) {
 					pageHadChange = true;
 					changedConversations.push({
@@ -239,6 +249,7 @@ async function doSync(
 			});
 
 			if (response.entries.length === 0) {
+				walkedEveryPage = true;
 				break;
 			}
 
@@ -252,10 +263,17 @@ async function doSync(
 
 			page = response.nextPage ?? null;
 			if (page == null) {
+				walkedEveryPage = true;
 				break;
 			}
 			await sleep(PAGE_DELAY_MS);
 		}
+
+		await chatDb
+			.touchConversationsSeenInInbox(seenConversationIds, sweepStartedAt)
+			.catch((error) => {
+				appLog.warn("[inbox-sync] failed to record inbox presence", error);
+			});
 
 		appLog.info("[inbox-sync] chat list sync complete, fetching latest messages", {
 			userId,
@@ -297,6 +315,36 @@ async function doSync(
 			if (!hasCompletedFullSync) {
 				await chatDb.setSetting(INBOX_SYNC_DONE_SETTING_KEY, true);
 			}
+
+			// Runs on every sync, not just complete ones: the cheap half only
+			// re-attempts blocks already attributed to the other party, which is
+			// what repairs a counter-block whose request failed or whose live
+			// event fired with nothing listening. The probing half is handed the
+			// sweep only when the walk actually reached the last page, since
+			// otherwise "absent from the inbox" just means "never asked for".
+			await reconcileCounterBlocks({
+				blockedProfileIds: await apiFunctions
+					.getBlockedProfileIds()
+					.catch(() => [] as string[]),
+				currentUserId: userId,
+				blockProfile: (profileId) => apiFunctions.blockProfile(profileId),
+				missingFromInbox: walkedEveryPage
+					? {
+							sweepStartedAt,
+							checkConversationAccessible: async (profileId) => {
+								try {
+									return classifyProfileAccess(
+										await apiFunctions.getProfileDetail(profileId),
+									);
+								} catch {
+									return "accessible";
+								}
+							},
+						}
+					: undefined,
+			}).catch((error) => {
+				appLog.warn("[inbox-sync] counter-block reconciliation failed", error);
+			});
 			const totalConversations = await chatDb
 				.listConversations({ includeArchived: true })
 				.then((rows) => rows.length)
