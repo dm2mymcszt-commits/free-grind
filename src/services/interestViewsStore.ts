@@ -180,6 +180,33 @@ function mergeViewTimestamps(
 }
 
 /**
+ * The count to store for a viewer, which must never drop below what we can
+ * already prove.
+ *
+ * The incoming row's count is rebuilt from the API on every poll, so writing
+ * it straight through let a smaller server figure overwrite a larger one — and
+ * overwrite the count implied by the view history this store accumulates
+ * itself. That is how a profile could show "2" next to a list of 8 recorded
+ * views. Each view history entry is a distinct view time, so its length is a
+ * floor; the previously stored count is another, since nobody can un-view a
+ * profile. Taking the largest also matches what mergeStoredInterestViews
+ * already does when two devices' rows meet during a sync.
+ */
+function resolveViewCount(
+	existing: StoredInterestView | undefined,
+	incomingViewCount: number | null | undefined,
+	viewTimestamps: number[] | undefined,
+): number | null {
+	return (
+		Math.max(
+			existing?.viewCount ?? 0,
+			incomingViewCount ?? 0,
+			viewTimestamps?.length ?? 0,
+		) || null
+	);
+}
+
+/**
  * Whether an incoming row actually carries new information versus what's
  * already stored. Compares only the fields we persist from the server plus the
  * derived view history — deliberately not `updatedAt`, which is the bookkeeping
@@ -189,12 +216,13 @@ function hasMeaningfulChange(
 	existing: StoredInterestView,
 	incoming: Omit<StoredInterestView, "updatedAt">,
 	nextViewTimestamps: number[] | undefined,
+	nextViewCount: number | null,
 ): boolean {
 	if (
 		existing.displayName !== incoming.displayName ||
 		existing.imageHash !== incoming.imageHash ||
 		existing.timestamp !== incoming.timestamp ||
-		existing.viewCount !== incoming.viewCount
+		existing.viewCount !== nextViewCount
 	) {
 		return true;
 	}
@@ -643,18 +671,23 @@ export const interestViewsStore = {
 				existingRequest.onsuccess = () => {
 					const existing = existingRequest.result as StoredInterestView | undefined;
 					const viewTimestamps = mergeViewTimestamps(existing, row.timestamp);
+					const viewCount = resolveViewCount(existing, row.viewCount, viewTimestamps);
 
 					// Skip writes that would change nothing. Callers hand us the whole
 					// merged cache every sweep, so the vast majority of rows are
 					// identical to what's already stored — rewriting them burned
 					// thousands of IDB ops per poll and, worse, kept bumping
 					// `updatedAt`, which is what let stale rows dodge expiry forever.
-					if (existing && !hasMeaningfulChange(existing, row, viewTimestamps)) {
+					if (
+						existing &&
+						!hasMeaningfulChange(existing, row, viewTimestamps, viewCount)
+					) {
 						return;
 					}
 
 					store.put({
 						...row,
+						viewCount,
 						viewTimestamps,
 						// Set once on first capture, preserved on every later write.
 						firstSeenAt: existing?.firstSeenAt ?? row.timestamp ?? now,
@@ -664,9 +697,11 @@ export const interestViewsStore = {
 				existingRequest.onerror = () => {
 					// Couldn't read the prior row — still store the update rather than
 					// dropping it, just without carrying history forward.
+					const viewTimestamps = row.timestamp != null ? [row.timestamp] : undefined;
 					store.put({
 						...row,
-						viewTimestamps: row.timestamp != null ? [row.timestamp] : undefined,
+						viewCount: resolveViewCount(undefined, row.viewCount, viewTimestamps),
+						viewTimestamps,
 						firstSeenAt: row.timestamp ?? now,
 						updatedAt: now,
 					});

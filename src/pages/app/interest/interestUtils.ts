@@ -40,7 +40,12 @@ export function fromStoredView(row: StoredInterestView): InterestItem {
 		timestamp: row.timestamp ?? row.updatedAt,
 		hasExactTimestamp: row.timestamp != null,
 		tapType: null,
-		viewCount: row.viewCount,
+		// Floored by the row's own view history: rows written before the store
+		// started enforcing this can hold a count below the number of views
+		// actually recorded for them, and would otherwise keep rendering it
+		// until some later poll happens to rewrite the row.
+		viewCount:
+			Math.max(row.viewCount ?? 0, row.viewTimestamps?.length ?? 0) || row.viewCount,
 		canOpenProfile: !row.profileId.startsWith(PREVIEW_ID_PREFIX),
 		isFromCache: true,
 	};

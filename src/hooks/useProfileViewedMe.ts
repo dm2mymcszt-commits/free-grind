@@ -85,7 +85,15 @@ export function useProfileViewedMe(
 						? {
 								// A stored row means at least one view happened even if the
 								// server never sent a count — mirrors the Interest list's `|| 1`.
-								viewCount: row.viewCount && row.viewCount > 0 ? row.viewCount : 1,
+								// Floored by the recorded history too: the count is rebuilt from the
+								// API while the history accumulates locally, so a row written before
+								// the store enforced that floor can claim fewer views than the list
+								// of view times sitting right next to it.
+								viewCount: Math.max(
+									row.viewCount ?? 0,
+									row.viewTimestamps?.length ?? 0,
+									1,
+								),
 								timestamp: row.timestamp ?? null,
 								viewTimestamps: row.viewTimestamps ?? [],
 							}
