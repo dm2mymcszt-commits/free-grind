@@ -45,38 +45,6 @@ export async function assertSuccess(response: RestResponse | Response, fallbackM
 	throw new ApiFunctionError(message, status, payload);
 }
 
-export async function trackUpdateCheck(data: {
-	channel: string;
-	platform: string;
-	arch: string;
-	version: string;
-	appVersion: string;
-}, fetchRest?: RestFetcher): Promise<void> {
-	if (!hasAnalyticsConsent()) {
-		return;
-	}
-
-	try {
-		const url = `${GRINDAPI_BASE}/api/analytics/track-update`;
-		const response = fetchRest
-			? await fetchRest(url, { method: "POST", body: data })
-			: await fetch(url, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify(data),
-			});
-
-		const status = "status" in response ? response.status : (response as Response).status;
-		if (status < 200 || status >= 300) {
-			appLog.warn(`Failed to track update check: ${status}`);
-		}
-	} catch (error) {
-		appLog.error("Update tracking error:", error);
-	}
-}
-
 export async function registerPresence(profileId: string | number, fetchRest?: RestFetcher): Promise<void> {
 	if (!hasAnalyticsConsent()) {
 		return;

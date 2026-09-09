@@ -1,5 +1,5 @@
 import type { RestFetcher } from "../../types/chat-service";
-import { GRINDAPI_BASE, registerPresence, trackUpdateCheck } from "../apiHelpers";
+import { GRINDAPI_BASE, registerPresence } from "../apiHelpers";
 import { hasAnalyticsConsent } from "../../utils/analyticsConsent";
 import { appLog } from "../../utils/logger";
 
@@ -43,16 +43,6 @@ export function createPresenceMethods(fetchRest?: RestFetcher) {
 				appLog.error("Presence check error:", error);
 				return {};
 			}
-		},
-
-		async trackUpdateCheck(data: {
-			channel: string;
-			platform: string;
-			arch: string;
-			version: string;
-			appVersion: string;
-		}): Promise<void> {
-			await trackUpdateCheck(data, fetchRest);
 		},
 	};
 }
