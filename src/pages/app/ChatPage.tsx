@@ -21,11 +21,6 @@ import { getProfilePhotoHash } from "./profile-editor/profileEditorUtils";
 import { useAuth } from "../../contexts/useAuth";
 import { ChatApiError } from "../../services/chatService";
 import { showAlbumApiWarning } from "../../utils/albumWarning";
-import {
-	getLocalFavoriteIds,
-	LOCAL_FAVORITES_EVENT,
-	setLocalFavorite,
-} from "../../utils/localFavorites";
 import { setConversationDirectory } from "../../services/conversationDirectory";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import * as chatDb from "../../services/chatDb";
@@ -323,17 +318,7 @@ export function ChatPage() {
 	const [archivedFilter, setArchivedFilter] = useState<InboxVisibilityFilter>("hide");
 	// Hidden chats default to actually being hidden — that's the point of the
 	// feature — unlike pinned/archived, which default to a mixed-in view.
-	const [hiddenFilter, setHiddenFilter] = useState<InboxVisibilityFilter>("hide");
-	const [localFavoriteIds, setLocalFavoriteIds] = useState<Set<string>>(() =>
-		getLocalFavoriteIds(),
-	);
-	useEffect(() => {
-		const refresh = () => setLocalFavoriteIds(getLocalFavoriteIds());
-		refresh();
-		window.addEventListener(LOCAL_FAVORITES_EVENT, refresh);
-		return () => window.removeEventListener(LOCAL_FAVORITES_EVENT, refresh);
-	}, []);
-	const [hiddenConversationIds, setHiddenConversationIds] = useState<Set<string>>(new Set());
+	const [hiddenFilter, setHiddenFilter] = useState<InboxVisibilityFilter>("hide");	const [hiddenConversationIds, setHiddenConversationIds] = useState<Set<string>>(new Set());
 	// The default desktop selection must not run before this is true, or a
 	// still-empty hidden set makes every conversation look visible and the
 	// newest one gets opened even when it is hidden.
@@ -3876,18 +3861,8 @@ export function ChatPage() {
 
 		}
 
-		// /v4/inbox is not trustworthy for favourites in either direction: a
-		// favoritesOnly request returns profiles that are not favourited, and a
-		// conversation with someone who is can come back with data.favorite
-		// false. Checking the flag alone hid the right people; trusting the
-		// server instead of checking it showed the wrong ones. So both are used,
-		// widened by what this device recorded when the favourite was toggled.
 		if (activeInboxFilters.favoritesOnly) {
-			result = result.filter((c) => {
-				if (c.data.favorite) return true;
-				const other = getOtherParticipant(c, userId);
-				return other?.profileId != null && localFavoriteIds.has(String(other.profileId));
-			});
+			result = result.filter((c) => c.data.favorite);
 		}
 		if (activeInboxFilters.unreadOnly) {
 			result = result.filter((c) => (c.data.unreadCount ?? 0) > 0);
@@ -3917,7 +3892,6 @@ export function ChatPage() {
 		archivedFilter,
 		hiddenFilter,
 		hiddenConversationIds,
-		localFavoriteIds,
 	]);
 
 	// Opens the newest conversation the inbox is actually showing when the
@@ -3945,11 +3919,9 @@ export function ChatPage() {
 		hiddenConversationIdsLoaded,
 	]);
 
-	// "fg-refresh-inbox" had no listener anywhere: the auto-blocker and the view
-	// scanner have both been firing it after changing something the inbox shows,
-	// and nothing ever reloaded. Favouriting from the grid or an Interest view is
-	// the same shape of problem — it updates that screen's own state, while the
-	// inbox keeps entries whose favorite flag still says false.
+	// "fg-refresh-inbox" had no listener anywhere: the auto-blocker fires it
+	// after blocking someone out of the inbox, and the view scanner after
+	// recovering profiles into it, and neither reload ever happened.
 	useEffect(() => {
 		const reload = () => {
 			void loadInbox({ page: 1, replace: true, silent: true });
@@ -4834,10 +4806,6 @@ export function ChatPage() {
 					await service.addFavorite(strId);
 				}
 
-				// Recorded locally because the inbox cannot be trusted to report
-				// favourites: this is what lets its Favorites filter find the
-				// conversation with someone favourited from anywhere in the app.
-				setLocalFavorite(strId, !currentlyFavorite);
 				setConversations((previous) =>
 					previous.map((conv) => {
 						const isMatch = conv.data.participants.some(
