@@ -312,7 +312,7 @@ export function PermissionsOnboarding({ onComplete }: { onComplete: () => void }
 						<img src={logo} alt="" className="mb-6 h-16 w-16 rounded-2xl object-cover" />
 						<h1 className="text-2xl font-bold text-[var(--text)]">Let's get you set up</h1>
 						<p className="mt-2 max-w-xs text-sm leading-relaxed text-[var(--text-muted)]">
-							Just a few quick steps to get the most out of Free Grind.
+							Just a few quick steps to get the most out of GrindFlop.
 						</p>
 					</div>
 
@@ -427,7 +427,7 @@ export function PermissionsOnboarding({ onComplete }: { onComplete: () => void }
 						<h2 className="text-xl font-bold text-[var(--text)]">Caution</h2>
 						<div className="flex h-24 flex-col items-center overflow-hidden">
 							<p className="mt-2 max-w-xs text-sm leading-relaxed text-[var(--text-muted)]">
-								Free Grind is free — and always will be. If someone sold you access or is asking you to pay, it's a scam. Don't pay, and report it.
+								GrindFlop is free — and always will be. If someone sold you access or is asking you to pay, it's a scam. Don't pay, and report it.
 							</p>
 						</div>
 					</div>

@@ -287,7 +287,7 @@ export async function decodeGoogleDriveSyncPairingCode(
 	code: string,
 ): Promise<GoogleDriveSyncPairingCodeV1> {
 	if (!code.startsWith(GOOGLE_DRIVE_SYNC_PAIRING_CODE_PREFIX)) {
-		throw new Error("This is not a Free Grind Google Drive pairing code");
+		throw new Error("This is not a GrindFlop Google Drive pairing code");
 	}
 	const bytes = decodeGoogleDriveSyncBase64Url(
 		code.slice(GOOGLE_DRIVE_SYNC_PAIRING_CODE_PREFIX.length),

@@ -702,7 +702,7 @@ export class GoogleDriveSyncProfileController {
 			const pairing = await decodeGoogleDriveSyncPairingCode(pairingCode);
 			if (pairing.profileId !== String(this.profileId)) {
 				throw new GoogleDriveSyncControllerError(
-					"This pairing code belongs to a different Free Grind profile.",
+					"This pairing code belongs to a different GrindFlop profile.",
 				);
 			}
 			const store = await this.#activeAwait(this.#store(), generation);

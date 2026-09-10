@@ -1540,7 +1540,7 @@ describe("Google Drive sync controller", () => {
 				profileId: PROFILE_ID,
 				pairingCode: code,
 			}),
-		).rejects.toThrow("different Free Grind profile");
+		).rejects.toThrow("different GrindFlop profile");
 		expect(native.events).not.toContain("vault-import");
 	});
 

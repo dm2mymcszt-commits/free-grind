@@ -30,8 +30,8 @@ export function isInterestViewAutoBlockNotificationsEnabled(): boolean {
 
 function notificationTitle(source: AutoBlockNotificationSource): string {
     return source === "interest_views"
-        ? "Free Grind Interest Auto-Blocker"
-        : "Free Grind Inbox Auto-Blocker";
+        ? "GrindFlop Interest Auto-Blocker"
+        : "GrindFlop Inbox Auto-Blocker";
 }
 
 /**

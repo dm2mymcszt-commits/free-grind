@@ -14,13 +14,13 @@ export function LoadingScreen() {
 				<div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-[var(--accent)] border-r-[var(--accent)]/40" />
 				<img
 					src={logo}
-					alt="Free Grind"
+					alt="GrindFlop"
 					className="relative h-14 w-14 rounded-2xl object-contain"
 					draggable={false}
 				/>
 			</div>
 			<p className="text-sm font-semibold tracking-wide text-[var(--text-muted)]">
-				Free Grind
+				GrindFlop
 			</p>
 		</div>
 	);

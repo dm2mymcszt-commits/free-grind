@@ -354,7 +354,7 @@ function assertActiveProfile(profileId: number): void {
 		contactIndex.getActiveChatContactIndexUser() !== profileId ||
 		getActiveInterestViewsAccount() !== getInterestViewsAccountForUser(profileId)
 	) {
-		throw new Error("Cloud sync was cancelled because the active Free Grind profile changed");
+		throw new Error("Cloud sync was cancelled because the active GrindFlop profile changed");
 	}
 }
 
@@ -369,7 +369,7 @@ function assertInterestAccountStillActive(
 ): void {
 	assertActiveProfile(profileId);
 	if (getActiveInterestViewsAccount() !== expectedAccount) {
-		throw new Error("Cloud sync was cancelled because the active Free Grind profile changed");
+		throw new Error("Cloud sync was cancelled because the active GrindFlop profile changed");
 	}
 }
 

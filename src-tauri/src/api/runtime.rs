@@ -266,6 +266,9 @@ fn resolve_child_exe_path() -> Result<PathBuf, AppError> {
         manager_dir.join("Free Grind Client.exe"),
         manager_dir.join("Free Grind Child.exe"),
         manager_dir.join("free-grind.exe"),
+        manager_dir.join("GrindFlop Client.exe"),
+        manager_dir.join("GrindFlop Child.exe"),
+        manager_dir.join("GrindFlop.exe"),
     ];
 
     for path in candidates {

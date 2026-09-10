@@ -250,7 +250,7 @@ describe("Google Drive sync data boundary", () => {
 		try {
 			await expect(
 				scanGoogleDriveSyncEntities(TEST_PROFILE_ID, false, async () => {}),
-			).rejects.toThrow("active Free Grind profile changed");
+			).rejects.toThrow("active GrindFlop profile changed");
 		} finally {
 			interestAccount.mockRestore();
 			contactProfile.mockRestore();
@@ -339,7 +339,7 @@ describe("Google Drive sync data boundary", () => {
 				scanGoogleDriveSyncEntities(TEST_PROFILE_ID, false, async () => {
 					emitted += 1;
 				}),
-			).rejects.toThrow("active Free Grind profile changed");
+			).rejects.toThrow("active GrindFlop profile changed");
 			expect(emitted).toBe(0);
 		} finally {
 			exportViews.mockRestore();
@@ -382,7 +382,7 @@ describe("Google Drive sync data boundary", () => {
 		try {
 			await expect(
 				applyGoogleDriveSyncOperation(TEST_PROFILE_ID, deleteOperation),
-			).rejects.toThrow("active Free Grind profile changed");
+			).rejects.toThrow("active GrindFlop profile changed");
 
 			activeInterestAccount = TEST_INTEREST_ACCOUNT;
 			deleteMany.mockRestore();
@@ -414,7 +414,7 @@ describe("Google Drive sync data boundary", () => {
 			try {
 				await expect(
 					applyGoogleDriveSyncOperation(TEST_PROFILE_ID, importOperation),
-				).rejects.toThrow("active Free Grind profile changed");
+				).rejects.toThrow("active GrindFlop profile changed");
 			} finally {
 				importRows.mockRestore();
 			}

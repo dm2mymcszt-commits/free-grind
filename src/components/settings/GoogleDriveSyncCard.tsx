@@ -897,7 +897,7 @@ export function GoogleDriveSyncCard({
 					<p className="text-xs leading-relaxed text-[var(--text-muted)]">
 						{t("data_backup.drive_sync.ios_note", {
 							defaultValue:
-								"On iPhone, catch-up starts the next time Free Grind opens. iOS stops background sync after you swipe the app away.",
+								"On iPhone, catch-up starts the next time GrindFlop opens. iOS stops background sync after you swipe the app away.",
 						})}
 					</p>
 				</div>
@@ -910,7 +910,7 @@ export function GoogleDriveSyncCard({
 				})}
 				message={t("data_backup.drive_sync.disconnect_message", {
 					defaultValue:
-						"This removes the Google connection and encryption key from this device. Your local Free Grind data and encrypted cloud files stay intact. If this is the last paired device and you have not safely retained a pairing code, the cloud vault will become permanently unreadable.",
+						"This removes the Google connection and encryption key from this device. Your local GrindFlop data and encrypted cloud files stay intact. If this is the last paired device and you have not safely retained a pairing code, the cloud vault will become permanently unreadable.",
 				})}
 				confirmLabel={t("data_backup.drive_sync.disconnect_confirm", {
 					defaultValue: "Disconnect device",
@@ -938,7 +938,7 @@ export function GoogleDriveSyncCard({
 				})}
 				message={t("data_backup.drive_sync.reset_message", {
 					defaultValue:
-						"Close or disconnect Free Grind on every other paired device first. The app deletes the encrypted files it can verify and checks that the vault stays empty. If another device keeps uploading, deletion stops and this device keeps its key so you can retry. Local data is never erased.",
+						"Close or disconnect GrindFlop on every other paired device first. The app deletes the encrypted files it can verify and checks that the vault stays empty. If another device keeps uploading, deletion stops and this device keeps its key so you can retry. Local data is never erased.",
 				})}
 				confirmLabel={t("data_backup.drive_sync.reset_confirm", {
 					defaultValue: "Delete cloud data",

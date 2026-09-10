@@ -309,7 +309,7 @@ export function SettingsDataPage() {
 			const where =
 				destination.location === "ios-files-app"
 					? t("data_backup.export_success_ios", {
-							defaultValue: "Saved to Files → On My iPhone → Free Grind → {{name}}",
+							defaultValue: "Saved to Files → On My iPhone → GrindFlop → {{name}}",
 							name: destination.fileName,
 						})
 					: destination.location === "downloads-folder"

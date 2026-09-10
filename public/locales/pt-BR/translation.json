@@ -12,7 +12,7 @@
         "behavior_desc": "Avisos de confirmação para bloquear e excluir conversas.",
         "report_issue": "Reportar um bug ou uma funcionalidade",
         "report_issue_desc": "Envie relatórios de erros e solicitações de recursos para a equipe.",
-        "about": "Sobre o Free Grind",
+        "about": "Sobre o GrindFlop",
         "about_desc": "Objetivos do projeto, créditos, licença e links para a documentação.",
         "api_inspector": "Inspetor de API",
         "api_inspector_desc": "Visualize o histórico de solicitações e respostas para depuração.",
@@ -295,8 +295,8 @@
         "visibility": "Visibilidade"
     },
     "about_page": {
-        "badge": "Sobre o Free Grind",
-        "title": "O Free Grind é um cliente que prioriza a privacidade e foi desenvolvido pela comunidade.",
+        "badge": "Sobre o GrindFlop",
+        "title": "O GrindFlop é um cliente que prioriza a privacidade e foi desenvolvido pela comunidade.",
         "description": "Criado para uso pessoal com uma interface mais limpa, sem anúncios e com documentação aberta sobre o funcionamento. O objetivo é a liberdade prática, não a dependência de uma plataforma específica.",
         "platform": "Plataforma",
         "licence": "Licença",
@@ -1053,7 +1053,7 @@
             "limitation_title": "Como funciona",
             "limitation_desc": "O Grindr normalmente só mostra o último visitante por completo. Os outros geralmente ficam ocultos atrás de um paywall ou são exibidos como prévias anônimas.",
             "recovery_title": "Recuperação Inteligente",
-            "recovery_desc": "O Free Grind compara automaticamente visitantes anônimos com seu histórico local. Se encontrarmos uma correspondência, o perfil será revelado a você.",
+            "recovery_desc": "O GrindFlop compara automaticamente visitantes anônimos com seu histórico local. Se encontrarmos uma correspondência, o perfil será revelado a você.",
             "button": "Entendi!"
         },
         "unknown_profile": "Perfil Desconhecido"

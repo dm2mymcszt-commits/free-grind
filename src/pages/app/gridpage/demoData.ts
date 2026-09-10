@@ -63,7 +63,7 @@ export const DEMO_CARDS: BrowseCard[] = [
 	},
 	{
 		profileId: "demo-fg-only-freegrind",
-		displayName: "Free Grind User",
+		displayName: "GrindFlop User",
 		age: 23,
 		distanceMeters: 200,
 		primaryImageUrl: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=300&h=300&fit=crop",
@@ -115,7 +115,7 @@ export const DEMO_CARDS: BrowseCard[] = [
 	},
 	{
 		profileId: "demo-offline-fg-freegrind",
-		displayName: "Free Grind User",
+		displayName: "GrindFlop User",
 		age: 22,
 		distanceMeters: 10000,
 		primaryImageUrl: "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7b?w=300&h=300&fit=crop",

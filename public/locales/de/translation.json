@@ -18,7 +18,7 @@
         "automation_desc": "Baue eigene Chat-Automatisierungsregeln, verwalte deine Forbidden-Keywords-Liste und konfiguriere die automatische Grid-Aktualisierung.",
         "report_issue": "Fehler oder Feature melden",
         "report_issue_desc": "Sende Fehlermeldungen und Feature-Wünsche an das Team.",
-        "about": "Über Free Grind",
+        "about": "Über GrindFlop",
         "about_desc": "Projektziele, Credits, Lizenz und Dokumentation.",
         "api_inspector": "API-Inspektor",
         "api_inspector_desc": "Anfrage- und Antworthistorie zum Debuggen anzeigen.",
@@ -426,8 +426,8 @@
         "visibility": "Sichtbarkeit"
     },
     "about_page": {
-        "badge": "Über Free Grind",
-        "title": "Free Grind ist ein privatsphäre-orientierter, Community-basierter Client.",
+        "badge": "Über GrindFlop",
+        "title": "GrindFlop ist ein privatsphäre-orientierter, Community-basierter Client.",
         "description": "Entwickelt für den persönlichen Gebrauch mit einer saubereren Oberfläche, ohne Werbung und mit offener Dokumentation über die Funktionsweise. Das Ziel ist praktische Freiheit, keine Plattformbindung.",
         "platform": "Plattform",
         "licence": "Lizenz",
@@ -742,7 +742,7 @@
         "preview_primary": "Primär-Button",
         "preview_outlined": "Umrandet",
         "preview_subtle": "Dezent",
-        "preview_input": "Free Grind",
+        "preview_input": "GrindFlop",
         "preview_badge": "NEU",
         "schemes": {
             "system": "System",
@@ -1353,7 +1353,7 @@
             "limitation_title": "Funktionsweise",
             "limitation_desc": "Grindr zeigt normalerweise nur den allerletzten Besucher vollständig an. Andere sind oft hinter einer Paywall verborgen oder werden nur als anonyme Vorschau angezeigt.",
             "recovery_title": "Intelligente Erkennung",
-            "recovery_desc": "Free Grind gleicht unbekannte Besucher automatisch mit deinem lokalen Verlauf ab. Finden wir eine Übereinstimmung, decken wir das Profil für dich auf.",
+            "recovery_desc": "GrindFlop gleicht unbekannte Besucher automatisch mit deinem lokalen Verlauf ab. Finden wir eine Übereinstimmung, decken wir das Profil für dich auf.",
             "button": "Verstanden"
         },
         "unknown_profile": "Unbekanntes Profil",

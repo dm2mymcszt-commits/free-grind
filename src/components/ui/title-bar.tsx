@@ -68,11 +68,11 @@ export function TitleBar() {
 			<div className="flex items-center gap-2 px-3 text-gray-200">
 				<img
 					src={freegrindLogo}
-					alt="Free Grind"
+					alt="GrindFlop"
 					className="h-4 w-4 drop-shadow-md pointer-events-none"
 				/>
 				<span className="text-xs font-semibold tracking-wide drop-shadow-md pointer-events-none">
-					Free Grind
+					GrindFlop
 				</span>
 			</div>
 

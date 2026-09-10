@@ -35,7 +35,7 @@ export interface VersionAnnouncement {
 export const VERSION_ANNOUNCEMENTS: VersionAnnouncement[] = [
 	{
 		version: "0.5.3",
-		headline: "What's new in Free Grind",
+		headline: "What's new in GrindFlop",
 		items: [
 			{
 				icon: Database,

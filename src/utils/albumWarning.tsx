@@ -39,7 +39,7 @@ export function showAlbumApiWarning() {
                     </button>
                 </div>
                 <div style={{ fontSize: "14px", marginBottom: "16px", lineHeight: "1.4" }}>
-                    Grindr now restricts album access to your 5 most recent shares. Older albums may be unavailable unless previously cached by Free Grind.
+                    Grindr now restricts album access to your 5 most recent shares. Older albums may be unavailable unless previously cached by GrindFlop.
                 </div>
                 <button
                     onClick={() => {

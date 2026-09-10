@@ -153,7 +153,7 @@ export async function createBackupWriter(): Promise<BackupDestination> {
 		// why exporting from iOS used to silently do nothing. Writing into the
 		// app's own Documents directory works instead, and UIFileSharingEnabled
 		// in Info.plist is what surfaces that directory in the Files app under
-		// "On My iPhone → Free Grind", from where it can be AirDropped.
+		// "On My iPhone → GrindFlop", from where it can be AirDropped.
 		try {
 			return {
 				writer: await createStreamingWriter(fileName, BaseDirectory.Document, null),

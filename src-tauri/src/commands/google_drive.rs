@@ -397,7 +397,7 @@ fn validate_profile_id(profile_id: &str) -> Result<&str, GoogleDriveError> {
         || !profile_id.bytes().all(|byte| byte.is_ascii_digit())
     {
         return Err(GoogleDriveError::InvalidInput(
-            "A valid numeric Free Grind profile ID is required".to_owned(),
+            "A valid numeric GrindFlop profile ID is required".to_owned(),
         ));
     }
     Ok(profile_id)
@@ -410,7 +410,7 @@ fn ensure_active_profile(
     validate_profile_id(requested_profile_id)?;
     if authenticated_profile_id != Some(requested_profile_id) {
         return Err(GoogleDriveError::NotConnected(
-            "Google Drive actions require the currently signed-in Free Grind profile".to_owned(),
+            "Google Drive actions require the currently signed-in GrindFlop profile".to_owned(),
         ));
     }
     Ok(())
@@ -422,7 +422,7 @@ async fn require_active_profile(
 ) -> Result<(), GoogleDriveError> {
     let client = state.client().map_err(|_| {
         GoogleDriveError::NotConnected(
-            "Google Drive actions require the currently signed-in Free Grind profile".to_owned(),
+            "Google Drive actions require the currently signed-in GrindFlop profile".to_owned(),
         )
     })?;
     let authenticated_profile_id = client.authenticated_profile_id().await;
@@ -741,7 +741,7 @@ fn http_client() -> Result<Client, GoogleDriveError> {
         .https_only(true)
         .connect_timeout(Duration::from_secs(15))
         .timeout(HTTP_TIMEOUT)
-        .user_agent(concat!("FreeGrind/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("GrindFlop/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|_| {
             GoogleDriveError::Transport(
@@ -1286,9 +1286,9 @@ async fn receive_oauth_callback(
 ) -> Result<String, GoogleDriveError> {
     use tokio::io::AsyncWriteExt;
 
-    const ACCEPTED: &[u8] = b"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n<!doctype html><title>Free Grind</title><p>Google Drive authorization was received. You can return to Free Grind.</p>";
-    const DENIED: &[u8] = b"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n<!doctype html><title>Free Grind</title><p>Google Drive was not connected. You can close this window.</p>";
-    const INVALID: &[u8] = b"HTTP/1.1 400 Bad Request\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n<!doctype html><title>Free Grind</title><p>This was not a valid Free Grind authorization callback.</p>";
+    const ACCEPTED: &[u8] = b"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n<!doctype html><title>GrindFlop</title><p>Google Drive authorization was received. You can return to GrindFlop.</p>";
+    const DENIED: &[u8] = b"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n<!doctype html><title>GrindFlop</title><p>Google Drive was not connected. You can close this window.</p>";
+    const INVALID: &[u8] = b"HTTP/1.1 400 Bad Request\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n<!doctype html><title>GrindFlop</title><p>This was not a valid GrindFlop authorization callback.</p>";
 
     let overall_deadline = tokio::time::Instant::now() + OAUTH_TIMEOUT;
     loop {
@@ -1439,7 +1439,7 @@ pub async fn google_drive_connect(
 
         if crate::windows_instance::WindowsInstance::current().is_manager() {
             return Err(GoogleDriveError::Unsupported(
-                "Google Drive must be connected from a Free Grind account window, not the instance manager"
+                "Google Drive must be connected from a GrindFlop account window, not the instance manager"
                     .to_owned(),
             ));
         }
@@ -1451,14 +1451,14 @@ pub async fn google_drive_connect(
             .await
             .map_err(|_| {
                 GoogleDriveError::Transport(
-                    "Free Grind could not open a local OAuth callback port".to_owned(),
+                    "GrindFlop could not open a local OAuth callback port".to_owned(),
                 )
             })?;
         let port = listener
             .local_addr()
             .map_err(|_| {
                 GoogleDriveError::Transport(
-                    "Free Grind could not determine its OAuth callback port".to_owned(),
+                    "GrindFlop could not determine its OAuth callback port".to_owned(),
                 )
             })?
             .port();

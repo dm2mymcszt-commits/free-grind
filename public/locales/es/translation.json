@@ -10,7 +10,7 @@
         "customizability_desc": "Cambia el color del tema y el color de énfasis.",
         "behavior": "Comportamiento",
         "behavior_desc": "Avisos de confirmación para bloquear y eliminar chats.",
-        "about": "Sobre Free Grind",
+        "about": "Sobre GrindFlop",
         "about_desc": "Objetivos de proyecto, créditos, licencias, y enlaces a documentación.",
         "api_inspector": "Inspector de API",
         "api_inspector_desc": "Visualiza el historial de solicitudes y respuesta de la depuración.",
@@ -43,7 +43,7 @@
         "automation_desc": "Configura las reglas de bloqueo automáticas y la recarga automática del Navegar.",
         "privacy": "Privacidad",
         "privacy_desc": "Confirmaciones de lectura, vistas de perfil y desenfoque multimedia.",
-        "check_updates_desc": "Descarga e instala la última versión de Free Grind."
+        "check_updates_desc": "Descarga e instala la última versión de GrindFlop."
     },
     "shared_albums": {
         "subtitle": "Explora todos los álbumes compartidos por los demás en tus chats.",
@@ -188,8 +188,8 @@
         }
     },
     "about_page": {
-        "badge": "Sobre Free Grind",
-        "title": "Free Grind es un cliente desarrollado por la comunidad, que prioriza la privacidad.",
+        "badge": "Sobre GrindFlop",
+        "title": "GrindFlop es un cliente desarrollado por la comunidad, que prioriza la privacidad.",
         "description": "Diseñado para uso personal, con una interfaz más limpia, sin anuncios y documentación abierta sobre su funcionamiento. El objetivo es la libertad práctica, no la dependencia de una plataforma.",
         "platform": "Plataforma",
         "licence": "Licencia",
@@ -981,7 +981,7 @@
         "interest_show_taps": "Taps primero",
         "interest_show_views": "Visitas primero",
         "browse_grid_mobile_desc": "Ajusta cuántos perfiles aparecen por fila en el móvil.",
-        "preview_input": "Free Grind",
+        "preview_input": "GrindFlop",
         "preview_badge": "NUEVO",
         "reveal_effect": {
             "title": "Efecto de revelación",
@@ -1041,7 +1041,7 @@
             "title": "Visitantes de perfil",
             "limitation_title": "Cómo funciona",
             "limitation_desc": "Grindr normalmente solo muestra el último visitante al completo. Los demás por lo general están ocultos tras un muro de pago o se muestra como previsualizaciones anónimas.",
-            "recovery_desc": "Free Grindr relaciona automáticamente los visitantes anónimos con tu historial local. Si encontramos una coincidencia, el perfil se te revelará.",
+            "recovery_desc": "GrindFlopr relaciona automáticamente los visitantes anónimos con tu historial local. Si encontramos una coincidencia, el perfil se te revelará.",
             "button": "Entendido",
             "recovery_title": "Recuperación inteligente"
         },

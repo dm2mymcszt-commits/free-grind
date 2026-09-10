@@ -28,7 +28,7 @@ export function InterestOnboardingModal({
 			<OnboardingItem
 				icon={History}
 				title={t("interest_page.onboarding.recovery_title", "Smart Recovery")}
-				description={t("interest_page.onboarding.recovery_desc", "Free Grind automatically matches anonymous previews with your local history. If we find a match, we reveal the profile for you.")}
+				description={t("interest_page.onboarding.recovery_desc", "GrindFlop automatically matches anonymous previews with your local history. If we find a match, we reveal the profile for you.")}
 			>
 				<div className="mt-3 flex items-center gap-2 rounded-lg bg-[var(--surface-2)] px-3 py-2 border border-[var(--border)]">
 					<History className="h-4 w-4 text-[var(--accent)]" />

@@ -29,7 +29,7 @@ export function AuthShell({
 				>
 					<img
 						src={freeGrindLogo}
-						alt="Free Grind"
+						alt="GrindFlop"
 						className="mb-7 h-16 w-16 rounded-2xl object-cover drop-shadow-[0_12px_20px_rgba(0,0,0,0.4)]"
 					/>
 					<h1 className="text-2xl font-bold text-[var(--text)]">{title}</h1>

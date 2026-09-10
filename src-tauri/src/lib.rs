@@ -48,7 +48,7 @@ pub fn run() {
         let instance_lock_guard = match instance_lock::acquire_for_current_child_instance() {
             Ok(guard) => guard,
             Err(error) => {
-                eprintln!("Free Grind failed to acquire child instance lock: {}", error);
+                eprintln!("GrindFlop failed to acquire child instance lock: {}", error);
                 return;
             }
         };

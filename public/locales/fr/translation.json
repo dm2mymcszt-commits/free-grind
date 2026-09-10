@@ -10,7 +10,7 @@
         "customizability_desc": "Modifiez le thème et la couleur d'accentuation.",
         "behavior": "Comportement",
         "behavior_desc": "Invites de confirmation pour bloquer et supprimer des discussions.",
-        "about": "À propos de Free Grind",
+        "about": "À propos de GrindFlop",
         "about_desc": "Objectifs du projet, crédits, licences et liens vers la documentation.",
         "api_inspector": "Inspecteur d'API",
         "api_inspector_desc": "Affichez l'historique des requêtes et les réponses pour le débogage.",
@@ -43,7 +43,7 @@
         "automation_desc": "Configurer les règles de blocage automatisées et l'actualisation automatique de la grille.",
         "privacy": "Confidentialité",
         "privacy_desc": "Accusés de lecture, suivi des visites de profil et flou des médias.",
-        "check_updates_desc": "Télécharger et installer la dernière version de Free Grindr."
+        "check_updates_desc": "Télécharger et installer la dernière version de GrindFlopr."
     },
     "shared_albums": {
         "subtitle": "Explorez tous les albums partagés par les autres dans vos chats.",
@@ -188,8 +188,8 @@
         }
     },
     "about_page": {
-        "badge": "À propos de Free Grind",
-        "title": "Free Grind est un client développé par la communauté, privilégiant la confidentialité.",
+        "badge": "À propos de GrindFlop",
+        "title": "GrindFlop est un client développé par la communauté, privilégiant la confidentialité.",
         "description": "Conçu pour un usage personnel, avec une interface plus épurée, sans publicités et une documentation ouverte sur son fonctionnement. L'objectif est la liberté pratique, pas la dépendance à une plateforme.",
         "platform": "Plateforme",
         "licence": "Licence",
@@ -493,7 +493,7 @@
                 "pronounced": "Prononcé"
             }
         },
-        "preview_input": "Free Grind",
+        "preview_input": "GrindFlop",
         "preview_badge": "NOUVEAU"
     },
     "behavior": {

@@ -146,7 +146,7 @@ export function OutdatedVersionPromptView({
 					<h1 className="text-2xl font-bold text-[var(--text)]">Update Available</h1>
 					<div className="flex flex-col items-center overflow-hidden">
 						<p className="mt-2 max-w-xs text-sm leading-relaxed text-[var(--text-muted)]">
-							You're using Free Grind {appVersion}, which is outdated.
+							You're using GrindFlop {appVersion}, which is outdated.
 						</p>
 						<p className="mt-2 max-w-xs text-sm leading-relaxed text-[var(--text-muted)]">
 							The latest version is {releaseInfo.latestVersion}.
