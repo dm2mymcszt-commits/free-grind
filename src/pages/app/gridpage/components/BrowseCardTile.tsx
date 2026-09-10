@@ -148,7 +148,7 @@ export function BrowseCardTile({
 							{onlineStatus.isOnline ? (
 								<span className="block h-3 w-3 rounded-full bg-green-500 shadow-lg ring-2 ring-black/30" />
 							) : (
-								<span className="inline-flex items-center gap-1 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-bold text-white backdrop-blur-sm sm:text-[11px]">
+								<span className="inline-flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-bold text-white sm:text-[11px]">
 									{t(onlineStatus.labelKey, { count: onlineStatus.count })}
 								</span>
 							)}
@@ -158,7 +158,7 @@ export function BrowseCardTile({
 					{/* Bottom-right: Interaction cluster */}
 					<div className="absolute bottom-2 right-2 z-10 flex items-center gap-1">
 						{isFavorite && (
-							<div className="flex h-5 w-5 items-center justify-center rounded-full bg-black/50 text-yellow-500 shadow-lg backdrop-blur-sm">
+							<div className="flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-yellow-500 shadow-lg">
 								<Star className="h-3.5 w-3.5 fill-current" />
 							</div>
 						)}
@@ -173,7 +173,7 @@ export function BrowseCardTile({
 								)}
 							</span>
 						) : hasChatted ? (
-							<div className="flex h-5 w-5 items-center justify-center rounded-full bg-black/50 text-white shadow-lg backdrop-blur-sm">
+							<div className="flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white shadow-lg">
 								<MessageCircle className="h-3.5 w-3.5" />
 							</div>
 						) : null}

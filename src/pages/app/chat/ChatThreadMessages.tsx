@@ -146,7 +146,7 @@ function AlbumExpirationCountdown({ expiresAt, isOnce, t }: { expiresAt: number;
 				`}
 			</style>
 			<div className="mt-1 flex items-center">
-				<span className="inline-flex items-center gap-1.5 rounded-full bg-black/55 px-2 py-1 text-[10px] font-bold tracking-wide text-[var(--accent)] shadow-lg backdrop-blur-sm sm:text-[11px] uppercase">
+				<span className="inline-flex items-center gap-1.5 rounded-full bg-black/70 px-2 py-1 text-[10px] font-bold tracking-wide text-[var(--accent)] shadow-lg sm:text-[11px] uppercase">
 					<Hourglass className="h-3 w-3 animate-hourglass-rotate" />
 					<span>
 						{isOnce ? t("chat.expiration.once") : `${parts.join(" ")} ${t("chat.expiration.remaining")}`}
@@ -1344,7 +1344,7 @@ export function ChatThreadMessages({
                                                 className={`${message.type === "Giphy" && hasReply ? "max-h-96 w-full object-cover" : isImageOnlyBubble ? "max-h-80 w-full object-cover" : "max-h-64 w-full object-cover"} ${mediaBlurClassName}`}
                                             />
                                             {localOnly && (
-                                                <span className="absolute left-2 top-2 z-10 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
+                                                <span className="absolute left-2 top-2 z-10 rounded-full bg-black/75 px-2 py-0.5 text-[10px] font-semibold text-white">
                                                     {t("chat.thread.from_local_history")}
                                                 </span>
                                             )}
@@ -1448,7 +1448,7 @@ export function ChatThreadMessages({
                                                     <Album className="h-8 w-8" />
                                                 </div>
                                                 {(localOnly || isCachedExpiredAlbum) && (
-                                                    <span className="absolute left-2 top-2 z-10 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
+                                                    <span className="absolute left-2 top-2 z-10 rounded-full bg-black/75 px-2 py-0.5 text-[10px] font-semibold text-white">
                                                         {t("chat.thread.from_local_history")}
                                                     </span>
                                                 )}
@@ -1473,7 +1473,7 @@ export function ChatThreadMessages({
                                                     </div>
                                                 )}
                                                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-3 text-center text-white">
-                                                    <div className="h-20 w-20 overflow-hidden rounded-full border border-white/25 bg-white/15 text-white shadow-lg backdrop-blur-sm">
+                                                    <div className="h-20 w-20 overflow-hidden rounded-full border border-white/25 bg-white/20 text-white shadow-lg">
                                                         <ProfileImage
                                                             src={senderAvatarUrl}
                                                             alt={senderLabel}
@@ -1579,7 +1579,7 @@ export function ChatThreadMessages({
                                                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") e.currentTarget.click(); }}
                                                 >
                                                     {localOnly && (
-                                                        <span className="absolute left-2 top-2 z-10 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
+                                                        <span className="absolute left-2 top-2 z-10 rounded-full bg-black/75 px-2 py-0.5 text-[10px] font-semibold text-white">
                                                             {t("chat.thread.from_local_history")}
                                                         </span>
                                                     )}
@@ -1605,7 +1605,7 @@ export function ChatThreadMessages({
                                                     )}
                                                     {!shouldBlurIncomingMedia && (
                                                         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                                                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm transition group-hover/media:bg-black/80">
+                                                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-black/75 transition group-hover/media:bg-black/90">
                                                                 <Play className="h-5 w-5 fill-white text-white" />
                                                             </div>
                                                         </div>
@@ -1690,7 +1690,7 @@ export function ChatThreadMessages({
                                                         <div className="h-48 w-full bg-[var(--surface-2)]" />
                                                     )}
                                                     {localOnly && (
-                                                        <span className="absolute left-2 top-2 z-10 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
+                                                        <span className="absolute left-2 top-2 z-10 rounded-full bg-black/75 px-2 py-0.5 text-[10px] font-semibold text-white">
                                                             {t("chat.thread.from_local_history")}
                                                         </span>
                                                     )}
@@ -1741,7 +1741,7 @@ export function ChatThreadMessages({
                                             <div className="relative">
                                                 <MapLocationPreview lat={location.lat} lon={location.lon} className="h-48 w-48 pointer-events-none" />
                                                 {localOnly && (
-                                                    <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
+                                                    <span className="absolute left-2 top-2 rounded-full bg-black/75 px-2 py-0.5 text-[10px] font-semibold text-white">
                                                         {t("chat.thread.from_local_history")}
                                                     </span>
                                                 )}
@@ -1779,7 +1779,7 @@ export function ChatThreadMessages({
                                     {isAlbumMessage && !isAlbumOnlyBubble ? (
                                         <div className={`relative mb-2 rounded-xl border border-black/10 p-2 ${isLocked ? "bg-[var(--surface-2)] opacity-60" : "bg-[color-mix(in_srgb,var(--surface)_76%,transparent)]"} ${(localOnly || isCachedExpiredAlbum) ? "opacity-50" : ""}`}>
                                             {(localOnly || isCachedExpiredAlbum) && (
-                                                <span className="absolute right-2 top-2 z-10 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
+                                                <span className="absolute right-2 top-2 z-10 rounded-full bg-black/75 px-2 py-0.5 text-[10px] font-semibold text-white">
                                                     {t("chat.thread.from_local_history")}
                                                 </span>
                                             )}
