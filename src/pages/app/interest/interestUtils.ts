@@ -100,7 +100,12 @@ function mergeViewItem(
 				? incoming.hasExactTimestamp !== false
 				: cached.hasExactTimestamp !== false,
 		tapType: incoming.tapType ?? cached.tapType,
-		viewCount: incoming.viewCount ?? cached.viewCount,
+		// Highest wins, not "incoming if present". The list response and the
+		// cached row are two partial views of the same monotonic number, and
+		// preferring the incoming one let a smaller figure from the list
+		// discard the larger count the store had already established — the
+		// same regression the store itself was fixed for.
+		viewCount: Math.max(incoming.viewCount ?? 0, cached.viewCount ?? 0) || null,
 		canOpenProfile: incoming.canOpenProfile || cached.canOpenProfile,
 		isFromCache: incoming.isFromCache ?? cached.isFromCache,
 		isMutual: incoming.isMutual ?? cached.isMutual,

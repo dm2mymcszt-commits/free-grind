@@ -6,6 +6,7 @@ import { useApiFunctions } from "../../hooks/useApiFunctions";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { decodeGeohash, encodeGeohash } from "../../utils/geohash";
+import { setLocalFavorite } from "../../utils/localFavorites";
 import { getThumbImageUrl, validateMediaHash } from "../../utils/media";
 import { usePreferences } from "../../contexts/PreferencesContext";
 import { type BrowseCard, type ProfileDetail } from "./GridPage.types";
@@ -1268,6 +1269,11 @@ export function GridPage() {
 				} else {
 					await apiFunctions.addFavorite(targetProfileId);
 				}
+
+				// Recorded locally because the inbox cannot be trusted to report
+				// favourites: this is what lets its Favorites filter find the
+				// conversation with someone favourited from anywhere in the app.
+				setLocalFavorite(targetProfileId, !currentlyFavorite);
 
 				// The inbox filters on the conversation's own favorite flag, which it
 				// only learns from a fresh /v4/inbox response — without this, a chat

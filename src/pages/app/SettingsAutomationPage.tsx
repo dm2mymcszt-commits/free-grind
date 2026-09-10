@@ -526,29 +526,27 @@ export function SettingsAutomationPage() {
                                     </div>
                                 </div>
 
-                                 {/* First-message-only openers */}
-                                 <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
-                                     <div className="flex items-start gap-3">
-                                         <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--surface-2)] text-[var(--accent)]">
-                                             <MessageSquare className="h-4 w-4" />
-                                         </div>
-                                         <div className="min-w-0 flex-1">
-                                             <p className="text-sm font-semibold">Opening Message Blocklist</p>
-                                             <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-                                                 Blocks someone whose <strong>very first message</strong> is exactly one of these,
-                                                 and only then. The whole message has to match, so &quot;hot&quot; blocks
-                                                 &quot;Hot&quot; and &quot;hot!&quot; but never &quot;Hello, hot&quot; — and never a word
-                                                 said later in the chat. Separate with commas.
-                                             </p>
-                                             <textarea
-                                                 value={firstMessageWords}
-                                                 onChange={(e) => setFirstMessageWords(e.target.value)}
-                                                 placeholder="hot, hey, ?, sup"
-                                                 className="input-field mt-3 min-h-[80px] resize-y"
-                                             />
-                                         </div>
-                                     </div>
-                                 </div>
+                                {/* Opening message blocklist */}
+                                <div className="flex items-start gap-3 p-4">
+                                    <div className="shrink-0 rounded-2xl bg-sky-500/15 p-2.5 text-sky-400">
+                                        <MessageSquare className="h-5 w-5" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-semibold leading-snug">Opening Message Blocklist</p>
+                                        <p className="mt-0.5 text-xs leading-relaxed text-[var(--text-muted)]">
+                                            Blocks someone whose <span className="font-semibold text-[var(--text)]">first message</span> is
+                                            exactly one of these. The whole message must match, so &quot;hot&quot; catches
+                                            &quot;Hot&quot; and &quot;hot!&quot; but never &quot;Hello, hot&quot;, and never a word said
+                                            later in the chat.
+                                        </p>
+                                        <textarea
+                                            value={firstMessageWords}
+                                            onChange={(e) => setFirstMessageWords(e.target.value)}
+                                            placeholder="hot, hey, ?, sup"
+                                            className="input-field mt-2 min-h-[72px] resize-y"
+                                        />
+                                    </div>
+                                </div>
 
                                  {/* Bot Evasion */}
                                  <div className="flex items-start gap-3 p-4">

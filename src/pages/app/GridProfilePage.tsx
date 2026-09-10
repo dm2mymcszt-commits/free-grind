@@ -12,6 +12,7 @@ import { useApiFunctions } from "../../hooks/useApiFunctions";
 import { useManagedGenders, useManagedPronouns, useBlockedProfileIds, useBlockProfile, useUnblockProfile } from "../../hooks/queries/useProfileQueries";
 import { usePreferences } from "../../contexts/PreferencesContext";
 import { decodeGeohash, encodeGeohash } from "../../utils/geohash";
+import { setLocalFavorite } from "../../utils/localFavorites";
 import { validateMediaHash } from "../../utils/media";
 import { ProfileDetailsModal } from "./gridpage/components/ProfileDetailsModal";
 import { useTapProfile } from "./gridpage/hooks/useTapProfile";
@@ -406,6 +407,11 @@ export function GridProfilePage() {
 			} else {
 				await apiFunctions.addFavorite(targetProfileId);
 			}
+
+			// Recorded locally because the inbox cannot be trusted to report
+			// favourites: this is what lets its Favorites filter find the
+			// conversation with someone favourited from anywhere in the app.
+			setLocalFavorite(targetProfileId, !currentlyFavorite);
 
 			// The inbox filters on the conversation's own favorite flag, which it
 			// only learns from a fresh /v4/inbox response — without this, a chat

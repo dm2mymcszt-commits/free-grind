@@ -21,6 +21,11 @@ import { getProfilePhotoHash } from "./profile-editor/profileEditorUtils";
 import { useAuth } from "../../contexts/useAuth";
 import { ChatApiError } from "../../services/chatService";
 import { showAlbumApiWarning } from "../../utils/albumWarning";
+import {
+	getLocalFavoriteIds,
+	LOCAL_FAVORITES_EVENT,
+	setLocalFavorite,
+} from "../../utils/localFavorites";
 import { setConversationDirectory } from "../../services/conversationDirectory";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import * as chatDb from "../../services/chatDb";
@@ -319,6 +324,15 @@ export function ChatPage() {
 	// Hidden chats default to actually being hidden — that's the point of the
 	// feature — unlike pinned/archived, which default to a mixed-in view.
 	const [hiddenFilter, setHiddenFilter] = useState<InboxVisibilityFilter>("hide");
+	const [localFavoriteIds, setLocalFavoriteIds] = useState<Set<string>>(() =>
+		getLocalFavoriteIds(),
+	);
+	useEffect(() => {
+		const refresh = () => setLocalFavoriteIds(getLocalFavoriteIds());
+		refresh();
+		window.addEventListener(LOCAL_FAVORITES_EVENT, refresh);
+		return () => window.removeEventListener(LOCAL_FAVORITES_EVENT, refresh);
+	}, []);
 	const [hiddenConversationIds, setHiddenConversationIds] = useState<Set<string>>(new Set());
 	// The default desktop selection must not run before this is true, or a
 	// still-empty hidden set makes every conversation look visible and the
@@ -3862,25 +3876,21 @@ export function ChatPage() {
 
 		}
 
-		// favoritesOnly and unreadOnly are sent to /v4/inbox, so the live entries
-		// in this list have already been filtered by the server. Re-checking them
-		// against data.favorite / data.unreadCount only works if the response
-		// populates those fields on a filtered request — when it does not, this
-		// dropped every row the server had just correctly selected, and the list
-		// read "no conversations match your filters" while the filter itself was
-		// working. Archived entries are merged in from chatDb and never went
-		// through that request, so they still have to be checked here.
-		const liveIds = new Set(liveConversations.map((c) => c.data.conversationId));
+		// /v4/inbox is not trustworthy for favourites in either direction: a
+		// favoritesOnly request returns profiles that are not favourited, and a
+		// conversation with someone who is can come back with data.favorite
+		// false. Checking the flag alone hid the right people; trusting the
+		// server instead of checking it showed the wrong ones. So both are used,
+		// widened by what this device recorded when the favourite was toggled.
 		if (activeInboxFilters.favoritesOnly) {
-			result = result.filter(
-				(c) => liveIds.has(c.data.conversationId) || c.data.favorite,
-			);
+			result = result.filter((c) => {
+				if (c.data.favorite) return true;
+				const other = getOtherParticipant(c, userId);
+				return other?.profileId != null && localFavoriteIds.has(String(other.profileId));
+			});
 		}
 		if (activeInboxFilters.unreadOnly) {
-			result = result.filter(
-				(c) =>
-					liveIds.has(c.data.conversationId) || (c.data.unreadCount ?? 0) > 0,
-			);
+			result = result.filter((c) => (c.data.unreadCount ?? 0) > 0);
 		}
 		if (pinnedFilter === "hide") {
 			result = result.filter((c) => !c.data.pinned);
@@ -3907,6 +3917,7 @@ export function ChatPage() {
 		archivedFilter,
 		hiddenFilter,
 		hiddenConversationIds,
+		localFavoriteIds,
 	]);
 
 	// Opens the newest conversation the inbox is actually showing when the
@@ -4822,6 +4833,11 @@ export function ChatPage() {
 				} else {
 					await service.addFavorite(strId);
 				}
+
+				// Recorded locally because the inbox cannot be trusted to report
+				// favourites: this is what lets its Favorites filter find the
+				// conversation with someone favourited from anywhere in the app.
+				setLocalFavorite(strId, !currentlyFavorite);
 				setConversations((previous) =>
 					previous.map((conv) => {
 						const isMatch = conv.data.participants.some(
