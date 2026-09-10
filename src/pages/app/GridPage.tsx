@@ -1116,27 +1116,35 @@ export function GridPage() {
 		return hashes;
 	}, [activeProfile]);
 
-	const handleSelectProfile = (profileId: string) => {
-		if (window.matchMedia("(max-width: 639px)").matches) {
-			navigate(`/profile/${profileId}`, {
-				state: {
-					returnTo: `${location.pathname}${location.search}`,
-					profileIds: sortedCards.map((c) => c.profileId),
-				},
-			});
-			return;
-		}
+	// Stable identity, so the memoised tiles are not invalidated every time any
+	// of this page's other state changes.
+	const handleSelectProfile = useCallback(
+		(profileId: string) => {
+			if (window.matchMedia("(max-width: 639px)").matches) {
+				navigate(`/profile/${profileId}`, {
+					state: {
+						returnTo: `${location.pathname}${location.search}`,
+						profileIds: sortedCards.map((c) => c.profileId),
+					},
+				});
+				return;
+			}
 
-		setActiveProfileId(profileId);
-	};
+			setActiveProfileId(profileId);
+		},
+		[navigate, location.pathname, location.search, sortedCards],
+	);
 
-	const handleMessageProfile = (profileId: string) => {
-		const nextParams = new URLSearchParams();
-		nextParams.set("targetProfileId", profileId);
-		nextParams.set("returnTo", `${location.pathname}${location.search}`);
-        appLog.info("Profile", profileId);
-		navigate(`/chat?${nextParams.toString()}`);
-	};
+	const handleMessageProfile = useCallback(
+		(profileId: string) => {
+			const nextParams = new URLSearchParams();
+			nextParams.set("targetProfileId", profileId);
+			nextParams.set("returnTo", `${location.pathname}${location.search}`);
+			appLog.info("Profile", profileId);
+			navigate(`/chat?${nextParams.toString()}`);
+		},
+		[navigate, location.pathname, location.search],
+	);
 
 	const handleTagClick = (tag: string) => {
 		setTags([tag]);

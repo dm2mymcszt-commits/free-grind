@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { BrowseCard } from "../../GridPage.types";
 import { MapPin, MessageCircle, Plane, Star, Zap, Droplet } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -22,7 +23,7 @@ type BrowseCardTileProps = {
 	hideImages?: boolean;
 };
 
-export function BrowseCardTile({
+function BrowseCardTileImpl({
 	card,
 	chatContactStatus,
 	onSelectProfile,
@@ -193,3 +194,9 @@ export function BrowseCardTile({
 		</div>
 	);
 }
+
+/**
+ * Memoised because the grid never unmounts a card once loaded: without this
+ * every tile on screen re-renders on any GridPage state change.
+ */
+export const BrowseCardTile = memo(BrowseCardTileImpl);

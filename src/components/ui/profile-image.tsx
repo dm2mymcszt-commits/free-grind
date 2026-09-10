@@ -6,14 +6,28 @@ interface ProfileImageProps {
 	alt?: string;
 	className?: string;
 	iconClassName?: string;
+	/**
+	 * Deferred by default: the browse grid mounts hundreds of these at once and
+	 * most are far off-screen. Pass "eager" for an image that is the point of
+	 * the view it sits in.
+	 */
+	loading?: "lazy" | "eager";
 }
 
-export function ProfileImage({ src, alt, className, iconClassName }: ProfileImageProps) {
+export function ProfileImage({
+	src,
+	alt,
+	className,
+	iconClassName,
+	loading = "lazy",
+}: ProfileImageProps) {
 	if (src) {
 		return (
 			<img
 				src={src}
 				alt={alt}
+				loading={loading}
+				decoding="async"
 				className={cn("h-full w-full object-cover", className)}
 			/>
 		);
