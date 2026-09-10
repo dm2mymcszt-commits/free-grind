@@ -3974,7 +3974,6 @@ export function ChatPage() {
 		};
 		container.addEventListener("scroll", handleScroll, { passive: true });
 		return () => container.removeEventListener("scroll", handleScroll);
-	// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [filteredConversations.length]);
 
 	// Scroll memory: restore position once on first load

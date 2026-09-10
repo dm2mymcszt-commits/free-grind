@@ -209,7 +209,6 @@ export function SettingsBlockedPage() {
 		observer.observe(sentinel);
 		return () => observer.disconnect();
 		// Re-create the observer after each batch so it fires again
-		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [hasMore, initialBatchLoaded, loadedUpTo, loadNextBatch]);
 
 	// ── Handlers ─────────────────────────────────────────────────────────

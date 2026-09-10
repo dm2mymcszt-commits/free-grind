@@ -479,7 +479,6 @@ export function ChatMediaSheet({
 								>
 									{item.kind === "video" ? (
 										<>
-											{/* eslint-disable-next-line jsx-a11y/media-has-caption */}
 											<video
 												src={item.dataUri}
 												muted

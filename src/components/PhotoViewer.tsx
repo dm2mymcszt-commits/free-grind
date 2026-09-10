@@ -98,7 +98,6 @@ export function PhotoViewer({
 			requestAnimationFrame(() => setNoTransition(false)),
 		);
 		return () => cancelAnimationFrame(id);
-		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [isOpen]);
 
 	useEffect(() => {

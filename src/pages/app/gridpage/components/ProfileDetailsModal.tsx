@@ -692,7 +692,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 			setHeaderOpacity(0);
 			setHeaderFadeDuration(0);
 		};
-	}, [isOpen, isModalSplit, variant]); // eslint-disable-line react-hooks/exhaustive-deps
+	}, [isOpen, isModalSplit, variant]);
 
 	useEffect(() => {
         const el = pageWrapRef.current;
