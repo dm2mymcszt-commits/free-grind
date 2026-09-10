@@ -11,7 +11,24 @@ type SmoothScrollProps = {
 	wheelMultiplier?: number;
 	touchMultiplier?: number;
 	lerp?: number;
+	disableOnTouch?: boolean;
+	idleFramesBeforeStop?: number;
 };
+
+/**
+ * Touch-first devices already scroll well natively, and Lenis has no wheel
+ * input to smooth on them while `smoothTouch` is off.
+ */
+function prefersNativeScroll() {
+	if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+		return false;
+	}
+	return window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+}
+
+function dropLenisClasses() {
+	document.documentElement.classList.remove("lenis", "lenis-smooth", "lenis-scrolling");
+}
 
 /**
  * SmoothScroll component using Lenis.
@@ -24,26 +41,31 @@ export function SmoothScroll({
 	wheelMultiplier = SMOOTH_SCROLL_CONFIG.wheelMultiplier,
 	touchMultiplier = SMOOTH_SCROLL_CONFIG.touchMultiplier,
 	lerp = SMOOTH_SCROLL_CONFIG.lerp,
+	disableOnTouch = SMOOTH_SCROLL_CONFIG.disableOnTouch,
+	idleFramesBeforeStop = SMOOTH_SCROLL_CONFIG.idleFramesBeforeStop,
 }: SmoothScrollProps) {
 	const lenisRef = useRef<Lenis | null>(null);
+	const wakeRef = useRef<(() => void) | null>(null);
 	const location = useLocation();
 
+	const active = enabled && !(disableOnTouch && prefersNativeScroll());
+
 	useEffect(() => {
-		if (!enabled) {
+		if (!active) {
 			if (lenisRef.current) {
 				lenisRef.current.destroy();
 				lenisRef.current = null;
-				document.documentElement.classList.remove("lenis", "lenis-smooth", "lenis-scrolling");
+				dropLenisClasses();
 			}
 			return;
 		}
 
 		// Find the scrollable container. On PC with has-titlebar, it's .app-shell.
 		// Otherwise, we let it default to window.
-		const wrapper = document.documentElement.classList.contains("has-titlebar") 
+		const wrapper = document.documentElement.classList.contains("has-titlebar")
 			? (document.querySelector(".app-shell") as HTMLElement | null)
 			: window;
-			
+
 		const content = document.documentElement.classList.contains("has-titlebar")
 			? (document.querySelector(".app-shell > div:last-child") as HTMLElement | null) // The Outlet wrapper
 			: document.documentElement;
@@ -71,53 +93,92 @@ export function SmoothScroll({
 		document.documentElement.classList.add("lenis");
 		document.documentElement.classList.add("lenis-smooth");
 
-		// High-performance RAF loop
-		let rafId: number;
-		function raf(time: number) {
-			lenis.raf(time);
-			rafId = requestAnimationFrame(raf);
-		}
-		rafId = requestAnimationFrame(raf);
+		// Lenis only has work to do while a scroll is in flight. Running the loop
+		// unconditionally wakes the compositor 60 times a second on a screen
+		// nobody is touching, so park it once the scroll settles and let input
+		// start it again.
+		let rafId: number | null = null;
+		let idleFrames = 0;
 
-		console.log("[Lenis] Initialized on window", {
-			smoothTouch,
-			duration,
-			lerp,
-			isTouchDevice: "ontouchstart" in window,
-		});
+		const pump = (time: number) => {
+			lenis.raf(time);
+			idleFrames = lenis.isScrolling ? 0 : idleFrames + 1;
+			if (idleFrames > idleFramesBeforeStop) {
+				rafId = null;
+				return;
+			}
+			rafId = requestAnimationFrame(pump);
+		};
+
+		const wake = () => {
+			idleFrames = 0;
+			if (rafId === null) {
+				rafId = requestAnimationFrame(pump);
+			}
+		};
+
+		wakeRef.current = wake;
+
+		const wakeEvents = ["wheel", "touchstart", "pointerdown", "keydown", "resize"] as const;
+		for (const type of wakeEvents) {
+			window.addEventListener(type, wake, { passive: true });
+		}
+		lenis.on("scroll", wake);
+
+		wake();
 
 		// Ensure initial size is correct
-		setTimeout(() => {
+		const sizeTimer = setTimeout(() => {
 			lenis.resize();
+			wake();
 		}, 100);
 
 		return () => {
+			clearTimeout(sizeTimer);
+			for (const type of wakeEvents) {
+				window.removeEventListener(type, wake);
+			}
+			lenis.off("scroll", wake);
+			if (rafId !== null) {
+				cancelAnimationFrame(rafId);
+			}
+			wakeRef.current = null;
 			lenis.destroy();
-			cancelAnimationFrame(rafId);
+			lenisRef.current = null;
 			delete (window as any).lenis;
-			document.documentElement.classList.remove("lenis", "lenis-smooth", "lenis-scrolling");
+			dropLenisClasses();
 		};
-	}, [enabled, smoothTouch, duration, wheelMultiplier, touchMultiplier, lerp]);
+	}, [
+		active,
+		smoothTouch,
+		duration,
+		wheelMultiplier,
+		touchMultiplier,
+		lerp,
+		idleFramesBeforeStop,
+	]);
 
 	// Global scroll-to-top on route change
 	useEffect(() => {
-		if (lenisRef.current && enabled) {
+		if (lenisRef.current && active) {
 			const pagesWithoutTopReset = ["/", "/chat"];
 			if (!pagesWithoutTopReset.includes(location.pathname)) {
 				lenisRef.current.scrollTo(0, { immediate: true });
+				wakeRef.current?.();
 			}
 
 			// Small delay to ensure DOM is rendered before resizing
 			const timer = setTimeout(() => {
 				lenisRef.current?.resize();
+				wakeRef.current?.();
 			}, 150);
 			return () => clearTimeout(timer);
 		}
-	}, [location.pathname, enabled]);
+	}, [location.pathname, active]);
 
 	return (
 		<>
-			{enabled && (
+			{active && (
 				<style dangerouslySetInnerHTML={{ __html: `
 					html.lenis, html.lenis body {
 						height: auto;
