@@ -2,11 +2,8 @@ import {
 	BookOpen,
 	FileText,
 	GitBranch,
-	HeartHandshake,
 	LockKeyhole,
-	MessageCircle,
 	Rocket,
-	Send,
 	Shield,
 	Users,
 } from "lucide-react";
@@ -70,31 +67,10 @@ export function AboutPage() {
 				external: true,
 			},
 			{
-				title: t("about_page.resources.contributing_title"),
-				href: "https://github.com/imaoreo/free-grind/blob/main/CONTRIBUTING.md",
-				description: t("about_page.resources.contributing_desc"),
-				icon: HeartHandshake,
-				external: true,
-			},
-			{
 				title: t("about_page.resources.licence_title"),
 				href: "https://github.com/imaoreo/free-grind/blob/main/LICENSE",
 				description: t("about_page.resources.licence_desc"),
 				icon: FileText,
-				external: true,
-			},
-			{
-				title: t("about_page.resources.discord_title"),
-				href: "https://discord.gg/cJqTaWPMFF",
-				description: t("about_page.resources.discord_desc"),
-				icon: MessageCircle,
-				external: true,
-			},
-			{
-				title: t("about_page.resources.telegram_title"),
-				href: "https://t.me/freegrind",
-				description: t("about_page.resources.telegram_desc"),
-				icon: Send,
 				external: true,
 			},
 		],
@@ -154,7 +130,7 @@ export function AboutPage() {
 										{t("about_page.maintainer")}
 									</p>
 									<p className="mt-2 text-lg font-semibold leading-snug">
-										Jay Brammeld
+										testoraa
 									</p>
 									<p className="mt-2 text-sm leading-6 text-[var(--text-muted)]">
 										{t("about_page.maintainer_credit")}
@@ -176,79 +152,52 @@ export function AboutPage() {
 					</Card>
 				</header>
 
-				<div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-					<Card className="p-5 sm:p-6">
-						<h2 className="text-lg font-semibold">
-							{t("about_page.principles_title")}
-						</h2>
-						<div className="mt-4 grid gap-3">
-							<div className="rounded-2xl bg-[var(--surface-2)] p-4">
-								<div className="flex items-start gap-3">
-									<LockKeyhole className="mt-0.5 h-4.5 w-4.5 text-[var(--text)]" />
-									<div className="grid gap-1">
-										<p className="text-sm font-semibold">
-											{t("about_page.principles.privacy_title")}
-										</p>
-										<p className="text-sm leading-6 text-[var(--text-muted)]">
-											{t("about_page.principles.privacy_desc")}
-										</p>
-									</div>
-								</div>
-							</div>
-							<div className="rounded-2xl bg-[var(--surface-2)] p-4">
-								<div className="flex items-start gap-3">
-									<Users className="mt-0.5 h-4.5 w-4.5 text-[var(--text)]" />
-									<div className="grid gap-1">
-										<p className="text-sm font-semibold">
-											{t("about_page.principles.community_title")}
-										</p>
-										<p className="text-sm leading-6 text-[var(--text-muted)]">
-											{t("about_page.principles.community_desc")}
-										</p>
-									</div>
-								</div>
-							</div>
-							<div className="rounded-2xl bg-[var(--surface-2)] p-4">
-								<div className="flex items-start gap-3">
-									<Rocket className="mt-0.5 h-4.5 w-4.5 text-[var(--text)]" />
-									<div className="grid gap-1">
-										<p className="text-sm font-semibold">
-											{t("about_page.principles.roadmap_title")}
-										</p>
-										<p className="text-sm leading-6 text-[var(--text-muted)]">
-											{t("about_page.principles.roadmap_desc")}
-										</p>
-									</div>
+				<Card className="p-5 sm:p-6">
+					<h2 className="text-lg font-semibold">
+						{t("about_page.principles_title")}
+					</h2>
+					<div className="mt-4 grid gap-3">
+						<div className="rounded-2xl bg-[var(--surface-2)] p-4">
+							<div className="flex items-start gap-3">
+								<LockKeyhole className="mt-0.5 h-4.5 w-4.5 text-[var(--text)]" />
+								<div className="grid gap-1">
+									<p className="text-sm font-semibold">
+										{t("about_page.principles.privacy_title")}
+									</p>
+									<p className="text-sm leading-6 text-[var(--text-muted)]">
+										{t("about_page.principles.privacy_desc")}
+									</p>
 								</div>
 							</div>
 						</div>
-					</Card>
-
-					<Card className="p-5 sm:p-6">
-						<h2 className="text-lg font-semibold">
-							{t("about_page.support_title")}
-						</h2>
-						<div className="mt-4 grid gap-3 text-sm text-[var(--text-muted)]">
-							<p>{t("about_page.support_text")}</p>
-							<a
-								href="https://imaoreo.dev/donate"
-								target="_blank"
-								rel="noreferrer"
-								className="rounded-2xl bg-[var(--surface-2)] px-4 py-3 font-medium text-[var(--text)] transition hover:bg-[color-mix(in_srgb,var(--surface-2)_70%,var(--accent)_30%)]"
-							>
-								imaoreo.dev/donate
-							</a>
-							<a
-								href="https://hloth.dev/donate"
-								target="_blank"
-								rel="noreferrer"
-								className="rounded-2xl bg-[var(--surface-2)] px-4 py-3 font-medium text-[var(--text)] transition hover:bg-[color-mix(in_srgb,var(--surface-2)_70%,var(--accent)_30%)]"
-							>
-								hloth.dev/donate
-							</a>
+						<div className="rounded-2xl bg-[var(--surface-2)] p-4">
+							<div className="flex items-start gap-3">
+								<Users className="mt-0.5 h-4.5 w-4.5 text-[var(--text)]" />
+								<div className="grid gap-1">
+									<p className="text-sm font-semibold">
+										{t("about_page.principles.community_title")}
+									</p>
+									<p className="text-sm leading-6 text-[var(--text-muted)]">
+										{t("about_page.principles.community_desc")}
+									</p>
+								</div>
+							</div>
 						</div>
-					</Card>
-				</div>
+						<div className="rounded-2xl bg-[var(--surface-2)] p-4">
+							<div className="flex items-start gap-3">
+								<Rocket className="mt-0.5 h-4.5 w-4.5 text-[var(--text)]" />
+								<div className="grid gap-1">
+									<p className="text-sm font-semibold">
+										{t("about_page.principles.roadmap_title")}
+									</p>
+									<p className="text-sm leading-6 text-[var(--text-muted)]">
+										{t("about_page.principles.roadmap_desc")}
+									</p>
+								</div>
+							</div>
+						</div>
+					</div>
+				</Card>
 
 				<section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
 					{resourceLinks.map((resource) => {
