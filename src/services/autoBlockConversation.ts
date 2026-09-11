@@ -11,6 +11,7 @@
 import type { UiMessage } from "../types/chat-page";
 import type { AlbumDetailsResponse } from "../types/chat-service";
 import type { ConversationEntry, Message, MessagesResponse } from "../types/messages";
+import { mergeConversationForPreserve } from "../utils/conversationMerge";
 import { appLog } from "../utils/logger";
 import { markSelfBlockAction } from "../utils/selfBlockActions";
 import { ApiFunctionError } from "./apiHelpers";
@@ -164,16 +165,6 @@ export function preserveAndAutoBlockConversation(
 	}
 
 	const operation = (async () => {
-		const name = options.conversation.data.name?.trim();
-		const displayName = options.displayName?.trim();
-		const conversation =
-			!name && displayName
-				? {
-						...options.conversation,
-						data: { ...options.conversation.data, name: displayName },
-					}
-				: options.conversation;
-
 		const mayDefer = options.mayDeferOnIncompleteCapture ?? true;
 		const attempt = (preserveAttempts.get(conversationId) ?? 0) + 1;
 
@@ -181,7 +172,15 @@ export function preserveAndAutoBlockConversation(
 			// Persist the inbox metadata before the extra message request. If
 			// that request fails, the block is deliberately not attempted and
 			// the next scan can retry while the server conversation is still
-			// available.
+			// available. Merged with the stored row, because an entry built
+			// from a realtime message carries no photo and often no name, and
+			// after the block neither can be fetched again.
+			const stored = await chatDb.getConversation(conversationId).catch(() => null);
+			const conversation = mergeConversationForPreserve(
+				options.conversation,
+				stored?.entry,
+				options.displayName,
+			);
 			await chatDb.upsertConversation(conversation, options.profileId);
 
 			const snapshot = options.messageSnapshot ?? (await options.fetchMessages());

@@ -89,6 +89,7 @@ function conversationEntryFromRealtimeMessage(
 	message: Message,
 	profileId: string,
 	displayName?: string | null,
+	primaryMediaHash?: string | null,
 ): ConversationEntry {
 	const body = message.body as Record<string, unknown> | null | undefined;
 	return {
@@ -96,7 +97,9 @@ function conversationEntryFromRealtimeMessage(
 		data: {
 			conversationId: message.conversationId,
 			name: displayName?.trim() ?? "",
-			participants: [{ profileId: Number(profileId) }],
+			participants: [
+				{ profileId: Number(profileId), ...(primaryMediaHash ? { primaryMediaHash } : {}) },
+			],
 			lastActivityTimestamp: message.timestamp,
 			unreadCount: 1,
 			muted: false,
@@ -828,6 +831,7 @@ export function ChatRealtimeBridge() {
 							if (isBlockEnabled && !isWhitelisted) {
 								let blockReason = "";
 								let detectedDisplayName = knownDisplayName;
+								let detectedPhotoHash: string | null = null;
 								const matchedMessage = messageText ? getMatchedForbiddenWord(messageText, "message") : null;
 								// Openers are only judged when this really is the first thing this
 								// person has said. chatDb is the record of what they sent before —
@@ -855,6 +859,7 @@ export function ChatRealtimeBridge() {
 										if (profile) {
 											const name = profile.name || profile.displayName || "";
 											detectedDisplayName = name || detectedDisplayName;
+											detectedPhotoHash = profile.profileImageMediaHash ?? null;
 											const bio = profile.aboutMe || "";
 											const age = profile.age;
 											const distance = profile.distanceMeters ?? profile.distance;
@@ -882,12 +887,31 @@ export function ChatRealtimeBridge() {
 
 								if (blockReason) {
 									appLog.info(`[ChatRealtimeBridge] Instant auto-blocking ${pidStr} due to: ${blockReason}`);
+									// A keyword or opener match is decided without the profile,
+									// but this is the last moment it can be read: after the block
+									// the archived chat would keep no name and no photo. The other
+									// reasons already fetched it above.
+									if (matchedMessage || matchedOpener) {
+										const profileForArchive = (await apiFunctions
+											.getProfileDetail(pidStr)
+											.catch(() => null)) as {
+											name?: string | null;
+											displayName?: string | null;
+											profileImageMediaHash?: string | null;
+										} | null;
+										if (profileForArchive) {
+											detectedDisplayName =
+												profileForArchive.name || profileForArchive.displayName || detectedDisplayName;
+											detectedPhotoHash = profileForArchive.profileImageMediaHash ?? null;
+										}
+									}
 									try {
 										await preserveAndAutoBlockConversation({
 											conversation: conversationEntryFromRealtimeMessage(
 												m,
 												pidStr,
 												detectedDisplayName,
+												detectedPhotoHash,
 											),
 											profileId: pidStr,
 											displayName: detectedDisplayName,
