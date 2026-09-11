@@ -14,6 +14,37 @@ import { getOtherParticipant } from "../pages/app/chat/chatUtils";
 import { isProfileAutoblockWhitelisted, checkAndAutoWhitelistActiveChat, getSentMessagesThreshold } from "../utils/privacy";
 import type { ConversationEntry, MessagesResponse } from "../types/messages";
 import { preserveAndAutoBlockConversation } from "../services/autoBlockConversation";
+import * as chatDb from "../services/chatDb";
+import {
+    earliestTimestamp,
+    NO_EARLIER_HISTORY,
+    summarizeEarlierHistory,
+    type EarlierHistory,
+} from "../utils/autoBlockHistory";
+
+/**
+ * What GrindFlop's own history holds from before Grindr's copy of this chat
+ * begins. The scanner's "first message" rules read Grindr's copy, and deleting
+ * a conversation restarts that copy while keeping ours — so whatever someone
+ * sent next looked like their opener. The live message path already checks
+ * chatDb for the same reason. A failed read counts as prior history: a rule
+ * that blocks on someone's first message should not act on a guess.
+ */
+async function readEarlierHistory(
+    conversationId: string,
+    serverMessages: readonly { timestamp?: number | null }[],
+    userId: number | string | null | undefined,
+): Promise<EarlierHistory> {
+    const before = earliestTimestamp(serverMessages);
+    if (before == null) return NO_EARLIER_HISTORY;
+    const earlier = await chatDb
+        .getMessagesPage(conversationId, { beforeTimestamp: before, limit: 50 })
+        .catch(() => null);
+    if (earlier == null) {
+        return { hasOutgoing: true, hasIncoming: true, hasIncomingText: true };
+    }
+    return summarizeEarlierHistory(earlier, userId);
+}
 
 export function BackgroundInboxScanner() {
     const api = useApiFunctions();
@@ -223,7 +254,8 @@ export function BackgroundInboxScanner() {
                                                     const openerBody: any = msg.body;
                                                     const openerText = openerBody && typeof openerBody.text === "string" ? openerBody.text : (typeof msg.body === "string" ? msg.body : "");
                                                     const matchedOpener = getMatchedFirstMessageWord(openerText);
-                                                    if (matchedOpener) {
+                                                    // An opener only if they had said nothing before Grindr's copy of the chat.
+                                                    if (matchedOpener && !(await readEarlierHistory(conversationId, messages, userId)).hasIncoming) {
                                                         blockReason = `First message: "${matchedOpener}"`;
                                                         break;
                                                     }
@@ -289,7 +321,11 @@ export function BackgroundInboxScanner() {
                                             }
                                         }
                                         
-                                        if (firstMsgIsMedia && !hasOutgoing && !hasIncomingText) {
+                                        // After a delete, Grindr's copy can begin mid-conversation; ours still holds the rest.
+                                        const earlier = firstMsgIsMedia && !hasOutgoing && !hasIncomingText
+                                            ? await readEarlierHistory(conversationId, messages, userId)
+                                            : null;
+                                        if (earlier && !earlier.hasOutgoing && !earlier.hasIncomingText) {
                                         const delayEnabled = window.localStorage.getItem("fg-block-media-delay-enabled") === "true";
                                         if (delayEnabled) {
                                             const elapsedMs = Date.now() - firstMsgTimestamp;
@@ -320,7 +356,10 @@ export function BackgroundInboxScanner() {
                                                                     }
                                                                 }
                                                             }
-                                                            if (!hasOutgoingNow && !hasIncomingTextNow) {
+                                                            const earlierNow = !hasOutgoingNow && !hasIncomingTextNow
+                                                                ? await readEarlierHistory(conversationId, messages2, userId)
+                                                                : null;
+                                                            if (earlierNow && !earlierNow.hasOutgoing && !earlierNow.hasIncomingText) {
                                                                 console.log(`[BackgroundInboxScanner] Delayed block: Blocking ${profileId} (${name})`);
                                                                 const delayedBlocked = await blockConversation({
                                                                     conversation,
