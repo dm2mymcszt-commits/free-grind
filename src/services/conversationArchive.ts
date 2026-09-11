@@ -743,7 +743,10 @@ export async function reconcileBlockStateWithBlockedList(
 // Counter-block reconciliation
 // ---------------------------------------------------------------------------
 
-/** Probes per sweep. A block is rare; a slow drip beats a burst of requests. */
+/**
+ * Profile lookups per sweep, across both sources. A block is rare; a slow drip
+ * beats a burst of requests.
+ */
 const MAX_COUNTER_BLOCK_PROBES = 20;
 
 export type CounterBlockReconcileOptions = {
@@ -752,15 +755,19 @@ export type CounterBlockReconcileOptions = {
 	currentUserId: number | null;
 	blockProfile: (profileId: string) => Promise<unknown>;
 	/**
+	 * A live profile fetch, classified. Nobody is blocked back unless this
+	 * answers "blocked" for them during the sweep.
+	 */
+	checkConversationAccessible: (
+		profileId: string,
+	) => Promise<"accessible" | "not_found" | "blocked">;
+	/**
 	 * Only supplied after a sweep that walked the inbox to its last page.
 	 * Without a complete walk, "absent from the inbox" only means "on a page
 	 * this run never asked for".
 	 */
 	missingFromInbox?: {
 		sweepStartedAt: number;
-		checkConversationAccessible: (
-			profileId: string,
-		) => Promise<"accessible" | "not_found" | "blocked">;
 	};
 };
 
@@ -786,10 +793,13 @@ function counterBlockEnabled(): boolean {
  *  - conversations already attributed to the other party (blocked_by_other)
  *    that this account never blocked back;
  *  - conversations the inbox stopped returning, which is what a block looks
- *    like when nothing was pushed. Those are only ever acted on when a live
- *    profile fetch says "blocked" outright — never on a lookup that merely
- *    failed, and never on "not_found", which is a deleted or banned account
- *    rather than someone who blocked you.
+ *    like when nothing was pushed.
+ *
+ * Neither is acted on unless a live profile fetch says "blocked" outright —
+ * never on a lookup that merely failed, and never on "not_found", which is a
+ * deleted or banned account rather than someone who blocked you. That holds
+ * for the first source too: blocked_by_other can be recorded after a lookup
+ * that failed, and trusting it is how deleted accounts got blocked back.
  */
 export async function reconcileCounterBlocks(
 	options: CounterBlockReconcileOptions,
@@ -804,6 +814,20 @@ export async function reconcileCounterBlocks(
 		.listConversations({ includeArchived: true })
 		.catch(() => []);
 
+	// One lookup budget for the whole sweep, so confirming stored attributions
+	// adds no requests on top of the probing below.
+	let probes = 0;
+	// "accessible" on a failed lookup is the deliberate default, here and in the
+	// live path: never conclude someone blocked you from a request that simply
+	// did not come back.
+	const isConfirmedBlock = async (profileId: string): Promise<boolean> => {
+		probes += 1;
+		const status = await options
+			.checkConversationAccessible(profileId)
+			.catch(() => "accessible" as const);
+		return status === "blocked";
+	};
+
 	const targets = new Map<string, string>(); // profileId -> conversationId
 	for (const conversation of stored) {
 		if (conversation.blockState !== "blocked_by_other") continue;
@@ -814,28 +838,28 @@ export async function reconcileCounterBlocks(
 				options.currentUserId,
 			);
 		if (!profileId || alreadyBlocked.has(String(profileId))) continue;
+		if (targets.has(String(profileId))) continue;
+		if (probes >= MAX_COUNTER_BLOCK_PROBES) break;
+		if (!(await isConfirmedBlock(String(profileId)))) {
+			appLog.debug(
+				`[counter-block] ${profileId} not confirmed as blocking this account; not blocking back`,
+			);
+			continue;
+		}
 		targets.set(String(profileId), conversation.conversationId);
 	}
 
 	if (options.missingFromInbox) {
-		const { sweepStartedAt, checkConversationAccessible } = options.missingFromInbox;
+		const { sweepStartedAt } = options.missingFromInbox;
 		const missing = await chatDb
 			.listConversationsMissingFromInbox(sweepStartedAt)
 			.catch(() => []);
-		let probes = 0;
 		for (const conversation of missing) {
 			if (probes >= MAX_COUNTER_BLOCK_PROBES) break;
 			const profileId = conversation.otherProfileId;
 			if (!profileId || alreadyBlocked.has(String(profileId))) continue;
 			if (targets.has(String(profileId))) continue;
-			probes += 1;
-			// "accessible" on a failed probe is the deliberate default here and
-			// in the live path: never conclude someone blocked you from a
-			// request that simply did not come back.
-			const status = await checkConversationAccessible(String(profileId)).catch(
-				() => "accessible" as const,
-			);
-			if (status !== "blocked") continue;
+			if (!(await isConfirmedBlock(String(profileId)))) continue;
 			if (!(await claimBlockStateTransition(conversation.conversationId, "blocked_by_other"))) {
 				continue;
 			}

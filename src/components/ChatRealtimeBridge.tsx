@@ -431,6 +431,23 @@ export function ChatRealtimeBridge() {
 			const pidStr = String(detail.profileId);
 			if (blockedProfileIdsRef.current.has(pidStr)) return;
 
+			// Only block back someone who has actually blocked this account. What
+			// dispatches this can be acting on a profile lookup that failed — a
+			// deleted or banned account, or a dropped request — and treating that
+			// as a block is how "Unknown" profiles were being blocked. A fresh
+			// lookup has to say "blocked"; anything else leaves them alone.
+			let status: "accessible" | "not_found" | "blocked";
+			try {
+				status = classifyProfileAccess(await apiFunctions.getProfileDetail(pidStr));
+			} catch (error) {
+				appLog.warn(`[CounterBlock] Could not confirm ${pidStr} blocked us; not blocking back`, error);
+				return;
+			}
+			if (status !== "blocked") {
+				appLog.info(`[CounterBlock] ${pidStr} is ${status}, not blocked; not blocking back`);
+				return;
+			}
+
 			const name = detail.conversationId
 				? (getDisplayName(detail.conversationId, userIdRef.current) ?? `Profile ${pidStr}`)
 				: `Profile ${pidStr}`;

@@ -33,6 +33,9 @@ function conversation(overrides: Partial<StoredShape>): StoredShape {
 	} as StoredShape;
 }
 
+/** A lookup that confirms the block, for tests about everything else. */
+const confirmsBlock = async () => "blocked" as const;
+
 function setup(options: {
 	stored?: StoredShape[];
 	missing?: StoredShape[];
@@ -64,7 +67,7 @@ describe("counter-block reconciliation", () => {
 		store.set("fg-autoblock-counter-block", "true");
 	});
 
-	test("blocks back someone attributed to the other party", async () => {
+	test("blocks back someone attributed to the other party once a lookup confirms it", async () => {
 		const harness = setup({
 			stored: [conversation({ conversationId: "1:2", otherProfileId: "2", blockState: "blocked_by_other" })],
 		});
@@ -73,9 +76,81 @@ describe("counter-block reconciliation", () => {
 				blockedProfileIds: [],
 				currentUserId: 1,
 				blockProfile: harness.blockProfile,
+				checkConversationAccessible: confirmsBlock,
 			});
 			expect(harness.blocked).toEqual(["2"]);
 			expect(result.counterBlocked).toEqual(["2"]);
+		} finally {
+			harness.restore();
+		}
+	});
+
+	test.each([
+		["accessible" as const],
+		["not_found" as const],
+	])("does not block back a stored attribution when the lookup says %s", async (status) => {
+		const harness = setup({
+			stored: [conversation({ otherProfileId: "2", blockState: "blocked_by_other" })],
+		});
+		try {
+			const result = await reconcileCounterBlocks({
+				blockedProfileIds: [],
+				currentUserId: 1,
+				blockProfile: harness.blockProfile,
+				checkConversationAccessible: async () => status,
+			});
+			// blocked_by_other can be recorded after a lookup that failed. A deleted
+			// account ("not_found") or a visible one is not someone who blocked us.
+			expect(harness.blocked).toEqual([]);
+			expect(result.counterBlocked).toEqual([]);
+		} finally {
+			harness.restore();
+		}
+	});
+
+	test("does not block back a stored attribution when the lookup throws", async () => {
+		const harness = setup({
+			stored: [conversation({ otherProfileId: "2", blockState: "blocked_by_other" })],
+		});
+		try {
+			await reconcileCounterBlocks({
+				blockedProfileIds: [],
+				currentUserId: 1,
+				blockProfile: harness.blockProfile,
+				checkConversationAccessible: async () => {
+					throw new Error("network down");
+				},
+			});
+			expect(harness.blocked).toEqual([]);
+		} finally {
+			harness.restore();
+		}
+	});
+
+	test("stored confirmations share one lookup budget per sweep", async () => {
+		const stored = Array.from({ length: 25 }, (_, i) =>
+			conversation({
+				conversationId: `1:${i + 100}`,
+				otherProfileId: String(i + 100),
+				blockState: "blocked_by_other",
+			}),
+		);
+		const harness = setup({ stored });
+		let lookups = 0;
+		try {
+			await reconcileCounterBlocks({
+				blockedProfileIds: [],
+				currentUserId: 1,
+				blockProfile: harness.blockProfile,
+				checkConversationAccessible: async () => {
+					lookups += 1;
+					return "blocked";
+				},
+			});
+			// Confirming stored attributions must not multiply requests: the rest
+			// are left for the next sweep.
+			expect(lookups).toBe(20);
+			expect(harness.blocked).toHaveLength(20);
 		} finally {
 			harness.restore();
 		}
@@ -91,6 +166,7 @@ describe("counter-block reconciliation", () => {
 				blockedProfileIds: [],
 				currentUserId: 1,
 				blockProfile: harness.blockProfile,
+				checkConversationAccessible: confirmsBlock,
 			});
 			expect(harness.blocked).toEqual([]);
 		} finally {
@@ -107,6 +183,7 @@ describe("counter-block reconciliation", () => {
 				blockedProfileIds: ["2"],
 				currentUserId: 1,
 				blockProfile: harness.blockProfile,
+				checkConversationAccessible: confirmsBlock,
 			});
 			expect(harness.blocked).toEqual([]);
 		} finally {
@@ -126,6 +203,7 @@ describe("counter-block reconciliation", () => {
 				blockedProfileIds: [],
 				currentUserId: 1,
 				blockProfile: harness.blockProfile,
+				checkConversationAccessible: confirmsBlock,
 			});
 			expect(harness.blocked).toEqual([]);
 		} finally {
@@ -142,6 +220,7 @@ describe("counter-block reconciliation", () => {
 				blockedProfileIds: [],
 				currentUserId: 1,
 				blockProfile: harness.blockProfile,
+				checkConversationAccessible: confirmsBlock,
 			});
 			// An incomplete walk cannot tell "gone" from "on a page we skipped".
 			expect(harness.listMissing).not.toHaveBeenCalled();
@@ -163,10 +242,8 @@ describe("counter-block reconciliation", () => {
 				blockedProfileIds: [],
 				currentUserId: 1,
 				blockProfile: harness.blockProfile,
-				missingFromInbox: {
-					sweepStartedAt: 1,
-					checkConversationAccessible: async () => status,
-				},
+				checkConversationAccessible: async () => status,
+				missingFromInbox: { sweepStartedAt: 1 },
 			});
 			expect(harness.blocked).toEqual([]);
 		} finally {
@@ -183,12 +260,10 @@ describe("counter-block reconciliation", () => {
 				blockedProfileIds: [],
 				currentUserId: 1,
 				blockProfile: harness.blockProfile,
-				missingFromInbox: {
-					sweepStartedAt: 1,
-					checkConversationAccessible: async () => {
-						throw new Error("network down");
-					},
+				checkConversationAccessible: async () => {
+					throw new Error("network down");
 				},
+				missingFromInbox: { sweepStartedAt: 1 },
 			});
 			expect(harness.blocked).toEqual([]);
 		} finally {
@@ -212,6 +287,7 @@ describe("counter-block reconciliation", () => {
 					attempted.push(profileId);
 					if (profileId === "2") throw new Error("rejected");
 				},
+				checkConversationAccessible: confirmsBlock,
 			});
 			expect(attempted).toEqual(["2", "3"]);
 			// Only the one that landed is reported; "2" keeps its blocked_by_other

@@ -316,32 +316,29 @@ async function doSync(
 				await chatDb.setSetting(INBOX_SYNC_DONE_SETTING_KEY, true);
 			}
 
-			// Runs on every sync, not just complete ones: the cheap half only
-			// re-attempts blocks already attributed to the other party, which is
-			// what repairs a counter-block whose request failed or whose live
-			// event fired with nothing listening. The probing half is handed the
-			// sweep only when the walk actually reached the last page, since
-			// otherwise "absent from the inbox" just means "never asked for".
+			// Runs on every sync, not just complete ones: one half re-attempts
+			// blocks already attributed to the other party, which is what repairs
+			// a counter-block whose request failed or whose live event fired with
+			// nothing listening. The other half is handed the sweep only when the
+			// walk actually reached the last page, since otherwise "absent from
+			// the inbox" just means "never asked for". Both confirm each block
+			// with a live profile lookup before blocking anyone back.
 			await reconcileCounterBlocks({
 				blockedProfileIds: await apiFunctions
 					.getBlockedProfileIds()
 					.catch(() => [] as string[]),
 				currentUserId: userId,
 				blockProfile: (profileId) => apiFunctions.blockProfile(profileId),
-				missingFromInbox: walkedEveryPage
-					? {
-							sweepStartedAt,
-							checkConversationAccessible: async (profileId) => {
-								try {
-									return classifyProfileAccess(
-										await apiFunctions.getProfileDetail(profileId),
-									);
-								} catch {
-									return "accessible";
-								}
-							},
-						}
-					: undefined,
+				checkConversationAccessible: async (profileId) => {
+					try {
+						return classifyProfileAccess(
+							await apiFunctions.getProfileDetail(profileId),
+						);
+					} catch {
+						return "accessible";
+					}
+				},
+				missingFromInbox: walkedEveryPage ? { sweepStartedAt } : undefined,
 			}).catch((error) => {
 				appLog.warn("[inbox-sync] counter-block reconciliation failed", error);
 			});
