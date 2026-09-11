@@ -63,21 +63,27 @@ export const InterestTabs = memo(function InterestTabs({
 		if (!activeEl) return;
 
 		const updateIndicator = () => {
-			setIndicatorStyle({
-				left: activeEl.offsetLeft,
-				width: activeEl.offsetWidth,
-			});
+			const left = activeEl.offsetLeft;
+			const width = activeEl.offsetWidth;
+			setIndicatorStyle((prev) =>
+				prev.left === left && prev.width === width ? prev : { left, width },
+			);
 		};
 
 		// Initial measurement
 		updateIndicator();
 
-		// Use ResizeObserver to catch width changes during the badge transition
+		// Watch every tab, not only the active one. Both labels change font size
+		// and badge width as the selection moves, so the active tab can shift
+		// sideways without changing size — and an observer on its size alone
+		// never hears about that, which leaves the pill stranded mid-slide.
 		const resizeObserver = new ResizeObserver(() => {
 			updateIndicator();
 		});
 
-		resizeObserver.observe(activeEl);
+		for (const tab of tabsRef.current) {
+			if (tab) resizeObserver.observe(tab);
+		}
 
 		if (!isReady) {
 			requestAnimationFrame(() => {
