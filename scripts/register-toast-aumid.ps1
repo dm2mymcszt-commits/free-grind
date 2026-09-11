@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Registers Free Grind's AppUserModelID so Windows toasts show the app's own
+    Registers GrindFlop's AppUserModelID so Windows toasts show the app's own
     name and icon instead of "Windows PowerShell".
 
 .DESCRIPTION
@@ -46,7 +46,7 @@
 [CmdletBinding()]
 param(
     [string]$Aumid = 'dev.estopia.free-grind',
-    [string]$DisplayName = 'Free Grind',
+    [string]$DisplayName = 'GrindFlop',
     [string]$IconPath,
     [switch]$Unregister
 )
@@ -63,7 +63,7 @@ if ($Unregister) {
     } else {
         Write-Host "AUMID '$Aumid' was not registered; nothing to do."
     }
-    Write-Host 'Restart Free Grind for the change to take effect.'
+    Write-Host 'Restart GrindFlop for the change to take effect.'
     return
 }
 
@@ -92,4 +92,4 @@ Write-Host "Registered AUMID '$Aumid'"
 Write-Host "  DisplayName : $DisplayName"
 Write-Host "  IconUri     : $IconPath"
 Write-Host ''
-Write-Host 'Rebuild and restart Free Grind, then trigger an auto-block to check the toast.'
+Write-Host 'Rebuild and restart GrindFlop, then trigger an auto-block to check the toast.'
