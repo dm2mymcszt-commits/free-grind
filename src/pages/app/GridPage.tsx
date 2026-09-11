@@ -1116,6 +1116,12 @@ export function GridPage() {
 		return hashes;
 	}, [activeProfile]);
 
+	// Read through a ref. As a dependency, sortedCards changed on every new page
+	// of results and every re-sort, handing each memoised tile a new callback and
+	// re-rendering the whole grid.
+	const sortedCardsRef = useRef(sortedCards);
+	sortedCardsRef.current = sortedCards;
+
 	// Stable identity, so the memoised tiles are not invalidated every time any
 	// of this page's other state changes.
 	const handleSelectProfile = useCallback(
@@ -1124,7 +1130,7 @@ export function GridPage() {
 				navigate(`/profile/${profileId}`, {
 					state: {
 						returnTo: `${location.pathname}${location.search}`,
-						profileIds: sortedCards.map((c) => c.profileId),
+						profileIds: sortedCardsRef.current.map((c) => c.profileId),
 					},
 				});
 				return;
@@ -1132,7 +1138,7 @@ export function GridPage() {
 
 			setActiveProfileId(profileId);
 		},
-		[navigate, location.pathname, location.search, sortedCards],
+		[navigate, location.pathname, location.search],
 	);
 
 	const handleMessageProfile = useCallback(
