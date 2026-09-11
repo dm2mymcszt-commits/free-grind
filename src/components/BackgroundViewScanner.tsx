@@ -352,9 +352,12 @@ export function BackgroundViewScanner() {
 					);
 
 					if (recoveryEnabled) {
-						// upsertMany skips rows that haven't actually changed, so handing
-						// it the full merged set writes only new or updated profiles.
-						await interestViewsStore.upsertMany(realProfiles.map(toStoredView), account);
+						// Only this response's viewers can carry anything new: the rest of
+						// realProfiles is the store's own contents read straight back.
+						// Handing over the whole merged set cost one IndexedDB read per saved
+						// viewer on every sweep — thousands, every 30 seconds, on the thread
+						// that scrolls the grid. Same scoping as the auto-block pass below.
+						await interestViewsStore.upsertMany(currentViewers.map(toStoredView), account);
 						if (isCancelled) return;
 						window.localStorage.setItem("fg-view-scanner-last-run", Date.now().toString());
 					}

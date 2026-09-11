@@ -42,9 +42,23 @@ export function useInterestData() {
 			//    position in the list, so its synthetic ID changes as the list
 			//    reorders. Persisting them minted new rows on every refresh and
 			//    inflated the saved-profile count with entries nothing could open.
+			//    Only rows this response lists can carry anything new; the rest of
+			//    normalizedViews is the store read straight back, and rewriting it
+			//    cost one IndexedDB read per saved viewer on every fetch. Hash
+			//    matching keeps recovered previews in.
+			const listedNow = normalizeViews(viewsResponse, [], t);
+			const listedProfileIds = new Set(listedNow.map((item) => item.profileId));
+			const listedImageHashes = new Set(
+				listedNow.flatMap((item) => (item.imageHash ? [item.imageHash] : [])),
+			);
 			await interestViewsStore.upsertMany(
 				normalizedViews
 					.filter((item) => !item.profileId.startsWith(PREVIEW_ID_PREFIX))
+					.filter(
+						(item) =>
+							listedProfileIds.has(item.profileId) ||
+							(item.imageHash != null && listedImageHashes.has(item.imageHash)),
+					)
 					.map((item) => toStoredView(item)),
 				account,
 			);
