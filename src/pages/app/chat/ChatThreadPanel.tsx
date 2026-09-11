@@ -98,7 +98,7 @@ import type { ArchivedReason } from "../../../types/chat-db";
 import { useAvatarCache } from "../../../hooks/useAvatarCache";
 import { resolveAvatarSrc } from "../../../services/avatarStore";
 import { matchSlashCommandsByPrefix, type SlashCommandDef } from "./slashCommands";
-import { getForbiddenWords, setForbiddenWords } from "../../../utils/autoblock";
+import { addKeywordTo } from "../../../utils/autoblock";
 import {
 	SKIP_BLOCK_CONFIRM_KEY,
 	SKIP_UNBLOCK_CONFIRM_KEY,
@@ -1545,10 +1545,12 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 														type="button"
 														onClick={() => {
 															setIsHeaderActionsMenuOpen(false);
-															const currentList = getForbiddenWords();
-															const newList = currentList ? `${currentList}, ${displayName}` : displayName;
-															void setForbiddenWords(newList);
-															toast.success(`Added "${displayName}" to Forbidden Keywords!`);
+															void addKeywordTo("forbidden", displayName, "anywhere")
+																.then(({ added, existing }) => {
+																	if (added) toast.success(`Added "${displayName}" to Forbidden keywords.`);
+																	else if (existing) toast.error(`"${existing.text}" is already in Forbidden keywords.`);
+																})
+																.catch(() => toast.error("Failed to add the keyword."));
 														}}
 														className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text-muted)] transition hover:bg-[var(--surface-2)]"
 													>
@@ -1568,10 +1570,10 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 																if (!bio.trim()) { toast.error("This user has no bio!"); return; }
 																const wordToBan = window.prompt("Trim this bio down to the exact phrase you want to ban:", bio);
 																if (wordToBan && wordToBan.trim()) {
-																	const currentList = getForbiddenWords();
-																	const newList = currentList ? `${currentList}, ${wordToBan.trim()}` : wordToBan.trim();
-																	void setForbiddenWords(newList);
-																	toast.success(`Added "${wordToBan.trim()}" to Forbidden Keywords!`);
+																	const phrase = wordToBan.trim();
+																	const { added, existing } = await addKeywordTo("forbidden", phrase, "anywhere");
+																	if (added) toast.success(`Added "${phrase}" to Forbidden keywords.`);
+																	else if (existing) toast.error(`"${existing.text}" is already in Forbidden keywords.`);
 																}
 															} catch (e) {
 																toast.dismiss(loadToast);
