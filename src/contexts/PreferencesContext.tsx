@@ -306,7 +306,8 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
 		activeRightNowId: null,
 		activeRightNowExpiresAt: null,
 		rightNowRemaining: 0,
-		revealEffectEnabled: true,
+		// Device default until stored preferences load (see loadPreferences).
+		revealEffectEnabled: window.matchMedia("(hover: hover) and (pointer: fine)").matches,
 		revealEffectStrength: "subtle",
 		isLoading: true,
 	});
@@ -325,6 +326,12 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
 					// If the strength wasn't explicitly saved yet, use the device-based default
 					if (decoded.revealEffectStrength === undefined) {
 						decoded.revealEffectStrength = deviceDefaultStrength;
+					}
+
+					// Same for the effect itself. Phones default to off: on an iPhone it
+					// made profiles slow to appear, and the grid filled at once without it.
+					if (decoded.revealEffectEnabled === undefined) {
+						decoded.revealEffectEnabled = isDesktopDevice;
 					}
 
 					const parsed = preferencesSchema.parse(decoded);
@@ -356,6 +363,7 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
 				} else {
 					// No stored preferences at all, apply device defaults immediately
 					dispatch({ type: "SET_REVEAL_EFFECT_STRENGTH", payload: deviceDefaultStrength });
+					dispatch({ type: "SET_REVEAL_EFFECT_ENABLED", payload: isDesktopDevice });
 					// We also need to apply the theme with these defaults
 					applyTheme("system", "#ffcc01", "#1a1a1a", deviceDefaultStrength);
 				}

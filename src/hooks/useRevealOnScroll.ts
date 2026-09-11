@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { usePreferences } from "../contexts/PreferencesContext";
 
+// Phones skip the staggered queue — see the observer below.
+const isCoarsePointer =
+	typeof window !== "undefined" &&
+	typeof window.matchMedia === "function" &&
+	window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+
 // Delay between items during normal (slow) scrolling
 const STAGGER_MS = 30;
 // Delay between items when scrolling fast or queue has built up
@@ -160,6 +166,10 @@ export function useRevealOnScroll(threshold = 0.05, rootMargin = "0px 0px -20px 
 						// Show initially visible elements immediately without delay/animation
 						setIsVisible(true);
 						setWasVisibleInitially(true);
+					} else if (isCoarsePointer) {
+						// Phones reveal on arrival. The queue spaces reveals out on purpose,
+						// and on an iPhone that read as profiles being slow to load.
+						setIsVisible(true);
 					} else {
 						// ALWAYS use the queue to guarantee top-to-bottom order
 						pendingReveals.push({

@@ -1067,6 +1067,32 @@ body.has-titlebar dialog::backdrop {
 	backdrop-filter: none !important;
 }
 
+/* Phones. On an iPhone the reveal effect made profiles slow to appear and
+   stutter in, and the grid filled almost instantly with it off. So phones get a
+   lighter reveal — a short fade and lift, with no blur or scale to rasterize —
+   and glass pills change state at once instead of re-blending their backdrop
+   blur through every frame of a colour transition. */
+@keyframes reveal-row-lite {
+	from {
+		opacity: 0;
+		transform: translateY(12px);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+@media (hover: none) and (pointer: coarse) {
+	:root {
+		--animate-reveal-row: reveal-row-lite 0.28s ease-out backwards;
+	}
+
+	.glass-pill {
+		transition: none;
+	}
+}
+
 /* ÔöÇÔöÇ Leaflet dark mode ÔöÇÔöÇ */
 
 /* Invert only the map tiles ÔÇö pin marker and controls are unaffected */
