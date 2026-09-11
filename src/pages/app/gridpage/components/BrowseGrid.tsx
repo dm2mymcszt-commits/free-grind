@@ -192,9 +192,15 @@ export function BrowseGrid({
 
 	return (
 		<div className="w-full flex flex-col gap-4">
+			{/*
+				Hiding images is a switch on the grid, not a prop on every tile. As a
+				prop it re-rendered every tile the grid had loaded, and each photo
+				animated a 24px blur on the way — on an iPhone, all at once.
+			*/}
 			<div
+				data-hide-images={hideImages ? "" : undefined}
 				className={cn(
-					"w-full grid",
+					"group/grid w-full grid",
 					isDesktop ? "gap-2 px-[var(--app-px)]" : "gap-px",
 				)}
 				style={{
@@ -213,7 +219,6 @@ export function BrowseGrid({
 						onSelectProfile={onSelectProfile}
 						onMessageProfile={onMessageProfile}
 						isDesktop={isDesktop}
-						hideImages={hideImages}
 					/>
 				))}
 			</div>
