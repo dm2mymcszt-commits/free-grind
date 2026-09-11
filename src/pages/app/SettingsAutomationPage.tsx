@@ -1,15 +1,16 @@
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { 
-    Ban, Download, Save, Tag, Upload, Users, UserX,
-    Wand2, Trash2, Eye, EyeOff, ShieldAlert, Crosshair, Image as ImageIcon,
-    MessageSquare, ShieldCheck, Zap
+import {
+    Ban, Crosshair, Eye, EyeOff, Image as ImageIcon, MessageSquare, Radar, Save,
+    ShieldAlert, ShieldCheck, SlidersHorizontal, Tag, Trash2, Users, UserX, Zap,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { BackToSettings } from "../../components/BackToSettings";
 import { ToggleRow } from "../../components/ui/toggle-row";
 import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
+import { CollapsibleSection } from "../../components/ui/collapsible-section";
+import { KeywordEditor } from "../../components/ui/KeywordEditor";
 import { RangeSlider, Slider } from "../../components/ui/range-slider";
 import { interestViewsStore } from "../../services/interestViewsStore";
 import { getLookingForOptions } from "./profile-option-builders";
@@ -18,13 +19,19 @@ import { getAutoBlockWhitelist, removeFromAutoBlockWhitelist, AUTO_BLOCK_WHITELI
 import { useNavigate } from "react-router-dom";
 import { useApiFunctions } from "../../hooks/useApiFunctions";
 import {
-    getForbiddenWords,
-    getFirstMessageWords,
-    setFirstMessageWords as setFirstMessageWordsInStore,
+    FIRST_MESSAGE_WORDS_UPDATED_EVENT,
+    FORBIDDEN_WORDS_UPDATED_EVENT,
+    flagKeywordsForReview,
+    getForbiddenKeywordEntries,
+    getKeywordsToReview,
+    getOpenerEntries,
     INTEREST_VIEW_AUTOBLOCK_STORAGE_KEY,
     INTEREST_VIEW_SCAN_EVENT,
-    setForbiddenWords as setForbiddenWordsInStore,
+    markKeywordsReviewed,
+    setForbiddenKeywordEntries as saveForbiddenEntries,
+    setOpenerEntries as saveOpenerEntries,
 } from "../../utils/autoblock";
+import { parseKeywordList, type KeywordEntry } from "../../utils/keywordList";
 import { useAuth } from "../../contexts/useAuth";
 import {
     GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
@@ -43,20 +50,21 @@ export function SettingsAutomationPage() {
     const [blockOnInterestViews, setBlockOnInterestViews] = useState(
         () => window.localStorage.getItem(INTEREST_VIEW_AUTOBLOCK_STORAGE_KEY) === "true",
     );
-    const [forbiddenWords, setForbiddenWords] = useState(() => getForbiddenWords() || window.localStorage.getItem("fg-forbidden-words") || "");
-    const [firstMessageWords, setFirstMessageWords] = useState(() => getFirstMessageWords());
+    // Keyword lists save as they are edited; the rules below them wait for Save.
+    const [forbiddenEntries, setForbiddenEntries] = useState<KeywordEntry[]>(() => getForbiddenKeywordEntries());
+    const [openerEntries, setOpenerEntries] = useState<KeywordEntry[]>(() => getOpenerEntries());
+    const [keywordsToReview, setKeywordsToReview] = useState<string[]>(() => getKeywordsToReview());
     const [minAge, setMinAge] = useState(() => window.localStorage.getItem("fg-block-min-age") ?? "18");
     const [maxAge, setMaxAge] = useState(() => window.localStorage.getItem("fg-block-max-age") ?? "99");
     const [blockNoAge, setBlockNoAge] = useState(() => window.localStorage.getItem("fg-block-no-age") === "true");
     const [maxDistance, setMaxDistance] = useState(() => window.localStorage.getItem("fg-block-max-distance") ?? "50");
-    const [isClearKeywordsConfirmOpen, setIsClearKeywordsConfirmOpen] = useState(false);
     const [isClearViewsConfirmOpen, setIsClearViewsConfirmOpen] = useState(false);
 
     // Keyword Targets
     const [blockName, setBlockName] = useState(() => window.localStorage.getItem("fg-block-name") !== "false");
     const [blockBio, setBlockBio] = useState(() => window.localStorage.getItem("fg-block-bio") !== "false");
     const [blockMessage, setBlockMessage] = useState(() => window.localStorage.getItem("fg-block-message") !== "false");
-	
+
     // Bot Evasion & Background Scanner
     const [blockFirstMedia, setBlockFirstMedia] = useState(() => window.localStorage.getItem("fg-block-first-media") === "true");
     const [blockMediaDelayEnabled, setBlockMediaDelayEnabled] = useState(() => window.localStorage.getItem("fg-block-media-delay-enabled") === "true");
@@ -92,7 +100,7 @@ export function SettingsAutomationPage() {
             const missingIds = whitelist
                 .filter(x => !x.primaryMediaHash)
                 .map(x => x.profileId);
-            
+
             if (missingIds.length === 0) return;
 
             try {
@@ -105,7 +113,7 @@ export function SettingsAutomationPage() {
                 if (profiles.length > 0) {
                     let updated = false;
                     const list = getAutoBlockWhitelist();
-                    
+
                     for (const p of profiles) {
                         if (!p || typeof p !== "object") continue;
                         const idRaw = (p as { profileId?: unknown }).profileId;
@@ -113,7 +121,7 @@ export function SettingsAutomationPage() {
                         const profileId = String(idRaw);
                         const hashRaw = (p as { profileImageMediaHash?: unknown }).profileImageMediaHash;
                         const nameRaw = (p as { displayName?: unknown }).displayName;
-                        
+
                         const itemIndex = list.findIndex(x => String(x.profileId) === profileId);
                         if (itemIndex !== -1) {
                             const currentItem = list[itemIndex];
@@ -127,7 +135,7 @@ export function SettingsAutomationPage() {
                             }
                         }
                     }
-                    
+
                     if (updated) {
                         window.localStorage.setItem("fg-auto-block-whitelist", JSON.stringify(list));
                         setWhitelist(list);
@@ -154,17 +162,24 @@ export function SettingsAutomationPage() {
         }
     });
 
+    // Keywords added from elsewhere (the Ban keyword dialog, the chat header
+    // menu) arrive here, as do this page's own saves.
     useEffect(() => {
-        const handleWordsUpdated = (e: Event) => {
-            const detail = (e as CustomEvent<string>).detail;
-            if (typeof detail === "string") {
-                setForbiddenWords(detail);
-            } else {
-                setForbiddenWords(getForbiddenWords());
-            }
+        const handleForbiddenUpdated = (event: Event) => {
+            const detail = (event as CustomEvent<string>).detail;
+            setForbiddenEntries(typeof detail === "string" ? parseKeywordList(detail) : getForbiddenKeywordEntries());
+            setKeywordsToReview(getKeywordsToReview());
         };
-        window.addEventListener("fg-forbidden-words-updated", handleWordsUpdated);
-        return () => window.removeEventListener("fg-forbidden-words-updated", handleWordsUpdated);
+        const handleOpenersUpdated = (event: Event) => {
+            const detail = (event as CustomEvent<string>).detail;
+            setOpenerEntries(typeof detail === "string" ? parseKeywordList(detail) : getOpenerEntries());
+        };
+        window.addEventListener(FORBIDDEN_WORDS_UPDATED_EVENT, handleForbiddenUpdated);
+        window.addEventListener(FIRST_MESSAGE_WORDS_UPDATED_EVENT, handleOpenersUpdated);
+        return () => {
+            window.removeEventListener(FORBIDDEN_WORDS_UPDATED_EVENT, handleForbiddenUpdated);
+            window.removeEventListener(FIRST_MESSAGE_WORDS_UPDATED_EVENT, handleOpenersUpdated);
+        };
     }, []);
 
     useEffect(() => {
@@ -181,6 +196,9 @@ export function SettingsAutomationPage() {
                 window.localStorage.getItem(INTEREST_VIEW_AUTOBLOCK_STORAGE_KEY) === "true",
             );
             setWhitelist(getAutoBlockWhitelist());
+            setForbiddenEntries(getForbiddenKeywordEntries());
+            setOpenerEntries(getOpenerEntries());
+            setKeywordsToReview(getKeywordsToReview());
         };
 
         window.addEventListener(
@@ -218,14 +236,6 @@ export function SettingsAutomationPage() {
         return () => clearInterval(interval);
     }, []);
 
-    const handleClearKeywords = () => {
-        setForbiddenWords("");
-        void setForbiddenWordsInStore("");
-        window.localStorage.removeItem("fg-forbidden-words");
-        setIsClearKeywordsConfirmOpen(false);
-        toast.success("All keywords cleared! (Click Save to apply)");
-    };
-
     const handleClearViewsCache = () => {
         setUnlockedViewsCount(0);
         setIsClearViewsConfirmOpen(false);
@@ -235,6 +245,41 @@ export function SettingsAutomationPage() {
             queryClient.invalidateQueries({ queryKey: ["interest", "list"] });
             queryClient.removeQueries({ queryKey: ["interest", "list"] });
         });
+    };
+
+    // --- KEYWORD HANDLERS ---
+    const handleForbiddenChange = (entries: KeywordEntry[]) => {
+        setForbiddenEntries(entries);
+        saveForbiddenEntries(entries).catch((error) => {
+            console.error("Failed to save forbidden keywords", error);
+            toast.error("Couldn't save your keywords.", { id: "keywords-save-failed" });
+        });
+    };
+
+    const handleOpenersChange = (entries: KeywordEntry[]) => {
+        setOpenerEntries(entries);
+        saveOpenerEntries(entries).catch((error) => {
+            console.error("Failed to save opening messages", error);
+            toast.error("Couldn't save your opening messages.", { id: "openers-save-failed" });
+        });
+    };
+
+    // Both update the settings cache before their first await, so the list
+    // read straight after already reflects the change.
+    const handleMarkReviewed = (identities: string[]) => {
+        markKeywordsReviewed(identities).catch((error) => console.error("Failed to save reviewed keywords", error));
+        setKeywordsToReview(getKeywordsToReview());
+    };
+
+    const handleFlagForReview = (identities: string[]) => {
+        flagKeywordsForReview(identities).catch((error) => console.error("Failed to flag keywords for review", error));
+        setKeywordsToReview(getKeywordsToReview());
+    };
+
+    const handleTargetChange = (storageKey: string, setter: (value: boolean) => void) => (checked: boolean) => {
+        setter(checked);
+        window.localStorage.setItem(storageKey, String(checked));
+        window.dispatchEvent(new Event("fg-trigger-inbox-scan"));
     };
 
     // --- TOGGLE HANDLERS ---
@@ -271,10 +316,6 @@ export function SettingsAutomationPage() {
         toast.success(val ? "Views Recovery Enabled" : "Views Recovery Disabled", { id: "view-scanner-toggle" });
     };
 
-
-
-
-
     // --- SAVE HANDLERS ---
     const handleSaveViewScanner = () => {
         window.localStorage.setItem("fg-view-scanner-interval", viewScannerInterval);
@@ -282,30 +323,9 @@ export function SettingsAutomationPage() {
     };
 
     const handleSaveAutoBlock = () => {
-        const cleanedArray = forbiddenWords.split(',').map(word => word.trim()).filter(word => word.length > 0);
-        const uniqueSortedWords = [...new Set(cleanedArray)].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
-        const finalWordsString = uniqueSortedWords.join(', ');
-		
-        setForbiddenWords(finalWordsString);
-        void setForbiddenWordsInStore(finalWordsString);
-
-        const cleanedOpeners = firstMessageWords
-            .split(',')
-            .map((word) => word.trim())
-            .filter((word) => word.length > 0);
-        const finalOpenersString = [...new Set(cleanedOpeners)]
-            .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
-            .join(', ');
-        setFirstMessageWords(finalOpenersString);
-        void setFirstMessageWordsInStore(finalOpenersString);
-
-        window.localStorage.setItem("fg-block-name", String(blockName));
-        window.localStorage.setItem("fg-block-bio", String(blockBio));
-        window.localStorage.setItem("fg-block-message", String(blockMessage));
         window.localStorage.setItem("fg-block-first-media", String(blockFirstMedia));
         window.localStorage.setItem("fg-block-media-delay-enabled", String(blockMediaDelayEnabled));
         window.localStorage.setItem("fg-block-media-delay-minutes", blockMediaDelayMinutes);
-        window.localStorage.setItem("fg-forbidden-words", finalWordsString); 
         window.localStorage.setItem("fg-block-min-age", minAge);
         window.localStorage.setItem("fg-block-max-age", maxAge);
         window.localStorage.setItem("fg-block-no-age", String(blockNoAge));
@@ -328,35 +348,22 @@ export function SettingsAutomationPage() {
         toast.success(t("settings_automation.block_rules_updated", { defaultValue: "Block Rules Updated!" }));
     };
 
-
-
-    const handleExport = () => {
-        const blob = new Blob([forbiddenWords], { type: "text/plain" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "free-grind-keywords.txt";
-        a.click();
-        URL.revokeObjectURL(url);
-        toast.success(t("settings_automation.keywords_exported", { defaultValue: "Keywords Exported!" }));
-    };
-
-    const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            const text = event.target?.result as string;
-            setForbiddenWords(text);
-            toast.success(t("settings_automation.keywords_imported", { defaultValue: "Keywords Imported! Remember to save." }));
-        };
-        reader.readAsText(file);
-    };
-
     // Risk Colors for Views Scanner Slider
     const viewIntervalNum = Number(viewScannerInterval);
     const riskColor = viewIntervalNum < 15 ? "text-red-500" : viewIntervalNum < 30 ? "text-amber-500" : "text-emerald-500";
     const riskLabel = viewIntervalNum < 15 ? "Aggressive (High risk of rate limits / soft-bans)" : viewIntervalNum < 30 ? "Balanced (Moderate risk)" : "Safe (Low risk of rate limits)";
+
+    // --- SECTION SUMMARIES ---
+    const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+    const keywordsSummary = `${plural(forbiddenEntries.length, "keyword")} · ${plural(openerEntries.length, "opening message")}${keywordsToReview.length > 0 ? ` · ${keywordsToReview.length} to review` : ""}`;
+    const messageRulesOn = [blockFirstMedia, skipBlockAfterTwo, blockSeenEnabled, blockFacelessNoMedia].filter(Boolean).length;
+    const profileFiltersSummary = [
+        `Age ${minAge}–${maxAge}`,
+        maxDistance === "" || Number(maxDistance) >= 500 ? "no distance limit" : `${maxDistance} km`,
+        blockedLookingFor.length > 0 ? plural(blockedLookingFor.length, "tag") : null,
+        blockRightNow ? "Right Now" : null,
+    ].filter(Boolean).join(" · ");
+    const scannersSummary = `Scanner ${inboxScannerEnabled ? "on" : "off"} · Blocking back ${counterBlockEnabled ? "on" : "off"}`;
 
     return (
         <section className="app-screen pb-32">
@@ -424,7 +431,7 @@ export function SettingsAutomationPage() {
                                     </div>
                                     <p className={`text-[10px] font-semibold mt-1 px-1 ${riskColor}`}>{riskLabel}</p>
                                 </div>
-								
+
                                 <button
                                     type="button"
                                     onClick={handleSaveViewScanner}
@@ -437,11 +444,9 @@ export function SettingsAutomationPage() {
                     </div>
                 </div>
 
-
-
                 {/* AUTO BLOCK */}
-                <div>
-                    <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+                <div className="grid gap-3">
+                    <p className="-mb-1 px-1 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
                         {t("settings_automation.auto_block_title", { defaultValue: "Auto Block" })}
                     </p>
                     <div className="surface-card divide-y divide-[var(--border)] overflow-hidden">
@@ -462,349 +467,313 @@ export function SettingsAutomationPage() {
                             checked={blockOnInterestViews}
                             onChange={handleToggleInterestViewBlock}
                         />
+                    </div>
 
-                        {(blockOnChat || blockOnInterestViews) && (
-                            <>
-                                {/* Keywords */}
-                                <div className="flex items-start gap-3 p-4">
-                                    <div className="shrink-0 rounded-2xl bg-orange-500/15 p-2.5 text-orange-400">
-                                        <Tag className="h-5 w-5" />
+                    {(blockOnChat || blockOnInterestViews) && (
+                        <>
+                            {/* KEYWORDS */}
+                            <CollapsibleSection
+                                id="automation-keywords"
+                                title="Keywords"
+                                summary={keywordsSummary}
+                                icon={<Tag className="h-5 w-5" />}
+                                iconClass="bg-orange-500/15 text-orange-400"
+                                defaultOpen
+                            >
+                                <div className="grid gap-2 p-4">
+                                    <p className="text-xs font-semibold text-[var(--text-muted)]">Check keywords in</p>
+                                    <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-lg border border-[var(--border)] bg-[var(--surface-1)] p-2">
+                                        <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                                            <input type="checkbox" checked={blockName} onChange={(e) => handleTargetChange("fg-block-name", setBlockName)(e.target.checked)} className="h-3.5 w-3.5 accent-[var(--accent)]" /> Names
+                                        </label>
+                                        <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                                            <input type="checkbox" checked={blockBio} onChange={(e) => handleTargetChange("fg-block-bio", setBlockBio)(e.target.checked)} className="h-3.5 w-3.5 accent-[var(--accent)]" /> Bios
+                                        </label>
+                                        <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                                            <input type="checkbox" checked={blockMessage} onChange={(e) => handleTargetChange("fg-block-message", setBlockMessage)(e.target.checked)} className="h-3.5 w-3.5 accent-[var(--accent)]" /> Messages
+                                        </label>
                                     </div>
-                                    <div className="min-w-0 flex-1">
-                                        <div className="flex items-center justify-between mb-1">
-                                            <p className="text-sm font-semibold leading-snug">
-                                                {t("settings_automation.forbidden_keywords_title", { defaultValue: "Forbidden Keywords" })}
-                                            </p>
-                                            <div className="flex items-center gap-2">
-                                                <button type="button" onClick={() => {
-                                                    const cleaned = forbiddenWords.split(',').map(w => w.trim()).filter(w => w.length > 0);
-                                                    const unique = [...new Set(cleaned)].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
-                                                    const cleanStr = unique.join(', ');
-                                                    setForbiddenWords(cleanStr);
-                                                    void setForbiddenWordsInStore(cleanStr);
-                                                    toast.success("Keywords sorted!");
-                                                }} className="flex items-center gap-1 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--accent)] transition">
-                                                    <Wand2 className="h-3 w-3" /> Clean
-                                                </button>
-                                                <button type="button" onClick={() => setIsClearKeywordsConfirmOpen(true)} className="flex items-center gap-1 text-xs font-semibold text-red-400 hover:text-red-500 transition">
-                                                    <Trash2 className="h-3 w-3" /> Clear
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <p className="mt-0.5 text-xs leading-relaxed text-[var(--text-muted)]">
-                                            {t("settings_automation.forbidden_keywords_desc", { defaultValue: "Block profiles containing these words. Separate with commas." })}
+                                    <p className="text-[11px] text-[var(--text-muted)]">Everything in this section saves as soon as you change it.</p>
+                                </div>
+
+                                {/* Forbidden keywords */}
+                                <div className="grid gap-3 p-4">
+                                    <div>
+                                        <p className="text-sm font-semibold leading-snug">
+                                            {t("settings_automation.forbidden_keywords_title", { defaultValue: "Forbidden Keywords" })}
                                         </p>
-										
-                                        {/* Keyword Targets */}
-                                        <div className="flex flex-wrap gap-x-4 gap-y-2 mt-3 mb-3 border border-[var(--border)] rounded-lg p-2 bg-[var(--surface-1)]">
-                                            <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
-                                                <input type="checkbox" checked={blockName} onChange={(e) => setBlockName(e.target.checked)} className="h-3.5 w-3.5 accent-[var(--accent)]" /> Names
-                                            </label>
-                                            <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
-                                                <input type="checkbox" checked={blockBio} onChange={(e) => setBlockBio(e.target.checked)} className="h-3.5 w-3.5 accent-[var(--accent)]" /> Bios
-                                            </label>
-                                            <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
-                                                <input type="checkbox" checked={blockMessage} onChange={(e) => setBlockMessage(e.target.checked)} className="h-3.5 w-3.5 accent-[var(--accent)]" /> Messages
-                                            </label>
-                                        </div>
-
-                                        <textarea
-                                            value={forbiddenWords}
-                                            onChange={(e) => setForbiddenWords(e.target.value)}
-                                            placeholder={t("settings_automation.keywords_placeholder", { defaultValue: "telegram, bot, cash..." })}
-                                            className="input-field min-h-[100px] resize-y"
-                                        />
-                                        <div className="mt-2 grid grid-cols-2 gap-2">
-                                            <button type="button" onClick={handleExport} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-xs font-semibold transition hover:border-[var(--text-muted)]">
-                                                <Download className="h-3.5 w-3.5" /> {t("settings_automation.export_txt", { defaultValue: "Export" })}
-                                            </button>
-                                            <label className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-xs font-semibold transition hover:border-[var(--text-muted)]">
-                                                <Upload className="h-3.5 w-3.5" /> {t("settings_automation.import_txt", { defaultValue: "Import" })}
-                                                <input type="file" accept=".txt" onChange={handleImport} className="hidden" />
-                                            </label>
-                                        </div>
+                                        <p className="mt-0.5 text-xs leading-relaxed text-[var(--text-muted)]">
+                                            Blocks people whose name, bio or messages match. <span className="font-semibold text-sky-400">Whole</span> blocks
+                                            only when the message is exactly the keyword; <span className="font-semibold text-orange-400">Anywhere</span> blocks
+                                            when it appears inside one. Tap either on a keyword to switch.
+                                        </p>
                                     </div>
+                                    <KeywordEditor
+                                        entries={forbiddenEntries}
+                                        onChange={handleForbiddenChange}
+                                        toReview={keywordsToReview}
+                                        onMarkReviewed={handleMarkReviewed}
+                                        onFlagForReview={handleFlagForReview}
+                                        placeholder="Add a keyword or phrase"
+                                        emptyLabel="No forbidden keywords yet."
+                                        exportFileName="grindflop-keywords.txt"
+                                    />
                                 </div>
 
                                 {/* Opening message blocklist */}
-                                <div className="flex items-start gap-3 p-4">
-                                    <div className="shrink-0 rounded-2xl bg-sky-500/15 p-2.5 text-sky-400">
-                                        <MessageSquare className="h-5 w-5" />
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                        <p className="text-sm font-semibold leading-snug">Opening Message Blocklist</p>
+                                <div className="grid gap-3 p-4">
+                                    <div>
+                                        <p className="text-sm font-semibold leading-snug">Opening Messages</p>
                                         <p className="mt-0.5 text-xs leading-relaxed text-[var(--text-muted)]">
                                             Blocks someone whose <span className="font-semibold text-[var(--text)]">first message</span> is
                                             exactly one of these. The whole message must match, so &quot;hot&quot; catches
                                             &quot;Hot&quot; and &quot;hot!&quot; but never &quot;Hello, hot&quot;, and never a word said
                                             later in the chat.
                                         </p>
-                                        <textarea
-                                            value={firstMessageWords}
-                                            onChange={(e) => setFirstMessageWords(e.target.value)}
-                                            placeholder="hot, hey, ?, sup"
-                                            className="input-field mt-2 min-h-[72px] resize-y"
-                                        />
+                                    </div>
+                                    <KeywordEditor
+                                        entries={openerEntries}
+                                        onChange={handleOpenersChange}
+                                        showModes={false}
+                                        placeholder="Add an opening message"
+                                        emptyLabel="No opening messages yet."
+                                        exportFileName="grindflop-opening-messages.txt"
+                                    />
+                                </div>
+                            </CollapsibleSection>
+
+                            {/* MESSAGE RULES */}
+                            <CollapsibleSection
+                                id="automation-message-rules"
+                                title="Message rules"
+                                summary={`${messageRulesOn} of 4 on`}
+                                icon={<MessageSquare className="h-5 w-5" />}
+                                iconClass="bg-sky-500/15 text-sky-400"
+                            >
+                                {/* Bot Evasion */}
+                                <div className="flex items-start gap-3 p-4">
+                                    <div className="shrink-0 rounded-2xl bg-pink-500/15 p-2.5 text-pink-400">
+                                        <ImageIcon className="h-5 w-5" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-semibold leading-snug">Bot Evasion</p>
+                                        <label className="flex items-start gap-2 mt-2 cursor-pointer">
+                                            <input type="checkbox" checked={blockFirstMedia} onChange={(e) => setBlockFirstMedia(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--accent)] shrink-0" />
+                                            <span className="text-xs text-[var(--text-muted)] leading-relaxed">
+                                                <strong className="text-[var(--text)]">Block if first message is Media.</strong> Catches bots that open with pictures, videos, or albums without text (even if they send multiple media messages).
+                                            </span>
+                                        </label>
+                                        {blockFirstMedia && (
+                                            <div className="mt-3 ml-6 flex flex-col gap-2">
+                                                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                                                    <input type="checkbox" checked={blockMediaDelayEnabled} onChange={(e) => setBlockMediaDelayEnabled(e.target.checked)} className="h-3.5 w-3.5 accent-[var(--accent)]" />
+                                                    <span className="text-[var(--text-muted)]">Delay block decision (Allow follow-up text)</span>
+                                                </label>
+                                                {blockMediaDelayEnabled && (
+                                                    <div className="flex items-center gap-2 pl-5.5">
+                                                        <span className="text-xs text-[var(--text-muted)]">Wait duration:</span>
+                                                        <select
+                                                            value={blockMediaDelayMinutes}
+                                                            onChange={(e) => setBlockMediaDelayMinutes(e.target.value)}
+                                                            className="bg-[var(--surface-1)] border border-[var(--border)] rounded px-2 py-0.5 text-xs text-[var(--text)] focus:outline-none focus:border-[var(--accent)]"
+                                                        >
+                                                            <option value="1">1 minute</option>
+                                                            <option value="2">2 minutes</option>
+                                                            <option value="3">3 minutes</option>
+                                                            <option value="4">4 minutes</option>
+                                                            <option value="5">5 minutes</option>
+                                                        </select>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 
-                                 {/* Bot Evasion */}
-                                 <div className="flex items-start gap-3 p-4">
-                                     <div className="shrink-0 rounded-2xl bg-pink-500/15 p-2.5 text-pink-400">
-                                         <ImageIcon className="h-5 w-5" />
-                                     </div>
-                                     <div className="min-w-0 flex-1">
-                                         <p className="text-sm font-semibold leading-snug">Bot Evasion</p>
-                                         <label className="flex items-start gap-2 mt-2 cursor-pointer">
-                                             <input type="checkbox" checked={blockFirstMedia} onChange={(e) => setBlockFirstMedia(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--accent)] shrink-0" />
-                                             <span className="text-xs text-[var(--text-muted)] leading-relaxed">
-                                                 <strong className="text-[var(--text)]">Block if first message is Media.</strong> Catches bots that open with pictures, videos, or albums without text (even if they send multiple media messages).
-                                             </span>
-                                         </label>
-                                         {blockFirstMedia && (
-                                             <div className="mt-3 ml-6 flex flex-col gap-2">
-                                                 <label className="flex items-center gap-2 text-xs cursor-pointer">
-                                                     <input type="checkbox" checked={blockMediaDelayEnabled} onChange={(e) => setBlockMediaDelayEnabled(e.target.checked)} className="h-3.5 w-3.5 accent-[var(--accent)]" />
-                                                     <span className="text-[var(--text-muted)]">Delay block decision (Allow follow-up text)</span>
-                                                 </label>
-                                                 {blockMediaDelayEnabled && (
-                                                     <div className="flex items-center gap-2 pl-5.5">
-                                                         <span className="text-xs text-[var(--text-muted)]">Wait duration:</span>
-                                                         <select
-                                                             value={blockMediaDelayMinutes}
-                                                             onChange={(e) => setBlockMediaDelayMinutes(e.target.value)}
-                                                             className="bg-[var(--surface-1)] border border-[var(--border)] rounded px-2 py-0.5 text-xs text-[var(--text)] focus:outline-none focus:border-[var(--accent)]"
-                                                         >
-                                                             <option value="1">1 minute</option>
-                                                             <option value="2">2 minutes</option>
-                                                             <option value="3">3 minutes</option>
-                                                             <option value="4">4 minutes</option>
-                                                             <option value="5">5 minutes</option>
-                                                         </select>
-                                                     </div>
-                                                 )}
-                                             </div>
-                                         )}
-                                     </div>
-                                 </div>
+                                {/* Conversation Shield */}
+                                <div className="flex items-start gap-3 p-4">
+                                    <div className="shrink-0 rounded-2xl bg-cyan-500/15 p-2.5 text-cyan-400">
+                                        <MessageSquare className="h-5 w-5" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={skipBlockAfterTwo}
+                                                onChange={(e) => setSkipBlockAfterTwo(e.target.checked)}
+                                                className="h-4 w-4 accent-[var(--accent)] shrink-0"
+                                            />
+                                            <span className="text-xs text-[var(--text-muted)] leading-relaxed">
+                                                <strong className="text-[var(--text)]">Disable Auto-Block for Active Chats.</strong> Automatically whitelists and stops auto-blocking a profile once you have sent them messages.
+                                            </span>
+                                        </label>
+                                        {skipBlockAfterTwo && (
+                                            <div className="mt-2.5 flex items-center gap-2 text-xs text-[var(--text-muted)] pl-6">
+                                                <span>Auto-whitelist profile after sending</span>
+                                                <input
+                                                    type="number"
+                                                    min="1"
+                                                    max="50"
+                                                    value={skipBlockCount}
+                                                    onChange={(e) => setSkipBlockCount(e.target.value)}
+                                                    className="w-14 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-2 py-1 text-center font-bold text-[var(--text)] outline-none transition focus:border-[var(--accent)]"
+                                                />
+                                                <span>sent message{Number(skipBlockCount) !== 1 ? "s" : ""} (default: 3)</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
 
-                                 {/* Inbox Scanner */}
-                                 <div className="flex items-start gap-3 p-4">
-                                     <div className="shrink-0 rounded-2xl bg-yellow-500/15 p-2.5 text-yellow-400">
-                                         <ShieldAlert className="h-5 w-5" />
-                                     </div>
-                                     <div className="min-w-0 flex-1">
-                                         <div className="flex items-center justify-between gap-4">
-                                             <p className="text-sm font-semibold leading-snug">Silent Inbox Scanner</p>
-                                             <button
-                                                 type="button"
-                                                 onClick={() => handleToggleInboxScanner(!inboxScannerEnabled)}
-                                                 className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${inboxScannerEnabled ? "bg-[var(--accent)]" : "bg-[var(--surface-2)]"}`}
-                                             >
-                                                 <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${inboxScannerEnabled ? "translate-x-5" : "translate-x-0"}`} />
-                                             </button>
-                                         </div>
-                                         <p className="mt-1 text-xs leading-relaxed text-[var(--text-muted)]">
-                                             Queues your unread inbox and safely scans profiles in the background to check against your block rules.
-                                         </p>
-                                     </div>
-                                 </div>
+                                {/* Seen / Read Auto-Block */}
+                                <div className="flex items-start gap-3 p-4">
+                                    <div className="shrink-0 rounded-2xl bg-rose-500/15 p-2.5 text-rose-400">
+                                        <EyeOff className="h-5 w-5" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={blockSeenEnabled}
+                                                onChange={(e) => setBlockSeenEnabled(e.target.checked)}
+                                                className="h-4 w-4 accent-[var(--accent)] shrink-0"
+                                            />
+                                            <span className="text-xs text-[var(--text-muted)] leading-relaxed">
+                                                <strong className="text-[var(--text)]">Block if Left on Seen / Read.</strong> Automatically blocks someone if they read your last message but don't reply within the set time.
+                                            </span>
+                                        </label>
+                                        {blockSeenEnabled && (
+                                            <div className="flex items-center gap-2 mt-3 ml-6">
+                                                <span className="text-xs text-[var(--text-muted)]">Block after:</span>
+                                                <select
+                                                    value={blockSeenMinutes}
+                                                    onChange={(e) => setBlockSeenMinutes(e.target.value)}
+                                                    className="bg-[var(--surface-1)] border border-[var(--border)] rounded px-2 py-0.5 text-xs text-[var(--text)] focus:outline-none focus:border-[var(--accent)]"
+                                                >
+                                                    <option value="1">1 minute</option>
+                                                    <option value="2">2 minutes</option>
+                                                    <option value="3">3 minutes</option>
+                                                    <option value="5">5 minutes</option>
+                                                    <option value="10">10 minutes</option>
+                                                    <option value="15">15 minutes</option>
+                                                    <option value="30">30 minutes</option>
+                                                    <option value="60">1 hour</option>
+                                                </select>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
 
-                                 {/* Conversation Shield */}
-                                 <div className="flex items-start gap-3 p-4">
-                                     <div className="shrink-0 rounded-2xl bg-cyan-500/15 p-2.5 text-cyan-400">
-                                         <MessageSquare className="h-5 w-5" />
-                                     </div>
-                                     <div className="min-w-0 flex-1">
-                                         <label className="flex items-center gap-2 cursor-pointer">
-                                             <input
-                                                 type="checkbox"
-                                                 checked={skipBlockAfterTwo}
-                                                 onChange={(e) => setSkipBlockAfterTwo(e.target.checked)}
-                                                 className="h-4 w-4 accent-[var(--accent)] shrink-0"
-                                             />
-                                             <span className="text-xs text-[var(--text-muted)] leading-relaxed">
-                                                 <strong className="text-[var(--text)]">Disable Auto-Block for Active Chats.</strong> Automatically whitelists and stops auto-blocking a profile once you have sent them messages.
-                                             </span>
-                                         </label>
-                                         {skipBlockAfterTwo && (
-                                             <div className="mt-2.5 flex items-center gap-2 text-xs text-[var(--text-muted)] pl-6">
-                                                 <span>Auto-whitelist profile after sending</span>
-                                                 <input
-                                                     type="number"
-                                                     min="1"
-                                                     max="50"
-                                                     value={skipBlockCount}
-                                                     onChange={(e) => setSkipBlockCount(e.target.value)}
-                                                     className="w-14 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-2 py-1 text-center font-bold text-[var(--text)] outline-none transition focus:border-[var(--accent)]"
-                                                 />
-                                                 <span>sent message{Number(skipBlockCount) !== 1 ? "s" : ""} (default: 3)</span>
-                                             </div>
-                                         )}
-                                     </div>
-                                 </div>
+                                {/* Faceless No Media Block */}
+                                <div className="flex items-start gap-3 p-4">
+                                    <div className="shrink-0 rounded-2xl bg-purple-500/15 p-2.5 text-purple-400">
+                                        <Users className="h-5 w-5" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={blockFacelessNoMedia}
+                                                onChange={(e) => setBlockFacelessNoMedia(e.target.checked)}
+                                                className="h-4 w-4 accent-[var(--accent)] shrink-0"
+                                            />
+                                            <span className="text-xs text-[var(--text-muted)] leading-relaxed">
+                                                <strong className="text-[var(--text)]">Block Faceless Profiles with No Media.</strong> Automatically blocks profiles with no profile picture if they haven't sent any media (photos, videos, albums) after the set time from their first message.
+                                            </span>
+                                        </label>
+                                        {blockFacelessNoMedia && (
+                                            <div className="flex items-center gap-2 mt-3 ml-6">
+                                                <span className="text-xs text-[var(--text-muted)]">Block after:</span>
+                                                <select
+                                                    value={blockFacelessDelay}
+                                                    onChange={(e) => setBlockFacelessDelay(e.target.value)}
+                                                    className="bg-[var(--surface-1)] border border-[var(--border)] rounded px-2 py-0.5 text-xs text-[var(--text)] focus:outline-none focus:border-[var(--accent)]"
+                                                >
+                                                    <option value="1">1 minute</option>
+                                                    <option value="2">2 minutes</option>
+                                                    <option value="3">3 minutes</option>
+                                                    <option value="5">5 minutes</option>
+                                                    <option value="10">10 minutes</option>
+                                                    <option value="15">15 minutes</option>
+                                                    <option value="30">30 minutes</option>
+                                                    <option value="60">1 hour</option>
+                                                </select>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </CollapsibleSection>
 
-                                  {/* Auto-Block Blockers (Instant Counter-Block) */}
-                                  <div className="flex items-start gap-3 p-4">
-                                      <div className="shrink-0 rounded-2xl bg-purple-500/15 p-2.5 text-purple-400">
-                                          <UserX className="h-5 w-5" />
-                                      </div>
-                                      <div className="min-w-0 flex-1">
-                                          <label className="flex items-center gap-2 cursor-pointer">
-                                              <input
-                                                  type="checkbox"
-                                                  checked={counterBlockEnabled}
-                                                  onChange={(e) => setCounterBlockEnabled(e.target.checked)}
-                                                  className="h-4 w-4 accent-[var(--accent)] shrink-0"
-                                              />
-                                              <span className="text-xs text-[var(--text-muted)] leading-relaxed">
-                                                  <strong className="text-[var(--text)]">Auto-Block Blockers (Instant Counter-Block).</strong> Automatically blocks users back instantly if they block you.
-                                              </span>
-                                          </label>
-                                      </div>
-                                  </div>
+                            {/* PROFILE FILTERS */}
+                            <CollapsibleSection
+                                id="automation-profile-filters"
+                                title="Profile filters"
+                                summary={profileFiltersSummary}
+                                icon={<SlidersHorizontal className="h-5 w-5" />}
+                                iconClass="bg-emerald-500/15 text-emerald-400"
+                            >
+                                {/* Right Now Auto-Block */}
+                                <div className="flex items-start gap-3 p-4">
+                                    <div className="shrink-0 rounded-2xl bg-amber-500/15 p-2.5 text-amber-400">
+                                        <Zap className="h-5 w-5" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={blockRightNow}
+                                                onChange={(e) => setBlockRightNow(e.target.checked)}
+                                                className="h-4 w-4 accent-[var(--accent)] shrink-0"
+                                            />
+                                            <span className="text-xs text-[var(--text-muted)] leading-relaxed">
+                                                <strong className="text-[var(--text)]">Block Profiles with "Right Now" Status.</strong> Automatically blocks profiles that currently have an active "Right now" status or post.
+                                            </span>
+                                        </label>
+                                    </div>
+                                </div>
 
-                                  {/* Seen / Read Auto-Block */}
-                                  <div className="flex items-start gap-3 p-4">
-                                      <div className="shrink-0 rounded-2xl bg-rose-500/15 p-2.5 text-rose-400">
-                                          <EyeOff className="h-5 w-5" />
-                                      </div>
-                                      <div className="min-w-0 flex-1">
-                                          <label className="flex items-center gap-2 cursor-pointer">
-                                              <input
-                                                  type="checkbox"
-                                                  checked={blockSeenEnabled}
-                                                  onChange={(e) => setBlockSeenEnabled(e.target.checked)}
-                                                  className="h-4 w-4 accent-[var(--accent)] shrink-0"
-                                              />
-                                              <span className="text-xs text-[var(--text-muted)] leading-relaxed">
-                                                  <strong className="text-[var(--text)]">Block if Left on Seen / Read.</strong> Automatically blocks someone if they read your last message but don't reply within the set time.
-                                              </span>
-                                          </label>
-                                          {blockSeenEnabled && (
-                                              <div className="flex items-center gap-2 mt-3 ml-6">
-                                                  <span className="text-xs text-[var(--text-muted)]">Block after:</span>
-                                                  <select
-                                                      value={blockSeenMinutes}
-                                                      onChange={(e) => setBlockSeenMinutes(e.target.value)}
-                                                      className="bg-[var(--surface-1)] border border-[var(--border)] rounded px-2 py-0.5 text-xs text-[var(--text)] focus:outline-none focus:border-[var(--accent)]"
-                                                  >
-                                                      <option value="1">1 minute</option>
-                                                      <option value="2">2 minutes</option>
-                                                      <option value="3">3 minutes</option>
-                                                      <option value="5">5 minutes</option>
-                                                      <option value="10">10 minutes</option>
-                                                      <option value="15">15 minutes</option>
-                                                      <option value="30">30 minutes</option>
-                                                      <option value="60">1 hour</option>
-                                                  </select>
-                                              </div>
-                                          )}
-                                      </div>
-                                  </div>
+                                {/* Tags Block */}
+                                <div className="flex items-start gap-3 p-4">
+                                    <div className="shrink-0 rounded-2xl bg-emerald-500/15 p-2.5 text-emerald-400">
+                                        <Crosshair className="h-5 w-5" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-semibold leading-snug">Block By "Looking For" Tags</p>
 
-                                  {/* Faceless No Media Block */}
-                                  <div className="flex items-start gap-3 p-4">
-                                      <div className="shrink-0 rounded-2xl bg-purple-500/15 p-2.5 text-purple-400">
-                                          <Users className="h-5 w-5" />
-                                      </div>
-                                      <div className="min-w-0 flex-1">
-                                          <label className="flex items-center gap-2 cursor-pointer">
-                                              <input
-                                                  type="checkbox"
-                                                  checked={blockFacelessNoMedia}
-                                                  onChange={(e) => setBlockFacelessNoMedia(e.target.checked)}
-                                                  className="h-4 w-4 accent-[var(--accent)] shrink-0"
-                                              />
-                                              <span className="text-xs text-[var(--text-muted)] leading-relaxed">
-                                                  <strong className="text-[var(--text)]">Block Faceless Profiles with No Media.</strong> Automatically blocks profiles with no profile picture if they haven't sent any media (photos, videos, albums) after the set time from their first message.
-                                              </span>
-                                          </label>
-                                          {blockFacelessNoMedia && (
-                                              <div className="flex items-center gap-2 mt-3 ml-6">
-                                                  <span className="text-xs text-[var(--text-muted)]">Block after:</span>
-                                                  <select
-                                                      value={blockFacelessDelay}
-                                                      onChange={(e) => setBlockFacelessDelay(e.target.value)}
-                                                      className="bg-[var(--surface-1)] border border-[var(--border)] rounded px-2 py-0.5 text-xs text-[var(--text)] focus:outline-none focus:border-[var(--accent)]"
-                                                  >
-                                                      <option value="1">1 minute</option>
-                                                      <option value="2">2 minutes</option>
-                                                      <option value="3">3 minutes</option>
-                                                      <option value="5">5 minutes</option>
-                                                      <option value="10">10 minutes</option>
-                                                      <option value="15">15 minutes</option>
-                                                      <option value="30">30 minutes</option>
-                                                      <option value="60">1 hour</option>
-                                                  </select>
-                                              </div>
-                                          )}
-                                      </div>
-                                  </div>
+                                        <div className="mt-2 mb-3 bg-[var(--surface-1)] border border-[var(--border)] rounded-lg p-3 flex flex-col gap-2">
+                                            <div className="flex flex-col gap-1">
+                                                <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
+                                                    <input type="radio" checked={blockedLookingForMode === "any"} onChange={() => setBlockedLookingForMode("any")} className="h-4 w-4 accent-[var(--accent)]" />
+                                                    Block if they have ANY of these
+                                                </label>
+                                                <p className="text-[10px] text-[var(--text-muted)] pl-6">
+                                                    Blocks the profile if they have one or more of the selected tags.
+                                                </p>
+                                            </div>
+                                            <div className="border-t border-[var(--border)] my-1" />
+                                            <div className="flex flex-col gap-1">
+                                                <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
+                                                    <input type="radio" checked={blockedLookingForMode === "only"} onChange={() => setBlockedLookingForMode("only")} className="h-4 w-4 accent-[var(--accent)]" />
+                                                    Block ONLY if they exclusively want these
+                                                </label>
+                                                <p className="text-[10px] text-[var(--text-muted)] pl-6">
+                                                    Blocks the profile only if all their tags are in the selected list (e.g., if they exclusively want those tags).
+                                                </p>
+                                            </div>
+                                        </div>
 
-                                  {/* Right Now Auto-Block */}
-                                  <div className="flex items-start gap-3 p-4">
-                                      <div className="shrink-0 rounded-2xl bg-amber-500/15 p-2.5 text-amber-400">
-                                          <Zap className="h-5 w-5" />
-                                      </div>
-                                      <div className="min-w-0 flex-1">
-                                          <label className="flex items-center gap-2 cursor-pointer">
-                                              <input
-                                                  type="checkbox"
-                                                  checked={blockRightNow}
-                                                  onChange={(e) => setBlockRightNow(e.target.checked)}
-                                                  className="h-4 w-4 accent-[var(--accent)] shrink-0"
-                                              />
-                                              <span className="text-xs text-[var(--text-muted)] leading-relaxed">
-                                                  <strong className="text-[var(--text)]">Block Profiles with "Right Now" Status.</strong> Automatically blocks profiles that currently have an active "Right now" status or post.
-                                              </span>
-                                          </label>
-                                      </div>
-                                  </div>
-
-                                 {/* Tags Block */}
-                                 <div className="flex items-start gap-3 p-4">
-                                     <div className="shrink-0 rounded-2xl bg-emerald-500/15 p-2.5 text-emerald-400">
-                                         <Crosshair className="h-5 w-5" />
-                                     </div>
-                                     <div className="min-w-0 flex-1">
-                                         <p className="text-sm font-semibold leading-snug">Block By "Looking For" Tags</p>
- 										
-                                         <div className="mt-2 mb-3 bg-[var(--surface-1)] border border-[var(--border)] rounded-lg p-3 flex flex-col gap-2">
-                                             <div className="flex flex-col gap-1">
-                                                 <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
-                                                     <input type="radio" checked={blockedLookingForMode === "any"} onChange={() => setBlockedLookingForMode("any")} className="h-4 w-4 accent-[var(--accent)]" />
-                                                     Block if they have ANY of these
-                                                 </label>
-                                                 <p className="text-[10px] text-[var(--text-muted)] pl-6">
-                                                     Blocks the profile if they have one or more of the selected tags.
-                                                 </p>
-                                             </div>
-                                             <div className="border-t border-[var(--border)] my-1" />
-                                             <div className="flex flex-col gap-1">
-                                                 <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
-                                                     <input type="radio" checked={blockedLookingForMode === "only"} onChange={() => setBlockedLookingForMode("only")} className="h-4 w-4 accent-[var(--accent)]" />
-                                                     Block ONLY if they exclusively want these
-                                                 </label>
-                                                 <p className="text-[10px] text-[var(--text-muted)] pl-6">
-                                                     Blocks the profile only if all their tags are in the selected list (e.g., if they exclusively want those tags).
-                                                 </p>
-                                             </div>
-                                         </div>
-
-                                         <div className="grid grid-cols-2 gap-2 mt-3">
-                                             {getLookingForOptions(t).map((option) => (
-                                                 <label key={option.value} className="flex items-center gap-2 text-xs cursor-pointer bg-[var(--surface-1)] p-2 rounded-lg border border-[var(--border)] transition hover:border-[var(--accent)]">
-                                                     <input type="checkbox" checked={blockedLookingFor.includes(option.value)} onChange={(e) => {
-                                                         if (e.target.checked) setBlockedLookingFor(prev => [...prev, option.value]);
-                                                         else setBlockedLookingFor(prev => prev.filter(v => v !== option.value));
-                                                     }} className="h-3.5 w-3.5 accent-[var(--accent)] shrink-0" />
-                                                     <span className="truncate">{option.label}</span>
-                                                 </label>
-                                             ))}
-                                         </div>
-                                     </div>
-                                 </div>
+                                        <div className="grid grid-cols-2 gap-2 mt-3">
+                                            {getLookingForOptions(t).map((option) => (
+                                                <label key={option.value} className="flex items-center gap-2 text-xs cursor-pointer bg-[var(--surface-1)] p-2 rounded-lg border border-[var(--border)] transition hover:border-[var(--accent)]">
+                                                    <input type="checkbox" checked={blockedLookingFor.includes(option.value)} onChange={(e) => {
+                                                        if (e.target.checked) setBlockedLookingFor(prev => [...prev, option.value]);
+                                                        else setBlockedLookingFor(prev => prev.filter(v => v !== option.value));
+                                                    }} className="h-3.5 w-3.5 accent-[var(--accent)] shrink-0" />
+                                                    <span className="truncate">{option.label}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
 
                                 {/* Age & Distance Limits */}
                                 <div className="flex items-start gap-3 p-4">
@@ -818,7 +787,7 @@ export function SettingsAutomationPage() {
                                         <p className="mt-0.5 text-xs leading-relaxed text-[var(--text-muted)]">
                                             {t("settings_automation.age_limits_desc", { defaultValue: "Block anyone outside of this range." })}
                                         </p>
-										
+
                                         <div className="mt-4 px-2 grid gap-6">
                                             <RangeSlider
                                                 label={t("browse_filters.age", { defaultValue: "Age Limit" })}
@@ -831,14 +800,14 @@ export function SettingsAutomationPage() {
                                                     setMaxAge(String(max));
                                                 }}
                                             />
-                                            
+
                                             <label className="flex items-start gap-2 -mt-2 cursor-pointer">
                                                 <input type="checkbox" checked={blockNoAge} onChange={(e) => setBlockNoAge(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--accent)] shrink-0" />
                                                 <span className="text-xs text-[var(--text-muted)] leading-relaxed">
                                                     <strong className="text-[var(--text)]">Block profiles with no age set.</strong> Prevents profiles that hide their age from bypassing the age limit rules.
                                                 </span>
                                             </label>
-											
+
                                             <Slider
                                                 label="Max Distance (Kilometers)"
                                                 min={1}
@@ -854,91 +823,137 @@ export function SettingsAutomationPage() {
                                         </div>
                                     </div>
                                 </div>
+                            </CollapsibleSection>
 
-                                 {/* Whitelisted exceptions */}
-                                 <div className="flex items-start gap-3 p-4">
-                                     <div className="shrink-0 rounded-2xl bg-emerald-500/15 p-2.5 text-emerald-400">
-                                         <ShieldCheck className="h-5 w-5" />
-                                     </div>
-                                     <div className="min-w-0 flex-1">
-                                         <p className="text-sm font-semibold leading-snug">Auto-Block Whitelist</p>
-                                         <p className="mt-0.5 text-xs leading-relaxed text-[var(--text-muted)]">
-                                             Profiles added here are excluded from auto-blocking rules.
-                                         </p>
-
-                                         {whitelist.length === 0 ? (
-                                             <p className="mt-3 text-xs text-[var(--text-muted)] italic">No profiles whitelisted yet.</p>
-                                         ) : (
-                                             <div className="mt-3 max-h-[200px] overflow-y-auto border border-[var(--border)] rounded-xl bg-[var(--surface-1)] divide-y divide-[var(--border)]">
-                                                 {whitelist.map((profile) => (
-                                                      <div key={profile.profileId} className="flex items-center justify-between p-2.5 text-xs gap-3">
-                                                          <div
-                                                              onClick={() => navigate(`/profile/${profile.profileId}`, { state: { returnTo: "/settings/automation" } })}
-                                                              className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer hover:bg-[var(--surface-2)]/40 p-1 -m-1 rounded-lg transition"
-                                                          >
-                                                              <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full border border-[var(--border)] bg-[var(--surface-2)]">
-                                                                  {profile.primaryMediaHash ? (
-                                                                      <img
-                                                                          src={getThumbImageUrl(profile.primaryMediaHash, "75x75")}
-                                                                          alt=""
-                                                                          className="h-full w-full object-cover"
-                                                                      />
-                                                                  ) : (
-                                                                      <div className="flex h-full w-full items-center justify-center font-bold text-[var(--text-muted)] uppercase text-[10px]">
-                                                                          {profile.displayName ? profile.displayName.slice(0, 2) : "??"}
-                                                                      </div>
-                                                                  )}
-                                                              </div>
-                                                              <div className="min-w-0 flex-1">
-                                                                  <p className="font-semibold truncate text-[var(--text)] hover:text-[var(--accent)] transition">{profile.displayName}</p>
-                                                                  <p className="text-[10px] text-[var(--text-muted)] mt-0.5">ID: {profile.profileId}</p>
-                                                              </div>
-                                                          </div>
-                                                         <button
-                                                             type="button"
-                                                             onClick={() => {
-                                                                 removeFromAutoBlockWhitelist(profile.profileId);
-                                                                 setWhitelist(getAutoBlockWhitelist());
-                                                                 toast.success(`Removed ${profile.displayName} from whitelist.`);
-                                                             }}
-                                                             className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-2.5 py-1 font-semibold text-[var(--text-muted)] hover:border-red-400 hover:text-red-400 transition"
-                                                         >
-                                                             Remove
-                                                         </button>
-                                                     </div>
-                                                 ))}
-                                             </div>
-                                         )}
-                                     </div>
-                                 </div>
-
-                                <div className="p-4">
-                                    <button
-                                        type="button"
-                                        onClick={handleSaveAutoBlock}
-                                        className="btn-accent inline-flex w-full min-h-11 items-center justify-center gap-2 px-4 py-2.5 font-semibold"
-                                    >
-                                        <Save className="h-4 w-4" />
-                                        {t("settings_automation.update_block_rules", { defaultValue: "Save Auto-Block Settings" })}
-                                    </button>
+                            {/* SCANNERS AND BLOCKING BACK */}
+                            <CollapsibleSection
+                                id="automation-scanners"
+                                title="Scanners and blocking back"
+                                summary={scannersSummary}
+                                icon={<Radar className="h-5 w-5" />}
+                                iconClass="bg-yellow-500/15 text-yellow-400"
+                            >
+                                {/* Inbox Scanner */}
+                                <div className="flex items-start gap-3 p-4">
+                                    <div className="shrink-0 rounded-2xl bg-yellow-500/15 p-2.5 text-yellow-400">
+                                        <ShieldAlert className="h-5 w-5" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center justify-between gap-4">
+                                            <p className="text-sm font-semibold leading-snug">Silent Inbox Scanner</p>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleToggleInboxScanner(!inboxScannerEnabled)}
+                                                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${inboxScannerEnabled ? "bg-[var(--accent)]" : "bg-[var(--surface-2)]"}`}
+                                            >
+                                                <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${inboxScannerEnabled ? "translate-x-5" : "translate-x-0"}`} />
+                                            </button>
+                                        </div>
+                                        <p className="mt-1 text-xs leading-relaxed text-[var(--text-muted)]">
+                                            Queues your unread inbox and safely scans profiles in the background to check against your block rules.
+                                        </p>
+                                    </div>
                                 </div>
-                            </>
-                        )}
-                    </div>
+
+                                {/* Auto-Block Blockers (Instant Counter-Block) */}
+                                <div className="flex items-start gap-3 p-4">
+                                    <div className="shrink-0 rounded-2xl bg-purple-500/15 p-2.5 text-purple-400">
+                                        <UserX className="h-5 w-5" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={counterBlockEnabled}
+                                                onChange={(e) => setCounterBlockEnabled(e.target.checked)}
+                                                className="h-4 w-4 accent-[var(--accent)] shrink-0"
+                                            />
+                                            <span className="text-xs text-[var(--text-muted)] leading-relaxed">
+                                                <strong className="text-[var(--text)]">Auto-Block Blockers (Instant Counter-Block).</strong> Automatically blocks users back instantly if they block you.
+                                            </span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </CollapsibleSection>
+
+                            {/* EXCEPTIONS */}
+                            <CollapsibleSection
+                                id="automation-exceptions"
+                                title="Exceptions"
+                                summary={whitelist.length === 0 ? "No one whitelisted" : `${plural(whitelist.length, "profile")} whitelisted`}
+                                icon={<ShieldCheck className="h-5 w-5" />}
+                                iconClass="bg-emerald-500/15 text-emerald-400"
+                            >
+                                <div className="p-4">
+                                    <p className="text-sm font-semibold leading-snug">Auto-Block Whitelist</p>
+                                    <p className="mt-0.5 text-xs leading-relaxed text-[var(--text-muted)]">
+                                        Profiles added here are excluded from auto-blocking rules.
+                                    </p>
+
+                                    {whitelist.length === 0 ? (
+                                        <p className="mt-3 text-xs text-[var(--text-muted)] italic">No profiles whitelisted yet.</p>
+                                    ) : (
+                                        <div className="mt-3 max-h-[200px] overflow-y-auto border border-[var(--border)] rounded-xl bg-[var(--surface-1)] divide-y divide-[var(--border)]">
+                                            {whitelist.map((profile) => (
+                                                <div key={profile.profileId} className="flex items-center justify-between p-2.5 text-xs gap-3">
+                                                    <div
+                                                        onClick={() => navigate(`/profile/${profile.profileId}`, { state: { returnTo: "/settings/automation" } })}
+                                                        className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer hover:bg-[var(--surface-2)]/40 p-1 -m-1 rounded-lg transition"
+                                                    >
+                                                        <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full border border-[var(--border)] bg-[var(--surface-2)]">
+                                                            {profile.primaryMediaHash ? (
+                                                                <img
+                                                                    src={getThumbImageUrl(profile.primaryMediaHash, "75x75")}
+                                                                    alt=""
+                                                                    className="h-full w-full object-cover"
+                                                                />
+                                                            ) : (
+                                                                <div className="flex h-full w-full items-center justify-center font-bold text-[var(--text-muted)] uppercase text-[10px]">
+                                                                    {profile.displayName ? profile.displayName.slice(0, 2) : "??"}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <div className="min-w-0 flex-1">
+                                                            <p className="font-semibold truncate text-[var(--text)] hover:text-[var(--accent)] transition">{profile.displayName}</p>
+                                                            <p className="text-[10px] text-[var(--text-muted)] mt-0.5">ID: {profile.profileId}</p>
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            removeFromAutoBlockWhitelist(profile.profileId);
+                                                            setWhitelist(getAutoBlockWhitelist());
+                                                            toast.success(`Removed ${profile.displayName} from whitelist.`);
+                                                        }}
+                                                        className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-2.5 py-1 font-semibold text-[var(--text-muted)] hover:border-red-400 hover:text-red-400 transition"
+                                                    >
+                                                        Remove
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </CollapsibleSection>
+
+                            <div className="grid gap-1.5">
+                                <button
+                                    type="button"
+                                    onClick={handleSaveAutoBlock}
+                                    className="btn-accent inline-flex w-full min-h-11 items-center justify-center gap-2 px-4 py-2.5 font-semibold"
+                                >
+                                    <Save className="h-4 w-4" />
+                                    {t("settings_automation.update_block_rules", { defaultValue: "Save Auto-Block Settings" })}
+                                </button>
+                                <p className="px-1 text-center text-[11px] text-[var(--text-muted)]">
+                                    Saves message rules, profile filters and blocking back. Keywords save on their own.
+                                </p>
+                            </div>
+                        </>
+                    )}
                 </div>
 
             </div>
-
-            <ConfirmDialog
-                isOpen={isClearKeywordsConfirmOpen}
-                title="Clear All Keywords"
-                message="Are you sure you want to delete all your forbidden keywords? This cannot be undone unless you have a backup."
-                confirmLabel="Delete All"
-                cancelLabel="Cancel"
-                onConfirm={handleClearKeywords}
-                onCancel={() => setIsClearKeywordsConfirmOpen(false)}
-                confirmTone="danger"
-            />
 
             <ConfirmDialog
                 isOpen={isClearViewsConfirmOpen}
