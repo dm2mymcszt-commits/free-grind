@@ -657,9 +657,38 @@ export const interestViewsStore = {
 		if (!db) return;
 
 		return new Promise((resolve) => {
-			const tx = db.transaction(STORE_NAME, "readwrite");
+			// A session can end by completing, erroring or aborting. Each path has
+			// to close the connection and settle the caller exactly once.
+			let settled = false;
+			const settle = () => {
+				if (settled) return;
+				settled = true;
+				db.close();
+				resolve();
+			};
+
+			let tx: IDBTransaction;
+			try {
+				tx = db.transaction(STORE_NAME, "readwrite");
+			} catch (error) {
+				appLog.warn("[interestStore] could not start an upsert transaction", error);
+				settle();
+				return;
+			}
 			const store = tx.objectStore(STORE_NAME);
 			const now = Date.now();
+
+			// Once a transaction has aborted — iOS can end one when it suspends
+			// the app — every request still queued reports an error, and a put
+			// issued from those handlers throws rather than failing quietly.
+			// Nothing caught that, so it surfaced as the full-screen crash overlay.
+			const putSafely = (value: StoredInterestView) => {
+				try {
+					store.put(value);
+				} catch (error) {
+					appLog.warn("[interestStore] skipped a write to a finished transaction", error);
+				}
+			};
 
 			for (const row of writableRows) {
 				// Read-modify-write rather than a blind put: the incoming row is
@@ -685,7 +714,7 @@ export const interestViewsStore = {
 						return;
 					}
 
-					store.put({
+					putSafely({
 						...row,
 						viewCount,
 						viewTimestamps,
@@ -694,11 +723,16 @@ export const interestViewsStore = {
 						updatedAt: now,
 					});
 				};
-				existingRequest.onerror = () => {
+				existingRequest.onerror = (event) => {
+					// Left alone, one failed read aborts the whole batch and takes every
+					// other row's write with it. Keep the transaction alive, and keep the
+					// error from bubbling to tx.onerror, which would settle mid-batch.
+					event.preventDefault();
+					event.stopPropagation();
 					// Couldn't read the prior row — still store the update rather than
 					// dropping it, just without carrying history forward.
 					const viewTimestamps = row.timestamp != null ? [row.timestamp] : undefined;
-					store.put({
+					putSafely({
 						...row,
 						viewCount: resolveViewCount(undefined, row.viewCount, viewTimestamps),
 						viewTimestamps,
@@ -709,15 +743,20 @@ export const interestViewsStore = {
 			}
 
 			tx.oncomplete = () => {
-				db.close();
-				resolve();
+				settle();
 				void this.maybeCleanup();
 			};
 
 			tx.onerror = (e) => {
 				appLog.error("[interestStore] IDB Upsert Error", e);
-				db.close();
-				resolve();
+				settle();
+			};
+
+			// Without this an aborted session never settled: the caller's await
+			// hung forever and the connection stayed open.
+			tx.onabort = () => {
+				appLog.warn("[interestStore] upsert transaction aborted", tx.error);
+				settle();
 			};
 		});
 	},
