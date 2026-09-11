@@ -16,7 +16,7 @@
 				"width": 1000,
 				"height": 800,
 				"decorations": false,
-				"transparent": false,
+				"transparent": true,
 				"shadow": false,
 				"userAgent": "GrindFlop/0.5.3"
 			}

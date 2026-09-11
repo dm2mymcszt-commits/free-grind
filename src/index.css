@@ -414,10 +414,7 @@
 	html.has-titlebar,
 	body.has-titlebar {
 		--titlebar-height: 32px;
-		/* The desktop window is opaque, so the shell paints its own ground. A
-		   transparent window pushes the whole surface through per-pixel alpha
-		   compositing every frame, which is a steep price for rounded corners. */
-		background: var(--bg) !important;
+		background: transparent !important;
 	}
 
 	body.has-titlebar #app,
@@ -444,13 +441,6 @@
 		height: 100vh;
 		overflow-y: auto;
 		border-radius: 20px;
-	}
-
-	/* Square against an opaque window: a radius would clip to hard corners
-	   with nothing behind them to show through. */
-	body.has-titlebar #app,
-	body.has-titlebar .app-shell {
-		border-radius: 0;
 	}
 
 	body {
