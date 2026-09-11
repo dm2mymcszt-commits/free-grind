@@ -35,16 +35,50 @@ export const FeedScrollContainer = forwardRef<HTMLDivElement, FeedScrollContaine
 				smoothWheel: true,
 			});
 
-			let rafId: number;
-			function raf(time: number) {
+			// Same fix as SmoothScroll: only pump frames while this feed is
+			// actually moving. Left running, the loop keeps the compositor awake
+			// on an idle screen — and the grid and interest feeds each own one.
+			const wrapper = innerRef.current;
+			let rafId: number | null = null;
+			let idleFrames = 0;
+
+			const pump = (time: number) => {
 				lenis.raf(time);
-				rafId = requestAnimationFrame(raf);
+				idleFrames = lenis.isScrolling ? 0 : idleFrames + 1;
+				if (idleFrames > SMOOTH_SCROLL_CONFIG.idleFramesBeforeStop) {
+					rafId = null;
+					return;
+				}
+				rafId = requestAnimationFrame(pump);
+			};
+
+			const wake = () => {
+				idleFrames = 0;
+				if (rafId === null) {
+					rafId = requestAnimationFrame(pump);
+				}
+			};
+
+			const localEvents = ["wheel", "pointerdown", "touchstart"] as const;
+			for (const type of localEvents) {
+				wrapper.addEventListener(type, wake, { passive: true });
 			}
-			rafId = requestAnimationFrame(raf);
+			window.addEventListener("keydown", wake);
+			window.addEventListener("resize", wake);
+			lenis.on("scroll", wake);
+			wake();
 
 			return () => {
+				for (const type of localEvents) {
+					wrapper.removeEventListener(type, wake);
+				}
+				window.removeEventListener("keydown", wake);
+				window.removeEventListener("resize", wake);
+				lenis.off("scroll", wake);
+				if (rafId !== null) {
+					cancelAnimationFrame(rafId);
+				}
 				lenis.destroy();
-				cancelAnimationFrame(rafId);
 			};
 		}, [isDesktop]);
 
