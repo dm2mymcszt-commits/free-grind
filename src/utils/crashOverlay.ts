@@ -24,6 +24,33 @@ function ensureOverlay(): HTMLDivElement {
 	el.style.whiteSpace = "pre-wrap";
 	el.style.wordBreak = "break-word";
 	el.style.pointerEvents = "auto";
+
+	// Not every uncaught error is fatal — a failed background write reached this
+	// overlay too — so it must never be the only way out of the app. Dismissed
+	// messages stay in seenMessages, so a repeating error doesn't reopen it.
+	const header = document.createElement("div");
+	header.style.position = "sticky";
+	header.style.top = "0";
+	header.style.display = "flex";
+	header.style.justifyContent = "flex-end";
+	header.style.marginBottom = "12px";
+
+	const dismiss = document.createElement("button");
+	dismiss.type = "button";
+	dismiss.textContent = "Dismiss";
+	dismiss.style.padding = "8px 14px";
+	dismiss.style.border = "1px solid rgba(255,255,255,0.35)";
+	dismiss.style.borderRadius = "8px";
+	dismiss.style.background = "rgba(40, 0, 0, 0.95)";
+	dismiss.style.color = "#fff";
+	dismiss.style.font = "inherit";
+	dismiss.addEventListener("click", () => {
+		el.remove();
+		overlayEl = null;
+	});
+
+	header.appendChild(dismiss);
+	el.appendChild(header);
 	document.body.appendChild(el);
 	overlayEl = el;
 	return el;
