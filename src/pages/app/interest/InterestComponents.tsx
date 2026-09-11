@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, memo, type CSSProperties } from "react";
+import { memo, type CSSProperties } from "react";
 import { Eye, Lock, Ban, History, MoveHorizontal, CalendarDays, Clock, Trophy } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { getThumbImageUrl } from "../../../utils/media";
@@ -33,9 +33,6 @@ export const InterestTabs = memo(function InterestTabs({
 	newTapsCount?: number;
 }) {
 	const { t } = useTranslation();
-	const tabsRef = useRef<(HTMLButtonElement | null)[]>([]);
-	const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 });
-	const [isReady, setIsReady] = useState(false);
 
 	const isViewsFirst = firstTab === "views";
 
@@ -57,66 +54,27 @@ export const InterestTabs = memo(function InterestTabs({
 		? (activeTab === "views" ? 0 : 1)
 		: (activeTab === "taps" ? 0 : 1);
 
-	// Sync indicator with the active tab's position and size in real-time
-	useLayoutEffect(() => {
-		const activeEl = tabsRef.current[activeIndex];
-		if (!activeEl) return;
-
-		const updateIndicator = () => {
-			const left = activeEl.offsetLeft;
-			const width = activeEl.offsetWidth;
-			setIndicatorStyle((prev) =>
-				prev.left === left && prev.width === width ? prev : { left, width },
-			);
-		};
-
-		// Initial measurement
-		updateIndicator();
-
-		// Watch every tab, not only the active one. Both labels change font size
-		// and badge width as the selection moves, so the active tab can shift
-		// sideways without changing size — and an observer on its size alone
-		// never hears about that, which leaves the pill stranded mid-slide.
-		const resizeObserver = new ResizeObserver(() => {
-			updateIndicator();
-		});
-
-		for (const tab of tabsRef.current) {
-			if (tab) resizeObserver.observe(tab);
-		}
-
-		if (!isReady) {
-			requestAnimationFrame(() => {
-				requestAnimationFrame(() => setIsReady(true));
-			});
-		}
-
-		return () => resizeObserver.disconnect();
-	}, [activeIndex, isReady, newViewsCount, newTapsCount]);
-
 	return (
-		<div className="glass-pill relative inline-flex items-center p-1">
+		<div className="glass-pill relative inline-grid grid-cols-2 items-center p-1">
 			{/*
-				The Sliding Pill:
-				- Transitions width and position based on the measured active tab.
-				- This creates a natural "stretch" look as it moves.
+				The sliding pill. Both tabs share one column width, so the pill is always
+				exactly one column wide and moves by translating a whole column. Nothing
+				is measured, and it animates a transform rather than left and width, so
+				WebKit has no layout animation to leave stranded part-way — which is how
+				it kept freezing as a small circle over the wrong tab.
 			*/}
 			<div
-				className={cn(
-					"absolute top-1 bottom-1 rounded-full bg-[var(--accent)] shadow-sm",
-					isReady ? "transition-all duration-300 ease-out" : "transition-none"
-				)}
+				aria-hidden="true"
+				className="absolute top-1 bottom-1 left-1 rounded-full bg-[var(--accent)] shadow-sm transition-transform duration-300 ease-out"
 				style={{
-					width: indicatorStyle.width,
-					left: indicatorStyle.left,
-					transform: shouldBounce ? "translateX(8px)" : "translateX(0)",
+					width: "calc(50% - 0.25rem)",
+					transform: `translateX(calc(${activeIndex * 100}% + ${shouldBounce ? 8 : 0}px))`,
 				}}
 			/>
 
 			{labels.map((label, i) => (
 				<button
 					key={label}
-					ref={(el) => { tabsRef.current[i] = el; }}
 					type="button"
 					onClick={handlers[i]}
 					className={cn(
