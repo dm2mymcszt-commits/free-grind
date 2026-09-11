@@ -11,7 +11,7 @@ const FAST_FLUSH_THRESHOLD = 4;
 const FAST_SCROLL_VELOCITY = 1.5;
 
 // Internal queue of elements waiting to be shown
-let pendingReveals: { offsetTop: number; resolve: () => void }[] = [];
+let pendingReveals: { offsetTop: number; resolve: () => void; show: () => void }[] = [];
 let revealTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Scroll direction + velocity tracking
@@ -107,11 +107,22 @@ export function useRevealOnScroll(threshold = 0.05, rootMargin = "0px 0px -20px 
 		lastScrollY = typeof window !== "undefined" ? window.scrollY : 0;
 		scrollDirection = "down";
 
-		// Clear the queue and timer when navigating to a new page to prevent ghost animations
+		// Clear the queue and timer when navigating to a new page to prevent ghost
+		// animations. Anything still queued has already stopped observing its
+		// element, though, so simply dropping it leaves it invisible for good —
+		// and a memoised row that never re-renders gets no second chance. Show
+		// those at once instead of animating them. Deferred, since this runs
+		// during render and they belong to other components.
+		const stranded = pendingReveals;
 		pendingReveals = [];
 		if (revealTimer) {
 			clearTimeout(revealTimer);
 			revealTimer = null;
+		}
+		if (stranded.length > 0) {
+			setTimeout(() => {
+				for (const item of stranded) item.show();
+			}, 0);
 		}
 	}
 
@@ -155,6 +166,10 @@ export function useRevealOnScroll(threshold = 0.05, rootMargin = "0px 0px -20px 
 							offsetTop: (entry.target as HTMLElement).offsetTop,
 							resolve: () => {
 								setIsVisible(true);
+							},
+							show: () => {
+								setIsVisible(true);
+								setWasVisibleInitially(true);
 							},
 						});
 
