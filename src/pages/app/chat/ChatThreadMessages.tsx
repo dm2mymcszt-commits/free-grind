@@ -1,7 +1,8 @@
-import { Album, Ban, Copy, Download, Eye, Hourglass, Lock, MessageCircleQuestion, MessageSquarePlus, Mic, MoreVertical, Play, Repeat2, Reply, ShieldCheck, Trash2, Undo2, VideoOff, ImageOff } from "lucide-react";
+import { Album, Ban, Copy, Download, Eye, Hourglass, Lock, MessageCircleQuestion, MessageSquarePlus, Mic, MoreVertical, Play, Repeat2, Reply, ShieldCheck, Trash2, Undo2 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { MapLocationPreview } from "../gridpage/components/MapLocationPreview";
 import { AudioMessagePlayer } from "./AudioMessagePlayer";
+import { UnavailableMediaCard } from "./UnavailableMediaCard";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import React, { Fragment, useEffect, useState, useMemo, useCallback, useRef, useLayoutEffect } from "react";
 import { formatRelativeTime } from "../../../utils/relativeTime";
@@ -315,6 +316,12 @@ export function ChatThreadMessages({
 	);
 	const [hoveredMediaMessageId, setHoveredMediaMessageId] = useState<string | null>(null);
 	const [contextMenuState, setContextMenuState] = useState<{ messageId: string; x: number; y: number } | null>(null);
+	// Media whose file would not load: never saved on this device, and its link
+	// no longer works. Keyed by URL, so a copy that turns up later still shows.
+	const [unloadableMediaKeys, setUnloadableMediaKeys] = useState<Set<string>>(() => new Set());
+	const markMediaUnloadable = useCallback((key: string) => {
+		setUnloadableMediaKeys((previous) => (previous.has(key) ? previous : new Set(previous).add(key)));
+	}, []);
 
 	const reactionButtonRefs = useRef<Map<string, HTMLElement>>(new Map());
 	const prevReactionCountsRef = useRef<Map<string, number>>(new Map());
@@ -1068,6 +1075,8 @@ export function ChatThreadMessages({
                     const msgBody = message.body as any;
                     const isExpiredVideo = !videoUrl && msgBody?._videoExpired === true;
                     const isExpiredImage = !imageUrl && msgBody?._imageExpired === true;
+                    const imageFailedToLoad = Boolean(imageUrl) && unloadableMediaKeys.has(`${message.messageId}|${imageUrl}`);
+                    const videoFailedToLoad = Boolean(videoUrl) && unloadableMediaKeys.has(`${message.messageId}|${videoUrl}`);
                     const isUnsupportedMessage =
                         messageText === t("chat.thread.unsupported_placeholder") ||
                         messageText === `[${message.type}]`;
@@ -1301,7 +1310,7 @@ export function ChatThreadMessages({
                                         </div>
                                     ) : null}
 
-                                    {imageUrl ? (
+                                    {imageUrl && !imageFailedToLoad ? (
                                         <div
                                             role="button"
                                             tabIndex={0}
@@ -1341,6 +1350,7 @@ export function ChatThreadMessages({
                                             <img
                                                 src={imageUrl}
                                                 alt={t("chat.thread.shared_alt")}
+                                                onError={() => markMediaUnloadable(`${message.messageId}|${imageUrl}`)}
                                                 className={`${message.type === "Giphy" && hasReply ? "max-h-96 w-full object-cover" : isImageOnlyBubble ? "max-h-80 w-full object-cover" : "max-h-64 w-full object-cover"} ${mediaBlurClassName}`}
                                             />
                                             {localOnly && (
@@ -1515,35 +1525,27 @@ export function ChatThreadMessages({
                                             />
                                         ) : null}
 
-                                        {isExpiredImage ? (
-                                            <div className={`relative flex items-center justify-center overflow-hidden bg-black/80 ${isImageOnlyBubble ? `w-full ${hasReply ? "" : `rounded-2xl ${tailCorner}`}` : "mb-2 rounded-xl border border-black/10"}`} style={{ minHeight: "12rem", minWidth: "12rem" }}>
-                                                <div className="flex flex-col items-center gap-1.5 text-white/60">
-                                                    <ImageOff className="h-6 w-6" />
-                                                    <span className="text-xs font-medium">{t("chat.thread.image_expired")}</span>
-                                                </div>
-                                                {isImageOnlyBubble && (
-                                                    <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-3 py-2 text-[10px] text-white">
-                                                        <span>{formatMessageTime(message.timestamp, nowTimestamp, t)}</span>
-                                                    </div>
-                                                )}
-                                            </div>
+                                        {isExpiredImage || imageFailedToLoad ? (
+                                            <UnavailableMediaCard
+                                                kind="image"
+                                                expired={isExpiredImage}
+                                                fillsBubble={isImageOnlyBubble}
+                                                roundedClassName={hasReply ? "" : `rounded-2xl ${tailCorner}`}
+                                                timeLabel={formatMessageTime(message.timestamp, nowTimestamp, t)}
+                                            />
                                         ) : null}
 
-                                        {isExpiredVideo ? (
-                                            <div className={`relative flex items-center justify-center overflow-hidden bg-black/80 ${isVideoOnlyBubble ? `w-full ${hasReply ? "" : `rounded-2xl ${tailCorner}`}` : "mb-2 rounded-xl border border-black/10"}`} style={{ minHeight: "12rem", minWidth: "16rem" }}>
-                                                <div className="flex flex-col items-center gap-1.5 text-white/60">
-                                                    <VideoOff className="h-6 w-6" />
-                                                    <span className="text-xs font-medium">{t("chat.thread.video_expired")}</span>
-                                                </div>
-                                                {isVideoOnlyBubble && (
-                                                    <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-3 py-2 text-[10px] text-white">
-                                                        <span>{formatMessageTime(message.timestamp, nowTimestamp, t)}</span>
-                                                    </div>
-                                                )}
-                                            </div>
+                                        {isExpiredVideo || videoFailedToLoad ? (
+                                            <UnavailableMediaCard
+                                                kind="video"
+                                                expired={isExpiredVideo}
+                                                fillsBubble={isVideoOnlyBubble}
+                                                roundedClassName={hasReply ? "" : `rounded-2xl ${tailCorner}`}
+                                                timeLabel={formatMessageTime(message.timestamp, nowTimestamp, t)}
+                                            />
                                         ) : null}
-                                        
-                                        {videoUrl ? (() => {
+
+                                        {videoUrl && !videoFailedToLoad ? (() => {
                                             const videoMaxViews = typeof msgBody?.maxViews === "number" ? msgBody.maxViews : 2147483647;
                                             const isLimitedVideo = videoMaxViews !== 2147483647;
                                             return (
@@ -1587,6 +1589,7 @@ export function ChatThreadMessages({
                                                         preload="metadata"
                                                         muted
                                                         src={videoUrl}
+                                                        onError={() => markMediaUnloadable(`${message.messageId}|${videoUrl}`)}
                                                         onLoadedMetadata={(e) => { (e.currentTarget as HTMLVideoElement).currentTime = 0.001; }}
                                                         className={`w-full object-cover ${isVideoOnlyBubble ? "max-h-80" : "max-h-64"} ${mediaBlurClassName}`}
                                                     />
