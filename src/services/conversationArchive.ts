@@ -358,7 +358,7 @@ export async function toggleArchiveOnConversationDelete(
 			// later, the matching "You were unblocked" one too, since block_state
 			// never got set). Falls back to isProfileFound's plain found/not-found
 			// when unavailable. Default to "accessible" when neither check is
-			// conclusive, erring toward the far more common case.
+			// conclusive, which below means leaving the conversation untouched.
 			let status: "accessible" | "not_found" | "blocked";
 			if (checkConversationAccessible && otherProfileId) {
 				status = await checkConversationAccessible(otherProfileId).catch(
@@ -414,10 +414,23 @@ export async function toggleArchiveOnConversationDelete(
 				return;
 			}
 
-			// status is "accessible" or "blocked" — either way, a
-			// chat.v1.conversation.delete fired for a real reason (not just a
-			// profile lookup coming up empty), so treat it as a genuine block
-			// by the other party.
+			// Only a lookup that says "blocked" is evidence the other party
+			// blocked us. The same event fires when this account deletes the
+			// conversation somewhere the local marker can't reach — another
+			// device, a delete echo arriving late — and on an unblock, and in
+			// all of those their profile is simply visible. Treating
+			// "accessible" as a block archived those chats with a false "You
+			// were blocked" and set counter-block on people who had done
+			// nothing. A lookup that failed also lands on "accessible"; a real
+			// block missed that way is still caught by the inbox sweep, which
+			// acts only on "blocked".
+			if (status !== "blocked") {
+				appLog.debug(
+					`[conversation-archive] ${conversationId} is still visible — a delete or an unblock, not a block; leaving it alone`,
+				);
+				return;
+			}
+
 			if (await claimBlockStateTransition(conversationId, "blocked_by_other")) {
 				await archiveConversation(conversationId, "ws_delete");
 				archived.push(conversationId);

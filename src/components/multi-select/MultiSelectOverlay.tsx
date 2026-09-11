@@ -5,6 +5,7 @@ import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 import { useApiFunctions } from "../../hooks/useApiFunctions";
 import { deleteConversationOnly } from "../../services/chatDb";
+import { markConversationDeleteHandled } from "../../services/conversationArchive";
 
 export function MultiSelectOverlay() {
     const { isActive, selectedItems, viewType, deactivateMode, selectableItems, setSelectedItems } = useMultiSelect();
@@ -84,6 +85,9 @@ export function MultiSelectOverlay() {
                 case "delete":
                     for (const item of selectedItems) {
                         try {
+                            // Our own delete comes back as the same WS event a block does. Mark it
+                            // first, as the chat screen does, so it isn't read as them blocking us.
+                            markConversationDeleteHandled(item.id);
                             await api.deleteConversation(item.id);
                             await deleteConversationOnly(item.id);
                             successCount++;
