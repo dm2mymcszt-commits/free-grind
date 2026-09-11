@@ -3,7 +3,8 @@ set -eu
 
 # tauri ios init regenerates src-tauri/gen/apple from its templates, and both
 # CI workflows delete that directory before running it. So the launch screen
-# lives outside it, and has to be laid back in after every init.
+# and the app icon live outside it, and have to be laid back in after every
+# init.
 
 SRC="src-tauri/ios-launch"
 DEST="src-tauri/gen/apple"
@@ -19,4 +20,9 @@ for name in LaunchLogo.imageset LaunchBackground.colorset; do
 	cp -R "$SRC/$name" "$DEST/Assets.xcassets/$name"
 done
 
-echo "apply-ios-launch-screen: launch screen applied to $DEST"
+# init fills AppIcon.appiconset with Tauri's placeholder logo. These carry the
+# same file names as init's own Contents.json, so replacing the images in place
+# is enough — the catalog needs no other change.
+cp "$SRC"/AppIcon.appiconset/*.png "$DEST/Assets.xcassets/AppIcon.appiconset/"
+
+echo "apply-ios-launch-screen: launch screen and app icon applied to $DEST"
