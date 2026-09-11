@@ -96,6 +96,9 @@ jobs:
           rm -rf src-tauri/gen/apple
           bunx tauri ios init --ci
 
+      - name: Apply launch screen
+        run: sh scripts/apply-ios-launch-screen.sh
+
       - name: Configure iOS authentication framework
         run: |
           sh scripts/configure-ios-google-oauth.sh \

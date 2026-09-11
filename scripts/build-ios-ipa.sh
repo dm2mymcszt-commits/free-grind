@@ -7,6 +7,7 @@ if [ -z "${FREE_GRIND_GOOGLE_IOS_CLIENT_ID:-}" ]; then
 fi
 
 sh scripts/tauri.sh ios init --ci
+sh scripts/apply-ios-launch-screen.sh
 bun run build
 
 PROJECT_SPEC="src-tauri/gen/apple/project.yml"
