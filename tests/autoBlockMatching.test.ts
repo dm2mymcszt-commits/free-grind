@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 // autoblock.ts imports the Tauri notification plugin for the notify half of
 // the module, which has no browserless implementation to import. `mock.module`
@@ -36,8 +36,15 @@ globalScope.window = {
 	dispatchEvent: () => true,
 };
 
-const { getMatchedForbiddenWord, getMatchedFirstMessageWord, hasRightNowStatus } =
-	await import("../src/utils/autoblock");
+const {
+	getForbiddenWords,
+	getKeywordsToReview,
+	getMatchedForbiddenWord,
+	getMatchedFirstMessageWord,
+	hasRightNowStatus,
+	loadAutomationCache,
+} = await import("../src/utils/autoblock");
+const chatDb = await import("../src/services/chatDb");
 
 function setKeywords(list: string): void {
 	store.set("fg-forbidden-words", list);
@@ -82,6 +89,38 @@ describe("forbidden keyword matching", () => {
 		store.set("fg-block-name", "false");
 		expect(getMatchedForbiddenWord("fem", "name")).toBeNull();
 		expect(getMatchedForbiddenWord("fem", "bio")).toBe("fem");
+	});
+});
+
+// "tu cherches" blocked someone who wrote "Salut, tu cherches quoi ?". A quoted
+// entry is the fix: it only matches when that is the entire message.
+describe("whole-message keywords", () => {
+	beforeEach(() => {
+		store.clear();
+	});
+
+	test("a quoted phrase blocks only a message that is exactly that phrase", () => {
+		setKeywords('"tu cherches"');
+		expect(getMatchedForbiddenWord("Tu cherches ?", "message")).toBe("tu cherches");
+		expect(getMatchedForbiddenWord("  tu   cherches ", "message")).toBe("tu cherches");
+		expect(getMatchedForbiddenWord("Salut, tu cherches quoi ?", "message")).toBeNull();
+	});
+
+	test("a bare phrase still matches anywhere", () => {
+		setKeywords("best gay space");
+		expect(getMatchedForbiddenWord("Join the best gay space now", "message")).toBe("best gay space");
+	});
+
+	test("a quoted entry means the whole name or bio too", () => {
+		setKeywords('"fem"');
+		expect(getMatchedForbiddenWord("Fem", "name")).toBe("fem");
+		expect(getMatchedForbiddenWord("fem sub", "name")).toBeNull();
+	});
+
+	test("both kinds work side by side", () => {
+		setKeywords('telegram, "tu cherches"');
+		expect(getMatchedForbiddenWord("add me on telegram", "message")).toBe("telegram");
+		expect(getMatchedForbiddenWord("tu cherches", "message")).toBe("tu cherches");
 	});
 });
 
@@ -150,5 +189,62 @@ describe("first-message-only openers", () => {
 		store.clear();
 		expect(getMatchedFirstMessageWord("hot")).toBeNull();
 		expect(getMatchedFirstMessageWord("")).toBeNull();
+	});
+
+	test("an opener with a comma in it is one entry", () => {
+		store.set("fg-first-message-words", '"salut, ça va", hot');
+		expect(getMatchedFirstMessageWord("Salut, ça va ?")).toBe("salut, ça va");
+		expect(getMatchedFirstMessageWord("salut")).toBeNull();
+	});
+});
+
+// Kept last: loading the cache makes it, not localStorage, the source of the
+// list, so the suites above would read stale values if this ran first.
+describe("keyword format upgrade", () => {
+	afterEach(async () => {
+		// Leave an empty cache behind so later files fall back to localStorage.
+		store.clear();
+		const getSetting = spyOn(chatDb, "getSetting").mockResolvedValue(null as never);
+		try {
+			await loadAutomationCache();
+		} finally {
+			getSetting.mockRestore();
+		}
+	});
+
+	test("an old list is read with its phrases as whole messages, without being written back", async () => {
+		store.clear();
+		const getSetting = spyOn(chatDb, "getSetting").mockResolvedValue({
+			forbiddenWords: "telegram, tu cherches",
+		} as never);
+		const setSetting = spyOn(chatDb, "setSetting").mockResolvedValue(undefined as never);
+		try {
+			await loadAutomationCache();
+			expect(getForbiddenWords()).toBe('telegram, "tu cherches"');
+			expect(getKeywordsToReview()).toEqual(["tu cherches"]);
+			expect(getMatchedForbiddenWord("salut tu cherches quoi", "message")).toBeNull();
+			expect(getMatchedForbiddenWord("telegram", "message")).toBe("telegram");
+			// A device that has not synced yet must not replace a newer list.
+			expect(setSetting).not.toHaveBeenCalled();
+		} finally {
+			getSetting.mockRestore();
+			setSetting.mockRestore();
+		}
+	});
+
+	test("a list already in the new format is read as written", async () => {
+		store.clear();
+		const getSetting = spyOn(chatDb, "getSetting").mockResolvedValue({
+			forbiddenWords: "hey sexy",
+			keywordFormat: 2,
+		} as never);
+		try {
+			await loadAutomationCache();
+			expect(getForbiddenWords()).toBe("hey sexy");
+			expect(getKeywordsToReview()).toEqual([]);
+			expect(getMatchedForbiddenWord("well hey sexy", "message")).toBe("hey sexy");
+		} finally {
+			getSetting.mockRestore();
+		}
 	});
 });

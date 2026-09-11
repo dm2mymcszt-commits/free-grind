@@ -2,6 +2,20 @@ import { isPermissionGranted, requestPermission, sendNotification } from "@tauri
 import { isTauriRuntime } from "../services/tauriWebSocket";
 import { getSetting, setSetting } from "../services/chatDb";
 import { appLog } from "./logger";
+import {
+    addKeywords,
+    canMatchAnywhere,
+    findKeyword,
+    KEYWORD_LIST_FORMAT,
+    normalizeWholeText,
+    parseKeywordList,
+    pruneReviewList,
+    serializeKeywordList,
+    serializeOpenerList,
+    upgradeLegacyKeywordList,
+    type KeywordEntry,
+    type KeywordMatchMode,
+} from "./keywordList";
 
 const notificationCache = new Map<string, number>();
 const DEDUPLICATION_WINDOW_MS = 2 * 60 * 1000; // 2 minutes
@@ -153,8 +167,12 @@ export async function notifyAutoBlockBatch(
 }
 
 // --- JAY'S PERFORMANCE CACHE + YOUR EXACT MATCH REGEX ---
+type CompiledKeyword =
+    | { keyword: string; whole: true }
+    | { keyword: string; whole: false; regex: RegExp };
+
 let lastSavedWords: string | null = null;
-let cachedRegexes: { keyword: string, regex: RegExp }[] = [];
+let cachedKeywords: CompiledKeyword[] = [];
 
 // Target can be: "name", "bio", or "message"
 export function getMatchedForbiddenWord(text: string | null | undefined, target: "name" | "bio" | "message"): string | null {
@@ -170,16 +188,22 @@ export function getMatchedForbiddenWord(text: string | null | undefined, target:
 
     // Jay's Cache Logic: Only re-compile the Regexes if you changed your settings!
     if (savedWords !== lastSavedWords) {
-        const compiled: { keyword: string, regex: RegExp }[] = [];
+        const compiled: CompiledKeyword[] = [];
         const uncompilable: string[] = [];
-        for (const word of savedWords.split(',')) {
-            const keyword = word.trim().toLowerCase();
-            if (keyword.length === 0) continue;
-            const cleanKeyword = keyword.replace(/\s+/g, ' ');
+        for (const entry of parseKeywordList(savedWords)) {
+            if (entry.mode === "whole") {
+                // A quoted entry only matches a name, bio or message that is
+                // that entry and nothing more. "tu cherches" is worth blocking
+                // as someone's whole message and harmless in the middle of one.
+                compiled.push({ keyword: normalizeWholeText(entry.text), whole: true });
+                continue;
+            }
+            const cleanKeyword = entry.text.toLowerCase();
             const escaped = cleanKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             try {
                 compiled.push({
                     keyword: cleanKeyword,
+                    whole: false,
                     // Unicode-aware word boundaries (\p{L} = Any Unicode Letter, \p{N} = Number)
                     // Prevents accidental partial matches (e.g. "sub" matching "submit") while matching
                     // French words with accents (é, è, à, ç) and multi-word phrases cleanly.
@@ -198,16 +222,19 @@ export function getMatchedForbiddenWord(text: string | null | undefined, target:
         if (uncompilable.length > 0) {
             appLog.warn("[AutoBlock] ignoring forbidden keyword(s) that cannot be compiled", uncompilable);
         }
-        cachedRegexes = compiled;
+        cachedKeywords = compiled;
         lastSavedWords = savedWords;
     }
 
-    if (cachedRegexes.length === 0) return null;
+    if (cachedKeywords.length === 0) return null;
 
     const normalizedText = text.replace(/\s+/g, ' ').trim();
+    const wholeText = normalizeWholeText(text);
 
-    for (const item of cachedRegexes) {
-        if (item.regex.test(text) || item.regex.test(normalizedText)) {
+    for (const item of cachedKeywords) {
+        if (item.whole) {
+            if (item.keyword === wholeText) return item.keyword;
+        } else if (item.regex.test(text) || item.regex.test(normalizedText)) {
             return item.keyword; // Boom. Caught safely without false positives.
         }
     }
@@ -332,6 +359,13 @@ export interface AutomationSettings {
     firstMessageWords: string;
     refreshEnabled: boolean;
     refreshInterval: string;
+    /**
+     * The KEYWORD_LIST_FORMAT forbiddenWords is written in. Missing on lists
+     * saved before whole-message entries existed.
+     */
+    keywordFormat?: number;
+    /** Phrases the format upgrade switched to whole-message matching, until the user reviews them. */
+    keywordsToReview?: string[];
 }
 
 const DEFAULT_AUTOMATION_SETTINGS: AutomationSettings = {
@@ -360,9 +394,34 @@ export async function loadAutomationCache(): Promise<void> {
             automationCache.forbiddenWords = localWords;
             await setSetting(AUTOMATION_SETTINGS_KEY, automationCache).catch(() => {});
         }
+        upgradeKeywordFormat();
     } catch (error) {
         appLog.error("[AutoBlock] failed to load automation settings", error);
         automationCache = DEFAULT_AUTOMATION_SETTINGS;
+    }
+}
+
+/**
+ * Reads a list saved before whole-message entries existed in today's format.
+ *
+ * Deliberately not written back: this runs at startup and after every sync,
+ * and a write from a device that has not pulled yet could replace a newer
+ * list from another device. The upgrade gives the same result on every
+ * device, and the first real edit saves it.
+ */
+function upgradeKeywordFormat(): void {
+    if ((automationCache.keywordFormat ?? 1) >= KEYWORD_LIST_FORMAT) return;
+    const upgrade = upgradeLegacyKeywordList(automationCache.forbiddenWords);
+    automationCache = {
+        ...automationCache,
+        forbiddenWords: upgrade.value,
+        keywordFormat: KEYWORD_LIST_FORMAT,
+        keywordsToReview: [
+            ...new Set([...(automationCache.keywordsToReview ?? []), ...upgrade.switchedToWhole]),
+        ],
+    };
+    if (typeof window !== "undefined" && upgrade.value) {
+        window.localStorage.setItem("fg-forbidden-words", upgrade.value);
     }
 }
 
@@ -387,13 +446,90 @@ export function getForbiddenWords(): string {
     return "";
 }
 
+export const FORBIDDEN_WORDS_UPDATED_EVENT = "fg-forbidden-words-updated";
+export const FIRST_MESSAGE_WORDS_UPDATED_EVENT = "fg-first-message-words-updated";
+
 export async function setForbiddenWords(value: string): Promise<void> {
+    // setAutomationSettings updates the cache before its first await, so
+    // anything reacting to the events below already reads the new list.
+    const saving = setAutomationSettings({
+        forbiddenWords: value,
+        keywordFormat: KEYWORD_LIST_FORMAT,
+        keywordsToReview: pruneReviewList(parseKeywordList(value), automationCache.keywordsToReview ?? []),
+    });
     if (typeof window !== "undefined") {
         window.localStorage.setItem("fg-forbidden-words", value);
         window.dispatchEvent(new Event("fg-trigger-inbox-scan"));
-        window.dispatchEvent(new CustomEvent("fg-forbidden-words-updated", { detail: value }));
+        window.dispatchEvent(new CustomEvent(FORBIDDEN_WORDS_UPDATED_EVENT, { detail: value }));
     }
-    await setAutomationSettings({ forbiddenWords: value });
+    await saving;
+}
+
+export function getForbiddenKeywordEntries(): KeywordEntry[] {
+    return parseKeywordList(getForbiddenWords());
+}
+
+export function setForbiddenKeywordEntries(entries: readonly KeywordEntry[]): Promise<void> {
+    return setForbiddenWords(serializeKeywordList(entries));
+}
+
+/** Phrases still waiting to be reviewed after the format upgrade, by keyword identity. */
+export function getKeywordsToReview(): string[] {
+    return pruneReviewList(getForbiddenKeywordEntries(), automationCache.keywordsToReview ?? []);
+}
+
+export async function markKeywordsReviewed(identities: readonly string[]): Promise<void> {
+    const reviewed = new Set(identities);
+    await setAutomationSettings({
+        keywordsToReview: getKeywordsToReview().filter((identity) => !reviewed.has(identity)),
+    });
+}
+
+/** Imported phrases that were switched to whole-message matching wait for review too. */
+export async function flagKeywordsForReview(identities: readonly string[]): Promise<void> {
+    if (identities.length === 0) return;
+    await setAutomationSettings({
+        keywordsToReview: pruneReviewList(getForbiddenKeywordEntries(), [
+            ...(automationCache.keywordsToReview ?? []),
+            ...identities,
+        ]),
+    });
+}
+
+export type KeywordListName = "forbidden" | "openers";
+
+function entriesOf(list: KeywordListName): KeywordEntry[] {
+    return list === "forbidden" ? getForbiddenKeywordEntries() : getOpenerEntries();
+}
+
+export function findKeywordIn(list: KeywordListName, text: string): KeywordEntry | null {
+    return findKeyword(entriesOf(list), text);
+}
+
+/**
+ * Adds one keyword unless the list already has it, in which case nothing is
+ * written and the entry that was already there comes back so the caller can
+ * say so.
+ */
+export async function addKeywordTo(
+    list: KeywordListName,
+    text: string,
+    mode: KeywordMatchMode,
+): Promise<{ added: KeywordEntry | null; existing: KeywordEntry | null }> {
+    // Openers always match the whole message, and an anywhere entry cannot
+    // hold a comma without being saved as a whole-message one.
+    const effectiveMode = list === "openers" || !canMatchAnywhere(text) ? "whole" : mode;
+    const result = addKeywords(entriesOf(list), [{ text, mode: effectiveMode }]);
+    const added = result.added[0] ?? null;
+    if (!added) {
+        return { added: null, existing: result.duplicates[0] ?? null };
+    }
+    if (list === "forbidden") {
+        await setForbiddenKeywordEntries(result.entries);
+    } else {
+        await setOpenerEntries(result.entries);
+    }
+    return { added, existing: null };
 }
 
 export const FIRST_MESSAGE_WORDS_STORAGE_KEY = "fg-first-message-words";
@@ -408,29 +544,21 @@ export function getFirstMessageWords(): string {
 }
 
 export async function setFirstMessageWords(value: string): Promise<void> {
+    const saving = setAutomationSettings({ firstMessageWords: value });
     if (typeof window !== "undefined") {
         window.localStorage.setItem(FIRST_MESSAGE_WORDS_STORAGE_KEY, value);
         window.dispatchEvent(new Event("fg-trigger-inbox-scan"));
+        window.dispatchEvent(new CustomEvent(FIRST_MESSAGE_WORDS_UPDATED_EVENT, { detail: value }));
     }
-    await setAutomationSettings({ firstMessageWords: value });
+    await saving;
 }
 
-/**
- * Reduces a message to the form the opener list is compared against: trimmed,
- * whitespace collapsed, lowercased, and stripped of the punctuation people
- * tack onto a one-word opener. "Hot", "hot!!", " Hot ... " all become "hot".
- *
- * Deliberately does not strip anything *inside* the text, so "hello, hot" is
- * left as "hello, hot" and cannot equal "hot".
- */
-function normalizeOpener(text: string): string {
-    const collapsed = text.replace(/\s+/g, " ").trim().toLowerCase();
-    const edges = /^[\s.,!?:;\-—–_"'`~()[\]{}<>*]+|[\s.,!?:;\-—–_"'`~()[\]{}<>*]+$/gu;
-    const stripped = collapsed.replace(edges, "").trim();
-    // "?" and "??" are real openers somebody might want on this list, and
-    // stripping their punctuation leaves nothing at all — so only take the
-    // stripped form when there is something left of it.
-    return stripped || collapsed;
+export function getOpenerEntries(): KeywordEntry[] {
+    return parseKeywordList(getFirstMessageWords());
+}
+
+export function setOpenerEntries(entries: readonly KeywordEntry[]): Promise<void> {
+    return setFirstMessageWords(serializeOpenerList(entries));
 }
 
 /**
@@ -450,13 +578,13 @@ export function getMatchedFirstMessageWord(text: string | null | undefined): str
     const saved = getFirstMessageWords();
     if (!saved || saved.trim() === "") return null;
 
-    const normalized = normalizeOpener(text);
+    const normalized = normalizeWholeText(text);
     if (!normalized) return null;
 
-    for (const raw of saved.split(",")) {
-        const entry = normalizeOpener(raw);
-        if (entry && entry === normalized) {
-            return entry;
+    for (const entry of parseKeywordList(saved)) {
+        const candidate = normalizeWholeText(entry.text);
+        if (candidate === normalized) {
+            return candidate;
         }
     }
     return null;

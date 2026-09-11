@@ -1,5 +1,6 @@
 import { getSetting, setSetting } from "../services/chatDb";
 import { getForbiddenWords, notifyAutoBlock } from "./autoblock";
+import { normalizeWholeText, parseKeywordList } from "./keywordList";
 import { appLog } from "./logger";
 import type { ProfileDetail } from "../types/grid";
 
@@ -266,10 +267,17 @@ export async function clearAutomationSeenHistoryForSender(senderId: string): Pro
 // keystroke) that there's no need for autoblock.ts's regex cache.
 function textContainsKeyword(text: string | null | undefined, keywordsCsv: string): boolean {
 	if (!text) return false;
-	const keywords = keywordsCsv
-		.split(",")
-		.map((word) => word.trim().toLowerCase())
-		.filter((word) => word.length > 0);
+	const entries = parseKeywordList(keywordsCsv);
+
+	// Quoted entries match only when the whole text is that entry.
+	const wholeText = normalizeWholeText(text);
+	if (entries.some((entry) => entry.mode === "whole" && normalizeWholeText(entry.text) === wholeText)) {
+		return true;
+	}
+
+	const keywords = entries
+		.filter((entry) => entry.mode === "anywhere")
+		.map((entry) => entry.text.toLowerCase());
 	if (keywords.length === 0) return false;
 
 	const sorted = [...keywords].sort((a, b) => b.length - a.length);
