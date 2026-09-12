@@ -1082,6 +1082,26 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 		};
 	}, [isDesktop]);
 
+	// Android reports the keyboard height natively (MainActivity.kt dispatches
+	// this), which beats inferring it from the viewport. Gated on focus all the
+	// same, so a missed "keyboard closed" cannot strand the composer.
+	useEffect(() => {
+		if (isDesktop) return;
+		const onKeyboardInset = (event: Event) => {
+			const detail = (event as CustomEvent<{ height?: number }>).detail;
+			const height = detail?.height;
+			if (typeof height !== "number" || !Number.isFinite(height)) return;
+			const element = document.activeElement as HTMLElement | null;
+			const editableFocused = Boolean(
+				element &&
+					(element.tagName === "INPUT" || element.tagName === "TEXTAREA" || element.isContentEditable),
+			);
+			setMobileKeyboardInset(editableFocused ? Math.max(0, Math.round(height)) : 0);
+		};
+		window.addEventListener("fg:keyboard-inset", onKeyboardInset);
+		return () => window.removeEventListener("fg:keyboard-inset", onKeyboardInset);
+	}, [isDesktop]);
+
 	useEffect(() => {
 		if (isDesktop || !(selectedConversation || targetProfileId)) {
 			return;
