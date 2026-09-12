@@ -43,6 +43,9 @@ export function suggestedMatchMode(text: string): KeywordMatchMode {
 
 type Filter = "all" | "whole" | "anywhere" | "review";
 
+/** How many keywords the list shows before asking. Keeps a long list from burying the page. */
+const COLLAPSED_TAG_LIMIT = 60;
+
 const SMALL_BUTTON =
 	"inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-xs font-semibold transition hover:border-[var(--text-muted)] disabled:opacity-50";
 
@@ -77,6 +80,7 @@ export function KeywordEditor({
 	const [search, setSearch] = useState("");
 	const [highlight, setHighlight] = useState<{ identity: string; nonce: number } | null>(null);
 	const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
+	const [showAll, setShowAll] = useState(false);
 	const listRef = useRef<HTMLDivElement | null>(null);
 	const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -126,6 +130,11 @@ export function KeywordEditor({
 		});
 	}, [entries, activeFilter, search, reviewSet]);
 
+	const isNarrowed = search.trim() !== "" || activeFilter !== "all";
+	// A search or filter is already a short list; only the unfiltered one is capped.
+	const shown = showAll || isNarrowed ? visible : visible.slice(0, COLLAPSED_TAG_LIMIT);
+	const hiddenCount = visible.length - shown.length;
+
 	useEffect(() => {
 		if (!highlight) return;
 		const target = listRef.current?.querySelector<HTMLElement>(
@@ -139,6 +148,7 @@ export function KeywordEditor({
 	const reveal = useCallback((entry: KeywordEntry) => {
 		setSearch("");
 		setFilter("all");
+		setShowAll(true);
 		setHighlight({ identity: keywordIdentity(entry.text), nonce: Date.now() });
 	}, []);
 
@@ -326,8 +336,8 @@ export function KeywordEditor({
 						/>
 						<span className="text-[11px] leading-snug text-[var(--text-muted)]">
 							{mode === "whole"
-								? "Blocks only when the message is exactly this."
-								: "Blocks when these words appear anywhere."}
+								? "Blocks only if that is the entire message."
+								: "Blocks as soon as it shows up in a message."}
 						</span>
 					</div>
 				) : null}
@@ -389,9 +399,11 @@ export function KeywordEditor({
 			{activeFilter === "review" ? (
 				<div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed text-[var(--text-muted)]">
 					<p>
-						<strong className="text-[var(--text)]">To review</strong> lists the phrases this update switched from
-						Anywhere to Whole message. Tap <strong className="text-[var(--text)]">Whole</strong> on one that should
-						still block wherever it appears, or tick it to keep it as it is.
+						Until this update, these phrases blocked{" "}
+						<strong className="text-[var(--text)]">as soon as they showed up</strong> in a message. They now block only
+						when they are the <strong className="text-[var(--text)]">entire message</strong>, which blocks far fewer
+						people by mistake but also catches less spam. Tap <strong className="text-sky-400">Whole</strong> on any that
+						should go back to blocking wherever they show up, or tick one to keep it as it is now.
 					</p>
 					<button
 						type="button"
@@ -405,7 +417,7 @@ export function KeywordEditor({
 
 			<div
 				ref={listRef}
-				className="max-h-72 overflow-y-auto overscroll-contain rounded-xl border border-[var(--border)] bg-[var(--surface-1)] p-2"
+				className="rounded-xl border border-[var(--border)] bg-[var(--surface-1)] p-2"
 			>
 				{visible.length === 0 ? (
 					<p className="px-1 py-3 text-center text-xs text-[var(--text-muted)]">
@@ -413,7 +425,7 @@ export function KeywordEditor({
 					</p>
 				) : (
 					<div className="flex flex-wrap gap-1.5">
-						{visible.map((entry) => {
+						{shown.map((entry) => {
 							const identity = keywordIdentity(entry.text);
 							return (
 								<KeywordTag
@@ -431,6 +443,24 @@ export function KeywordEditor({
 						})}
 					</div>
 				)}
+				{hiddenCount > 0 ? (
+					<button
+						type="button"
+						onClick={() => setShowAll(true)}
+						className="mt-2 w-full rounded-lg px-2 py-1.5 text-xs font-semibold text-[var(--accent)] transition hover:bg-[var(--surface-2)]"
+					>
+						Show {hiddenCount} more
+					</button>
+				) : null}
+				{showAll && !isNarrowed && visible.length > COLLAPSED_TAG_LIMIT ? (
+					<button
+						type="button"
+						onClick={() => setShowAll(false)}
+						className="mt-2 w-full rounded-lg px-2 py-1.5 text-xs font-semibold text-[var(--text-muted)] transition hover:bg-[var(--surface-2)]"
+					>
+						Show fewer
+					</button>
+				) : null}
 			</div>
 
 			<div className="flex flex-wrap items-center gap-2">

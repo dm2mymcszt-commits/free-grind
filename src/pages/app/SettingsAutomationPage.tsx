@@ -503,10 +503,25 @@ export function SettingsAutomationPage() {
                                             {t("settings_automation.forbidden_keywords_title", { defaultValue: "Forbidden Keywords" })}
                                         </p>
                                         <p className="mt-0.5 text-xs leading-relaxed text-[var(--text-muted)]">
-                                            Blocks people whose name, bio or messages match. <span className="font-semibold text-sky-400">Whole</span> blocks
-                                            only when the message is exactly the keyword; <span className="font-semibold text-orange-400">Anywhere</span> blocks
-                                            when it appears inside one. Tap either on a keyword to switch.
+                                            Blocks people by their name, bio or messages. Every keyword blocks one of two ways — tap the
+                                            label on a keyword to switch it.
                                         </p>
+                                        <dl className="mt-2 grid gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-1)] p-2.5 text-xs leading-relaxed">
+                                            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                                                <dt className="shrink-0 rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-sky-400">Whole</dt>
+                                                <dd className="min-w-0 flex-1 text-[var(--text-muted)]">
+                                                    Blocks only if the message says nothing else. &quot;hot&quot; blocks a message that just
+                                                    says &quot;Hot!&quot;, but not &quot;you look hot&quot;.
+                                                </dd>
+                                            </div>
+                                            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                                                <dt className="shrink-0 rounded-full bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-orange-400">Anywhere</dt>
+                                                <dd className="min-w-0 flex-1 text-[var(--text-muted)]">
+                                                    Blocks as soon as it shows up in the message. &quot;telegram&quot; blocks &quot;add me on
+                                                    telegram&quot;.
+                                                </dd>
+                                            </div>
+                                        </dl>
                                     </div>
                                     <KeywordEditor
                                         entries={forbiddenEntries}
