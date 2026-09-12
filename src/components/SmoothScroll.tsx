@@ -66,8 +66,12 @@ export function SmoothScroll({
 			? (document.querySelector(".app-shell") as HTMLElement | null)
 			: window;
 
+		// Resolved once, so it must not be whichever element happened to be the
+		// last child at startup (a login or loading screen): that node is
+		// replaced later and its height stops tracking the real page.
 		const content = document.documentElement.classList.contains("has-titlebar")
-			? (document.querySelector(".app-shell > div:last-child") as HTMLElement | null) // The Outlet wrapper
+			? ((document.getElementById("app-scroll-content")
+					?? document.querySelector(".app-shell > div:last-child")) as HTMLElement | null)
 			: document.documentElement;
 
 		// Initialize Lenis
@@ -127,6 +131,21 @@ export function SmoothScroll({
 
 		wake();
 
+		// Lenis caches how tall the content is. Anything that grows the page
+		// without a resize or a route change — expanding a settings section, a
+		// list that just loaded — leaves that cache short, and the page then
+		// refuses to scroll past the old height.
+		const contentObserver =
+			content instanceof HTMLElement && typeof ResizeObserver !== "undefined"
+				? new ResizeObserver(() => {
+						lenis.resize();
+						wake();
+					})
+				: null;
+		if (content instanceof HTMLElement) {
+			contentObserver?.observe(content);
+		}
+
 		// Ensure initial size is correct
 		const sizeTimer = setTimeout(() => {
 			lenis.resize();
@@ -135,6 +154,7 @@ export function SmoothScroll({
 
 		return () => {
 			clearTimeout(sizeTimer);
+			contentObserver?.disconnect();
 			for (const type of wakeEvents) {
 				window.removeEventListener(type, wake);
 			}
