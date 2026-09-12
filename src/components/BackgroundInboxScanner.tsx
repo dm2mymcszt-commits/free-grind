@@ -46,10 +46,18 @@ async function readEarlierHistory(
     return summarizeEarlierHistory(earlier, userId);
 }
 
+/**
+ * How long to gather "settings changed" events before sweeping. The keyword
+ * editor saves on every tag added, removed or switched, and each save used to
+ * start its own full inbox scan.
+ */
+const SCAN_TRIGGER_DEBOUNCE_MS = 2000;
+
 export function BackgroundInboxScanner() {
     const api = useApiFunctions();
     const { userId } = useAuth();
     const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const triggerScanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const scannedProfilesRef = useRef<Map<string, { lastActivityTimestamp: number; unreadCount: number }>>(new Map());
     const isScanningRef = useRef(false);
     const pendingMediaBlocksRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -654,10 +662,14 @@ export function BackgroundInboxScanner() {
         };
 
         const handleTriggerScan = () => {
-            console.log("[BackgroundInboxScanner] Instant scan triggered by setting change");
-            scannedProfilesRef.current.clear();
-            if (timeoutRef.current) clearTimeout(timeoutRef.current);
-            void scanInbox();
+            if (triggerScanTimerRef.current) clearTimeout(triggerScanTimerRef.current);
+            triggerScanTimerRef.current = setTimeout(() => {
+                triggerScanTimerRef.current = null;
+                console.log("[BackgroundInboxScanner] Instant scan triggered by setting change");
+                scannedProfilesRef.current.clear();
+                if (timeoutRef.current) clearTimeout(timeoutRef.current);
+                void scanInbox();
+            }, SCAN_TRIGGER_DEBOUNCE_MS);
         };
 
         window.addEventListener("fg-trigger-inbox-scan", handleTriggerScan);
@@ -669,6 +681,7 @@ export function BackgroundInboxScanner() {
             isCancelled = true;
             window.removeEventListener("fg-trigger-inbox-scan", handleTriggerScan);
             if (timeoutRef.current) clearTimeout(timeoutRef.current);
+            if (triggerScanTimerRef.current) clearTimeout(triggerScanTimerRef.current);
             if (pendingMediaBlocksRef.current) {
                 for (const timer of pendingMediaBlocksRef.current.values()) {
                     clearTimeout(timer);
