@@ -5,6 +5,16 @@ use std::sync::OnceLock;
 
 static WINDOWS_INSTANCE: OnceLock<WindowsInstance> = OnceLock::new();
 
+/// The instance folder this app has always used, and where an existing install
+/// keeps its saved session.
+const DEFAULT_INSTANCE_LABEL: &str = "free-grind";
+
+/// Every name this app's own binary has shipped under. The label names the
+/// folder holding the session, so a copy called something else is still its own
+/// instance — that is how a second, separate copy is run — but renaming the app
+/// itself must not move the session out from under everyone who already has one.
+const OWN_BINARY_LABELS: [&str; 2] = ["free-grind", "grindflop"];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowsRuntimeMode {
     Manager,
@@ -233,14 +243,24 @@ fn detect_child_label() -> String {
 
     if let Ok(exe) = std::env::current_exe() {
         if let Some(stem) = exe.file_stem().and_then(|s| s.to_str()) {
-            let label = normalize_label(stem);
-            if label != "default" {
+            if let Some(label) = label_for_exe_stem(stem) {
                 return label;
             }
         }
     }
 
     "default".to_owned()
+}
+
+fn label_for_exe_stem(stem: &str) -> Option<String> {
+    let label = normalize_label(stem);
+    if label == "default" {
+        return None;
+    }
+    if OWN_BINARY_LABELS.contains(&label.as_str()) {
+        return Some(DEFAULT_INSTANCE_LABEL.to_owned());
+    }
+    Some(label)
 }
 
 fn windows_app_data_root() -> PathBuf {
@@ -273,6 +293,25 @@ mod tests {
             root.join("session.msgpack"),
             PathBuf::from("/tmp/free-grind/instances/alpha/session.msgpack")
         );
+    }
+
+    #[test]
+    fn the_apps_own_names_share_one_instance() {
+        // Renaming the binary to GrindFlop must not leave the saved session
+        // behind in the folder the old name created.
+        assert_eq!(label_for_exe_stem("free-grind").as_deref(), Some("free-grind"));
+        assert_eq!(label_for_exe_stem("GrindFlop").as_deref(), Some("free-grind"));
+        assert_eq!(label_for_exe_stem("grindflop").as_deref(), Some("free-grind"));
+    }
+
+    #[test]
+    fn any_other_name_is_still_its_own_instance() {
+        assert_eq!(
+            label_for_exe_stem("free-grind-work").as_deref(),
+            Some("free-grind-work")
+        );
+        assert_eq!(label_for_exe_stem("second copy").as_deref(), Some("second-copy"));
+        assert_eq!(label_for_exe_stem("___"), None);
     }
 
     #[test]
