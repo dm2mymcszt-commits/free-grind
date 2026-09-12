@@ -1188,6 +1188,15 @@ export function ChatThreadMessages({
                         albumId != null &&
                         !isAlbumKnownRevoked(albumId) &&
                         albumActivelyShared.get(albumId) === true;
+                    const albumCoverKey = albumCover ? `${message.messageId}|album|${albumCover}` : null;
+                    const albumCoverFailed = albumCoverKey !== null && unloadableMediaKeys.has(albumCoverKey);
+                    // Never saved here and no longer served: there is nothing to
+                    // open and nothing to show, so the card says that rather than
+                    // stretching a broken cover across the bubble.
+                    const isAlbumUnavailable =
+                        isAlbumMessage &&
+                        !isAlbumCachedForMessage &&
+                        (albumCoverFailed || (albumId != null && isAlbumKnownRevoked(albumId)));
                     const isCachedExpiredAlbum =
                         isAlbumMessage &&
                         isAlbumCachedForMessage &&
@@ -1437,7 +1446,7 @@ export function ChatThreadMessages({
                                             onClick={(event) => {
                                                 event.stopPropagation();
                                                 if (isDesktop) {
-                                                    if (albumId && !isLocked) void openAlbumViewerById(albumId, mine);
+                                                    if (albumId && !isLocked && !isAlbumUnavailable) void openAlbumViewerById(albumId, mine);
                                                     return;
                                                 }
                                                 if (messageLongPressTriggeredRef.current) {
@@ -1445,7 +1454,7 @@ export function ChatThreadMessages({
                                                     return;
                                                 }
                                                 scheduleMobileTap(message, () => {
-                                                    if (albumId && !isLocked) void openAlbumViewerById(albumId, mine);
+                                                    if (albumId && !isLocked && !isAlbumUnavailable) void openAlbumViewerById(albumId, mine);
                                                 });
                                             }}
                                             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") e.currentTarget.click(); }}
@@ -1462,16 +1471,34 @@ export function ChatThreadMessages({
                                                         {t("chat.thread.from_local_history")}
                                                     </span>
                                                 )}
-                                                {albumCover ? (
+                                                {albumCover && !albumCoverFailed ? (
                                                     <>
                                                         <img
                                                             key={albumCover}
                                                             src={albumCover}
-                                                            alt={t("chat.thread.album_cover")}
+                                                            alt=""
+                                                            onError={() => albumCoverKey && markMediaUnloadable(albumCoverKey)}
                                                             className={`h-full w-full scale-110 object-cover ${isLocked ? "blur-sm opacity-50" : ""}`}
                                                         />
                                                         {!isLocked && <div className="absolute inset-0 bg-black/25" />}
                                                     </>
+                                                ) : null}
+
+                                                {isAlbumUnavailable ? (
+                                                    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-1.5 bg-[var(--surface-2)] px-5 text-center">
+                                                        <div className="mb-0.5 flex h-10 w-10 items-center justify-center rounded-full bg-[var(--surface)] text-[var(--text-muted)]">
+                                                            <Album className="h-5 w-5" />
+                                                        </div>
+                                                        <p className="text-sm font-semibold text-[var(--text)]">
+                                                            {t("chat.thread.album_not_saved", { defaultValue: "Album not saved" })}
+                                                        </p>
+                                                        <p className="text-[11px] leading-snug text-[var(--text-muted)]">
+                                                            {t("chat.thread.album_not_saved_detail", {
+                                                                defaultValue:
+                                                                    "It was never saved on this device, and Grindr only opens albums that were.",
+                                                            })}
+                                                        </p>
+                                                    </div>
                                                 ) : null}
 
                                                 {isLocked && (
@@ -1786,12 +1813,23 @@ export function ChatThreadMessages({
                                                     {t("chat.thread.from_local_history")}
                                                 </span>
                                             )}
-                                            {albumCover ? (
+                                            {albumCover && !albumCoverFailed ? (
                                                 <img
                                                     src={albumCover}
-                                                    alt={t("chat.thread.album_cover")}
+                                                    alt=""
+                                                    onError={() => albumCoverKey && markMediaUnloadable(albumCoverKey)}
                                                     className={`mb-2 h-36 w-full rounded-lg object-cover ${isLocked ? "blur-[2px] opacity-50" : ""}`}
                                                 />
+                                            ) : null}
+                                            {isAlbumUnavailable ? (
+                                                <p className="mb-2 rounded-lg bg-[var(--surface-2)] px-3 py-2 text-[11px] leading-snug text-[var(--text-muted)]">
+                                                    <span className="font-semibold text-[var(--text)]">
+                                                        {t("chat.thread.album_not_saved", { defaultValue: "Album not saved" })}
+                                                    </span>{" "}
+                                                    {t("chat.thread.album_not_saved_detail", {
+                                                        defaultValue: "It was never saved on this device, and Grindr only opens albums that were.",
+                                                    })}
+                                                </p>
                                             ) : null}
                                             <div className="flex items-center justify-between gap-2">
                                                 <span className="text-xs font-medium">
@@ -1809,7 +1847,7 @@ export function ChatThreadMessages({
                                                         if (albumId) void openAlbumViewerById(albumId, mine);
                                                     }}
                                                     className="rounded-md border border-black/20 px-2 py-1 text-[11px]"
-                                                    disabled={!albumId || isLocked}
+                                                    disabled={!albumId || isLocked || isAlbumUnavailable}
                                                 >
                                                     {t("chat.open")}
                                                 </button>

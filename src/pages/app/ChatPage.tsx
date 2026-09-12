@@ -5984,10 +5984,11 @@ export function ChatPage() {
 				if (albumViewerCancelledRef.current) return;
 				if (!cached) {
 					setIsAlbumSheetOpen(false);
-					const message = (error instanceof ChatApiError && error.status === 403)
-						? "This album is no longer available. Grindr now restricts access to older albums — only previously cached albums can be viewed."
-						: (error instanceof Error ? error.message : t("chat.errors.album_open_failed"));
-					toast.error(message);
+					// A refusal marks the album revoked, and its bubble then says so
+					// itself — no need for a toast explaining Grindr's album policy.
+					if (!(error instanceof ChatApiError && error.status === 403)) {
+						toast.error(error instanceof Error ? error.message : t("chat.errors.album_open_failed"));
+					}
 				}
 			} finally {
 				if (!albumViewerCancelledRef.current) setIsAlbumViewerLoading(false);
