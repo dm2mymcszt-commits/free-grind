@@ -1025,7 +1025,26 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 
 		const viewport = window.visualViewport;
 
+		const isEditableFocused = () => {
+			const element = document.activeElement as HTMLElement | null;
+			if (!element) return false;
+			return (
+				element.tagName === "INPUT" || element.tagName === "TEXTAREA" || element.isContentEditable
+			);
+		};
+
 		const updateKeyboardInset = () => {
+			// Nothing focused means no keyboard, whatever the numbers say. This is
+			// also where the measurements below get to start over: they drift when
+			// the layout viewport changes (rotation, the app returning to the
+			// foreground), and without a reset the drift left the composer floating
+			// above a gap that never went away.
+			if (!isEditableFocused()) {
+				fullLayoutHeightRef.current = window.innerHeight;
+				restingOverlapRef.current = null;
+				setMobileKeyboardInset(0);
+				return;
+			}
 			fullLayoutHeightRef.current = Math.max(fullLayoutHeightRef.current, window.innerHeight);
 			const layoutHeight = fullLayoutHeightRef.current;
 			const visibleBottom = viewport.height + viewport.offsetTop;
@@ -1037,27 +1056,30 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 			setMobileKeyboardInset(keyboardOverlap >= 60 ? keyboardOverlap : 0);
 		};
 
+		// Focus moving between two fields blurs before it focuses, so re-check on
+		// the next frame rather than collapsing the inset in between.
+		let blurCheck: number | null = null;
+		const scheduleBlurCheck = () => {
+			if (blurCheck !== null) cancelAnimationFrame(blurCheck);
+			blurCheck = requestAnimationFrame(() => {
+				blurCheck = null;
+				updateKeyboardInset();
+			});
+		};
+
 		updateKeyboardInset();
 		viewport.addEventListener("resize", updateKeyboardInset);
 		viewport.addEventListener("scroll", updateKeyboardInset);
+		window.addEventListener("focusin", updateKeyboardInset);
+		window.addEventListener("focusout", scheduleBlurCheck);
 
 		return () => {
+			if (blurCheck !== null) cancelAnimationFrame(blurCheck);
 			viewport.removeEventListener("resize", updateKeyboardInset);
 			viewport.removeEventListener("scroll", updateKeyboardInset);
+			window.removeEventListener("focusin", updateKeyboardInset);
+			window.removeEventListener("focusout", scheduleBlurCheck);
 		};
-	}, [isDesktop]);
-
-	useEffect(() => {
-		if (isDesktop) return;
-		const onKeyboardInset = (event: Event) => {
-			const detail = (event as CustomEvent<{ height?: number }>).detail;
-			const height = detail?.height;
-			if (typeof height === "number" && Number.isFinite(height)) {
-				setMobileKeyboardInset(Math.max(0, Math.round(height)));
-			}
-		};
-		window.addEventListener("fg:keyboard-inset", onKeyboardInset);
-		return () => window.removeEventListener("fg:keyboard-inset", onKeyboardInset);
 	}, [isDesktop]);
 
 	useEffect(() => {
