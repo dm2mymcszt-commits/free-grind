@@ -4,6 +4,7 @@ import { getSetting, setSetting } from "../services/chatDb";
 import { appLog } from "./logger";
 import {
     addKeywords,
+    buildAnywhereRegex,
     canMatchAnywhere,
     findKeyword,
     KEYWORD_LIST_FORMAT,
@@ -11,8 +12,8 @@ import {
     parseKeywordList,
     pruneReviewList,
     serializeKeywordList,
-    serializeOpenerList,
     upgradeLegacyKeywordList,
+    upgradeLegacyOpenerList,
     type KeywordEntry,
     type KeywordMatchMode,
 } from "./keywordList";
@@ -199,17 +200,10 @@ export function getMatchedForbiddenWord(text: string | null | undefined, target:
                 continue;
             }
             const cleanKeyword = entry.text.toLowerCase();
-            const escaped = cleanKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            try {
-                compiled.push({
-                    keyword: cleanKeyword,
-                    whole: false,
-                    // Unicode-aware word boundaries (\p{L} = Any Unicode Letter, \p{N} = Number)
-                    // Prevents accidental partial matches (e.g. "sub" matching "submit") while matching
-                    // French words with accents (é, è, à, ç) and multi-word phrases cleanly.
-                    regex: new RegExp(`(?:^|[^\\p{L}\\p{N}_])${escaped}(?:$|[^\\p{L}\\p{N}_])`, 'ui')
-                });
-            } catch {
+            const regex = buildAnywhereRegex(cleanKeyword);
+            if (regex) {
+                compiled.push({ keyword: cleanKeyword, whole: false, regex });
+            } else {
                 // One entry the 'u' flag refuses (a half emoji from a pasted or
                 // imported list is the realistic way in) must not take the other
                 // 250 with it. Compiling the list in one expression meant the
@@ -366,6 +360,8 @@ export interface AutomationSettings {
     keywordFormat?: number;
     /** Phrases the format upgrade switched to whole-message matching, until the user reviews them. */
     keywordsToReview?: string[];
+    /** The KEYWORD_LIST_FORMAT firstMessageWords is written in. Missing while every opener still meant the whole message. */
+    openerFormat?: number;
 }
 
 const DEFAULT_AUTOMATION_SETTINGS: AutomationSettings = {
@@ -394,7 +390,16 @@ export async function loadAutomationCache(): Promise<void> {
             automationCache.forbiddenWords = localWords;
             await setSetting(AUTOMATION_SETTINGS_KEY, automationCache).catch(() => {});
         }
-        upgradeKeywordFormat();
+        // Same for the openers, so the upgrade below sees the list the app
+        // actually matches against. Reading it here is what stops a list left
+        // in localStorage from being read in the new format it was not saved in.
+        const localOpeners = typeof window !== "undefined"
+            ? window.localStorage.getItem(FIRST_MESSAGE_WORDS_STORAGE_KEY) || ""
+            : "";
+        if (!automationCache.firstMessageWords && localOpeners) {
+            automationCache.firstMessageWords = localOpeners;
+        }
+        upgradeStoredKeywordFormats();
     } catch (error) {
         appLog.error("[AutoBlock] failed to load automation settings", error);
         automationCache = DEFAULT_AUTOMATION_SETTINGS;
@@ -409,19 +414,35 @@ export async function loadAutomationCache(): Promise<void> {
  * list from another device. The upgrade gives the same result on every
  * device, and the first real edit saves it.
  */
-function upgradeKeywordFormat(): void {
-    if ((automationCache.keywordFormat ?? 1) >= KEYWORD_LIST_FORMAT) return;
-    const upgrade = upgradeLegacyKeywordList(automationCache.forbiddenWords);
-    automationCache = {
-        ...automationCache,
-        forbiddenWords: upgrade.value,
-        keywordFormat: KEYWORD_LIST_FORMAT,
-        keywordsToReview: [
-            ...new Set([...(automationCache.keywordsToReview ?? []), ...upgrade.switchedToWhole]),
-        ],
-    };
-    if (typeof window !== "undefined" && upgrade.value) {
-        window.localStorage.setItem("fg-forbidden-words", upgrade.value);
+function upgradeStoredKeywordFormats(): void {
+    if ((automationCache.keywordFormat ?? 1) < KEYWORD_LIST_FORMAT) {
+        const upgrade = upgradeLegacyKeywordList(automationCache.forbiddenWords);
+        automationCache = {
+            ...automationCache,
+            forbiddenWords: upgrade.value,
+            keywordFormat: KEYWORD_LIST_FORMAT,
+            keywordsToReview: [
+                ...new Set([...(automationCache.keywordsToReview ?? []), ...upgrade.switchedToWhole]),
+            ],
+        };
+        if (typeof window !== "undefined" && upgrade.value) {
+            window.localStorage.setItem("fg-forbidden-words", upgrade.value);
+        }
+    }
+
+    // Before openers could match anywhere they had one meaning: the whole
+    // message. Every stored opener keeps it, so nobody's list starts blocking
+    // more than it did yesterday.
+    if ((automationCache.openerFormat ?? 1) < KEYWORD_LIST_FORMAT) {
+        const upgrade = upgradeLegacyOpenerList(automationCache.firstMessageWords);
+        automationCache = {
+            ...automationCache,
+            firstMessageWords: upgrade.value,
+            openerFormat: KEYWORD_LIST_FORMAT,
+        };
+        if (typeof window !== "undefined" && upgrade.value) {
+            window.localStorage.setItem(FIRST_MESSAGE_WORDS_STORAGE_KEY, upgrade.value);
+        }
     }
 }
 
@@ -516,9 +537,9 @@ export async function addKeywordTo(
     text: string,
     mode: KeywordMatchMode,
 ): Promise<{ added: KeywordEntry | null; existing: KeywordEntry | null }> {
-    // Openers always match the whole message, and an anywhere entry cannot
-    // hold a comma without being saved as a whole-message one.
-    const effectiveMode = list === "openers" || !canMatchAnywhere(text) ? "whole" : mode;
+    // An anywhere entry cannot hold a comma without being saved as a
+    // whole-message one.
+    const effectiveMode = canMatchAnywhere(text) ? mode : "whole";
     const result = addKeywords(entriesOf(list), [{ text, mode: effectiveMode }]);
     const added = result.added[0] ?? null;
     if (!added) {
@@ -544,7 +565,7 @@ export function getFirstMessageWords(): string {
 }
 
 export async function setFirstMessageWords(value: string): Promise<void> {
-    const saving = setAutomationSettings({ firstMessageWords: value });
+    const saving = setAutomationSettings({ firstMessageWords: value, openerFormat: KEYWORD_LIST_FORMAT });
     if (typeof window !== "undefined") {
         window.localStorage.setItem(FIRST_MESSAGE_WORDS_STORAGE_KEY, value);
         window.dispatchEvent(new Event("fg-trigger-inbox-scan"));
@@ -553,22 +574,34 @@ export async function setFirstMessageWords(value: string): Promise<void> {
     await saving;
 }
 
+/**
+ * Reads the openers list the way it was written. Before openers could match
+ * anywhere, every entry meant the whole message; a list still in that format
+ * must not start matching inside messages because the cache was not loaded
+ * (or failed to load) and the upgrade never ran.
+ */
+function openerEntriesFrom(value: string): KeywordEntry[] {
+    const entries = parseKeywordList(value);
+    if ((automationCache.openerFormat ?? 1) >= KEYWORD_LIST_FORMAT) return entries;
+    return entries.map((entry) => ({ ...entry, mode: "whole" as const }));
+}
+
 export function getOpenerEntries(): KeywordEntry[] {
-    return parseKeywordList(getFirstMessageWords());
+    return openerEntriesFrom(getFirstMessageWords());
 }
 
 export function setOpenerEntries(entries: readonly KeywordEntry[]): Promise<void> {
-    return setFirstMessageWords(serializeOpenerList(entries));
+    return setFirstMessageWords(serializeKeywordList(entries));
 }
 
 /**
- * Matches a conversation's opening message against the openers list — the
- * whole message must *be* the entry, not merely contain it.
+ * Matches a conversation's opening message against the openers list.
  *
- * That is the entire point of the list being separate from the forbidden
- * keywords: a word like "hot" is unremarkable mid-conversation and worth
- * blocking as somebody's entire opening line. Containment would make
- * "hello, hot" a match and turn this back into the keyword rule.
+ * A whole-message entry must *be* the message: a word like "hot" is
+ * unremarkable mid-conversation and worth blocking as somebody's entire
+ * opening line. An anywhere entry only has to appear in it, which catches an
+ * opener like "ey looking for" while leaving those same words alone once the
+ * conversation is going — watching every message is the forbidden list's job.
  *
  * The caller decides what counts as an opening message; this only answers
  * whether the text qualifies.
@@ -580,12 +613,17 @@ export function getMatchedFirstMessageWord(text: string | null | undefined): str
 
     const normalized = normalizeWholeText(text);
     if (!normalized) return null;
+    const collapsed = text.replace(/\s+/g, " ").trim();
 
-    for (const entry of parseKeywordList(saved)) {
-        const candidate = normalizeWholeText(entry.text);
-        if (candidate === normalized) {
-            return candidate;
+    for (const entry of openerEntriesFrom(saved)) {
+        if (entry.mode === "whole") {
+            const candidate = normalizeWholeText(entry.text);
+            if (candidate && candidate === normalized) return candidate;
+            continue;
         }
+        const keyword = entry.text.toLowerCase();
+        const regex = buildAnywhereRegex(keyword);
+        if (regex && (regex.test(text) || regex.test(collapsed))) return keyword;
     }
     return null;
 }

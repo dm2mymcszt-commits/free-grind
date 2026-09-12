@@ -21,7 +21,6 @@ import {
 	keywordsFromPastedList,
 	readKeywordFile,
 	serializeKeywordList,
-	serializeOpenerList,
 	type KeywordEntry,
 	type KeywordMatchMode,
 } from "../../utils/keywordList";
@@ -43,6 +42,11 @@ export function suggestedMatchMode(text: string): KeywordMatchMode {
 
 type Filter = "all" | "whole" | "anywhere" | "review";
 
+const DEFAULT_MODE_HINTS: Record<KeywordMatchMode, string> = {
+	whole: "Blocks only if that is the entire message.",
+	anywhere: "Blocks as soon as it shows up in a message.",
+};
+
 /** How many keywords the list shows before asking. Keeps a long list from burying the page. */
 const COLLAPSED_TAG_LIMIT = 60;
 
@@ -52,8 +56,8 @@ const SMALL_BUTTON =
 type KeywordEditorProps = {
 	entries: readonly KeywordEntry[];
 	onChange: (entries: KeywordEntry[]) => void;
-	/** Openers always match the whole message, so their editor has no per-keyword mode. */
-	showModes?: boolean;
+	/** What the two modes mean in this list, shown beside the choice. */
+	modeHints?: Record<KeywordMatchMode, string>;
 	/** Identities of phrases waiting for review. */
 	toReview?: readonly string[];
 	onMarkReviewed?: (identities: string[]) => void;
@@ -66,7 +70,7 @@ type KeywordEditorProps = {
 export function KeywordEditor({
 	entries,
 	onChange,
-	showModes = true,
+	modeHints = DEFAULT_MODE_HINTS,
 	toReview,
 	onMarkReviewed,
 	onFlagForReview,
@@ -91,7 +95,7 @@ export function KeywordEditor({
 		latest.current = { entries, onChange, onMarkReviewed };
 	});
 
-	const mode: KeywordMatchMode = !showModes ? "whole" : (chosenMode ?? suggestedMatchMode(input));
+	const mode: KeywordMatchMode = chosenMode ?? suggestedMatchMode(input);
 	const reviewSet = useMemo(() => new Set(toReview ?? []), [toReview]);
 	const pending = useMemo(() => keywordsFromInput(input, mode), [input, mode]);
 	const alreadyThere = useMemo(
@@ -113,7 +117,7 @@ export function KeywordEditor({
 		return { all: entries.length, whole, anywhere: entries.length - whole, review };
 	}, [entries, reviewSet]);
 
-	const activeFilter: Filter = !showModes || (filter === "review" && counts.review === 0) ? "all" : filter;
+	const activeFilter: Filter = filter === "review" && counts.review === 0 ? "all" : filter;
 
 	const visible = useMemo(() => {
 		const query = search.trim().toLowerCase();
@@ -162,7 +166,7 @@ export function KeywordEditor({
 			reveal(first);
 			toast.error(
 				result.duplicates.length === 1
-					? `"${first.text}" is already in this list${showModes ? ` (${MATCH_MODE_LABELS[first.mode]})` : ""}`
+					? `"${first.text}" is already in this list (${MATCH_MODE_LABELS[first.mode]})`
 					: `${result.duplicates.length} of these were already in this list`,
 				{ id: "keyword-duplicate" },
 			);
@@ -185,11 +189,7 @@ export function KeywordEditor({
 		if (!text.includes("\n") && !/(^|,)\s*"/.test(text)) return;
 		event.preventDefault();
 		const additions = keywordsFromPastedList(text, "anywhere").map((entry) =>
-			!showModes
-				? { ...entry, mode: "whole" as const }
-				: entry.mode === "whole"
-					? entry
-					: { ...entry, mode: chosenMode ?? suggestedMatchMode(entry.text) },
+			entry.mode === "whole" ? entry : { ...entry, mode: chosenMode ?? suggestedMatchMode(entry.text) },
 		);
 		const result = add(additions);
 		if (result.added.length > 0) {
@@ -249,7 +249,7 @@ export function KeywordEditor({
 	}, []);
 
 	const handleExport = () => {
-		const content = showModes ? serializeKeywordList(entries) : serializeOpenerList(entries);
+		const content = serializeKeywordList(entries);
 		const url = URL.createObjectURL(new Blob([content], { type: "text/plain" }));
 		const link = document.createElement("a");
 		link.href = url;
@@ -264,13 +264,10 @@ export function KeywordEditor({
 		event.target.value = "";
 		if (!file) return;
 		const imported = readKeywordFile(await file.text());
-		const incoming = showModes
-			? imported.entries
-			: imported.entries.map((entry) => ({ ...entry, mode: "whole" as const }));
-		const result = addKeywords(entries, incoming);
+		const result = addKeywords(entries, imported.entries);
 		if (result.added.length > 0) {
 			onChange(result.entries);
-			if (showModes && imported.switchedToWhole.length > 0) {
+			if (imported.switchedToWhole.length > 0) {
 				const addedIdentities = new Set(result.added.map((entry) => keywordIdentity(entry.text)));
 				const flagged = imported.switchedToWhole.filter((identity) => addedIdentities.has(identity));
 				if (flagged.length > 0) onFlagForReview?.(flagged);
@@ -286,7 +283,7 @@ export function KeywordEditor({
 		alreadyThere.length === 0
 			? null
 			: alreadyThere.length === 1
-				? `Already in this list${showModes ? ` as ${MATCH_MODE_LABELS[alreadyThere[0].mode]}` : ""}`
+				? `Already in this list as ${MATCH_MODE_LABELS[alreadyThere[0].mode]}`
 				: `${alreadyThere.length} of these are already in this list`;
 
 	const filters: { value: Filter; label: string; count: number }[] = [
@@ -326,21 +323,15 @@ export function KeywordEditor({
 						<Plus className="h-4 w-4" /> Add
 					</button>
 				</div>
-				{showModes ? (
-					<div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-						<SegmentedChoice
-							value={mode}
-							options={MATCH_MODE_OPTIONS}
-							onChange={setChosenMode}
-							ariaLabel="How this keyword matches"
-						/>
-						<span className="text-[11px] leading-snug text-[var(--text-muted)]">
-							{mode === "whole"
-								? "Blocks only if that is the entire message."
-								: "Blocks as soon as it shows up in a message."}
-						</span>
-					</div>
-				) : null}
+				<div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+					<SegmentedChoice
+						value={mode}
+						options={MATCH_MODE_OPTIONS}
+						onChange={setChosenMode}
+						ariaLabel="How this keyword matches"
+					/>
+					<span className="text-[11px] leading-snug text-[var(--text-muted)]">{modeHints[mode]}</span>
+				</div>
 				{duplicateHint ? (
 					<p role="status" className="flex flex-wrap items-center gap-1.5 text-xs font-medium text-amber-400">
 						<AlertTriangle className="h-3.5 w-3.5 shrink-0" />
@@ -356,7 +347,7 @@ export function KeywordEditor({
 				) : null}
 			</form>
 
-			{showModes && entries.length > 0 ? (
+			{entries.length > 0 ? (
 				<div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5">
 					{filters.map((option) => {
 						const selected = activeFilter === option.value;
@@ -432,8 +423,7 @@ export function KeywordEditor({
 									key={identity}
 									entry={entry}
 									identity={identity}
-									showMode={showModes}
-									inReview={showModes && entry.mode === "whole" && reviewSet.has(identity)}
+									inReview={entry.mode === "whole" && reviewSet.has(identity)}
 									highlighted={highlight?.identity === identity}
 									onToggleMode={toggleMode}
 									onRemove={remove}
@@ -510,7 +500,6 @@ export function KeywordEditor({
 const KeywordTag = memo(function KeywordTag({
 	entry,
 	identity,
-	showMode,
 	inReview,
 	highlighted,
 	onToggleMode,
@@ -519,7 +508,6 @@ const KeywordTag = memo(function KeywordTag({
 }: {
 	entry: KeywordEntry;
 	identity: string;
-	showMode: boolean;
 	inReview: boolean;
 	highlighted: boolean;
 	onToggleMode: (entry: KeywordEntry) => void;
@@ -539,20 +527,18 @@ const KeywordTag = memo(function KeywordTag({
 			<span className="min-w-0 truncate font-medium text-[var(--text)]" title={entry.text}>
 				{entry.text}
 			</span>
-			{showMode ? (
-				<button
-					type="button"
-					onClick={() => onToggleMode(entry)}
-					title={`${MATCH_MODE_LABELS[entry.mode]}. Tap to switch.`}
-					className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold transition ${
-						entry.mode === "whole"
-							? "bg-sky-500/15 text-sky-400 hover:bg-sky-500/25"
-							: "bg-orange-500/15 text-orange-400 hover:bg-orange-500/25"
-					}`}
-				>
-					{entry.mode === "whole" ? "Whole" : "Anywhere"}
-				</button>
-			) : null}
+			<button
+				type="button"
+				onClick={() => onToggleMode(entry)}
+				title={`${MATCH_MODE_LABELS[entry.mode]}. Tap to switch.`}
+				className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold transition ${
+					entry.mode === "whole"
+						? "bg-sky-500/15 text-sky-400 hover:bg-sky-500/25"
+						: "bg-orange-500/15 text-orange-400 hover:bg-orange-500/25"
+				}`}
+			>
+				{entry.mode === "whole" ? "Whole" : "Anywhere"}
+			</button>
 			{inReview ? (
 				<button
 					type="button"

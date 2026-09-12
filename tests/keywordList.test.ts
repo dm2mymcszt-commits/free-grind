@@ -8,8 +8,8 @@ import {
 	pruneReviewList,
 	readKeywordFile,
 	serializeKeywordList,
-	serializeOpenerList,
 	upgradeLegacyKeywordList,
+	upgradeLegacyOpenerList,
 } from "../src/utils/keywordList";
 
 const whole = (text: string) => ({ text, mode: "whole" as const });
@@ -52,8 +52,10 @@ describe("serializing", () => {
 		expect(serializeKeywordList([anywhere("hot"), whole("tu cherches")])).toBe('hot, "tu cherches"');
 	});
 
-	test("openers are only quoted where a bare entry would be misread", () => {
-		expect(serializeOpenerList([whole("hot"), whole("salut, ça va")])).toBe('hot, "salut, ça va"');
+	test("an opener list from before openers had modes becomes whole-message entries", () => {
+		const upgrade = upgradeLegacyOpenerList("hot, looking for");
+		expect(upgrade.entries).toEqual([whole("hot"), whole("looking for")]);
+		expect(upgrade.value).toBe('"hot", "looking for"');
 	});
 });
 

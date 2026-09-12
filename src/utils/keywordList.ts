@@ -128,9 +128,19 @@ export function serializeKeywordList(entries: readonly KeywordEntry[]): string {
 		.join(", ");
 }
 
-/** Openers always match the whole message, so quotes are only used where a bare entry would be misread. */
-export function serializeOpenerList(entries: readonly KeywordEntry[]): string {
-	return entries.map((entry) => (canMatchAnywhere(entry.text) ? entry.text : quote(entry.text))).join(", ");
+/**
+ * What an anywhere entry matches: the keyword bounded by anything that is not
+ * a letter, number or underscore, so "sub" cannot match "submit" while
+ * accented words and multi-word phrases still match cleanly. Null when the
+ * engine refuses the entry, which a half emoji from a pasted list can do.
+ */
+export function buildAnywhereRegex(text: string): RegExp | null {
+	const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	try {
+		return new RegExp(`(?:^|[^\\p{L}\\p{N}_])${escaped}(?:$|[^\\p{L}\\p{N}_])`, "ui");
+	} catch {
+		return null;
+	}
 }
 
 export function findKeyword(entries: readonly KeywordEntry[], text: string): KeywordEntry | null {
@@ -233,6 +243,12 @@ export function upgradeLegacyKeywordList(raw: string | null | undefined): Keywor
 		value: serializeKeywordList(entries),
 		switchedToWhole: [...new Set(switchedToWhole)],
 	};
+}
+
+export function upgradeLegacyOpenerList(raw: string | null | undefined): KeywordUpgrade {
+	const converted = parseKeywordList(raw).map((entry) => ({ ...entry, mode: "whole" as const }));
+	const { entries } = addKeywords([], converted);
+	return { entries, value: serializeKeywordList(entries), switchedToWhole: [] };
 }
 
 /**

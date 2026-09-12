@@ -25,7 +25,7 @@ function listsFor(destination: Destination): KeywordListName[] {
 }
 
 function describeExisting(list: KeywordListName, entry: KeywordEntry): string {
-	return list === "forbidden" ? `${LIST_LABELS[list]} (${MATCH_MODE_LABELS[entry.mode]})` : LIST_LABELS[list];
+	return `${LIST_LABELS[list]} (${MATCH_MODE_LABELS[entry.mode]})`;
 }
 
 function joinLabels(labels: string[]): string {
@@ -109,7 +109,7 @@ export function BanWordDialog({
 			})
 		: [];
 	const newLists = lists.filter((list) => !existing.some((item) => item.list === list));
-	const forcedWhole = destination !== "openers" && mode === "anywhere" && text !== "" && !canMatchAnywhere(text);
+	const forcedWhole = mode === "anywhere" && text !== "" && !canMatchAnywhere(text);
 	const effectiveMode: KeywordMatchMode = forcedWhole ? "whole" : mode;
 
 	const handleConfirm = async () => {
@@ -197,28 +197,22 @@ export function BanWordDialog({
 					/>
 				</div>
 
-				{destination !== "openers" ? (
-					<div className="grid gap-1.5">
-						<p className="text-xs font-semibold text-[var(--text-muted)]">Match</p>
-						<SegmentedChoice
-							fullWidth
-							value={effectiveMode}
-							options={MATCH_MODE_OPTIONS}
-							onChange={setMode}
-							ariaLabel="Match"
-							disabled={isProcessing}
-						/>
-						{forcedWhole ? (
-							<p className="text-[11px] text-[var(--text-muted)]">
-								It contains a comma, so it can only match the whole message.
-							</p>
-						) : null}
-					</div>
-				) : null}
-
-				{destination !== "forbidden" ? (
-					<p className="-mt-2 text-[11px] text-[var(--text-muted)]">Opening messages always match the whole message.</p>
-				) : null}
+				<div className="grid gap-1.5">
+					<p className="text-xs font-semibold text-[var(--text-muted)]">Match</p>
+					<SegmentedChoice
+						fullWidth
+						value={effectiveMode}
+						options={MATCH_MODE_OPTIONS}
+						onChange={setMode}
+						ariaLabel="Match"
+						disabled={isProcessing}
+					/>
+					{forcedWhole ? (
+						<p className="text-[11px] text-[var(--text-muted)]">
+							It contains a comma, so it can only match the whole message.
+						</p>
+					) : null}
+				</div>
 
 				{existing.length > 0 ? (
 					<p role="status" className="flex items-start gap-1.5 text-xs font-medium text-amber-400">
@@ -237,7 +231,9 @@ export function BanWordDialog({
 								<ShieldAlert className="mt-px h-3.5 w-3.5 shrink-0" />
 								<span>
 									{list === "openers"
-										? `Blocks when someone's first message is exactly "${text}".`
+										? effectiveMode === "whole"
+											? `Blocks when someone's first message is exactly "${text}".`
+											: `Blocks when someone's first message contains "${text}".`
 										: effectiveMode === "whole"
 											? `Blocks when a name, bio or message is exactly "${text}".`
 											: `Blocks when a name, bio or message contains "${text}".`}

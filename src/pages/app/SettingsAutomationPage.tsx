@@ -540,16 +540,33 @@ export function SettingsAutomationPage() {
                                     <div>
                                         <p className="text-sm font-semibold leading-snug">Opening Messages</p>
                                         <p className="mt-0.5 text-xs leading-relaxed text-[var(--text-muted)]">
-                                            Blocks someone whose <span className="font-semibold text-[var(--text)]">first message</span> is
-                                            exactly one of these. The whole message must match, so &quot;hot&quot; catches
-                                            &quot;Hot&quot; and &quot;hot!&quot; but never &quot;Hello, hot&quot;, and never a word said
-                                            later in the chat.
+                                            Only judges the <span className="font-semibold text-[var(--text)]">first message</span> someone
+                                            ever sends you. Nothing here can block a word said later in the chat.
                                         </p>
+                                        <dl className="mt-2 grid gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-1)] p-2.5 text-xs leading-relaxed">
+                                            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                                                <dt className="shrink-0 rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-sky-400">Whole</dt>
+                                                <dd className="min-w-0 flex-1 text-[var(--text-muted)]">
+                                                    Their first message is exactly this. &quot;hot&quot; catches &quot;Hot!&quot;, but not
+                                                    &quot;hey hot&quot;.
+                                                </dd>
+                                            </div>
+                                            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                                                <dt className="shrink-0 rounded-full bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-orange-400">Anywhere</dt>
+                                                <dd className="min-w-0 flex-1 text-[var(--text-muted)]">
+                                                    Their first message contains this. &quot;looking for&quot; catches &quot;ey looking
+                                                    for&quot;, and still ignores it later in the chat.
+                                                </dd>
+                                            </div>
+                                        </dl>
                                     </div>
                                     <KeywordEditor
                                         entries={openerEntries}
                                         onChange={handleOpenersChange}
-                                        showModes={false}
+                                        modeHints={{
+                                            whole: "Blocks only if their first message is exactly this.",
+                                            anywhere: "Blocks if their first message contains this.",
+                                        }}
                                         placeholder="Add an opening message"
                                         emptyLabel="No opening messages yet."
                                         exportFileName="grindflop-opening-messages.txt"

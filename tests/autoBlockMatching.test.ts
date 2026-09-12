@@ -37,6 +37,7 @@ globalScope.window = {
 };
 
 const {
+	getFirstMessageWords,
 	getForbiddenWords,
 	getKeywordsToReview,
 	getMatchedForbiddenWord,
@@ -195,6 +196,56 @@ describe("first-message-only openers", () => {
 		store.set("fg-first-message-words", '"salut, ça va", hot');
 		expect(getMatchedFirstMessageWord("Salut, ça va ?")).toBe("salut, ça va");
 		expect(getMatchedFirstMessageWord("salut")).toBeNull();
+	});
+});
+
+// An opener can now match anywhere in the first message, which is the rule
+// for a fragment like "looking for" that is only worth blocking as an opener.
+describe("openers that match anywhere in the first message", () => {
+	afterEach(async () => {
+		store.clear();
+		const getSetting = spyOn(chatDb, "getSetting").mockResolvedValue(null as never);
+		try {
+			await loadAutomationCache();
+		} finally {
+			getSetting.mockRestore();
+		}
+	});
+
+	async function withStoredOpeners(settings: Record<string, unknown>, run: () => void): Promise<void> {
+		store.clear();
+		const getSetting = spyOn(chatDb, "getSetting").mockResolvedValue(settings as never);
+		try {
+			await loadAutomationCache();
+			run();
+		} finally {
+			getSetting.mockRestore();
+		}
+	}
+
+	test("an anywhere opener catches a first message that merely contains it", async () => {
+		await withStoredOpeners({ firstMessageWords: 'looking for, "hot"', openerFormat: 2 }, () => {
+			expect(getMatchedFirstMessageWord("ey looking for")).toBe("looking for");
+			expect(getMatchedFirstMessageWord("Looking for?")).toBe("looking for");
+			// The quoted one stays whole-message, side by side with it.
+			expect(getMatchedFirstMessageWord("hot")).toBe("hot");
+			expect(getMatchedFirstMessageWord("hey hot")).toBeNull();
+		});
+	});
+
+	test("an anywhere opener still needs whole words", async () => {
+		await withStoredOpeners({ firstMessageWords: "looking for", openerFormat: 2 }, () => {
+			expect(getMatchedFirstMessageWord("ey lookin")).toBeNull();
+			expect(getMatchedFirstMessageWord("overlooking foreign")).toBeNull();
+		});
+	});
+
+	test("a list saved before openers had modes keeps matching whole messages only", async () => {
+		await withStoredOpeners({ firstMessageWords: "hot, looking for" }, () => {
+			expect(getMatchedFirstMessageWord("ey looking for")).toBeNull();
+			expect(getMatchedFirstMessageWord("looking for")).toBe("looking for");
+			expect(getFirstMessageWords()).toBe('"hot", "looking for"');
+		});
 	});
 });
 
