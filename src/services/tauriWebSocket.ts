@@ -23,6 +23,23 @@ type WsEvent =
 
 const WS_EVENT_NAME = "grindr-ws://event";
 
+/**
+ * Tauri's unlisten looks synchronous but returns a promise, so a rejection
+ * escapes any try/catch wrapped around the call. Unregistering a listener the
+ * webview has already dropped — after it reloaded, or on a second teardown —
+ * rejects inside the injected script ("listeners[eventId].handlerId"), and
+ * with nothing catching it the crash overlay reports it as a fatal error.
+ */
+function safeUnlisten(unlisten: UnlistenFn): void {
+	try {
+		void Promise.resolve(unlisten() as unknown).catch((error) => {
+			appLog.warn("[chat-ws:tauri] unlisten rejected", error);
+		});
+	} catch (error) {
+		appLog.warn("[chat-ws:tauri] unlisten failed", error);
+	}
+}
+
 let activeInstance: TauriWebSocket | null = null;
 
 export class TauriWebSocket {
@@ -86,7 +103,7 @@ export class TauriWebSocket {
 				// unregister immediately instead of leaking it for the rest of
 				// the app's lifetime. dispatchClose already ran once and won't
 				// run again, so cleanupListener() would never call this.
-				unlisten();
+				safeUnlisten(unlisten);
 				return;
 			}
 			this.unlisten = unlisten;
@@ -168,13 +185,10 @@ export class TauriWebSocket {
 	}
 
 	private cleanupListener() {
-		if (this.unlisten) {
-			try {
-				this.unlisten();
-			} catch (error) {
-				appLog.warn("[chat-ws:tauri] unlisten failed", error);
-			}
-			this.unlisten = null;
+		const unlisten = this.unlisten;
+		this.unlisten = null;
+		if (unlisten) {
+			safeUnlisten(unlisten);
 		}
 	}
 
