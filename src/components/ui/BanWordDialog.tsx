@@ -37,6 +37,10 @@ type BanWordDialogProps = {
 	initialText: string;
 	onClose: () => void;
 	onSuccess?: (word: string) => void;
+	title?: string;
+	prompt?: string;
+	/** A name or a bio phrase only belongs in the keyword list, so the choice is settled. */
+	forbiddenOnly?: boolean;
 };
 
 export function BanWordDialog({
@@ -44,6 +48,9 @@ export function BanWordDialog({
 	initialText,
 	onClose,
 	onSuccess,
+	title = "Ban keyword",
+	prompt = "Trim this message down to what you want to block.",
+	forbiddenOnly = false,
 }: BanWordDialogProps) {
 	const { t } = useTranslation();
 	const dialogRef = useRef<HTMLDialogElement | null>(null);
@@ -99,7 +106,7 @@ export function BanWordDialog({
 	}, [isProcessing, onClose]);
 
 	const text = word.trim();
-	const lists = listsFor(destination);
+	const lists = listsFor(forbiddenOnly ? "forbidden" : destination);
 	// Checked as it is typed, so a keyword that is already there is flagged
 	// before anyone presses the button.
 	const existing = text
@@ -168,11 +175,9 @@ export function BanWordDialog({
 				<div>
 					<div className="flex items-center gap-2 text-red-400">
 						<Ban className="h-5 w-5 shrink-0" />
-						<p className="text-base font-bold text-[var(--text)]">Ban keyword</p>
+						<p className="text-base font-bold text-[var(--text)]">{title}</p>
 					</div>
-					<p className="mt-2 text-xs leading-relaxed text-[var(--text-muted)]">
-						Trim this message down to what you want to block.
-					</p>
+					<p className="mt-2 text-xs leading-relaxed text-[var(--text-muted)]">{prompt}</p>
 				</div>
 
 				<input
@@ -185,17 +190,19 @@ export function BanWordDialog({
 					className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-2.5 text-sm font-medium text-[var(--text)] outline-none transition focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)]"
 				/>
 
-				<div className="grid gap-1.5">
-					<p className="text-xs font-semibold text-[var(--text-muted)]">Add to</p>
-					<SegmentedChoice
-						fullWidth
-						value={destination}
-						options={DESTINATION_OPTIONS}
-						onChange={setDestination}
-						ariaLabel="Add to"
-						disabled={isProcessing}
-					/>
-				</div>
+				{forbiddenOnly ? null : (
+					<div className="grid gap-1.5">
+						<p className="text-xs font-semibold text-[var(--text-muted)]">Add to</p>
+						<SegmentedChoice
+							fullWidth
+							value={destination}
+							options={DESTINATION_OPTIONS}
+							onChange={setDestination}
+							ariaLabel="Add to"
+							disabled={isProcessing}
+						/>
+					</div>
+				)}
 
 				<div className="grid gap-1.5">
 					<p className="text-xs font-semibold text-[var(--text-muted)]">Match</p>

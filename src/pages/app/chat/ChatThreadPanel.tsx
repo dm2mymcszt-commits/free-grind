@@ -98,7 +98,6 @@ import type { ArchivedReason } from "../../../types/chat-db";
 import { useAvatarCache } from "../../../hooks/useAvatarCache";
 import { resolveAvatarSrc } from "../../../services/avatarStore";
 import { matchSlashCommandsByPrefix, type SlashCommandDef } from "./slashCommands";
-import { addKeywordTo } from "../../../utils/autoblock";
 import {
 	SKIP_BLOCK_CONFIRM_KEY,
 	SKIP_UNBLOCK_CONFIRM_KEY,
@@ -569,7 +568,16 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 	const [dontAskBlockAgain, setDontAskBlockAgain] = useState(false);
 	const [isUnblockConfirmOpen, setIsUnblockConfirmOpen] = useState(false);
 	const [dontAskUnblockAgain, setDontAskUnblockAgain] = useState(false);
-	const [banWordInitialText, setBanWordInitialText] = useState<string | null>(null);
+	const [banWordRequest, setBanWordRequest] = useState<
+		{ text: string; title: string; prompt: string; forbiddenOnly: boolean } | null
+	>(null);
+	const openBanWordForMessage = (text: string) =>
+		setBanWordRequest({
+			text,
+			title: "Ban keyword",
+			prompt: "Trim this message down to what you want to block.",
+			forbiddenOnly: false,
+		});
 
 	const {
 		navigate,
@@ -1119,6 +1127,13 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 					localNickname ||
 					(selectedConversation ? selectedConversation.data.name : targetProfileDetail?.displayName) ||
 					t(selectedConversation ? "chat.conversation" : "chat.notifications.someone");
+				// What this person is actually called on Grindr. displayName falls
+				// back to a nickname this device invented and then to "Conversation",
+				// and banning either would add a keyword matching people who have
+				// nothing to do with them.
+				const realProfileName = (
+					(selectedConversation ? selectedConversation.data.name : targetProfileDetail?.displayName) ?? ""
+				).trim();
 
 				// Blocking a chat with a live conversation archives it — that's why
 				// the existing-conversation case keys off isArchived. There's no
@@ -1541,22 +1556,24 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 											{!isArchived && (
 												<>
 													<div className="my-1 h-px bg-[var(--border)]" />
-													<button
-														type="button"
-														onClick={() => {
-															setIsHeaderActionsMenuOpen(false);
-															void addKeywordTo("forbidden", displayName, "anywhere")
-																.then(({ added, existing }) => {
-																	if (added) toast.success(`Added "${displayName}" to Forbidden keywords.`);
-																	else if (existing) toast.error(`"${existing.text}" is already in Forbidden keywords.`);
-																})
-																.catch(() => toast.error("Failed to add the keyword."));
-														}}
-														className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text-muted)] transition hover:bg-[var(--surface-2)]"
-													>
-														<Ban className="mr-2 h-4 w-4 opacity-50" />
-														Ban Name "{displayName}"
-													</button>
+													{realProfileName ? (
+														<button
+															type="button"
+															onClick={() => {
+																setIsHeaderActionsMenuOpen(false);
+																setBanWordRequest({
+																	text: realProfileName,
+																	title: "Ban name",
+																	prompt: "Blocks people whose name, bio or messages match this.",
+																	forbiddenOnly: true,
+																});
+															}}
+															className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text-muted)] transition hover:bg-[var(--surface-2)]"
+														>
+															<Ban className="mr-2 h-4 w-4 opacity-50" />
+															Ban Name "{realProfileName}"
+														</button>
+													) : null}
 													<button
 														type="button"
 														onClick={async () => {
@@ -1568,13 +1585,12 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 																toast.dismiss(loadToast);
 																const bio = profile.aboutMe || "";
 																if (!bio.trim()) { toast.error("This user has no bio!"); return; }
-																const wordToBan = window.prompt("Trim this bio down to the exact phrase you want to ban:", bio);
-																if (wordToBan && wordToBan.trim()) {
-																	const phrase = wordToBan.trim();
-																	const { added, existing } = await addKeywordTo("forbidden", phrase, "anywhere");
-																	if (added) toast.success(`Added "${phrase}" to Forbidden keywords.`);
-																	else if (existing) toast.error(`"${existing.text}" is already in Forbidden keywords.`);
-																}
+																setBanWordRequest({
+																	text: bio.trim(),
+																	title: "Ban bio phrase",
+																	prompt: "Trim this bio down to the phrase you want to block.",
+																	forbiddenOnly: true,
+																});
 															} catch (e) {
 																toast.dismiss(loadToast);
 																toast.error("Failed to load bio.");
@@ -1726,7 +1742,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 						handleRetry={handleRetry}
 						handleReply={handleReply}
 						handleStopAlbumShare={handleStopAlbumShare}
-						onBanWord={(text) => setBanWordInitialText(text)}
+						onBanWord={openBanWordForMessage}
 						threadBottomRef={threadBottomRef}
 						isPartnerTyping={isPartnerTyping}
 						isArchived={isArchived}
@@ -2726,7 +2742,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 											icon: <Ban className="h-3.5 w-3.5" />,
 											label: t("chat.actions.ban_word", { defaultValue: "Ban word" }),
 											onClick: () => {
-												setBanWordInitialText(body?.text || "");
+												openBanWordForMessage(body?.text || "");
 											},
 										});
 									}
@@ -2786,9 +2802,12 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 
 
 			<BanWordDialog
-				isOpen={banWordInitialText !== null}
-				initialText={banWordInitialText ?? ""}
-				onClose={() => setBanWordInitialText(null)}
+				isOpen={banWordRequest !== null}
+				initialText={banWordRequest?.text ?? ""}
+				title={banWordRequest?.title}
+				prompt={banWordRequest?.prompt}
+				forbiddenOnly={banWordRequest?.forbiddenOnly ?? false}
+				onClose={() => setBanWordRequest(null)}
 			/>
 		</div>
 	) : (
