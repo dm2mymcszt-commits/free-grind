@@ -4,6 +4,7 @@ import {
 	FileDown,
 	FileUp,
 	Loader2,
+	Minimize2,
 	ShieldCheck,
 	Trash2,
 	Upload,
@@ -49,6 +50,9 @@ function formatBytes(bytes: number): string {
 function getErrorMessage(error: unknown, fallback: string): string {
 	return error instanceof Error && error.message ? error.message : fallback;
 }
+
+/** Free space worth offering to reclaim: under this, compacting is not worth the wait. */
+const COMPACTABLE_FREE_BYTES = 50 * 1024 * 1024;
 
 export function SettingsDataPage() {
 	const { t } = useTranslation();
@@ -101,7 +105,9 @@ export function SettingsDataPage() {
 
 	const [autoDownloadMedia, setAutoDownloadMedia] = useState(() => isAutoDownloadMediaEnabled());
 	const [usage, setUsage] = useState<{ count: number; totalBytes: number } | null>(null);
-	const [dbBytes, setDbBytes] = useState<number | null>(null);
+	const [dbUsage, setDbUsage] = useState<chatDb.DatabaseUsage | null>(null);
+	const [isCompacting, setIsCompacting] = useState(false);
+	const [showCompactConfirm, setShowCompactConfirm] = useState(false);
 	const [isLoadingUsage, setIsLoadingUsage] = useState(true);
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -127,12 +133,12 @@ export function SettingsDataPage() {
 	const loadUsage = useCallback(async () => {
 		setIsLoadingUsage(true);
 		try {
-			const [downloaded, size] = await Promise.all([
+			const [downloaded, database] = await Promise.all([
 				getDownloadedMediaUsage(),
-				chatDb.getDatabaseSizeBytes().catch(() => 0),
+				chatDb.getDatabaseUsage().catch(() => null),
 			]);
 			setUsage(downloaded);
-			setDbBytes(size);
+			setDbUsage(database);
 		} catch (error) {
 			appLog.error("[SettingsDataPage] failed to load downloaded-media usage", error);
 		} finally {
@@ -388,6 +394,27 @@ export function SettingsDataPage() {
 		}
 	};
 
+	const handleCompact = async () => {
+		setShowCompactConfirm(false);
+		setIsCompacting(true);
+		const fileBefore = dbUsage?.fileBytes ?? 0;
+		try {
+			const after = await chatDb.compactDatabase();
+			setDbUsage(after);
+			toast.success(
+				t("data_backup.compact_done", {
+					defaultValue: "Gave {{size}} back to your disk.",
+					size: formatBytes(Math.max(0, fileBefore - after.fileBytes)),
+				}),
+			);
+		} catch (error) {
+			appLog.error("[SettingsDataPage] compacting the database failed", error);
+			toast.error(t("data_backup.compact_failed", { defaultValue: "Couldn't compact the database." }));
+		} finally {
+			setIsCompacting(false);
+		}
+	};
+
 	const handleImportFile = async (file: File) => {
 		// Mirror mode erases before it writes, so it always gets a confirmation
 		// naming what goes. A plain merge can't lose anything and doesn't.
@@ -456,10 +483,34 @@ export function SettingsDataPage() {
 										? t("data_backup.storage_loading", { defaultValue: "Calculating…" })
 										: t("data_backup.app_database_summary", {
 												defaultValue: "{{size}} of cached chats, albums and avatars",
-												size: formatBytes(dbBytes ?? 0),
+												size: formatBytes(dbUsage?.usedBytes ?? 0),
 											})}
 								</p>
+								{!isLoadingUsage && (dbUsage?.freeBytes ?? 0) > 0 ? (
+									<p className="mt-0.5 text-xs text-[var(--text-muted)]">
+										{t("data_backup.app_database_free", {
+											defaultValue:
+												"The file also holds {{size}} of empty space left by data you deleted. It is reused for new data, and only compacting gives it back to the disk.",
+											size: formatBytes(dbUsage?.freeBytes ?? 0),
+										})}
+									</p>
+								) : null}
 							</div>
+							{!isLoadingUsage && (dbUsage?.freeBytes ?? 0) >= COMPACTABLE_FREE_BYTES ? (
+								<button
+									type="button"
+									onClick={() => setShowCompactConfirm(true)}
+									disabled={isCompacting}
+									className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-[var(--surface-2)] px-3 text-xs font-semibold text-[var(--text)] transition hover:bg-[var(--surface)] disabled:opacity-50"
+								>
+									{isCompacting ? (
+										<Loader2 className="h-3.5 w-3.5 animate-spin" />
+									) : (
+										<Minimize2 className="h-3.5 w-3.5" />
+									)}
+									{t("data_backup.compact", { defaultValue: "Compact" })}
+								</button>
+							) : null}
 						</div>
 
 						<div className="flex items-center justify-between gap-4 px-4 py-3.5">
@@ -795,6 +846,20 @@ export function SettingsDataPage() {
 					</div>
 				</div>
 			</div>
+
+			<ConfirmDialog
+				isOpen={showCompactConfirm}
+				title={t("data_backup.compact_confirm_title", { defaultValue: "Compact the app database?" })}
+				message={t("data_backup.compact_confirm_message", {
+					defaultValue:
+						"This rewrites the database file without the empty space that deleted data left behind. Nothing you still have is removed, but the app may be busy for a minute, so avoid closing it while it runs.",
+				})}
+				confirmLabel={t("data_backup.compact", { defaultValue: "Compact" })}
+				cancelLabel={t("common.cancel", { defaultValue: "Cancel" })}
+				isProcessing={isCompacting}
+				onConfirm={() => void handleCompact()}
+				onCancel={() => setShowCompactConfirm(false)}
+			/>
 
 			<ConfirmDialog
 				isOpen={showDeleteConfirm}

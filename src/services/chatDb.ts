@@ -2705,16 +2705,48 @@ export async function clearPortableTables(names: string[]): Promise<void> {
 	});
 }
 
+export type DatabaseUsage = {
+	/** What the file takes up on disk. */
+	fileBytes: number;
+	/** The part of it holding data. */
+	usedBytes: number;
+	/**
+	 * Space inside the file that deleted rows left behind. Sqlite keeps it for
+	 * its own later writes instead of returning it to the disk, so a file that
+	 * once held gigabytes of media stays that size long after the media is
+	 * gone — see compactDatabase.
+	 */
+	freeBytes: number;
+};
+
 /**
- * The chat database's real on-disk size. Read via pragma rather than a
- * filesystem stat because $APPDATA has no read scope in our fs capability.
+ * How much room the chat database takes, and how much of that is still in
+ * use. Read via pragma rather than a filesystem stat because $APPDATA has no
+ * read scope in our fs capability.
  */
-export async function getDatabaseSizeBytes(): Promise<number> {
+export async function getDatabaseUsage(): Promise<DatabaseUsage> {
 	const db = await getDb();
-	const rows = await db.select<{ size: number | null }[]>(
-		"SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()",
+	const rows = await db.select<{ file: number | null; free: number | null }[]>(
+		"SELECT page_count * page_size AS file, freelist_count * page_size AS free"
+			+ " FROM pragma_page_count(), pragma_page_size(), pragma_freelist_count()",
 	);
-	return rows[0]?.size ?? 0;
+	const fileBytes = rows[0]?.file ?? 0;
+	const freeBytes = Math.min(rows[0]?.free ?? 0, fileBytes);
+	return { fileBytes, usedBytes: fileBytes - freeBytes, freeBytes };
+}
+
+/**
+ * Rewrites the database without its free pages, handing that space back to
+ * the disk. Nothing stored is lost: sqlite rebuilds the file from the live
+ * rows and swaps it in atomically, so an interrupted run leaves the original
+ * in place.
+ */
+export async function compactDatabase(): Promise<DatabaseUsage> {
+	const db = await getDb();
+	await executeWithLockRetry(db, "compact-database", async () => {
+		await db.execute("VACUUM");
+	});
+	return getDatabaseUsage();
 }
 
 /**
