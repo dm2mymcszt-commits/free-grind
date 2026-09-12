@@ -95,6 +95,33 @@ type ProfileDetailsModalProps = {
 	onNextProfile?: () => void;
 };
 
+/**
+ * Stands in for the profile while it loads, in roughly the shape the real
+ * thing takes. A single line of grey text left most of the screen blank and
+ * gave no clue how much was coming.
+ */
+function ProfileDetailsSkeleton({ label }: { label: string }) {
+	return (
+		<div className="grid gap-3" role="status" aria-busy="true" aria-label={label}>
+			<div className="h-5 w-40 animate-pulse rounded-full bg-[var(--surface-2)]" />
+			<div className="h-3 w-56 animate-pulse rounded-full bg-[var(--surface-2)]" />
+			<div className="mt-1 grid gap-2 rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-3">
+				{[0, 1, 2, 3].map((row) => (
+					<div key={row} className="flex items-center justify-between gap-6">
+						<div className="h-3 w-24 animate-pulse rounded-full bg-[var(--surface-2)]" />
+						<div className="h-3 w-16 animate-pulse rounded-full bg-[var(--surface-2)]" />
+					</div>
+				))}
+			</div>
+			<div className="h-20 animate-pulse rounded-2xl bg-[var(--surface-2)]" />
+			<div className="flex gap-2">
+				<div className="h-9 flex-1 animate-pulse rounded-xl bg-[var(--surface-2)]" />
+				<div className="h-9 flex-1 animate-pulse rounded-xl bg-[var(--surface-2)]" />
+			</div>
+		</div>
+	);
+}
+
 function normalizeMediaCreatedAt(value: unknown): number | null {
 	if (typeof value !== "number" && typeof value !== "string") {
 		return null;
@@ -1124,7 +1151,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 				)}
 				<div className={`p-4 sm:p-5 ${variant === "page" ? "pb-[calc(env(safe-area-inset-bottom,0px)+6rem)] sm:pb-[calc(env(safe-area-inset-bottom,0px)+6rem)]" : "pb-28"}`}>
 					{isLoadingActiveProfile ? (
-						<p className="text-sm text-[var(--text-muted)]">{t("profile_details.loading")}</p>
+						<ProfileDetailsSkeleton label={t("profile_details.loading")} />
 					) : activeProfileError ? (
 						<p className="text-sm text-[var(--text-muted)]">{activeProfileError}</p>
 					) : activeProfile ? (
@@ -1517,7 +1544,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 							<div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain" data-lenis-prevent>
 								<div className="p-4 pb-28 sm:p-5 sm:pb-28">
 									{isLoadingActiveProfile ? (
-										<p className="text-sm text-[var(--text-muted)]">{t("profile_details.loading")}</p>
+										<ProfileDetailsSkeleton label={t("profile_details.loading")} />
 									) : activeProfileError ? (
 										<p className="text-sm text-[var(--text-muted)]">{activeProfileError}</p>
 									) : activeProfile ? (
