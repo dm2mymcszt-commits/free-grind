@@ -357,15 +357,10 @@ export function ChatRealtimeBridge() {
 		};
 	}, [queryClient]);
 
-	// In-app toast whenever someone else blocks or unblocks us. Every
-	// reconciliation path that determines this (the live WS event, ChatPage's
-	// foreground reappearance check, inboxSync's background walk) funnels
-	// through inserting a "SystemBlocked"/"SystemUnblocked" message and
-	// dispatching this same event — listening once here, app-wide, catches
-	// all of them regardless of which screen is open. Deliberately skips the
-	// "...BySelf" variants: those are our own block/unblock action, already
-	// visible from the confirmation dialog and immediate UI change that
-	// triggered it, not something we need telling about again.
+	// Someone else blocking or unblocking us is not worth a notification —
+	// the user asked for those to go. This still listens for the same
+	// "SystemBlocked" message, because that is what tells counter-block there
+	// is somebody to block back.
 	useEffect(() => {
 		const handleSystemMessage = async (event: Event) => {
 			const messages = (event as CustomEvent<Message[]>).detail;
@@ -374,13 +369,6 @@ export function ChatRealtimeBridge() {
 				if (message.type !== "SystemBlocked" && message.type !== "SystemUnblocked") {
 					continue;
 				}
-				// getDisplayName falls back to the other participant's profile ID
-				// when the conversation has no name (e.g. never nicknamed/messaged
-				// enough to get one) — a bare "someone" is only shown when the
-				// conversation isn't even in the directory yet.
-				const name =
-					getDisplayName(message.conversationId, userIdRef.current) ??
-					tRef.current("chat.notifications.someone");
 				if (message.type === "SystemBlocked") {
 					const counterBlockEnabled = window.localStorage.getItem("fg-autoblock-counter-block") === "true";
 					if (counterBlockEnabled && message.conversationId) {
@@ -405,19 +393,6 @@ export function ChatRealtimeBridge() {
 							);
 						}
 					}
-					toast(
-						tRef.current("chat.block_toast.blocked_by_other", {
-							defaultValue: "{{name}} blocked you",
-							name,
-						}),
-					);
-				} else {
-					toast.success(
-						tRef.current("chat.block_toast.unblocked_by_other", {
-							defaultValue: "{{name}} unblocked you",
-							name,
-						}),
-					);
 				}
 			}
 		};
