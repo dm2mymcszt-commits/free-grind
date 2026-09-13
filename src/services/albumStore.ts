@@ -12,6 +12,7 @@
 
 import * as chatDb from "./chatDb";
 import { fetchAndEncode, toDataUri } from "./mediaStore";
+import { BoundedStringCache, cacheBudget } from "../utils/boundedCache";
 import {
 	getAlbumContentReplyTarget,
 	getMessageAlbumCoverUrl,
@@ -81,7 +82,7 @@ const albumCheckInFlight = new Map<number, Promise<void>>();
 // server can drop that field entirely, which would otherwise make the
 // cover disappear even though we have the actual image cached. Same
 // in-memory pattern as mediaStore.ts's per-key cache.
-const albumCoverCache = new Map<number, string>();
+const albumCoverCache = new BoundedStringCache<number>("Album covers", cacheBudget(8, 32));
 
 // Per-content-item thumbnail cache, keyed the same way as album_media's PK
 // (`${albumId}:${contentId}`) — backs reply-quote thumbnails and "tapped
@@ -89,7 +90,7 @@ const albumCoverCache = new Map<number, string>();
 // to albumCoverCache above which only ever tracks item 0. Populated both by
 // a full album capture (updateAlbumCacheState) and, when that never
 // happened, by captureAlbumContentThumbFromMessage below.
-const albumContentThumbCache = new Map<string, string>();
+const albumContentThumbCache = new BoundedStringCache<string>("Album thumbnails", cacheBudget(16, 64));
 // De-dupes concurrent captureAlbumContentThumbFromMessage calls for the same
 // item. Holds the in-flight promise (rather than just the key) so an awaiting
 // caller — e.g. the pre-block capture in autoBlockConversation — can join a

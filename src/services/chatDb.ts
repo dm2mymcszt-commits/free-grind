@@ -1806,6 +1806,18 @@ export async function upsertMediaFile(input: MediaFileUpsertInput): Promise<void
 	});
 }
 
+/** Whether media is stored, without reading its bytes back across the bridge. */
+export async function getMediaFetchStatus(
+	mediaKey: string,
+): Promise<StoredMediaFile["fetchStatus"] | null> {
+	const db = await getDb();
+	const rows = await db.select<{ fetch_status: string }[]>(
+		"SELECT fetch_status FROM media_files WHERE media_key = $1",
+		[mediaKey],
+	);
+	return (rows[0]?.fetch_status as StoredMediaFile["fetchStatus"] | undefined) ?? null;
+}
+
 export async function getMediaFile(
 	mediaKey: string,
 ): Promise<StoredMediaFile | null> {

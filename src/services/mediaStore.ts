@@ -15,7 +15,6 @@ import * as chatDb from "./chatDb";
 import {
 	getMediaCaptureTarget,
 	getReplyImageHashTarget,
-	isMediaMessage,
 } from "../pages/app/chat/chatUtils";
 import type { MediaCaptureTarget } from "../pages/app/chat/chatUtils";
 import type { MediaKind } from "../types/chat-db";
@@ -23,6 +22,7 @@ import type { UiMessage } from "../types/chat-page";
 import { appLog } from "../utils/logger";
 import { isAutoDownloadMediaEnabled } from "../utils/mediaSettings";
 import { limitChatDbBlobRead } from "../utils/chatDbBlobLimiter";
+import { BoundedStringCache, cacheBudget } from "../utils/boundedCache";
 
 // De-dupe concurrent fetches for the same key (e.g. multiple hydration passes
 // racing for the same image).
@@ -31,7 +31,22 @@ const inFlight = new Map<string, Promise<void>>();
 // Synchronous in-memory cache so render code (which can't await a DB read)
 // can prefer the locally-stored copy once it's available. Populated as
 // fetchAndStoreMedia resolves (whether by downloading or finding a DB hit).
-const memoryCache = new Map<string, string>();
+const memoryCache = new BoundedStringCache<string>("Chat media", cacheBudget(48, 192));
+// Media keys already looked up in chatDb and not found, so a render that keeps
+// asking does not keep reading.
+const emptyMediaKeyLookups = new Set<string>();
+
+// When what is on screen needs more than the budget, loading one entry evicts
+// another that is also on screen, and that one's next render would load it
+// straight back — forever. Not reloading the same key within this window
+// breaks the loop; the item shows again once it has passed.
+const REHYDRATE_COOLDOWN_MS = 30_000;
+const lastHydratedAt = new Map<string, number>();
+
+function hydratedRecently(key: string): boolean {
+	const at = lastHydratedAt.get(key);
+	return at !== undefined && Date.now() - at < REHYDRATE_COOLDOWN_MS;
+}
 const cacheListeners = new Set<() => void>();
 
 function setCachedMediaUri(mediaKey: string, uri: string): void {
@@ -130,6 +145,11 @@ export type FetchAndStoreMediaParams = {
 	// never worth mirroring to the device's Downloads folder even when
 	// received. Defaults to false.
 	skipAutoDownload?: boolean;
+	// Whether the stored copy is also held in memory, ready to show. The
+	// pre-block archival capture passes false: it saves media from chats
+	// nobody is looking at, and holding all of that is what ran iOS out of
+	// memory. Defaults to true.
+	cacheInMemory?: boolean;
 };
 
 async function downloadAndStore(params: FetchAndStoreMediaParams): Promise<void> {
@@ -164,7 +184,10 @@ async function downloadAndStore(params: FetchAndStoreMediaParams): Promise<void>
 		sizeBytes: fetched.sizeBytes,
 		fetchStatus: "ok",
 	});
-	setCachedMediaUri(mediaKey, toDataUri(fetched.mimeType, fetched.base64));
+	if (params.cacheInMemory !== false) {
+		setCachedMediaUri(mediaKey, toDataUri(fetched.mimeType, fetched.base64));
+	}
+	emptyMediaKeyLookups.delete(mediaKey);
 	// This message now has bytes on disk, so a message-id-keyed lookup that
 	// previously came back empty would succeed — let it be retried.
 	if (messageId) {
@@ -218,17 +241,28 @@ export async function fetchAndStoreMedia(
 
 	const run = (async () => {
 		try {
-			const cached = await limitChatDbBlobRead(() => chatDb.getMediaFile(mediaKey));
-			if (cached?.fetchStatus === "ok") {
-				setCachedMediaUri(mediaKey, toDataUri(cached.mimeType, cached.dataBase64));
-				return;
+			let storedStatus: string | null;
+			if (params.cacheInMemory === false) {
+				// Only whether it is stored: reading the bytes back to find out
+				// pulled every captured video across the bridge a second time.
+				storedStatus = await chatDb.getMediaFetchStatus(mediaKey).catch(() => null);
+				if (storedStatus === "ok") {
+					return;
+				}
+			} else {
+				const cached = await limitChatDbBlobRead(() => chatDb.getMediaFile(mediaKey));
+				if (cached?.fetchStatus === "ok") {
+					setCachedMediaUri(mediaKey, toDataUri(cached.mimeType, cached.dataBase64));
+					return;
+				}
+				storedStatus = cached?.fetchStatus ?? null;
 			}
 			// Signed URLs that already expired are guaranteed to 403 — skip the
 			// network round-trip (and the log spam it'd produce) instead of
 			// re-hitting CloudFront every time this message is re-processed
 			// (poll, realtime merge, hydration pass) until a fresh URL arrives.
 			if (isSignedUrlExpired(url)) {
-				if (cached?.fetchStatus !== "failed") {
+				if (storedStatus !== "failed") {
 					await chatDb
 						.upsertMediaFile({
 							mediaKey,
@@ -304,7 +338,8 @@ export async function hydrateMediaByMessageId(messageId: string): Promise<void> 
 	if (
 		memoryCache.has(key) ||
 		inFlight.has(key) ||
-		emptyMessageMediaLookups.has(messageId)
+		emptyMessageMediaLookups.has(messageId) ||
+		hydratedRecently(key)
 	) {
 		return;
 	}
@@ -315,6 +350,7 @@ export async function hydrateMediaByMessageId(messageId: string): Promise<void> 
 				chatDb.getMediaFileByMessageId(messageId),
 			);
 			if (stored?.fetchStatus === "ok") {
+				lastHydratedAt.set(key, Date.now());
 				setCachedMediaUri(key, toDataUri(stored.mimeType, stored.dataBase64));
 			} else {
 				emptyMessageMediaLookups.add(messageId);
@@ -325,6 +361,42 @@ export async function hydrateMediaByMessageId(messageId: string): Promise<void> 
 	})();
 
 	inFlight.set(key, run);
+	return run;
+}
+
+/**
+ * Loads stored media into memory by its media key. For a message whose live
+ * link has expired and whose copy is not in memory — never loaded, or evicted
+ * to keep memory in check — this is how the saved copy comes back.
+ */
+export async function hydrateMediaByKey(mediaKey: string): Promise<void> {
+	if (
+		!mediaKey ||
+		memoryCache.has(mediaKey) ||
+		inFlight.has(mediaKey) ||
+		emptyMediaKeyLookups.has(mediaKey) ||
+		hydratedRecently(mediaKey)
+	) {
+		return;
+	}
+
+	const run = (async () => {
+		try {
+			const stored = await limitChatDbBlobRead(() => chatDb.getMediaFile(mediaKey));
+			if (stored?.fetchStatus === "ok") {
+				lastHydratedAt.set(mediaKey, Date.now());
+				setCachedMediaUri(mediaKey, toDataUri(stored.mimeType, stored.dataBase64));
+			} else {
+				emptyMediaKeyLookups.add(mediaKey);
+			}
+		} catch {
+			emptyMediaKeyLookups.add(mediaKey);
+		} finally {
+			inFlight.delete(mediaKey);
+		}
+	})();
+
+	inFlight.set(mediaKey, run);
 	return run;
 }
 
@@ -369,12 +441,10 @@ export async function captureMessageMediaForArchival(
 		const target = getMediaCaptureTarget(message);
 		if (target) {
 			targets.push({ message, target });
-		} else if (isMediaMessage(message)) {
-			// An attachment whose body has already lost its URL — nothing left to
-			// download, but pull whatever's already stored into the in-memory
-			// cache so the archived thread renders it.
-			sideCaptures.push(hydrateMediaByMessageId(message.messageId));
 		}
+		// An attachment whose body has already lost its URL has nothing left to
+		// download. What is stored for it stays in chatDb, and is only loaded
+		// into memory if somebody opens the thread.
 
 		const replyTarget = getReplyImageHashTarget(message);
 		if (replyTarget) {
@@ -388,6 +458,7 @@ export async function captureMessageMediaForArchival(
 					viewOnce: false,
 					isOwnMessage: false,
 					skipAutoDownload: true,
+					cacheInMemory: false,
 				}),
 			);
 		}
@@ -407,19 +478,18 @@ export async function captureMessageMediaForArchival(
 					messageId: message.messageId,
 					viewOnce: target.viewOnce,
 					isOwnMessage: userId != null && Number(message.senderId) === Number(userId),
+					cacheInMemory: false,
 				});
 
 				// It records failures as a row with fetchStatus "failed" rather
 				// than signalling them, so success has to be read back off the row.
-				const stored = await limitChatDbBlobRead(() =>
-					chatDb.getMediaFile(target.mediaKey),
-				).catch(() => null);
+				const status = await chatDb.getMediaFetchStatus(target.mediaKey).catch(() => null);
 
 				return {
 					messageId: message.messageId,
 					mediaKey: target.mediaKey,
 					kind: target.kind,
-					captured: stored?.fetchStatus === "ok",
+					captured: status === "ok",
 					unavailable: isSignedUrlExpired(target.url),
 				};
 			}),

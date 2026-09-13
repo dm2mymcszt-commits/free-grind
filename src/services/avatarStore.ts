@@ -13,9 +13,10 @@ import { fetchAndEncode, toDataUri } from "./mediaStore";
 import { getProfileImageUrl, validateMediaHash } from "../utils/media";
 import { appLog } from "../utils/logger";
 import { limitChatDbBlobRead } from "../utils/chatDbBlobLimiter";
+import { BoundedStringCache, cacheBudget } from "../utils/boundedCache";
 
 const inFlight = new Map<string, Promise<void>>();
-const memoryCache = new Map<string, string>();
+const memoryCache = new BoundedStringCache<string>("Avatars", cacheBudget(8, 32));
 const cacheListeners = new Set<() => void>();
 
 function setCachedAvatarUri(mediaHash: string, uri: string): void {

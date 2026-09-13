@@ -21,7 +21,9 @@ import { useLocalMediaCache } from "../../../hooks/useLocalMediaCache";
 import {
     getCachedMediaUri,
     getMessageFallbackMediaKey,
+    hydrateMediaByKey,
     hydrateMediaByMessageId,
+    isSignedUrlExpired,
 } from "../../../services/mediaStore";
 import { useAlbumCache } from "../../../hooks/useAlbumCache";
 import {
@@ -904,6 +906,11 @@ export function ChatThreadMessages({
                             if (imageUrl) imageUrl = cachedUri;
                             else if (videoUrl) videoUrl = cachedUri;
                             else if (audioUrl) audioUrl = cachedUri;
+                        } else if (captureTarget && isSignedUrlExpired(captureTarget.url)) {
+                            // Not in memory — never loaded, or evicted to keep memory
+                            // in check — and the live link has expired, so fetch the
+                            // saved copy instead of showing a dead link.
+                            void hydrateMediaByKey(captureTarget.mediaKey);
                         }
                     } else {
                         // The live message no longer carries a URL at all (expired
