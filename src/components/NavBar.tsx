@@ -500,14 +500,6 @@ export function NavBar() {
                                                     <span className="absolute -right-1 -top-1 flex h-2 w-2">
                                                         <span
                                                             className={cn(
-                                                                "absolute inline-flex h-full w-full animate-ping rounded-full opacity-75",
-                                                                activeTab === "right-now"
-                                                                    ? "bg-[var(--right-now)]"
-                                                                    : "bg-[var(--accent)]",
-                                                            )}
-                                                        ></span>
-                                                        <span
-                                                            className={cn(
                                                                 "relative inline-block h-2 w-2 rounded-full ring-1 ring-[var(--surface)]",
                                                                 activeTab === "right-now"
                                                                     ? "bg-[var(--right-now)]"
