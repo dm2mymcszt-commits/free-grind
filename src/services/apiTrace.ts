@@ -36,7 +36,9 @@ export function toTracePreview(value: unknown): string | null {
 
 	if (value instanceof Uint8Array) {
 		try {
-			return trimPreview(new TextDecoder().decode(value));
+			// Only the head is ever shown. Decoding the whole body turned every
+			// response, photos and videos included, into a second full-size copy.
+			return trimPreview(new TextDecoder().decode(value.subarray(0, MAX_PREVIEW_LENGTH * 4)));
 		} catch {
 			return `Uint8Array(${value.byteLength} bytes)`;
 		}
