@@ -22,6 +22,7 @@ const HEARTBEAT_MS = 4000;
 const MAX_RESTARTS = 40;
 const MAX_BLOCKS = 40;
 const MAX_ERRORS = 12;
+const MAX_ACTIVITIES = 12;
 const MB = 1024 * 1024;
 
 export type DiagnosticsSnapshot = {
@@ -38,6 +39,7 @@ export type DiagnosticsSnapshot = {
 };
 
 export type RecentError = { at: number; message: string };
+export type RecentActivity = { at: number; label: string };
 
 type DiagnosticsState = {
 	startedAt: number;
@@ -45,6 +47,7 @@ type DiagnosticsState = {
 	cleanExit: boolean;
 	snapshot: DiagnosticsSnapshot | null;
 	errors: RecentError[];
+	activities: RecentActivity[];
 };
 
 export type RestartRecord = {
@@ -56,6 +59,8 @@ export type RestartRecord = {
 	wasVisible: boolean;
 	snapshot: DiagnosticsSnapshot | null;
 	errors: RecentError[];
+	/** The last heavy things the run started, newest first: what it was doing when it died. */
+	activities: RecentActivity[];
 };
 
 export type BlockRecord = {
@@ -127,6 +132,7 @@ export function installDiagnostics(): void {
 			wasVisible: previous.snapshot?.visibility === "visible",
 			snapshot: previous.snapshot,
 			errors: previous.errors ?? [],
+			activities: previous.activities ?? [],
 		});
 		writeJson(RESTARTS_KEY, restarts.slice(0, MAX_RESTARTS));
 	}
@@ -138,6 +144,7 @@ export function installDiagnostics(): void {
 		cleanExit: false,
 		snapshot: null,
 		errors: [],
+		activities: [],
 	};
 	state = current;
 
@@ -175,6 +182,22 @@ export function installDiagnostics(): void {
 		const reason = event.reason;
 		recordError(`Rejection: ${reason instanceof Error ? reason.message : String(reason)}`);
 	});
+}
+
+/**
+ * Notes a heavy step as it starts, saved at once rather than with the next
+ * heartbeat: iOS kills the process mid-step without warning, so the last
+ * entry left behind names what was running.
+ */
+export function markActivity(label: string): void {
+	if (!state) {
+		return;
+	}
+	state.activities = [{ at: Date.now(), label: label.slice(0, 160) }, ...state.activities].slice(
+		0,
+		MAX_ACTIVITIES,
+	);
+	writeJson(STATE_KEY, state);
 }
 
 export function getSessionStartedAt(): number {

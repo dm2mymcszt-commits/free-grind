@@ -172,6 +172,15 @@ export function SettingsDiagnosticsPage() {
 									) : (
 										<p className="text-xs text-[var(--text-muted)]">No snapshot was saved.</p>
 									)}
+									{(restart.activities ?? []).length > 0 ? (
+										<ul className="grid gap-1 border-t border-[var(--border)] pt-2 font-mono text-[10px] text-sky-300">
+											{restart.activities.map((activity) => (
+												<li key={`${activity.at}-${activity.label}`}>
+													{formatTime(activity.at)} {activity.label}
+												</li>
+											))}
+										</ul>
+									) : null}
 									{restart.errors.length > 0 ? (
 										<ul className="grid gap-1 border-t border-[var(--border)] pt-2 font-mono text-[10px] text-amber-300">
 											{restart.errors.map((error) => (
