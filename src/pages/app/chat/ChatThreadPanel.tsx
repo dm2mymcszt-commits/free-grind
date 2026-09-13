@@ -1942,17 +1942,31 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 									<div className="flex items-center gap-2 py-[13px] pl-[13px] pr-2">
 										<div className="min-w-0 flex-1">
 											<p className="mb-0.5 truncate text-[11px] font-semibold text-[var(--accent)]">
-												{userId != null && Number(rtm.senderId) === Number(userId)
-													? "Replying to myself"
-													: `Replying to "${selectedConversation?.data.name?.trim() || ""}"`
-												}
+												{(() => {
+													if (userId != null && Number(rtm.senderId) === Number(userId)) {
+														return "Replying to myself";
+													}
+													// Chats restored from local history can have no name at all.
+													const name = localNickname || selectedConversation?.data.name?.trim();
+													return name ? `Replying to "${name}"` : "Replying";
+												})()}
 											</p>
 											<p className="truncate text-xs text-[var(--text-muted)]">
 												{isAudioReply ? t("chat.thread.audio_label") : getMessagePreviewLabel(rtm, t)}
 											</p>
 										</div>
 										{thumbUrl ? (
-											<img src={thumbUrl} alt="" className="h-10 w-10 shrink-0 rounded object-cover" />
+											<img
+												key={thumbUrl}
+												src={thumbUrl}
+												alt=""
+												className="h-10 w-10 shrink-0 rounded object-cover"
+												// An album that was never saved has a cover link that no longer
+												// opens; a broken-image icon says nothing useful.
+												onError={(event) => {
+													event.currentTarget.style.display = "none";
+												}}
+											/>
 										) : isAudioReply ? (
 											<div className="flex w-10 shrink-0 items-center justify-end py-0.5 text-[var(--text-muted)]">
 												<div className="flex flex-col items-center gap-1">
