@@ -66,10 +66,11 @@ function unarchiveConversationIfArchived(profileId: string) {
 				return;
 			}
 			void unarchiveConversation(stored.conversationId);
-			void insertSystemMessage(
-				stored.conversationId,
-				isSelf ? "SystemUnblockedBySelf" : "SystemUnblocked",
-			).catch((error) => {
+			// Only this account's own unblock is worth a marker.
+			if (!isSelf) {
+				return;
+			}
+			void insertSystemMessage(stored.conversationId, "SystemUnblockedBySelf").catch((error) => {
 				appLog.error("[grid-profile] failed to insert system message", error);
 			});
 		})

@@ -282,11 +282,8 @@ type PreserveAndAutoBlockProfileOptions = {
 	mayDeferOnIncompleteCapture?: boolean;
 	/**
 	 * Whether a profile that turns out to have no conversation at all may still
-	 * leave a local `direct:<profileId>` archived shell behind. Defaults to
-	 * true, matching every caller that predates this option; Interest-view
-	 * auto-blocking passes false so blocking someone who only ever looked at
-	 * the profile cannot fabricate an archived chat. See
-	 * ApplySelfBlockActionOptions.
+	 * leave a local `direct:<profileId>` archived shell behind. Off unless
+	 * asked for — see ApplySelfBlockActionOptions.
 	 */
 	materializeMissingConversation?: boolean;
 };

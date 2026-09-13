@@ -1489,10 +1489,10 @@ export function ChatPage() {
 					for (const cid of reappearedArchivedIds) {
 						void unarchiveConversation(cid);
 					}
-					// Insert "SystemUnblocked" for conversations that were archived
-					// due to a block (ws_delete / offline-403). Conversations that
-					// disappeared due to a 404 ("not_found") are not block-related
-					// and don't get this marker.
+					// A conversation archived as "ws_delete" coming back only gets a marker
+					// when this account unblocked it. The same reason is recorded when the
+					// user deletes a chat, so reading every return as "you were unblocked"
+					// labelled deleted chats that simply got a new message.
 					const blockArchivedIds = reappearedArchivedIds.filter(
 						(cid) => archivedConversationsRef.current.get(cid)?.reason === "ws_delete",
 					);
@@ -1501,9 +1501,9 @@ export function ChatPage() {
 							blockArchivedIds.map(async (cid) => {
 								const isSelf = consumeSelfBlockAction(cid, "unblock");
 								const claimed = await claimBlockStateTransition(cid, null).catch(() => false);
-								if (!claimed) return null;
+								if (!claimed || !isSelf) return null;
 								return chatDb
-									.insertSystemMessage(cid, isSelf ? "SystemUnblockedBySelf" : "SystemUnblocked")
+									.insertSystemMessage(cid, "SystemUnblockedBySelf")
 									.catch(() => null);
 							}),
 						);
@@ -2844,9 +2844,9 @@ export function ChatPage() {
 					blockArchivedIds.map(async (cid) => {
 						const isSelf = consumeSelfBlockAction(cid, "unblock");
 						const claimed = await claimBlockStateTransition(cid, null).catch(() => false);
-						if (!claimed) return null;
+						if (!claimed || !isSelf) return null;
 						return chatDb
-							.insertSystemMessage(cid, isSelf ? "SystemUnblockedBySelf" : "SystemUnblocked")
+							.insertSystemMessage(cid, "SystemUnblockedBySelf")
 							.catch(() => null);
 					}),
 				).then((inserted) => {

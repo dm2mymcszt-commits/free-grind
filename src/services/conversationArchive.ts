@@ -342,7 +342,6 @@ export async function toggleArchiveOnConversationDelete(
 				if (await claimBlockStateTransition(conversationId, null)) {
 					await unarchiveConversation(conversationId);
 					unarchived.push(conversationId);
-					await insertBlockMessage(conversationId, "SystemUnblocked");
 				}
 				return;
 			}
@@ -473,11 +472,13 @@ export async function reconcileReappearedConversation(
 	}
 	await unarchiveConversation(conversationId);
 	const isSelf = consumeSelfBlockAction(conversationId, "unblock");
+	// Only this account's own unblock is worth a marker; nobody asked to be
+	// told when someone else unblocks them.
+	if (!isSelf) {
+		return null;
+	}
 	try {
-		return await chatDb.insertSystemMessage(
-			conversationId,
-			isSelf ? "SystemUnblockedBySelf" : "SystemUnblocked",
-		);
+		return await chatDb.insertSystemMessage(conversationId, "SystemUnblockedBySelf");
 	} catch (error) {
 		appLog.error(
 			`[conversation-archive] failed to insert unblocked system message for ${conversationId}`,
@@ -502,15 +503,11 @@ export type ApplySelfBlockActionOptions = {
 	 * Whether a block for a profile that has no conversation *anywhere* may
 	 * mint a `direct:<profileId>` stand-in to archive.
 	 *
-	 * True (the default) preserves the behaviour every existing caller relies
-	 * on — the manual block mutations and the inbox auto-blocker both act on
-	 * someone the user has a thread with, or is about to see one for.
-	 *
-	 * False is for blocks that start from a profile alone with no chat in
-	 * sight, in particular Interest-view auto-blocking: inventing a
-	 * conversation there fabricates an archived chat, complete with a
-	 * "You blocked this person" marker, for two people who never exchanged a
-	 * word. The block itself still happens; only the local shell is skipped.
+	 * Off unless a caller asks for it. The stand-in is an empty, nameless
+	 * archived chat holding nothing but "You blocked this person", and it
+	 * turned up in the archive as an "Unknown" conversation nobody ever had.
+	 * A block with no conversation belongs in the blocked list, and the block
+	 * itself happens either way.
 	 */
 	materializeMissingConversation?: boolean;
 };
@@ -543,7 +540,7 @@ export async function applySelfBlockAction(
 		}
 	}
 	if (!stored && action === "block") {
-		if (options?.materializeMissingConversation === false) {
+		if (options?.materializeMissingConversation !== true) {
 			// Nothing local to archive and nothing lost by not archiving: no
 			// conversation row, no archived entry, no system message. The block
 			// itself was already issued by the caller.
@@ -665,20 +662,8 @@ export async function reconcileArchivedConversationForProfile(
 		return;
 	}
 	await unarchiveConversation(conversationId);
-
-	try {
-		const message = await chatDb.insertSystemMessage(conversationId, "SystemUnblocked");
-		if (typeof window !== "undefined") {
-			window.dispatchEvent(
-				new CustomEvent<Message[]>(CHAT_SYSTEM_MESSAGE_EVENT, { detail: [message] }),
-			);
-		}
-	} catch (error) {
-		appLog.error(
-			`[conversation-archive] failed to insert unblocked system message for ${conversationId}`,
-			error,
-		);
-	}
+	// No "you were unblocked" marker: this runs for any archived chat whose
+	// profile is visible again, and the user does not want to be told either way.
 }
 
 /**
