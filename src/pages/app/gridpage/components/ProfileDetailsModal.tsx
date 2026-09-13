@@ -1069,6 +1069,15 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 
 			{/* Scrollable content — carousel first, profile details below */}
 			<div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain" data-lenis-prevent>
+				{/* The photo normally fills this space under the floating header. Hold it
+				    while loading, or the placeholder rows slide up behind that header. */}
+				{isLoadingActiveProfile && (
+					<div
+						className="animate-pulse bg-[var(--surface-2)]"
+						style={{ height: variant === "page" ? "min(78dvh, calc(100vw * 1.55))" : "min(55dvh, calc((100vw - 3rem) * 1.25))" }}
+						aria-hidden="true"
+					/>
+				)}
 				{!isLoadingActiveProfile && !activeProfileError && activeProfile && (
 					<div
 						ref={mobileCarouselRef}
