@@ -11,8 +11,10 @@
  */
 
 import * as chatDb from "./chatDb";
-import { fetchAndEncode, toDataUri } from "./mediaStore";
+import { fetchAndEncode, HEAVY_DOWNLOAD_CONCURRENCY, toDataUri } from "./mediaStore";
 import { BoundedStringCache, cacheBudget } from "../utils/boundedCache";
+import { mapWithConcurrency } from "../utils/concurrency";
+import { markActivity } from "../utils/diagnostics";
 import {
 	getAlbumContentReplyTarget,
 	getMessageAlbumCoverUrl,
@@ -22,7 +24,7 @@ import { ApiFunctionError } from "./apiHelpers";
 import type { UiMessage } from "../types/chat-page";
 import type { AlbumContentItem } from "../types/chat-page";
 import type { AlbumDetailsResponse } from "../types/chat-service";
-import type { StoredAlbumMedia } from "../types/chat-db";
+import type { StoredAlbumMediaSummary } from "../types/chat-db";
 import { appLog } from "../utils/logger";
 import { isAutoDownloadMediaEnabled } from "../utils/mediaSettings";
 import { limitChatDbBlobRead } from "../utils/chatDbBlobLimiter";
@@ -77,6 +79,8 @@ const captureInFlight = new Map<number, Promise<AlbumCaptureResult>>();
 const capturedAlbumIds = new Set<number>();
 const albumCacheListeners = new Set<() => void>();
 const albumCheckInFlight = new Map<number, Promise<void>>();
+// Albums already checked against chatDb this session.
+const checkedAlbumIds = new Set<number>();
 // The message bubble's cover image also comes straight from the live body
 // (coverUrl/previewUrl) — once a share is stopped/exhausted/expired the
 // server can drop that field entirely, which would otherwise make the
@@ -88,7 +92,7 @@ const albumCoverCache = new BoundedStringCache<number>("Album covers", cacheBudg
 // (`${albumId}:${contentId}`) — backs reply-quote thumbnails and "tapped
 // photo" reaction bubbles for a *specific* item inside an album, as opposed
 // to albumCoverCache above which only ever tracks item 0. Populated both by
-// a full album capture (updateAlbumCacheState) and, when that never
+// a full album capture (refreshAlbumCacheState) and, when that never
 // happened, by captureAlbumContentThumbFromMessage below.
 const albumContentThumbCache = new BoundedStringCache<string>("Album thumbnails", cacheBudget(16, 64));
 // De-dupes concurrent captureAlbumContentThumbFromMessage calls for the same
@@ -106,57 +110,50 @@ export function getCachedAlbumContentThumbUri(albumId: number, contentId: number
 	return albumContentThumbCache.get(albumContentKey(albumId, contentId)) ?? null;
 }
 
-function deriveCoverUri(media: StoredAlbumMedia[]): string | null {
-	const first = media[0];
-	if (!first) {
-		return null;
-	}
-	const base64 = first.thumbDataBase64 ?? first.dataBase64;
-	return base64 ? toDataUri(first.contentType, base64) : null;
-}
+/** Longest preview, in base64 characters, loaded into memory for an album item. */
+const CACHED_THUMB_MAX_CHARS = 512 * 1024;
 
 /**
- * Updates the in-memory cache from whatever media rows we currently have
- * for this album. Cover caching is intentionally decoupled from "fully
- * captured" — if even one content item failed to download (network blip,
- * unusual content type, etc.) the album as a whole isn't "fully captured",
- * but the cover (content item 0) may well still have its bytes, and
- * there's no reason to let that be held hostage by an unrelated item.
+ * Rebuilds this album's in-memory state from chatDb: whether it is fully
+ * captured, its fallback cover, and small previews of its items.
  *
- * The album's own (clear) content thumbnail here is only a *fallback*
- * cover — captureAlbumPreviewFromMessage's blurred chat-bubble teaser is
- * the preferred source and must never be overwritten by this clear one.
+ * Reads the items' bytes only where a preview is small. It used to load every
+ * file of the album in full just to find these out — for an album of videos,
+ * gigabytes at a time, on every chat render and before every block.
+ *
+ * The album's own (clear) content thumbnail is only a *fallback* cover —
+ * captureAlbumPreviewFromMessage's blurred chat-bubble teaser is the
+ * preferred source and must never be overwritten by this clear one.
  */
-function updateAlbumCacheState(albumId: number, media: StoredAlbumMedia[]): void {
+async function refreshAlbumCacheState(albumId: number): Promise<StoredAlbumMediaSummary[]> {
+	const summaries = await chatDb.getAlbumMediaSummaries(String(albumId));
+	if (summaries.length === 0) {
+		return summaries;
+	}
+
+	const thumbs = await limitChatDbBlobRead(() =>
+		chatDb.getAlbumMediaThumbs(String(albumId), CACHED_THUMB_MAX_CHARS),
+	);
 	if (!albumCoverCache.has(albumId)) {
-		const cover = deriveCoverUri(media);
+		const cover = thumbs.find((thumb) => thumb.contentId === summaries[0].contentId);
 		if (cover) {
-			albumCoverCache.set(albumId, cover);
+			albumCoverCache.set(albumId, toDataUri(cover.contentType, cover.thumbBase64));
 		}
 	}
-
-	for (const item of media) {
-		const base64 = item.thumbDataBase64 ?? item.dataBase64;
-		if (base64) {
-			albumContentThumbCache.set(item.contentId, toDataUri(item.contentType, base64));
-		}
+	for (const thumb of thumbs) {
+		albumContentThumbCache.set(thumb.contentId, toDataUri(thumb.contentType, thumb.thumbBase64));
 	}
 
-	const fullyCaptured = media.length > 0 && media.every((m) => m.dataBase64);
-	if (fullyCaptured) {
+	if (summaries.every((item) => item.hasData)) {
 		capturedAlbumIds.add(albumId);
 	}
 
-	// Always notify, even if the computed state happens to be identical to
-	// what's already cached (e.g. a re-share whose cover content is byte-
-	// for-byte the same as before) — an extra render is cheap, whereas a
-	// missed notification means the bubble is stuck showing stale state
-	// until something else (e.g. reopening the thread) forces a re-render.
-	if (media.length > 0) {
-		for (const listener of albumCacheListeners) {
-			listener();
-		}
+	// Always notify, even if nothing visibly changed — an extra render is cheap,
+	// whereas a missed notification leaves a bubble showing stale state.
+	for (const listener of albumCacheListeners) {
+		listener();
 	}
+	return summaries;
 }
 
 /** Synchronous read: is this album fully captured locally right now? */
@@ -216,7 +213,9 @@ export async function deleteLocalAlbum(albumId: number): Promise<void> {
  * permanently block re-checking later.
  */
 export function ensureAlbumCacheChecked(albumId: number): void {
-	if (capturedAlbumIds.has(albumId) || albumCheckInFlight.has(albumId)) {
+	// Once a session is enough: a capture that stores more refreshes the state
+	// itself, and this is called on every render of every album bubble.
+	if (capturedAlbumIds.has(albumId) || albumCheckInFlight.has(albumId) || checkedAlbumIds.has(albumId)) {
 		return;
 	}
 	const run = (async () => {
@@ -233,13 +232,11 @@ export function ensureAlbumCacheChecked(albumId: number): void {
 				}
 			}
 
-			const media = await limitChatDbBlobRead(() => chatDb.getAlbumMedia(String(albumId)));
-			if (media.length > 0) {
-				updateAlbumCacheState(albumId, media);
-			}
+			await refreshAlbumCacheState(albumId);
 		} catch (error) {
 			appLog.warn(`[album-store] failed to check local cache for album ${albumId}`, error);
 		} finally {
+			checkedAlbumIds.add(albumId);
 			albumCheckInFlight.delete(albumId);
 		}
 	})();
@@ -321,11 +318,11 @@ export function ensureAlbumContentThumbCaptured(
 	}
 	const run = (async () => {
 		try {
-			const existing = await limitChatDbBlobRead(() => chatDb.getAlbumMedia(String(albumId)));
-			const row = existing.find((m) => m.contentId === key);
-			const existingBase64 = row?.thumbDataBase64 ?? row?.dataBase64;
-			if (existingBase64) {
-				albumContentThumbCache.set(key, toDataUri(row?.contentType ?? contentType, existingBase64));
+			const existing = await limitChatDbBlobRead(() =>
+				chatDb.getAlbumMediaThumb(key, CACHED_THUMB_MAX_CHARS),
+			);
+			if (existing) {
+				albumContentThumbCache.set(key, toDataUri(existing.contentType ?? contentType, existing.thumbBase64));
 				for (const listener of albumCacheListeners) listener();
 				return;
 			}
@@ -337,14 +334,11 @@ export function ensureAlbumContentThumbCaptured(
 			if (!fetched) {
 				return;
 			}
-			await chatDb.upsertAlbumMedia({
+			await chatDb.setAlbumMediaThumb({
 				contentId: key,
 				albumId: String(albumId),
-				contentType: row?.contentType ?? contentType ?? fetched.mimeType,
-				dataBase64: row?.dataBase64 ?? null,
-				thumbDataBase64: fetched.base64,
-				remainingViews: row?.remainingViews ?? null,
-				isViewable: row?.isViewable ?? null,
+				contentType: contentType ?? fetched.mimeType,
+				thumbBase64: fetched.base64,
 			});
 			albumContentThumbCache.set(key, toDataUri(fetched.mimeType, fetched.base64));
 			for (const listener of albumCacheListeners) listener();
@@ -372,34 +366,26 @@ export type CaptureAlbumParams = {
 async function captureAlbumContent(
 	albumId: number,
 	item: AlbumContentItem,
-	existing: StoredAlbumMedia | undefined,
+	existing: StoredAlbumMediaSummary | undefined,
 	remainingViews: number | null,
 	isViewable: boolean | null,
 	conversationId: string | null,
 ): Promise<void> {
 	const compositeId = `${albumId}:${item.contentId}`;
 	try {
-		if (existing?.dataBase64) {
-			// Bytes already captured — just refresh the viewability metadata.
-			await chatDb.upsertAlbumMedia({
-				contentId: compositeId,
-				albumId: String(albumId),
-				contentType: existing.contentType ?? item.contentType,
-				dataBase64: existing.dataBase64,
-				thumbDataBase64: existing.thumbDataBase64,
-				remainingViews,
-				isViewable,
-			});
+		if (existing?.hasData) {
+			// Bytes already captured — refresh the view state without sending
+			// the whole file back to the database.
+			await chatDb.updateAlbumMediaViewability(compositeId, remainingViews, isViewable);
 			return;
 		}
 
 		const mainUrl = item.url || item.coverUrl;
 		const thumbUrl = item.thumbUrl ?? null;
 
-		const [main, thumb] = await Promise.all([
-			mainUrl ? fetchAndEncode(mainUrl) : Promise.resolve(null),
-			thumbUrl && thumbUrl !== mainUrl ? fetchAndEncode(thumbUrl) : Promise.resolve(null),
-		]);
+		// One after the other: each is held in memory as base64 until stored.
+		const main = mainUrl ? await fetchAndEncode(mainUrl) : null;
+		const thumb = thumbUrl && thumbUrl !== mainUrl ? await fetchAndEncode(thumbUrl) : null;
 
 		await chatDb.upsertAlbumMedia({
 			contentId: compositeId,
@@ -427,7 +413,7 @@ async function captureAlbumContent(
  */
 export async function captureAlbum(
 	params: CaptureAlbumParams,
-): Promise<StoredAlbumMedia[]> {
+): Promise<StoredAlbumMediaSummary[]> {
 	const {
 		albumId,
 		albumName,
@@ -447,27 +433,25 @@ export async function captureAlbum(
 		sharedViaMessageId,
 	});
 
-	const existing = await chatDb.getAlbumMedia(String(albumId));
+	const existing = await chatDb.getAlbumMediaSummaries(String(albumId));
 	const existingById = new Map(existing.map((m) => [m.contentId, m] as const));
+	// TEMPORARY diagnostics.
+	markActivity(
+		`album ${albumId}: ${content.length} items, ${content.length - existing.filter((m) => m.hasData).length} to download`,
+	);
 
-	await Promise.all(
-		content.map((item) =>
-			captureAlbumContent(
-				albumId,
-				item,
-				existingById.get(`${albumId}:${item.contentId}`),
-				remainingViews,
-				isViewable,
-				conversationId,
-			),
+	await mapWithConcurrency(content, HEAVY_DOWNLOAD_CONCURRENCY, (item) =>
+		captureAlbumContent(
+			albumId,
+			item,
+			existingById.get(`${albumId}:${item.contentId}`),
+			remainingViews,
+			isViewable,
+			conversationId,
 		),
 	);
 
-	const captured = await chatDb.getAlbumMedia(String(albumId));
-	if (captured.length > 0) {
-		updateAlbumCacheState(albumId, captured);
-	}
-	return captured;
+	return refreshAlbumCacheState(albumId);
 }
 
 export type AlbumMessageInfo = {
@@ -531,13 +515,13 @@ export type AlbumCaptureResult = {
 
 function summarizeCachedAlbum(
 	albumId: number,
-	media: StoredAlbumMedia[],
+	media: StoredAlbumMediaSummary[],
 	previewCaptured: boolean,
 	unavailable: boolean,
 ): AlbumCaptureResult {
 	return {
 		albumId,
-		complete: media.length > 0 && media.every((m) => m.dataBase64),
+		complete: media.length > 0 && media.every((m) => m.hasData),
 		unavailable,
 		hasLocalContent: media.length > 0 || previewCaptured,
 	};
@@ -555,10 +539,7 @@ async function captureAlbumFromMessageIfNeeded(
 		// cached. A *new* share message for the same album (different
 		// messageId — i.e. shared with us again later) still falls through
 		// below for a fresh retry.
-		const cached = await chatDb.getAlbumMedia(String(info.albumId)).catch(() => []);
-		if (cached.length > 0) {
-			updateAlbumCacheState(info.albumId, cached);
-		}
+		const cached = await refreshAlbumCacheState(info.albumId).catch(() => []);
 		return summarizeCachedAlbum(
 			info.albumId,
 			cached,
@@ -614,7 +595,7 @@ async function captureAlbumFromMessageIfNeeded(
 				if (!item.url && !item.coverUrl) {
 					return false; // Nothing to fetch — server hasn't published it.
 				}
-				return !storedById.get(`${info.albumId}:${item.contentId}`)?.dataBase64;
+				return !storedById.get(`${info.albumId}:${item.contentId}`)?.hasData;
 			});
 			if (missing.length > 0) {
 				appLog.warn(
@@ -636,10 +617,8 @@ async function captureAlbumFromMessageIfNeeded(
 			// Live refresh failed (offline, share stopped/gone, conversation
 			// archived/blocked) — fine as long as we already have a cached copy;
 			// only worth logging if we don't have anything at all.
-			const existing = await chatDb.getAlbumMedia(String(info.albumId)).catch(() => []);
-			if (existing.length > 0) {
-				updateAlbumCacheState(info.albumId, existing);
-			} else {
+			const existing = await refreshAlbumCacheState(info.albumId).catch(() => []);
+			if (existing.length === 0) {
 				appLog.warn(
 					`[album-store] failed to capture album from message ${message.messageId}`,
 					error,
@@ -699,10 +678,8 @@ export async function captureAlbumsForMessagesNow(
 		ensureAlbumCacheChecked(albumId);
 	}
 
-	return Promise.all(
-		entries.map(({ info, message }) =>
-			captureAlbumFromMessageIfNeeded(info, message, conversationId, getAlbum),
-		),
+	return mapWithConcurrency(entries, HEAVY_DOWNLOAD_CONCURRENCY, ({ info, message }) =>
+		captureAlbumFromMessageIfNeeded(info, message, conversationId, getAlbum),
 	);
 }
 

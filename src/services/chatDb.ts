@@ -33,6 +33,7 @@ import type {
 	MediaFileUpsertInput,
 	StoredAlbum,
 	StoredAlbumMedia,
+	StoredAlbumMediaSummary,
 	StoredAvatar,
 	StoredBlockEvent,
 	StoredConversation,
@@ -2060,6 +2061,114 @@ export async function getAlbumMedia(albumId: string): Promise<StoredAlbumMedia[]
 		[albumId],
 	);
 	return rows.map(rowToStoredAlbumMedia);
+}
+
+/**
+ * An album's items without their bytes. getAlbumMedia returns every file in
+ * full, and it was being called just to learn which items were saved — which
+ * for an album of videos pulled gigabytes across the bridge into the webview.
+ */
+export async function getAlbumMediaSummaries(albumId: string): Promise<StoredAlbumMediaSummary[]> {
+	const db = await getDb();
+	const rows = await db.select<
+		{
+			content_id: string;
+			album_id: string;
+			content_type: string | null;
+			has_data: number;
+			remaining_views: number | null;
+			is_viewable: number | null;
+		}[]
+	>(
+		`SELECT content_id, album_id, content_type,
+			(data_base64 IS NOT NULL AND data_base64 != '') AS has_data,
+			remaining_views, is_viewable
+		 FROM album_media WHERE album_id = $1`,
+		[albumId],
+	);
+	return rows.map((row) => ({
+		contentId: row.content_id,
+		albumId: row.album_id,
+		contentType: row.content_type,
+		hasData: Boolean(row.has_data),
+		remainingViews: row.remaining_views,
+		isViewable: row.is_viewable == null ? null : Boolean(row.is_viewable),
+	}));
+}
+
+// The preview column, falling back to the file itself, but only when the value
+// is at most $2 characters: a video saved without a separate thumbnail keeps
+// its whole file in both columns, and that must never be read as a preview.
+const ALBUM_THUMB_SQL = `CASE
+	WHEN thumb_data_base64 IS NOT NULL AND thumb_data_base64 != '' THEN
+		CASE WHEN length(thumb_data_base64) <= $2 THEN thumb_data_base64 END
+	WHEN data_base64 IS NOT NULL AND length(data_base64) <= $2 THEN data_base64
+END`;
+
+/** Small previews of an album's items, each no longer than `maxChars`. */
+export async function getAlbumMediaThumbs(
+	albumId: string,
+	maxChars: number,
+): Promise<{ contentId: string; contentType: string | null; thumbBase64: string }[]> {
+	const db = await getDb();
+	const rows = await db.select<{ content_id: string; content_type: string | null; thumb: string | null }[]>(
+		`SELECT content_id, content_type, ${ALBUM_THUMB_SQL} AS thumb FROM album_media WHERE album_id = $1`,
+		[albumId, maxChars],
+	);
+	return rows.flatMap((row) =>
+		row.thumb ? [{ contentId: row.content_id, contentType: row.content_type, thumbBase64: row.thumb }] : [],
+	);
+}
+
+/** One item's small preview, or null when there is none short enough. */
+export async function getAlbumMediaThumb(
+	contentId: string,
+	maxChars: number,
+): Promise<{ contentType: string | null; thumbBase64: string } | null> {
+	const db = await getDb();
+	const rows = await db.select<{ content_type: string | null; thumb: string | null }[]>(
+		`SELECT content_type, ${ALBUM_THUMB_SQL} AS thumb FROM album_media WHERE content_id = $1`,
+		[contentId, maxChars],
+	);
+	const row = rows[0];
+	return row?.thumb ? { contentType: row.content_type, thumbBase64: row.thumb } : null;
+}
+
+/** Refreshes an item's view state without sending its bytes back to the database. */
+export async function updateAlbumMediaViewability(
+	contentId: string,
+	remainingViews: number | null,
+	isViewable: boolean | null,
+): Promise<void> {
+	const db = await getDb();
+	await executeWithLockRetry(db, "update-album-media-viewability", async () => {
+		await db.execute(
+			"UPDATE album_media SET remaining_views = $1, is_viewable = $2 WHERE content_id = $3",
+			[remainingViews, isViewable == null ? null : isViewable ? 1 : 0, contentId],
+		);
+	});
+}
+
+/** Stores an item's preview, keeping any bytes and view state already saved for it. */
+export async function setAlbumMediaThumb(input: {
+	contentId: string;
+	albumId: string;
+	contentType: string | null;
+	thumbBase64: string;
+}): Promise<void> {
+	const db = await getDb();
+	await executeWithLockRetry(db, "set-album-media-thumb", async () => {
+		await db.execute(
+			`INSERT INTO album_media (
+				content_id, album_id, content_type, data_base64, thumb_data_base64,
+				remaining_views, is_viewable, fetched_at
+			) VALUES ($1, $2, $3, NULL, $4, NULL, NULL, $5)
+			ON CONFLICT(content_id) DO UPDATE SET
+				thumb_data_base64 = excluded.thumb_data_base64,
+				content_type = COALESCE(album_media.content_type, excluded.content_type)`,
+			[input.contentId, input.albumId, input.contentType, input.thumbBase64, Date.now()],
+		);
+	});
 }
 
 // ---------------------------------------------------------------------------

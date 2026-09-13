@@ -124,6 +124,16 @@ export type StoredAlbumMedia = {
 	fetchedAt: number | null;
 };
 
+/** An album item without its bytes: whether they are saved, and its metadata. */
+export type StoredAlbumMediaSummary = {
+	contentId: string;
+	albumId: string;
+	contentType: string | null;
+	hasData: boolean;
+	remainingViews: number | null;
+	isViewable: boolean | null;
+};
+
 export type StoredAvatar = {
 	mediaHash: string;
 	dataBase64: string;

@@ -22,7 +22,18 @@ import type { UiMessage } from "../types/chat-page";
 import { appLog } from "../utils/logger";
 import { isAutoDownloadMediaEnabled } from "../utils/mediaSettings";
 import { limitChatDbBlobRead } from "../utils/chatDbBlobLimiter";
-import { BoundedStringCache, cacheBudget } from "../utils/boundedCache";
+import { BoundedStringCache, cacheBudget, isConstrainedDevice } from "../utils/boundedCache";
+import { mapWithConcurrency } from "../utils/concurrency";
+import { markActivity } from "../utils/diagnostics";
+
+/**
+ * How many large downloads run at once. Each sits in memory several times over
+ * while it is base64-encoded and stored, so a phone takes them one at a time.
+ */
+export const HEAVY_DOWNLOAD_CONCURRENCY = isConstrainedDevice() ? 1 : 3;
+
+/** Files declared larger than this are not downloaded into memory at all. */
+const MAX_DOWNLOAD_BYTES = cacheBudget(64, 256);
 
 // De-dupe concurrent fetches for the same key (e.g. multiple hydration passes
 // racing for the same image).
@@ -117,6 +128,25 @@ export async function fetchAndEncode(url: string): Promise<FetchedMedia | null> 
 		const response = await fetch(url);
 		if (!response.ok) {
 			throw new Error(`Failed to download media (${response.status})`);
+		}
+		const declaredBytes = Number(response.headers.get("content-length"));
+		if (Number.isFinite(declaredBytes) && declaredBytes > MAX_DOWNLOAD_BYTES) {
+			// Reading it would hold the whole file in memory several times over
+			// while it is encoded and stored, which on a phone is enough to get
+			// the app killed.
+			try {
+				await response.body?.cancel();
+			} catch {
+				// Nothing more to stop.
+			}
+			appLog.warn(
+				`[media-store] skipped a ${Math.round(declaredBytes / 1048576)} MB file over the ${Math.round(MAX_DOWNLOAD_BYTES / 1048576)} MB limit`,
+			);
+			return null;
+		}
+		if (Number.isFinite(declaredBytes) && declaredBytes >= 1048576) {
+			// TEMPORARY diagnostics.
+			markActivity(`download ${(declaredBytes / 1048576).toFixed(1)} MB`);
 		}
 		const arrayBuffer = await response.arrayBuffer();
 		const mimeType =
@@ -436,6 +466,8 @@ export async function captureMessageMediaForArchival(
 ): Promise<MediaCaptureResult[]> {
 	const targets: { message: UiMessage; target: MediaCaptureTarget }[] = [];
 	const sideCaptures: Promise<void>[] = [];
+	// TEMPORARY diagnostics.
+	markActivity(`archiving media for ${conversationId} (${messages.length} messages)`);
 
 	for (const message of messages) {
 		const target = getMediaCaptureTarget(message);
@@ -465,35 +497,33 @@ export async function captureMessageMediaForArchival(
 	}
 
 	const [results] = await Promise.all([
-		Promise.all(
-			targets.map(async ({ message, target }): Promise<MediaCaptureResult> => {
-				// fetchAndStoreMedia never throws and de-dupes in flight by
-				// mediaKey, so a racing scanner joins this download rather than
-				// issuing a second one.
-				await fetchAndStoreMedia({
-					mediaKey: target.mediaKey,
-					kind: target.kind,
-					url: target.url,
-					conversationId,
-					messageId: message.messageId,
-					viewOnce: target.viewOnce,
-					isOwnMessage: userId != null && Number(message.senderId) === Number(userId),
-					cacheInMemory: false,
-				});
+		mapWithConcurrency(targets, HEAVY_DOWNLOAD_CONCURRENCY, async ({ message, target }): Promise<MediaCaptureResult> => {
+			// fetchAndStoreMedia never throws and de-dupes in flight by
+			// mediaKey, so a racing scanner joins this download rather than
+			// issuing a second one.
+			await fetchAndStoreMedia({
+				mediaKey: target.mediaKey,
+				kind: target.kind,
+				url: target.url,
+				conversationId,
+				messageId: message.messageId,
+				viewOnce: target.viewOnce,
+				isOwnMessage: userId != null && Number(message.senderId) === Number(userId),
+				cacheInMemory: false,
+			});
 
-				// It records failures as a row with fetchStatus "failed" rather
-				// than signalling them, so success has to be read back off the row.
-				const status = await chatDb.getMediaFetchStatus(target.mediaKey).catch(() => null);
+			// It records failures as a row with fetchStatus "failed" rather
+			// than signalling them, so success has to be read back off the row.
+			const status = await chatDb.getMediaFetchStatus(target.mediaKey).catch(() => null);
 
-				return {
-					messageId: message.messageId,
-					mediaKey: target.mediaKey,
-					kind: target.kind,
-					captured: status === "ok",
-					unavailable: isSignedUrlExpired(target.url),
-				};
-			}),
-		),
+			return {
+				messageId: message.messageId,
+				mediaKey: target.mediaKey,
+				kind: target.kind,
+				captured: status === "ok",
+				unavailable: isSignedUrlExpired(target.url),
+			};
+		}),
 		Promise.all(sideCaptures),
 	]);
 

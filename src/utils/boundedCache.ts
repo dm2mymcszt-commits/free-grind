@@ -16,7 +16,7 @@
 const MB = 1024 * 1024;
 
 /** Phones get a much smaller budget: their web content process is killed far sooner. */
-function isConstrainedDevice(): boolean {
+export function isConstrainedDevice(): boolean {
 	if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
 		return false;
 	}
