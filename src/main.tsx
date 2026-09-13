@@ -16,6 +16,7 @@ import { AppToaster } from "./components/AppToaster";
 import { installGlobalCrashHandlers } from "./utils/crashOverlay";
 import { installDiagnostics } from "./utils/diagnostics";
 import { DiagnosticsHud } from "./components/DiagnosticsHud";
+import { ScreenshotBadge } from "./components/ScreenshotBadge";
 import { getRuntimeContext } from "./services/runtimeContext";
 import "./index.css";
 
@@ -62,6 +63,7 @@ void (async () => {
 						)}
 						<AppToaster />
 						<DiagnosticsHud />
+						<ScreenshotBadge />
 					</BrowserRouter>
 				</QueryClientProvider>
 			</CrashBoundary>
