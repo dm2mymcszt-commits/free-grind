@@ -55,9 +55,15 @@ extension WKWebView {
     }
 }
 
+/// Everything the iOS web view needs beyond what Tauri sets up: no input
+/// accessory bar, the keyboard handled by resizing the web view, the
+/// screenshot badge, and (temporarily) why the web content process ended.
 class KeyboardFixPlugin: Plugin {
     private var keyboardObserver: NSObjectProtocol?
     private weak var patchedWebView: WKWebView?
+    private var keyboardResize: NativeKeyboardResize?
+    private var badge: ScreenshotBadge?
+    private var bridge: NativeBridge?
 
     @objc public override func load(webview: WKWebView) {
         patchedWebView = webview
@@ -71,7 +77,37 @@ class KeyboardFixPlugin: Plugin {
         }
 
         DispatchQueue.main.async { [weak self] in
-            self?.patchedWebView?.hideInputAccessoryView()
+            guard let self = self, let webview = self.patchedWebView else { return }
+            webview.hideInputAccessoryView()
+
+            // The page places everything around the notch and home indicator
+            // itself (viewport-fit=cover). Left to UIKit, the scroll view
+            // inset itself by the safe areas whenever the page stopped
+            // scrolling, WebKit counted those insets as covered screen, and
+            // the chat, which locks the page, got a viewport 81 points short.
+            webview.scrollView.contentInsetAdjustmentBehavior = .never
+
+            self.keyboardResize = NativeKeyboardResize(webView: webview)
+
+            let badge = ScreenshotBadge(webView: webview)
+            let bridge = NativeBridge(webView: webview, badge: badge)
+            let controller = webview.configuration.userContentController
+            controller.removeScriptMessageHandler(forName: NativeBridge.name)
+            controller.add(bridge, name: NativeBridge.name)
+            self.badge = badge
+            self.bridge = bridge
+
+            self.installTerminationHook(attempt: 0)
+        }
+    }
+
+    private func installTerminationHook(attempt: Int) {
+        guard let webview = patchedWebView else { return }
+        if WebContentTerminations.installHook(on: webview) || attempt >= 10 {
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.installTerminationHook(attempt: attempt + 1)
         }
     }
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { getCacheStats } from "../utils/boundedCache";
 import { DIAGNOSTICS_HUD_EVENT, isDiagnosticsHudEnabled } from "../utils/diagnostics";
+import { getNativeKeyboardHeight } from "../utils/nativeKeyboard";
 
 // TEMPORARY — see utils/diagnostics.ts. Live measurements for layout bugs on a
 // device only the user can see: how tall the screen, the visible viewport and
@@ -56,7 +57,7 @@ export function DiagnosticsHud() {
 					.map(({ unit, element }) => `${unit} ${Math.round(element.getBoundingClientRect().height)}`)
 					.join(" · "),
 				`html ${window.getComputedStyle(document.documentElement).overflow} · body ${window.getComputedStyle(document.body).position}`,
-				`thread ${describeRect(thread)} · inset ${thread?.dataset.keyboardInset ?? "—"}`,
+				`thread ${describeRect(thread)} · inset ${thread?.dataset.keyboardInset ?? "—"} · native kb ${getNativeKeyboardHeight() ?? "—"}`,
 				`input ${describeRect(input)}`,
 				`focus ${document.activeElement?.tagName.toLowerCase() ?? "none"}`,
 				`media in memory ${cacheMb} MB`,

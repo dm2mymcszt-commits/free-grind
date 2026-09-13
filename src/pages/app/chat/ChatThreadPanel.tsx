@@ -99,6 +99,11 @@ import { useAvatarCache } from "../../../hooks/useAvatarCache";
 import { resolveAvatarSrc } from "../../../services/avatarStore";
 import { matchSlashCommandsByPrefix, type SlashCommandDef } from "./slashCommands";
 import {
+	getNativeKeyboardHeight,
+	isNativeKeyboardResize,
+	NATIVE_KEYBOARD_EVENT,
+} from "../../../utils/nativeKeyboard";
+import {
 	SKIP_BLOCK_CONFIRM_KEY,
 	SKIP_UNBLOCK_CONFIRM_KEY,
 	SKIP_DELETE_CONVERSATION_CONFIRM_KEY,
@@ -542,6 +547,10 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 	const [isDraggingAttachmentCrop, setIsDraggingAttachmentCrop] = useState(false);
 	const attachmentImgRef = useRef<HTMLImageElement | null>(null);
 	const [mobileKeyboardInset, setMobileKeyboardInset] = useState(0);
+	// On iOS the web view itself is shortened for the keyboard, so the inset
+	// stays 0 and this is how the composer knows the keyboard is up.
+	const [nativeKeyboardOpen, setNativeKeyboardOpen] = useState(() => (getNativeKeyboardHeight() ?? 0) > 0);
+	const keyboardOpen = mobileKeyboardInset > 0 || nativeKeyboardOpen;
 	const [composerHeight, setComposerHeight] = useState(88);
 	const composerHeightObserverRef = useRef<ResizeObserver | null>(null);
 	const composerRef = useCallback((node: HTMLElement | null) => {
@@ -1034,6 +1043,13 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 		};
 
 		const updateKeyboardInset = () => {
+			// The iOS build shortens the web view itself for the keyboard
+			// (NativeKeyboardResize.swift), so 100dvh already ends above it and
+			// anything subtracted here would count the keyboard twice.
+			if (isNativeKeyboardResize()) {
+				setMobileKeyboardInset(0);
+				return;
+			}
 			// Nothing focused means no keyboard, whatever the numbers say. This is
 			// also where the measurements below get to start over: they drift when
 			// the layout viewport changes (rotation, the app returning to the
@@ -1067,11 +1083,18 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 			});
 		};
 
+		const onNativeKeyboard = (event: Event) => {
+			const height = (event as CustomEvent<{ height?: number }>).detail?.height;
+			setNativeKeyboardOpen(typeof height === "number" && height > 0);
+			updateKeyboardInset();
+		};
+
 		updateKeyboardInset();
 		viewport.addEventListener("resize", updateKeyboardInset);
 		viewport.addEventListener("scroll", updateKeyboardInset);
 		window.addEventListener("focusin", updateKeyboardInset);
 		window.addEventListener("focusout", scheduleBlurCheck);
+		window.addEventListener(NATIVE_KEYBOARD_EVENT, onNativeKeyboard);
 
 		return () => {
 			if (blurCheck !== null) cancelAnimationFrame(blurCheck);
@@ -1079,6 +1102,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 			viewport.removeEventListener("scroll", updateKeyboardInset);
 			window.removeEventListener("focusin", updateKeyboardInset);
 			window.removeEventListener("focusout", scheduleBlurCheck);
+			window.removeEventListener(NATIVE_KEYBOARD_EVENT, onNativeKeyboard);
 		};
 	}, [isDesktop]);
 
@@ -1813,7 +1837,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 					className={`${!isDesktop ? "shrink-0 px-[var(--app-px)] py-3" : "mt-3 pt-3 -mx-3 sm:-mx-4 px-3 sm:px-4"} bg-[var(--surface)]`}
 							style={
 								!isDesktop
-									? { paddingBottom: mobileKeyboardInset > 0 ? "12px" : "max(12px, env(safe-area-inset-bottom))" }
+									? { paddingBottom: keyboardOpen ? "12px" : "max(12px, env(safe-area-inset-bottom))" }
 									: undefined
 							}
 						>
@@ -1844,7 +1868,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 						className={`relative ${!isDesktop ? "shrink-0 px-[var(--app-px)] py-3" : "mt-3 pt-3 -mx-3 sm:-mx-4 px-3 sm:px-4"} border-t border-[var(--border)] bg-[var(--surface)]`}
 						style={
 							!isDesktop
-								? { paddingBottom: mobileKeyboardInset > 0 ? "12px" : "max(12px, env(safe-area-inset-bottom))" }
+								? { paddingBottom: keyboardOpen ? "12px" : "max(12px, env(safe-area-inset-bottom))" }
 								: undefined
 						}
 					>
