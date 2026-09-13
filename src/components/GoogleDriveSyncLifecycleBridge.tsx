@@ -11,6 +11,7 @@ import {
 	type GoogleDriveSyncDataAppliedDetail,
 } from "../services/googleDriveSyncRuntime";
 import { appLog } from "../utils/logger";
+import { isBackgroundWorkPaused, subscribeBackgroundWork } from "../utils/backgroundWorkGate";
 
 const AUTOMATIC_SYNC_INTERVAL_MS = 5 * 60 * 1_000;
 const AUTOMATIC_SYNC_BURST_GUARD_MS = 10_000;
@@ -48,6 +49,8 @@ export function GoogleDriveSyncLifecycleBridge() {
 			// Explicit user actions share the controller's serialized queue, so a
 			// paused device must not keep enqueueing background catch-up work.
 			if (isGoogleDriveAutoSyncPaused()) return;
+			// TEMPORARY: held back after repeated restarts, see backgroundWorkGate.ts.
+			if (isBackgroundWorkPaused()) return;
 			const now = Date.now();
 			if (
 				!bypassBurstGuard &&
@@ -69,6 +72,7 @@ export function GoogleDriveSyncLifecycleBridge() {
 		const onPageShow = () => requestSync();
 
 		requestSync(true);
+		const unsubscribeBackgroundWork = subscribeBackgroundWork(() => requestSync(true));
 		document.addEventListener("visibilitychange", onVisible);
 		window.addEventListener("focus", onPageShow);
 		window.addEventListener("pageshow", onPageShow);
@@ -82,6 +86,7 @@ export function GoogleDriveSyncLifecycleBridge() {
 
 		return () => {
 			disposed = true;
+			unsubscribeBackgroundWork();
 			document.removeEventListener("visibilitychange", onVisible);
 			window.removeEventListener("focus", onPageShow);
 			window.removeEventListener("pageshow", onPageShow);

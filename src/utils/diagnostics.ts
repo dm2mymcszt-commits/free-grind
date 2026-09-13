@@ -1,7 +1,8 @@
 /**
  * TEMPORARY diagnostics for the iOS reloads. Remove once they are confirmed
- * gone, together with SettingsDiagnosticsPage, DiagnosticsHud and the
- * recordBlockEvent calls.
+ * gone, together with SettingsDiagnosticsPage, DiagnosticsHud, the
+ * recordBlockEvent and markActivity calls, backgroundWorkGate.ts with its
+ * BackgroundPausedBanner, and WebContentTerminations.swift.
  *
  * iOS kills an out-of-memory web content process without warning — no
  * pagehide, no beforeunload — and the page simply starts again. So every run
@@ -11,12 +12,14 @@
  */
 
 import { getCacheStats } from "./boundedCache";
+import { isBackgroundWorkPaused, SAFE_MODE_UNTIL_KEY } from "./backgroundWorkGate";
 
 const STATE_KEY = "fg-diag-state";
 const RESTARTS_KEY = "fg-diag-restarts";
 const BLOCKS_KEY = "fg-diag-blocks";
 export const DIAGNOSTICS_HUD_KEY = "fg-diag-hud";
 export const DIAGNOSTICS_HUD_EVENT = "fg-diag-hud-changed";
+export const NATIVE_TERMINATIONS_EVENT = "fg:native-terminations";
 
 const HEARTBEAT_MS = 4000;
 const MAX_RESTARTS = 40;
@@ -24,6 +27,17 @@ const MAX_BLOCKS = 40;
 const MAX_ERRORS = 12;
 const MAX_ACTIVITIES = 12;
 const MB = 1024 * 1024;
+
+/** Restarts on screen this close together are a crash loop, not bad luck. */
+const CRASH_LOOP_WINDOW_MS = 3 * 60 * 1000;
+const CRASH_LOOP_RESTARTS = 2;
+const SAFE_MODE_MS = 20 * 60 * 1000;
+
+const MAX_RECENT_CALLS = 25;
+const MAX_IN_FLIGHT_CALLS = 15;
+const MAX_LARGEST_CALLS = 6;
+/** Saves of the call list are coalesced to this; a heavy call that is still running is caught by the next one. */
+const CALL_SAVE_THROTTLE_MS = 250;
 
 export type DiagnosticsSnapshot = {
 	at: number;
@@ -36,10 +50,41 @@ export type DiagnosticsSnapshot = {
 	images: number;
 	videos: number;
 	jsHeapMb: number | null;
+	/** Whether the crash-loop pause was holding background work back. */
+	backgroundPaused?: boolean;
 };
 
 export type RecentError = { at: number; message: string };
 export type RecentActivity = { at: number; label: string };
+
+/**
+ * One call from the page to the native side: a Rust command, a database
+ * query, a Grindr request. The page is killed while it holds or unpacks a
+ * result far more often than while it computes, so these name the suspect.
+ */
+export type IpcCall = {
+	label: string;
+	startedAt: number;
+	ms?: number;
+	requestKb?: number;
+	responseKb?: number;
+	failed?: boolean;
+};
+
+export type IpcCallLog = {
+	/** Started and not yet unpacked when the snapshot was saved. */
+	inFlight: IpcCall[];
+	recent: IpcCall[];
+	/** The biggest results this run, largest first. */
+	largest: IpcCall[];
+};
+
+export type NativeTermination = {
+	at: number;
+	reason: string;
+	code: number;
+	appState: string;
+};
 
 type DiagnosticsState = {
 	startedAt: number;
@@ -48,6 +93,7 @@ type DiagnosticsState = {
 	snapshot: DiagnosticsSnapshot | null;
 	errors: RecentError[];
 	activities: RecentActivity[];
+	calls?: IpcCallLog;
 };
 
 export type RestartRecord = {
@@ -61,6 +107,7 @@ export type RestartRecord = {
 	errors: RecentError[];
 	/** The last heavy things the run started, newest first: what it was doing when it died. */
 	activities: RecentActivity[];
+	calls?: IpcCallLog;
 };
 
 export type BlockRecord = {
@@ -111,10 +158,186 @@ export function takeSnapshot(startedAt: number): DiagnosticsSnapshot {
 		images: document.images.length,
 		videos: document.getElementsByTagName("video").length,
 		jsHeapMb: memory ? roundMb(memory.usedJSHeapSize) : null,
+		backgroundPaused: isBackgroundWorkPaused(),
 	};
 }
 
 let state: DiagnosticsState | null = null;
+
+function toKb(bytes: number): number {
+	return Math.round(bytes / 102.4) / 10;
+}
+
+/** Names an IPC fetch by its command, plus the query or request path when the body carries one. */
+export function describeIpcRequest(url: string, body: unknown): { label: string; requestBytes: number } {
+	let command = url.replace(/^ipc:\/\/localhost\//, "");
+	try {
+		command = decodeURIComponent(command);
+	} catch {
+		// Keep it encoded.
+	}
+	let requestBytes = 0;
+	let head = "";
+	if (typeof body === "string") {
+		requestBytes = body.length;
+		head = body.slice(0, 1500);
+	} else if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) {
+		requestBytes = body.byteLength;
+	}
+	// The query or request path says far more than the command name.
+	const detail = /"(?:query|path)"\s*:\s*"((?:[^"\\]|\\.){0,120})/.exec(head)?.[1];
+	return { label: detail ? `${command} ${detail}` : command, requestBytes };
+}
+
+/**
+ * When a crash loop should pause background work until, or null. An open
+ * pause is left alone, so restarts while paused do not keep extending it.
+ */
+export function crashLoopPauseUntil(
+	restarts: readonly Pick<RestartRecord, "detectedAt" | "wasVisible">[],
+	now: number,
+	pausedUntil: number,
+): number | null {
+	if (pausedUntil > now) return null;
+	const loop = restarts.filter(
+		(restart) => restart.wasVisible && now - restart.detectedAt <= CRASH_LOOP_WINDOW_MS,
+	);
+	return loop.length >= CRASH_LOOP_RESTARTS ? now + SAFE_MODE_MS : null;
+}
+
+/**
+ * Wraps fetch to watch Tauri's IPC, which on iOS travels as fetches to
+ * ipc://localhost/<command>. A call counts as finished only once its result
+ * has been unpacked, since unpacking is where a huge result costs memory.
+ */
+function installIpcTrace(current: DiagnosticsState): void {
+	const originalFetch = window.fetch;
+	if (typeof originalFetch !== "function") return;
+
+	const log: IpcCallLog = { inFlight: [], recent: [], largest: [] };
+	current.calls = log;
+	const pending = new Map<number, IpcCall>();
+	const responses = new WeakMap<Response, number>();
+	let nextId = 0;
+	let saveTimer: number | null = null;
+
+	// Oldest first: a call that has been running longest is the likelier culprit.
+	const refreshInFlight = () => {
+		const oldest: IpcCall[] = [];
+		for (const call of pending.values()) {
+			if (oldest.length === MAX_IN_FLIGHT_CALLS) break;
+			oldest.push(call);
+		}
+		log.inFlight = oldest;
+	};
+
+	const scheduleSave = () => {
+		if (saveTimer !== null) return;
+		saveTimer = window.setTimeout(() => {
+			saveTimer = null;
+			writeJson(STATE_KEY, current);
+		}, CALL_SAVE_THROTTLE_MS);
+	};
+
+	const finish = (id: number, responseBytes: number | null, failed: boolean) => {
+		const call = pending.get(id);
+		if (!call) return;
+		pending.delete(id);
+		refreshInFlight();
+		call.ms = Date.now() - call.startedAt;
+		if (responseBytes != null) call.responseKb = toKb(responseBytes);
+		if (failed) call.failed = true;
+		log.recent = [call, ...log.recent].slice(0, MAX_RECENT_CALLS);
+		if (responseBytes != null && responseBytes > 64 * 1024) {
+			log.largest = [...log.largest, call]
+				.sort((a, b) => (b.responseKb ?? 0) - (a.responseKb ?? 0))
+				.slice(0, MAX_LARGEST_CALLS);
+		}
+		scheduleSave();
+	};
+
+	window.fetch = function tracedFetch(input: RequestInfo | URL, init?: RequestInit) {
+		const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+		if (!url.startsWith("ipc://")) {
+			return originalFetch.call(window, input, init);
+		}
+
+		const { label, requestBytes } = describeIpcRequest(url, init?.body);
+		const id = nextId++;
+		const call: IpcCall = { label, startedAt: Date.now() };
+		if (requestBytes > 64 * 1024) call.requestKb = toKb(requestBytes);
+		pending.set(id, call);
+		refreshInFlight();
+		// A big request can be the killer itself: save before it leaves.
+		if (requestBytes > MB) {
+			writeJson(STATE_KEY, current);
+		} else {
+			scheduleSave();
+		}
+
+		return originalFetch.call(window, input, init).then(
+			(response) => {
+				responses.set(response, id);
+				return response;
+			},
+			(error: unknown) => {
+				finish(id, null, true);
+				throw error;
+			},
+		);
+	} as typeof window.fetch;
+
+	for (const method of ["arrayBuffer", "json", "text"] as const) {
+		const original = Response.prototype[method] as (this: Response) => Promise<unknown>;
+		Object.defineProperty(Response.prototype, method, {
+			configurable: true,
+			writable: true,
+			value: function tracedRead(this: Response) {
+				const id = responses.get(this);
+				const result = original.call(this);
+				if (id === undefined) return result;
+				const declared = Number(this.headers.get("content-length"));
+				return result.then(
+					(value) => {
+						const bytes = value instanceof ArrayBuffer ? value.byteLength : declared > 0 ? declared : null;
+						finish(id, bytes, false);
+						return value;
+					},
+					(error: unknown) => {
+						finish(id, null, true);
+						throw error;
+					},
+				);
+			},
+		});
+	}
+}
+
+type NativeBridgeWindow = Window & {
+	webkit?: { messageHandlers?: Record<string, { postMessage: (message: unknown) => void } | undefined> };
+	__FG_NATIVE_TERMINATIONS__?: NativeTermination[];
+};
+
+/** The iOS build's native message handler, when this build has one. */
+export function getNativeBridge(): { postMessage: (message: unknown) => void } | null {
+	if (typeof window === "undefined") return null;
+	return (window as NativeBridgeWindow).webkit?.messageHandlers?.fgNative ?? null;
+}
+
+/** Asks the native side for its record of why the web content process ended; arrives as NATIVE_TERMINATIONS_EVENT. */
+export function requestNativeTerminations(): void {
+	try {
+		getNativeBridge()?.postMessage({ type: "terminations" });
+	} catch {
+		// Older builds have no handler.
+	}
+}
+
+/** null when this build cannot tell, as distinct from an empty list. */
+export function getNativeTerminations(): NativeTermination[] | null {
+	if (typeof window === "undefined") return null;
+	return (window as NativeBridgeWindow).__FG_NATIVE_TERMINATIONS__ ?? null;
+}
 
 export function installDiagnostics(): void {
 	if (state || typeof window === "undefined") {
@@ -133,8 +356,22 @@ export function installDiagnostics(): void {
 			snapshot: previous.snapshot,
 			errors: previous.errors ?? [],
 			activities: previous.activities ?? [],
+			calls: previous.calls,
 		});
 		writeJson(RESTARTS_KEY, restarts.slice(0, MAX_RESTARTS));
+
+		try {
+			const pauseUntil = crashLoopPauseUntil(
+				restarts,
+				Date.now(),
+				Number(window.localStorage.getItem(SAFE_MODE_UNTIL_KEY) ?? 0),
+			);
+			if (pauseUntil !== null) {
+				window.localStorage.setItem(SAFE_MODE_UNTIL_KEY, String(pauseUntil));
+			}
+		} catch {
+			// Without storage the app just runs normally.
+		}
 	}
 
 	const startedAt = Date.now();
@@ -147,6 +384,8 @@ export function installDiagnostics(): void {
 		activities: [],
 	};
 	state = current;
+	installIpcTrace(current);
+	requestNativeTerminations();
 
 	const beat = () => {
 		current.lastBeatAt = Date.now();
@@ -254,6 +493,10 @@ export function buildDiagnosticsReport(): string {
 			generatedAt: new Date().toISOString(),
 			userAgent: navigator.userAgent,
 			current: takeSnapshot(getSessionStartedAt()),
+			currentCalls: state?.calls ?? null,
+			// null: this build has no native record. Reasons come from WebKit; a
+			// memory kill by iOS itself can still show up as "crash".
+			nativeTerminations: getNativeTerminations(),
 			restarts: getRestarts(),
 			blocks: getBlockEvents(),
 		},

@@ -17,6 +17,7 @@ import { installGlobalCrashHandlers } from "./utils/crashOverlay";
 import { installDiagnostics } from "./utils/diagnostics";
 import { DiagnosticsHud } from "./components/DiagnosticsHud";
 import { ScreenshotBadge } from "./components/ScreenshotBadge";
+import { BackgroundPausedBanner } from "./components/BackgroundPausedBanner";
 import { getRuntimeContext } from "./services/runtimeContext";
 import "./index.css";
 
@@ -63,6 +64,7 @@ void (async () => {
 						)}
 						<AppToaster />
 						<DiagnosticsHud />
+						<BackgroundPausedBanner />
 						<ScreenshotBadge />
 					</BrowserRouter>
 				</QueryClientProvider>

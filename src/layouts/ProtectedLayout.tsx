@@ -3,10 +3,13 @@ import { NavBar } from "../components/NavBar";
 import { BackgroundViewScanner } from "../components/BackgroundViewScanner";
 import { BackgroundInboxScanner } from "../components/BackgroundInboxScanner";
 import { useDesktopBreakpoint } from "../hooks/useDesktopBreakpoint";
+import { useBackgroundWorkPaused } from "../utils/backgroundWorkGate";
 
 export function ProtectedLayout() {
     const location = useLocation();
     const isDesktop = useDesktopBreakpoint();
+    // TEMPORARY: held back after repeated restarts, see backgroundWorkGate.ts.
+    const backgroundPaused = useBackgroundWorkPaused();
 
     const isChatConversationRoute =
         (/^\/chat\/[^/]+$/.test(location.pathname) && location.pathname !== "/chat/albums") ||
@@ -19,10 +22,10 @@ export function ProtectedLayout() {
     return (
         <div className="relative">
             {/* Silently caches incoming views every 60s to bypass paywalls later */}
-            <BackgroundViewScanner />
-            
+            {backgroundPaused ? null : <BackgroundViewScanner />}
+
             {/* Scans incoming unread chats to automatically apply block rules */}
-            <BackgroundInboxScanner />
+            {backgroundPaused ? null : <BackgroundInboxScanner />}
 			
             <div className="app-page-container">
                 <Outlet />

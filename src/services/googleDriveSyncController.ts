@@ -66,6 +66,7 @@ import {
 	type GoogleDriveSyncAnchorV1,
 	type GoogleDriveSyncPairingSourceHeadV1,
 } from "./googleDriveSyncWire";
+import { markActivity } from "../utils/diagnostics";
 
 const MAX_REMOTE_READ_ATTEMPTS = 3;
 const REMOTE_READ_RETRY_DELAYS_MS = [120, 350] as const;
@@ -397,6 +398,8 @@ export class GoogleDriveSyncProfileController {
 		// not be left showing once the work that set it has finished.
 		const previousStep = this.#status.syncStep;
 		if (step) this.#setSyncStep(step);
+		// TEMPORARY diagnostics.
+		markActivity(`drive sync: ${bucket}`);
 		const timings = this.#cycleTimings;
 		const started = Date.now();
 		return work().finally(() => {

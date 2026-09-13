@@ -7,15 +7,22 @@ import {
 	buildDiagnosticsReport,
 	clearDiagnostics,
 	getBlockEvents,
+	getNativeTerminations,
 	getRestarts,
 	getSessionStartedAt,
 	isDiagnosticsHudEnabled,
+	NATIVE_TERMINATIONS_EVENT,
+	requestNativeTerminations,
 	setDiagnosticsHudEnabled,
 	takeSnapshot,
 	type BlockRecord,
 	type DiagnosticsSnapshot,
+	type IpcCall,
+	type IpcCallLog,
+	type NativeTermination,
 	type RestartRecord,
 } from "../../utils/diagnostics";
+import { resumeBackgroundWork, useBackgroundWorkPaused } from "../../utils/backgroundWorkGate";
 
 // TEMPORARY — see utils/diagnostics.ts.
 
@@ -56,7 +63,104 @@ function SnapshotDetails({ snapshot }: { snapshot: DiagnosticsSnapshot }) {
 			</dd>
 			<dt className="text-[var(--text-muted)]">Running for</dt>
 			<dd className="text-right font-mono">{formatDuration(snapshot.uptimeMs)}</dd>
+			{snapshot.backgroundPaused ? (
+				<>
+					<dt className="text-[var(--text-muted)]">Background work</dt>
+					<dd className="text-right font-mono">paused</dd>
+				</>
+			) : null}
 		</dl>
+	);
+}
+
+function describeCall(call: IpcCall): string {
+	const size = [
+		call.requestKb != null ? `sent ${call.requestKb} KB` : null,
+		call.responseKb != null ? `got ${call.responseKb} KB` : null,
+	]
+		.filter(Boolean)
+		.join(", ");
+	const timing = call.ms == null ? "still running" : `${call.ms} ms`;
+	return `${call.label} · ${timing}${size ? ` · ${size}` : ""}${call.failed ? " · failed" : ""}`;
+}
+
+function CallLogDetails({ calls }: { calls: IpcCallLog }) {
+	const groups: { title: string; items: IpcCall[] }[] = [
+		{ title: "Unfinished when it stopped", items: calls.inFlight },
+		{ title: "Biggest results", items: calls.largest },
+		{ title: "Last finished", items: calls.recent.slice(0, 8) },
+	];
+	return (
+		<div className="grid gap-2 border-t border-[var(--border)] pt-2">
+			{groups
+				.filter((group) => group.items.length > 0)
+				.map((group) => (
+					<div key={group.title}>
+						<p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+							{group.title}
+						</p>
+						<ul className="grid gap-0.5 font-mono text-[10px] text-violet-300">
+							{group.items.map((call, index) => (
+								<li key={`${call.startedAt}-${index}`} className="break-all">
+									{formatTime(call.startedAt)} {describeCall(call)}
+								</li>
+							))}
+						</ul>
+					</div>
+				))}
+		</div>
+	);
+}
+
+function RestartCard({ restart, termination }: { restart: RestartRecord; termination: NativeTermination | null }) {
+	return (
+		<div className="surface-card grid gap-2 p-4">
+			<p className="text-sm font-semibold">
+				{formatTime(restart.detectedAt)} · ran {formatDuration(restart.uptimeMs)}
+				<span className={`ml-2 text-xs ${restart.wasVisible ? "text-rose-400" : "text-[var(--text-muted)]"}`}>
+					{restart.wasVisible ? "on screen" : "in background"}
+				</span>
+			</p>
+			{termination ? (
+				<p className="text-xs">
+					<span className="text-[var(--text-muted)]">iOS says: </span>
+					<span className="font-semibold">{termination.reason}</span>
+				</p>
+			) : null}
+			{restart.snapshot ? (
+				<SnapshotDetails snapshot={restart.snapshot} />
+			) : (
+				<p className="text-xs text-[var(--text-muted)]">No snapshot was saved.</p>
+			)}
+			{restart.calls ? <CallLogDetails calls={restart.calls} /> : null}
+			{(restart.activities ?? []).length > 0 ? (
+				<ul className="grid gap-1 border-t border-[var(--border)] pt-2 font-mono text-[10px] text-sky-300">
+					{restart.activities.map((activity) => (
+						<li key={`${activity.at}-${activity.label}`}>
+							{formatTime(activity.at)} {activity.label}
+						</li>
+					))}
+				</ul>
+			) : null}
+			{restart.errors.length > 0 ? (
+				<ul className="grid gap-1 border-t border-[var(--border)] pt-2 font-mono text-[10px] text-amber-300">
+					{restart.errors.map((error) => (
+						<li key={`${error.at}-${error.message}`}>
+							{formatTime(error.at)} {error.message}
+						</li>
+					))}
+				</ul>
+			) : null}
+		</div>
+	);
+}
+
+/** The native record that falls between the run's last heartbeat and the restart, if the build keeps one. */
+function findTermination(restart: RestartRecord, terminations: NativeTermination[] | null): NativeTermination | null {
+	return (
+		terminations?.find(
+			(termination) => termination.at >= restart.lastBeatAt - 1000 && termination.at <= restart.detectedAt + 1000,
+		) ?? null
 	);
 }
 
@@ -65,6 +169,15 @@ export function SettingsDiagnosticsPage() {
 	const [restarts, setRestarts] = useState<RestartRecord[]>(() => getRestarts());
 	const [blocks, setBlocks] = useState<BlockRecord[]>(() => getBlockEvents());
 	const [hudEnabled, setHudEnabled] = useState(() => isDiagnosticsHudEnabled());
+	const [terminations, setTerminations] = useState<NativeTermination[] | null>(() => getNativeTerminations());
+	const backgroundPaused = useBackgroundWorkPaused();
+
+	useEffect(() => {
+		const sync = () => setTerminations(getNativeTerminations());
+		window.addEventListener(NATIVE_TERMINATIONS_EVENT, sync);
+		requestNativeTerminations();
+		return () => window.removeEventListener(NATIVE_TERMINATIONS_EVENT, sync);
+	}, []);
 
 	useEffect(() => {
 		const timer = window.setInterval(() => {
@@ -130,6 +243,21 @@ export function SettingsDiagnosticsPage() {
 							<Trash2 className="h-4 w-4" /> Clear
 						</button>
 					</div>
+					{backgroundPaused ? (
+						<div className="flex items-center gap-3 rounded-xl border border-amber-400/30 p-3">
+							<p className="min-w-0 flex-1 text-xs text-[var(--text-muted)]">
+								Background scans, inbox sync and Drive catch-up are paused after repeated restarts.
+								If the restarts stop while paused, one of them is the cause.
+							</p>
+							<button
+								type="button"
+								onClick={resumeBackgroundWork}
+								className="btn-accent inline-flex min-h-9 shrink-0 items-center px-3 text-xs font-semibold"
+							>
+								Resume
+							</button>
+						</div>
+					) : null}
 				</div>
 
 				<div className="surface-card overflow-hidden">
@@ -160,37 +288,11 @@ export function SettingsDiagnosticsPage() {
 					) : (
 						<div className="grid gap-3">
 							{restarts.map((restart) => (
-								<div key={restart.detectedAt} className="surface-card grid gap-2 p-4">
-									<p className="text-sm font-semibold">
-										{formatTime(restart.detectedAt)} · ran {formatDuration(restart.uptimeMs)}
-										<span className={`ml-2 text-xs ${restart.wasVisible ? "text-rose-400" : "text-[var(--text-muted)]"}`}>
-											{restart.wasVisible ? "on screen" : "in background"}
-										</span>
-									</p>
-									{restart.snapshot ? (
-										<SnapshotDetails snapshot={restart.snapshot} />
-									) : (
-										<p className="text-xs text-[var(--text-muted)]">No snapshot was saved.</p>
-									)}
-									{(restart.activities ?? []).length > 0 ? (
-										<ul className="grid gap-1 border-t border-[var(--border)] pt-2 font-mono text-[10px] text-sky-300">
-											{restart.activities.map((activity) => (
-												<li key={`${activity.at}-${activity.label}`}>
-													{formatTime(activity.at)} {activity.label}
-												</li>
-											))}
-										</ul>
-									) : null}
-									{restart.errors.length > 0 ? (
-										<ul className="grid gap-1 border-t border-[var(--border)] pt-2 font-mono text-[10px] text-amber-300">
-											{restart.errors.map((error) => (
-												<li key={`${error.at}-${error.message}`}>
-													{formatTime(error.at)} {error.message}
-												</li>
-											))}
-										</ul>
-									) : null}
-								</div>
+								<RestartCard
+									key={restart.detectedAt}
+									restart={restart}
+									termination={findTermination(restart, terminations)}
+								/>
 							))}
 						</div>
 					)}

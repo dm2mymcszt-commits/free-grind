@@ -16,7 +16,7 @@ import {
 } from "../services/interestViewAutoBlockState";
 import { findConversationByProfileId } from "../services/chatDb";
 import { preserveAndAutoBlockProfile } from "../services/autoBlockConversation";
-import { recordBlockEvent } from "../utils/diagnostics";
+import { markActivity, recordBlockEvent } from "../utils/diagnostics";
 import { normalizeViews, fromStoredView, toStoredView, PREVIEW_ID_PREFIX, type InterestItem } from "../pages/app/interest/interestUtils";
 import type { ProfileDetail } from "../types/grid";
 import {
@@ -239,6 +239,8 @@ export function BackgroundViewScanner() {
 			}
 
 			inFlightProfileIdsRef.current.add(profileId);
+			// TEMPORARY diagnostics.
+			markActivity(`view scanner: checking ${profileId}`);
 			try {
 				const [blockedIds, profileDetail] = await Promise.all([
 					getKnownBlockedIds(),
@@ -319,6 +321,8 @@ export function BackgroundViewScanner() {
 
 			isScanningRef.current = true;
 			let nextDelaySeconds = readScanIntervalSeconds();
+			// TEMPORARY diagnostics.
+			markActivity("view scanner: sweep");
 
 			try {
 				const recoveryEnabled = isRecoveryEnabled();
