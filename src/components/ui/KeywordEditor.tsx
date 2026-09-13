@@ -144,7 +144,19 @@ export function KeywordEditor({
 		const target = listRef.current?.querySelector<HTMLElement>(
 			`[data-keyword="${CSS.escape(highlight.identity)}"]`,
 		);
-		target?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+		if (target) {
+			// The desktop app scrolls through Lenis, which tracks its own position.
+			// A native scrollIntoView moved the document underneath it and left the
+			// whole layout shifted, nav bar included, until the app restarted.
+			const lenis = (window as unknown as {
+				lenis?: { scrollTo: (target: HTMLElement, options?: { offset?: number }) => void };
+			}).lenis;
+			if (lenis) {
+				lenis.scrollTo(target, { offset: -160 });
+			} else {
+				target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+			}
+		}
 		const timer = window.setTimeout(() => setHighlight(null), 1800);
 		return () => window.clearTimeout(timer);
 	}, [highlight]);
