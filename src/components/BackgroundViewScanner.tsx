@@ -16,6 +16,7 @@ import {
 } from "../services/interestViewAutoBlockState";
 import { findConversationByProfileId } from "../services/chatDb";
 import { preserveAndAutoBlockProfile } from "../services/autoBlockConversation";
+import { recordBlockEvent } from "../utils/diagnostics";
 import { normalizeViews, fromStoredView, toStoredView, PREVIEW_ID_PREFIX, type InterestItem } from "../pages/app/interest/interestUtils";
 import type { ProfileDetail } from "../types/grid";
 import {
@@ -289,6 +290,7 @@ export function BackgroundViewScanner() {
 					materializeMissingConversation: false,
 				});
 				blockedIds.add(profileId);
+				recordBlockEvent("interest view", profileId, reason);
 				settle();
 				queryClient.setQueryData<string[]>(["blocked-profile-ids"], (old) => {
 					if (!old) return [profileId];

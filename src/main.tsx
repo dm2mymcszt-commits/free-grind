@@ -14,10 +14,14 @@ import { DEFAULT_GC_TIME_MS } from "./config/ui-constants";
 import { CrashBoundary } from "./components/CrashBoundary";
 import { AppToaster } from "./components/AppToaster";
 import { installGlobalCrashHandlers } from "./utils/crashOverlay";
+import { installDiagnostics } from "./utils/diagnostics";
+import { DiagnosticsHud } from "./components/DiagnosticsHud";
 import { getRuntimeContext } from "./services/runtimeContext";
 import "./index.css";
 
 installGlobalCrashHandlers();
+// TEMPORARY: records unexpected restarts until the iOS reloads are confirmed gone.
+installDiagnostics();
 
 const queryClient = new QueryClient({
 	defaultOptions: {
@@ -57,6 +61,7 @@ void (async () => {
 							<App />
 						)}
 						<AppToaster />
+						<DiagnosticsHud />
 					</BrowserRouter>
 				</QueryClientProvider>
 			</CrashBoundary>

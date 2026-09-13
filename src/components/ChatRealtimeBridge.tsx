@@ -78,6 +78,7 @@ import {
 	isTapNotificationsEnabled,
 } from "../utils/notificationSettings";
 import { notifyLocal } from "../services/localNotify";
+import { recordBlockEvent } from "../utils/diagnostics";
 import {
 	preserveAndAutoBlockConversation,
 	withPreservingBlock,
@@ -432,6 +433,7 @@ export function ChatRealtimeBridge() {
 
 			try {
 				await apiFunctions.blockProfile(pidStr);
+				recordBlockEvent("counter-block", pidStr, name);
 				toast.success(
 					`🛡️ Counter-blocked ${name} (they blocked you)!`,
 					{ id: `counter-block-${pidStr}` }
@@ -898,6 +900,7 @@ export function ChatRealtimeBridge() {
 											blockProfile: () => apiFunctions.blockProfile(pidStr),
 										});
 										void notifyAutoBlock(detectedDisplayName || pidStr, blockReason);
+										recordBlockEvent("live message", pidStr, blockReason);
 										continue;
 									} catch (error) {
 										appLog.warn("[ChatRealtimeBridge] preserving auto-blocked conversation failed", error);

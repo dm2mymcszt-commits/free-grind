@@ -14,6 +14,7 @@ import type { ConversationEntry, Message, MessagesResponse } from "../types/mess
 import { mergeConversationForPreserve } from "../utils/conversationMerge";
 import { appLog } from "../utils/logger";
 import { markSelfBlockAction } from "../utils/selfBlockActions";
+import { recordBlockEvent } from "../utils/diagnostics";
 import { ApiFunctionError } from "./apiHelpers";
 import { captureConversationAlbumsForArchival } from "./albumStore";
 import { getChatContactIndexForProfiles } from "./chatContactIndex";
@@ -486,8 +487,9 @@ export function withPreservingBlock<
 >(api: T, userId: number | null): T {
 	return {
 		...api,
-		blockProfile: (profileId: string) =>
-			preserveAndAutoBlockProfile({
+		blockProfile: (profileId: string) => {
+			recordBlockEvent("automation rule", profileId);
+			return preserveAndAutoBlockProfile({
 				profileId,
 				userId,
 				listMessages: (conversationId) => api.listMessages({ conversationId }),
@@ -501,6 +503,7 @@ export function withPreservingBlock<
 				// existed either. A real conversation still resolves above and is
 				// preserved and archived as before; only the empty shell is gone.
 				materializeMissingConversation: false,
-			}),
+			});
+		},
 	};
 }

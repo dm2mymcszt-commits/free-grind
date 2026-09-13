@@ -1133,6 +1133,8 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 
 	const renderThread = (selectedConversation || targetProfileId) ? (
 		<div
+			data-diag="chat-thread"
+			data-keyboard-inset={mobileKeyboardInset}
 			className={`flex h-full flex-col ${!isDesktop ? "overflow-hidden p-0" : "overflow-hidden p-3 sm:p-4"} ${
 				isDesktop ? "surface-card" : ""
 			}`}

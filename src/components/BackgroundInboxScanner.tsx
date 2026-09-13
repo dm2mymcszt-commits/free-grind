@@ -21,6 +21,7 @@ import {
     summarizeEarlierHistory,
     type EarlierHistory,
 } from "../utils/autoBlockHistory";
+import { recordBlockEvent } from "../utils/diagnostics";
 
 /**
  * What GrindFlop's own history holds from before Grindr's copy of this chat
@@ -96,6 +97,7 @@ export function BackgroundInboxScanner() {
                     blockProfile: () => api.blockProfile(profileId),
                 });
                 void notifyAutoBlock(displayName, reason);
+                recordBlockEvent("inbox scanner", profileId, reason);
                 window.dispatchEvent(new Event("fg-refresh-inbox"));
                 return true;
             } catch (error) {

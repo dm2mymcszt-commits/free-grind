@@ -29,6 +29,7 @@ import { BehaviorPage } from "./pages/app/BehaviorPage.tsx";
 import { NotificationsPage } from "./pages/app/NotificationsPage.tsx";
 import { SettingsAutomationPage } from "./pages/app/SettingsAutomationPage.tsx";
 import { SettingsDataPage } from "./pages/app/SettingsDataPage.tsx";
+import { SettingsDiagnosticsPage } from "./pages/app/SettingsDiagnosticsPage.tsx";
 import { SettingsPrivacyPage } from "./pages/app/SettingsPrivacyPage.tsx";
 import { SettingsSavedPhrasesPage } from "./pages/app/SettingsSavedPhrasesPage.tsx";
 import { ChatSearchPage } from "./pages/app/ChatSearchPage";
@@ -224,6 +225,7 @@ export default function App() {
 												<Route path="/settings/notifications" element={<NotificationsPage />} />
 												<Route path="/settings/automation" element={<SettingsAutomationPage />} />
 												<Route path="/settings/data" element={<SettingsDataPage />} />
+												<Route path="/settings/diagnostics" element={<SettingsDiagnosticsPage />} />
 												<Route path="/settings/privacy" element={<SettingsPrivacyPage />} />
 												<Route path="/settings/about" element={<AboutPage />} />
 												<Route path="/settings/albums" element={<SettingsAlbumsPage />} />
