@@ -577,8 +577,9 @@ export function ChatPage() {
 	const [mediaSelection, setMediaSelection] = useState<ReadonlySet<string> | null>(null);
 	const [isWorkingOnMediaSelection, setIsWorkingOnMediaSelection] = useState(false);
 	const [isDeletingConfirmedMedia, setIsDeletingConfirmedMedia] = useState(false);
-	// Picked ones that show "not saved" in the thread; Save leaves them out.
-	const [unsaveablePickedIds, setUnsaveablePickedIds] = useState<string[]>([]);
+	// Picked or menu-open media showing "not saved" in the thread: Save leaves
+	// them out and their menu offers nothing to open or download.
+	const [unavailableMediaIds, setUnavailableMediaIds] = useState<string[]>([]);
 	const [pendingMediaDeletion, setPendingMediaDeletion] = useState<{
 		plan: MediaDeletionPlan;
 		resolve: (deletedMessageIds: string[]) => void;
@@ -6035,7 +6036,7 @@ export function ChatPage() {
 		if (isWorkingOnMediaSelection) return;
 		setIsWorkingOnMediaSelection(true);
 		try {
-			const unsaveable = new Set(unsaveablePickedIds);
+			const unsaveable = new Set(unavailableMediaIds);
 			const saveable = pickedThreadMessages().filter((message) => !unsaveable.has(message.messageId));
 			const items = (await Promise.all(saveable.map(resolveThreadMediaItem))).filter(
 				(item): item is MediaSelectionItem => item !== null,
@@ -6053,7 +6054,7 @@ export function ChatPage() {
 		} finally {
 			setIsWorkingOnMediaSelection(false);
 		}
-	}, [isWorkingOnMediaSelection, pickedThreadMessages, resolveThreadMediaItem, saveMediaItems, t, unsaveablePickedIds]);
+	}, [isWorkingOnMediaSelection, pickedThreadMessages, resolveThreadMediaItem, saveMediaItems, t, unavailableMediaIds]);
 
 	const deleteSelectedMedia = useCallback(async () => {
 		if (isWorkingOnMediaSelection) return;
@@ -6720,8 +6721,9 @@ export function ChatPage() {
 			onDeleteSelectedMedia={deleteSelectedMedia}
 			onOpenSelectedMediaActions={openSelectedMediaActions}
 			onCancelMediaSelection={cancelMediaSelection}
-			unsaveablePickedCount={mediaSelection ? unsaveablePickedIds.length : 0}
-			onUnsaveableSelectionChange={setUnsaveablePickedIds}
+			unsaveablePickedCount={mediaSelection ? unavailableMediaIds.filter((id) => mediaSelection.has(id)).length : 0}
+			isActionMediaUnavailable={openMessageActionId != null && unavailableMediaIds.includes(openMessageActionId)}
+			onUnavailableMediaChange={setUnavailableMediaIds}
 			isWorkingOnSelectedMedia={isWorkingOnMediaSelection}
 			isHidden={isSelectedConversationHidden}
 			toggleHide={toggleHide}

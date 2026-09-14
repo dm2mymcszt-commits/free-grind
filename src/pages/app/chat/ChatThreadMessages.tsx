@@ -101,8 +101,11 @@ type ChatThreadMessagesProps = {
 	selectedMediaIds?: ReadonlySet<string> | null;
 	onStartMediaSelection?: (message: UiMessage) => void;
 	onToggleMediaSelection?: (message: UiMessage) => void;
-	/** The picked ones that show "not saved": nothing on this device and a dead link. */
-	onUnsaveableSelectionChange?: (messageIds: string[]) => void;
+	/**
+	 * Of the picked photos and the one whose actions are open, those showing
+	 * "not saved": nothing on this device and a dead link.
+	 */
+	onUnavailableMediaChange?: (messageIds: string[]) => void;
 };
 
 /**
@@ -340,7 +343,8 @@ export function ChatThreadMessages({
 	selectedMediaIds = null,
 	onStartMediaSelection,
 	onToggleMediaSelection,
-	onUnsaveableSelectionChange,
+	onUnavailableMediaChange,
+	openMessageActionId,
 }: ChatThreadMessagesProps) {
 	const { t } = useTranslation();
 	useLocalMediaCache();
@@ -359,25 +363,35 @@ export function ChatThreadMessages({
 		setUnloadableMediaKeys((previous) => (previous.has(key) ? previous : new Set(previous).add(key)));
 	}, []);
 
+	/** A photo or video that shows "not saved": no copy here and its link does not load. */
+	const isMediaUnavailable = useCallback(
+		(message: UiMessage) => {
+			if (!isSelectableMediaMessage(message)) return false;
+			const { imageUrl, videoUrl } = getDisplayedMediaUrls(message);
+			if (!imageUrl && !videoUrl) return true;
+			return (
+				(imageUrl != null && unloadableMediaKeys.has(`${message.messageId}|${imageUrl}`))
+				|| (videoUrl != null && unloadableMediaKeys.has(`${message.messageId}|${videoUrl}`))
+			);
+		},
+		[unloadableMediaKeys],
+	);
+
 	// Read on every render: a saved copy landing in memory re-renders the thread
 	// (useLocalMediaCache) without changing any of these inputs.
-	const unsaveablePickedKey = selectedMediaIds
+	const unavailableMediaKey = selectedMediaIds || openMessageActionId
 		? threadMessages
-				.filter((message) => {
-					if (!selectedMediaIds.has(message.messageId)) return false;
-					const { imageUrl, videoUrl } = getDisplayedMediaUrls(message);
-					if (!imageUrl && !videoUrl) return true;
-					return (
-						(imageUrl != null && unloadableMediaKeys.has(`${message.messageId}|${imageUrl}`))
-						|| (videoUrl != null && unloadableMediaKeys.has(`${message.messageId}|${videoUrl}`))
-					);
-				})
+				.filter(
+					(message) =>
+						(selectedMediaIds?.has(message.messageId) || message.messageId === openMessageActionId)
+						&& isMediaUnavailable(message),
+				)
 				.map((message) => message.messageId)
 				.join("\n")
 		: "";
 	useEffect(() => {
-		onUnsaveableSelectionChange?.(unsaveablePickedKey ? unsaveablePickedKey.split("\n") : []);
-	}, [onUnsaveableSelectionChange, unsaveablePickedKey]);
+		onUnavailableMediaChange?.(unavailableMediaKey ? unavailableMediaKey.split("\n") : []);
+	}, [onUnavailableMediaChange, unavailableMediaKey]);
 
 	const reactionButtonRefs = useRef<Map<string, HTMLElement>>(new Map());
 	const prevReactionCountsRef = useRef<Map<string, number>>(new Map());
@@ -729,7 +743,8 @@ export function ChatThreadMessages({
 			});
 		}
 
-		if (imageUrl || videoUrl || audioUrl) {
+		// Nothing to download from a photo that was never saved here.
+		if ((imageUrl || videoUrl || audioUrl) && !isMediaUnavailable(message)) {
 			actions.push({
 				key: "download",
 				label: t("chat.actions.download", { defaultValue: "Download" }),
@@ -826,6 +841,7 @@ export function ChatThreadMessages({
 		contextMenuTarget,
 		userId,
 		isMutatingMessageId,
+		isMediaUnavailable,
 		selectedMediaIds,
 		onStartMediaSelection,
 		onToggleMediaSelection,

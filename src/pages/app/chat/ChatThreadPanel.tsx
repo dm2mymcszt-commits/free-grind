@@ -274,7 +274,9 @@ type ChatThreadPanelProps = {
 	isWorkingOnSelectedMedia: boolean;
 	/** How many picked ones show "not saved" and cannot be downloaded. */
 	unsaveablePickedCount: number;
-	onUnsaveableSelectionChange: (messageIds: string[]) => void;
+	/** The message whose actions are open shows "not saved", so it cannot be opened or downloaded. */
+	isActionMediaUnavailable: boolean;
+	onUnavailableMediaChange: (messageIds: string[]) => void;
 };
 
 
@@ -728,7 +730,8 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 		onCancelMediaSelection,
 		isWorkingOnSelectedMedia,
 		unsaveablePickedCount,
-		onUnsaveableSelectionChange,
+		isActionMediaUnavailable,
+		onUnavailableMediaChange,
 	} = props;
 	const saveablePickedCount = Math.max(0, (selectedMediaIds?.size ?? 0) - unsaveablePickedCount);
 
@@ -1820,7 +1823,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 						selectedMediaIds={selectedMediaIds}
 						onStartMediaSelection={onStartMediaSelection}
 						onToggleMediaSelection={onToggleMediaSelection}
-						onUnsaveableSelectionChange={onUnsaveableSelectionChange}
+						onUnavailableMediaChange={onUnavailableMediaChange}
 					/>
 				)
 			) : (
@@ -2843,7 +2846,8 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 										});
 									}
 
-									if (mediaUrl || audioUrl) {
+									// A photo that was never saved here has nothing to open or download.
+									if ((mediaUrl || audioUrl) && !isActionMediaUnavailable) {
 										if (mediaUrl && (isIos() || isAndroid())) {
 											rows.push({
 												key: "open-media",
