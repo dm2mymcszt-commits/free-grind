@@ -101,7 +101,32 @@ type ChatThreadMessagesProps = {
 	selectedMediaIds?: ReadonlySet<string> | null;
 	onStartMediaSelection?: (message: UiMessage) => void;
 	onToggleMediaSelection?: (message: UiMessage) => void;
+	/** The picked ones that show "not saved": nothing on this device and a dead link. */
+	onUnsaveableSelectionChange?: (messageIds: string[]) => void;
 };
+
+/**
+ * The photo or video link a message shows: the saved copy once it is in
+ * memory, else the message's own link. Mirrors the thread's rendering, minus
+ * the loading it starts.
+ */
+function getDisplayedMediaUrls(message: UiMessage): { imageUrl: string | null; videoUrl: string | null } {
+	let imageUrl = getMessageImageUrl(message);
+	let videoUrl = getMessageVideoUrl(message);
+	if (imageUrl || videoUrl || getMessageAudioUrl(message)) {
+		const captureTarget = getMediaCaptureTarget(message);
+		const cachedUri = captureTarget ? getCachedMediaUri(captureTarget.mediaKey) : null;
+		if (cachedUri) {
+			if (imageUrl) imageUrl = cachedUri;
+			else if (videoUrl) videoUrl = cachedUri;
+		}
+	} else {
+		const fallbackUri = getCachedMediaUri(getMessageFallbackMediaKey(message.messageId));
+		if (fallbackUri?.startsWith("data:video/")) videoUrl = fallbackUri;
+		else if (fallbackUri && !fallbackUri.startsWith("data:audio/")) imageUrl = fallbackUri;
+	}
+	return { imageUrl, videoUrl };
+}
 
 const getReactionEmoji = (type: number): string => {
     switch (type) {
@@ -315,6 +340,7 @@ export function ChatThreadMessages({
 	selectedMediaIds = null,
 	onStartMediaSelection,
 	onToggleMediaSelection,
+	onUnsaveableSelectionChange,
 }: ChatThreadMessagesProps) {
 	const { t } = useTranslation();
 	useLocalMediaCache();
@@ -332,6 +358,26 @@ export function ChatThreadMessages({
 	const markMediaUnloadable = useCallback((key: string) => {
 		setUnloadableMediaKeys((previous) => (previous.has(key) ? previous : new Set(previous).add(key)));
 	}, []);
+
+	// Read on every render: a saved copy landing in memory re-renders the thread
+	// (useLocalMediaCache) without changing any of these inputs.
+	const unsaveablePickedKey = selectedMediaIds
+		? threadMessages
+				.filter((message) => {
+					if (!selectedMediaIds.has(message.messageId)) return false;
+					const { imageUrl, videoUrl } = getDisplayedMediaUrls(message);
+					if (!imageUrl && !videoUrl) return true;
+					return (
+						(imageUrl != null && unloadableMediaKeys.has(`${message.messageId}|${imageUrl}`))
+						|| (videoUrl != null && unloadableMediaKeys.has(`${message.messageId}|${videoUrl}`))
+					);
+				})
+				.map((message) => message.messageId)
+				.join("\n")
+		: "";
+	useEffect(() => {
+		onUnsaveableSelectionChange?.(unsaveablePickedKey ? unsaveablePickedKey.split("\n") : []);
+	}, [onUnsaveableSelectionChange, unsaveablePickedKey]);
 
 	const reactionButtonRefs = useRef<Map<string, HTMLElement>>(new Map());
 	const prevReactionCountsRef = useRef<Map<string, number>>(new Map());
@@ -1319,19 +1365,27 @@ export function ChatThreadMessages({
                                                         ? "bg-[var(--accent)] text-[var(--accent-contrast)] rounded-br-[3px]"
                                                         : "bg-[var(--surface-2)] text-[var(--text)] rounded-bl-[3px]"
                                                 }`
-                                    } ${isActiveSearchMatch || isPicked ? "ring-2 ring-[var(--accent)]" : ""} ${isPicked ? "ring-offset-2 ring-offset-[var(--surface)]" : ""} ${(localOnly || isCachedExpiredAlbum) ? "opacity-50" : ""}`}
+                                    } ${isActiveSearchMatch ? "ring-2 ring-[var(--accent)]" : ""} ${selectedMediaIds && isPickable ? "isolate" : ""} ${(localOnly || isCachedExpiredAlbum) ? "opacity-50" : ""}`}
                                 >
                                     {selectedMediaIds && isPickable ? (
-                                        <span
-                                            aria-hidden
-                                            className={`pointer-events-none absolute left-2 top-2 z-30 flex h-6 w-6 items-center justify-center rounded-full shadow-md transition ${
-                                                isPicked
-                                                    ? "bg-[var(--accent)] text-[var(--accent-contrast)]"
-                                                    : "border-2 border-white/90 bg-black/30"
-                                            }`}
-                                        >
-                                            {isPicked ? <Check className="h-4 w-4" strokeWidth={3} /> : null}
-                                        </span>
+                                        <>
+                                            <span
+                                                aria-hidden
+                                                className={`pointer-events-none absolute inset-0 z-20 rounded-2xl ${tailCorner} transition ${
+                                                    isPicked ? "bg-black/25 ring-[3px] ring-inset ring-[var(--accent)]" : ""
+                                                }`}
+                                            />
+                                            <span
+                                                aria-hidden
+                                                className={`pointer-events-none absolute left-2.5 top-2.5 z-30 flex h-6 w-6 items-center justify-center rounded-full shadow-md transition ${
+                                                    isPicked
+                                                        ? "bg-[var(--accent)] text-[var(--accent-contrast)]"
+                                                        : "border-2 border-white/90 bg-black/30"
+                                                }`}
+                                            >
+                                                {isPicked ? <Check className="h-4 w-4" strokeWidth={3} /> : null}
+                                            </span>
+                                        </>
                                     ) : null}
                                     <div className={isMediaOnlyBubble && hasReply ? `overflow-hidden rounded-2xl ${mine ? "rounded-br-[3px]" : "rounded-bl-[3px]"}` : "contents"}>
                                     {localOnly && !hasVisualMedia ? (

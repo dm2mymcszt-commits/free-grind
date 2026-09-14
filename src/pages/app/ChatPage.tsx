@@ -577,6 +577,8 @@ export function ChatPage() {
 	const [mediaSelection, setMediaSelection] = useState<ReadonlySet<string> | null>(null);
 	const [isWorkingOnMediaSelection, setIsWorkingOnMediaSelection] = useState(false);
 	const [isDeletingConfirmedMedia, setIsDeletingConfirmedMedia] = useState(false);
+	// Picked ones that show "not saved" in the thread; Save leaves them out.
+	const [unsaveablePickedIds, setUnsaveablePickedIds] = useState<string[]>([]);
 	const [pendingMediaDeletion, setPendingMediaDeletion] = useState<{
 		plan: MediaDeletionPlan;
 		resolve: (deletedMessageIds: string[]) => void;
@@ -5918,7 +5920,9 @@ export function ChatPage() {
 		if (saved?.dataBase64) {
 			return { messageId: message.messageId, mine, kind, source: { base64: saved.dataBase64, mimeType: saved.mimeType } };
 		}
-		return target ? { messageId: message.messageId, mine, kind, source: { url: target.url } } : null;
+		// No copy here and a link that no longer works: nothing to save.
+		if (!target || isSignedUrlExpired(target.url)) return null;
+		return { messageId: message.messageId, mine, kind, source: { url: target.url } };
 	}, [userId]);
 
 	/** Saves picked media one after another, with progress in a single toast. */
@@ -6031,15 +6035,25 @@ export function ChatPage() {
 		if (isWorkingOnMediaSelection) return;
 		setIsWorkingOnMediaSelection(true);
 		try {
-			const items = (await Promise.all(pickedThreadMessages().map(resolveThreadMediaItem))).filter(
+			const unsaveable = new Set(unsaveablePickedIds);
+			const saveable = pickedThreadMessages().filter((message) => !unsaveable.has(message.messageId));
+			const items = (await Promise.all(saveable.map(resolveThreadMediaItem))).filter(
 				(item): item is MediaSelectionItem => item !== null,
 			);
+			if (items.length === 0) {
+				toast.error(
+					t("chat.media_selection.nothing_to_save", {
+						defaultValue: "None of these are saved on this device, so there is nothing to download.",
+					}),
+				);
+				return;
+			}
 			await saveMediaItems(items);
 			setMediaSelection(null);
 		} finally {
 			setIsWorkingOnMediaSelection(false);
 		}
-	}, [isWorkingOnMediaSelection, pickedThreadMessages, resolveThreadMediaItem, saveMediaItems]);
+	}, [isWorkingOnMediaSelection, pickedThreadMessages, resolveThreadMediaItem, saveMediaItems, t, unsaveablePickedIds]);
 
 	const deleteSelectedMedia = useCallback(async () => {
 		if (isWorkingOnMediaSelection) return;
@@ -6706,6 +6720,8 @@ export function ChatPage() {
 			onDeleteSelectedMedia={deleteSelectedMedia}
 			onOpenSelectedMediaActions={openSelectedMediaActions}
 			onCancelMediaSelection={cancelMediaSelection}
+			unsaveablePickedCount={mediaSelection ? unsaveablePickedIds.length : 0}
+			onUnsaveableSelectionChange={setUnsaveablePickedIds}
 			isWorkingOnSelectedMedia={isWorkingOnMediaSelection}
 			isHidden={isSelectedConversationHidden}
 			toggleHide={toggleHide}

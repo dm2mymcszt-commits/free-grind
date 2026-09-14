@@ -272,6 +272,9 @@ type ChatThreadPanelProps = {
 	onOpenSelectedMediaActions: () => void;
 	onCancelMediaSelection: () => void;
 	isWorkingOnSelectedMedia: boolean;
+	/** How many picked ones show "not saved" and cannot be downloaded. */
+	unsaveablePickedCount: number;
+	onUnsaveableSelectionChange: (messageIds: string[]) => void;
 };
 
 
@@ -724,7 +727,10 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 		onOpenSelectedMediaActions,
 		onCancelMediaSelection,
 		isWorkingOnSelectedMedia,
+		unsaveablePickedCount,
+		onUnsaveableSelectionChange,
 	} = props;
+	const saveablePickedCount = Math.max(0, (selectedMediaIds?.size ?? 0) - unsaveablePickedCount);
 
 	// Escape leaves picking on a computer.
 	useEffect(() => {
@@ -1814,6 +1820,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 						selectedMediaIds={selectedMediaIds}
 						onStartMediaSelection={onStartMediaSelection}
 						onToggleMediaSelection={onToggleMediaSelection}
+						onUnsaveableSelectionChange={onUnsaveableSelectionChange}
 					/>
 				)
 			) : (
@@ -1853,6 +1860,14 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 											? t("chat.media_selection.pick_hint", { defaultValue: "Tap photos to select" })
 											: t("chat.media_selection.count", { defaultValue: "{{count}} selected", count: selectedMediaIds.size })}
 									</p>
+									{unsaveablePickedCount > 0 ? (
+										<p className="truncate text-xs text-[var(--text-muted)]">
+											{t("chat.media_selection.not_saved_count", {
+												defaultValue: "{{count}} not saved",
+												count: unsaveablePickedCount,
+											})}
+										</p>
+									) : null}
 								</div>
 								{!isDesktop && selectedMediaIds.size === 1 ? (
 									<button
@@ -1868,11 +1883,15 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 								<button
 									type="button"
 									onClick={() => void onSaveSelectedMedia()}
-									disabled={selectedMediaIds.size === 0 || isWorkingOnSelectedMedia}
+									disabled={saveablePickedCount === 0 || isWorkingOnSelectedMedia}
 									className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-[var(--surface-2)] px-3.5 text-sm font-semibold text-[var(--text)] transition hover:bg-[var(--surface-3)] disabled:opacity-40"
 								>
 									{isWorkingOnSelectedMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-									<span className="max-[359px]:hidden">{t("chat.media_selection.save", { defaultValue: "Save" })}</span>
+									<span className="max-[359px]:hidden">
+										{unsaveablePickedCount > 0 && saveablePickedCount > 0
+											? t("chat.media_selection.save_count", { defaultValue: "Save {{count}}", count: saveablePickedCount })
+											: t("chat.media_selection.save", { defaultValue: "Save" })}
+									</span>
 								</button>
 								<button
 									type="button"
