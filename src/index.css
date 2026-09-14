@@ -451,12 +451,19 @@
 		border-radius: 20px;
 	}
 
+	/* Twemoji ahead of the system emoji fonts, so every emoji looks the same. */
+	html[data-emoji-style="twemoji"] body {
+		font-family: "IBM Plex Sans Variable", "IBM Plex Sans", "GrindFlop Twemoji", sans-serif, "Segoe UI Emoji", "Apple Color Emoji";
+	}
+
 	body {
 		margin: 0;
 		background: var(--bg);
 		color: var(--text);
 		--titlebar-height: 0px;
-		font-family: "IBM Plex Sans Variable", "IBM Plex Sans", sans-serif;
+		/* The system's emoji fonts, then the bundled Twemoji for anything they
+		   cannot draw (see utils/emojiStyle.ts). */
+		font-family: "IBM Plex Sans Variable", "IBM Plex Sans", sans-serif, "Segoe UI Emoji", "Apple Color Emoji", "GrindFlop Twemoji";
 		font-feature-settings:
 			"rlig" 1,
 			"calt" 1;

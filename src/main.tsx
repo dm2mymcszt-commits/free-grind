@@ -15,12 +15,14 @@ import { CrashBoundary } from "./components/CrashBoundary";
 import { AppToaster } from "./components/AppToaster";
 import { installGlobalCrashHandlers } from "./utils/crashOverlay";
 import { installNativeKeyboardFocusReveal } from "./utils/nativeKeyboard";
+import { installEmojiStyle } from "./utils/emojiStyle";
 import { ScreenshotBadge } from "./components/ScreenshotBadge";
 import { getRuntimeContext } from "./services/runtimeContext";
 import "./index.css";
 
 installGlobalCrashHandlers();
 installNativeKeyboardFocusReveal();
+installEmojiStyle();
 
 // The iOS restart diagnostics are gone; drop the logs they kept, which ran to
 // hundreds of kilobytes of the storage every page load reads.

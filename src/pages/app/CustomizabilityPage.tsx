@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Flame, Languages, LayoutGrid, Monitor, Moon, Ruler, Sparkles, Star, Sun, RotateCcw } from "lucide-react";
+import { Flame, Languages, LayoutGrid, Monitor, Moon, Ruler, Smile, Sparkles, Star, Sun, RotateCcw } from "lucide-react";
 import toast from "react-hot-toast";
 import { usePreferences, ACCENT_PRESETS, type ColorScheme } from "../../contexts/PreferencesContext";
 import { BackToSettings } from "../../components/BackToSettings";
@@ -11,6 +11,13 @@ import {
 	resolveSupportedLocale,
 } from "../../utils/locales";
 import { type UnitsPreset } from "../../utils/units";
+import {
+	canChooseEmojiStyle,
+	EMOJI_STYLE_OPTIONS,
+	getEmojiStyle,
+	setEmojiStyle,
+	type EmojiStyle,
+} from "../../utils/emojiStyle";
 
 function normalizeHex(value: string): string {
 	const cleaned = value.trim().replace(/^#/, "");
@@ -108,6 +115,7 @@ export function CustomizabilityPage() {
 		setPreferences,
 	} = usePreferences();
 	const [customHex, setCustomHex] = useState(accentColor);
+	const [emojiStyleChoice, setEmojiStyleChoice] = useState<EmojiStyle>(getEmojiStyle);
 	const [hexError, setHexError] = useState<string | null>(null);
 	const [showRightNow, setShowRightNow] = useState(() => window.localStorage.getItem("fg-show-right-now") !== "false");
 	const [showInterest, setShowInterest] = useState(() => window.localStorage.getItem("fg-show-interest") !== "false");
@@ -467,6 +475,56 @@ export function CustomizabilityPage() {
 
 					</div>
 				</div>
+
+				{canChooseEmojiStyle() ? (
+					<div>
+						<SectionLabel>{t("customizability.emoji", { defaultValue: "Emoji" })}</SectionLabel>
+						<div className="surface-card p-4">
+							<div className="flex items-start gap-3">
+								<div className="shrink-0 rounded-2xl bg-amber-500/15 p-2.5 text-amber-400">
+									<Smile className="h-5 w-5" />
+								</div>
+								<div className="min-w-0 flex-1">
+									<p className="text-sm font-semibold leading-snug">
+										{t("customizability.emoji_style", { defaultValue: "Emoji style" })}
+									</p>
+									<p className="mt-0.5 text-xs leading-relaxed text-[var(--text-muted)]">
+										{t("customizability.emoji_style_desc", {
+											defaultValue:
+												"System uses this computer's emoji, with Twemoji for any it can't draw. Twemoji uses it for every emoji.",
+										})}
+									</p>
+									<div className="mt-3 grid grid-cols-2 gap-2">
+										{EMOJI_STYLE_OPTIONS.map((option) => (
+											<button
+												key={option.value}
+												type="button"
+												onClick={() => {
+													setEmojiStyleChoice(option.value);
+													setEmojiStyle(option.value);
+												}}
+												className="rounded-xl border-2 p-3 text-sm font-semibold transition-all"
+												style={{
+													borderColor: emojiStyleChoice === option.value ? "var(--accent)" : "var(--border)",
+													background: emojiStyleChoice === option.value
+														? "color-mix(in srgb, var(--accent) 12%, var(--surface))"
+														: "var(--surface-2)",
+													color: emojiStyleChoice === option.value ? "var(--accent-readable)" : "var(--text)",
+												}}
+											>
+												<span className="block text-lg leading-none" style={{ fontFamily: option.previewFontFamily }}>🫠 😀 ❤️</span>
+												<span className="mt-1.5 block">{option.label}</span>
+											</button>
+										))}
+									</div>
+									<p className="mt-2 text-[11px] leading-relaxed text-[var(--text-muted)]">
+										Twemoji graphics © Twitter, Inc and other contributors, CC-BY 4.0.
+									</p>
+								</div>
+							</div>
+						</div>
+					</div>
+				) : null}
 
 				{/* NAVIGATION */}
 				<div>
