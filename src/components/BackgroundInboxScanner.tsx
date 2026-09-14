@@ -21,7 +21,6 @@ import {
     summarizeEarlierHistory,
     type EarlierHistory,
 } from "../utils/autoBlockHistory";
-import { markActivity, recordBlockEvent } from "../utils/diagnostics";
 
 /**
  * What GrindFlop's own history holds from before Grindr's copy of this chat
@@ -84,8 +83,6 @@ export function BackgroundInboxScanner() {
             messageSnapshot?: MessagesResponse;
         }): Promise<boolean> => {
             try {
-                // TEMPORARY diagnostics.
-                markActivity(`inbox scanner: preserving ${conversation.data.conversationId} (${reason})`);
                 await preserveAndAutoBlockConversation({
                     conversation,
                     profileId,
@@ -99,7 +96,6 @@ export function BackgroundInboxScanner() {
                     blockProfile: () => api.blockProfile(profileId),
                 });
                 void notifyAutoBlock(displayName, reason);
-                recordBlockEvent("inbox scanner", profileId, reason);
                 window.dispatchEvent(new Event("fg-refresh-inbox"));
                 return true;
             } catch (error) {

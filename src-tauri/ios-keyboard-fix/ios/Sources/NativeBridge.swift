@@ -31,10 +31,6 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
             badge.update(visible: visible, accent: color(from: body["accent"]))
         case "refreshViewport":
             keyboard.refreshViewport()
-        case "terminations":
-            if let webView = webView {
-                WebContentTerminations.send(to: webView)
-            }
         default:
             break
         }

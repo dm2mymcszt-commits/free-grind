@@ -21,7 +21,6 @@ import {
     Workflow,
 	UserPlus,
 	UserX,
-	Activity,
 } from "lucide-react";
 import { useState, useCallback, useEffect, useRef, type CSSProperties } from "react";
 import toast from "react-hot-toast";
@@ -611,13 +610,6 @@ export function SettingsPage() {
 							"bg-teal-500/15 text-teal-400",
 							t("settings.data", { defaultValue: "Data" }),
 							t("settings.data_desc", { defaultValue: "Downloaded media storage, and back up/restore your entire account" }),
-						)}
-						{navRow(
-							() => navigate("/settings/diagnostics"),
-							<Activity className="h-5 w-5" />,
-							"bg-rose-500/15 text-rose-400",
-							"Diagnostics",
-							"Temporary: tracks why the app restarts",
 						)}
 					</div>
 				</div>

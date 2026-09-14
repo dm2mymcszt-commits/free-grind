@@ -14,18 +14,23 @@ import { DEFAULT_GC_TIME_MS } from "./config/ui-constants";
 import { CrashBoundary } from "./components/CrashBoundary";
 import { AppToaster } from "./components/AppToaster";
 import { installGlobalCrashHandlers } from "./utils/crashOverlay";
-import { installDiagnostics } from "./utils/diagnostics";
 import { installNativeKeyboardFocusReveal } from "./utils/nativeKeyboard";
-import { DiagnosticsHud } from "./components/DiagnosticsHud";
 import { ScreenshotBadge } from "./components/ScreenshotBadge";
-import { BackgroundPausedBanner } from "./components/BackgroundPausedBanner";
 import { getRuntimeContext } from "./services/runtimeContext";
 import "./index.css";
 
 installGlobalCrashHandlers();
 installNativeKeyboardFocusReveal();
-// TEMPORARY: records unexpected restarts until the iOS reloads are confirmed gone.
-installDiagnostics();
+
+// The iOS restart diagnostics are gone; drop the logs they kept, which ran to
+// hundreds of kilobytes of the storage every page load reads.
+for (const key of ["fg-diag-state", "fg-diag-restarts", "fg-diag-blocks", "fg-diag-hud", "fg-diag-safe-mode-until"]) {
+	try {
+		window.localStorage.removeItem(key);
+	} catch {
+		// Nothing to drop.
+	}
+}
 
 const queryClient = new QueryClient({
 	defaultOptions: {
@@ -65,8 +70,6 @@ void (async () => {
 							<App />
 						)}
 						<AppToaster />
-						<DiagnosticsHud />
-						<BackgroundPausedBanner />
 						<ScreenshotBadge />
 					</BrowserRouter>
 				</QueryClientProvider>

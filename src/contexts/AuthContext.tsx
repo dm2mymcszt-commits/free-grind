@@ -39,7 +39,6 @@ import { loadMediaSettingsCache } from "../utils/mediaSettings";
 import { loadPrivacyCache } from "../utils/privacy";
 import { loadSeenCache } from "../services/seenStore";
 import { runInboxSync } from "../services/inboxSync";
-import { whenBackgroundWorkAllowed } from "../utils/backgroundWorkGate";
 import { runTapsAutomationSync } from "../services/tapsSync";
 import { syncSavedPhrasesFromServer } from "../services/savedPhrases";
 import {
@@ -375,28 +374,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			// inboxSync.ts).
 			if (profileId != null) {
 				const userId = profileId;
-				// TEMPORARY: held back after repeated restarts, see backgroundWorkGate.ts.
-				whenBackgroundWorkAllowed(() => {
-					void runInboxSync(apiFunctions, userId, () => currentUserIdRef.current === userId);
-					// Fire-and-forget: pulls this account's saved phrases from Grindr and
-					// unions them into the local list. Guarded by the same "still the
-					// active profile" check as the inbox sync above, since chatDb (and so
-					// where the merged list gets written) already points at whichever
-					// profile is active by the time this resolves.
-					void syncSavedPhrasesFromServer(
-						apiFunctions.getSavedPhrases,
-						() => currentUserIdRef.current === userId,
-					);
-					// Fire-and-forget: reconciles taps received while the app was closed
-					// against the "tap_received" automation trigger — guarded the same
-					// way, and safe to start before the automation cache below finishes
-					// loading (runAutomationRulesForSender no-ops until it has).
-					void runTapsAutomationSync(
-						apiFunctions,
-						() => currentUserIdRef.current === userId,
-						userId,
-					);
-				});
+				void runInboxSync(apiFunctions, userId, () => currentUserIdRef.current === userId);
+				// Fire-and-forget: pulls this account's saved phrases from Grindr and
+				// unions them into the local list. Guarded by the same "still the
+				// active profile" check as the inbox sync above, since chatDb (and so
+				// where the merged list gets written) already points at whichever
+				// profile is active by the time this resolves.
+				void syncSavedPhrasesFromServer(
+					apiFunctions.getSavedPhrases,
+					() => currentUserIdRef.current === userId,
+				);
+				// Fire-and-forget: reconciles taps received while the app was closed
+				// against the "tap_received" automation trigger — guarded the same
+				// way, and safe to start before the automation cache below finishes
+				// loading (runAutomationRulesForSender no-ops until it has).
+				void runTapsAutomationSync(
+					apiFunctions,
+					() => currentUserIdRef.current === userId,
+					userId,
+				);
 			}
 
 			await Promise.all([

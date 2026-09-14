@@ -56,8 +56,8 @@ extension WKWebView {
 }
 
 /// Everything the iOS web view needs beyond what Tauri sets up: no input
-/// accessory bar, the keyboard handled by resizing the web view, the
-/// screenshot badge, and (temporarily) why the web content process ended.
+/// accessory bar, the keyboard handled by resizing the web view, and the
+/// screenshot badge.
 class KeyboardFixPlugin: Plugin {
     private var keyboardObserver: NSObjectProtocol?
     private weak var patchedWebView: WKWebView?
@@ -98,17 +98,8 @@ class KeyboardFixPlugin: Plugin {
             self.badge = badge
             self.bridge = bridge
 
-            self.installTerminationHook(attempt: 0)
-        }
-    }
-
-    private func installTerminationHook(attempt: Int) {
-        guard let webview = patchedWebView else { return }
-        if WebContentTerminations.installHook(on: webview) || attempt >= 10 {
-            return
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.installTerminationHook(attempt: attempt + 1)
+            // Left by the restart diagnostics, which are gone.
+            UserDefaults.standard.removeObject(forKey: "fg.webContentTerminations")
         }
     }
 

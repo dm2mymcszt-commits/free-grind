@@ -24,7 +24,6 @@ import { isAutoDownloadMediaEnabled } from "../utils/mediaSettings";
 import { limitChatDbBlobRead } from "../utils/chatDbBlobLimiter";
 import { BoundedStringCache, cacheBudget, isConstrainedDevice } from "../utils/boundedCache";
 import { mapWithConcurrency } from "../utils/concurrency";
-import { markActivity } from "../utils/diagnostics";
 
 /**
  * How many large downloads run at once. Each sits in memory several times over
@@ -143,10 +142,6 @@ export async function fetchAndEncode(url: string): Promise<FetchedMedia | null> 
 				`[media-store] skipped a ${Math.round(declaredBytes / 1048576)} MB file over the ${Math.round(MAX_DOWNLOAD_BYTES / 1048576)} MB limit`,
 			);
 			return null;
-		}
-		if (Number.isFinite(declaredBytes) && declaredBytes >= 1048576) {
-			// TEMPORARY diagnostics.
-			markActivity(`download ${(declaredBytes / 1048576).toFixed(1)} MB`);
 		}
 		const arrayBuffer = await response.arrayBuffer();
 		const mimeType =
@@ -466,8 +461,6 @@ export async function captureMessageMediaForArchival(
 ): Promise<MediaCaptureResult[]> {
 	const targets: { message: UiMessage; target: MediaCaptureTarget }[] = [];
 	const sideCaptures: Promise<void>[] = [];
-	// TEMPORARY diagnostics.
-	markActivity(`archiving media for ${conversationId} (${messages.length} messages)`);
 
 	for (const message of messages) {
 		const target = getMediaCaptureTarget(message);

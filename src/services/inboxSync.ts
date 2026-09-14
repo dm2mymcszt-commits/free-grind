@@ -38,7 +38,6 @@ import * as chatDb from "./chatDb";
 import { upsertChatContactIndexFromInbox } from "./chatContactIndex";
 import { getOtherParticipant } from "../pages/app/chat/chatUtils";
 import { appLog } from "../utils/logger";
-import { markActivity } from "../utils/diagnostics";
 import {
 	reconcileCounterBlocks,
 	reconcileReappearedConversation,
@@ -143,8 +142,6 @@ async function doSync(
 		}
 
 		appLog.info("[inbox-sync] starting sync", { userId, hasCompletedFullSync });
-		// TEMPORARY diagnostics.
-		markActivity(`inbox sync: ${hasCompletedFullSync ? "incremental" : "full"}`);
 		setStatus(userId, { phase: "syncing_list", conversationsSoFar: 0, changedSoFar: 0 });
 
 		let conversationsSeen = 0;

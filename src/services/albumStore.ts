@@ -14,7 +14,6 @@ import * as chatDb from "./chatDb";
 import { fetchAndEncode, HEAVY_DOWNLOAD_CONCURRENCY, toDataUri } from "./mediaStore";
 import { BoundedStringCache, cacheBudget } from "../utils/boundedCache";
 import { mapWithConcurrency } from "../utils/concurrency";
-import { markActivity } from "../utils/diagnostics";
 import {
 	getAlbumContentReplyTarget,
 	getMessageAlbumCoverUrl,
@@ -435,10 +434,6 @@ export async function captureAlbum(
 
 	const existing = await chatDb.getAlbumMediaSummaries(String(albumId));
 	const existingById = new Map(existing.map((m) => [m.contentId, m] as const));
-	// TEMPORARY diagnostics.
-	markActivity(
-		`album ${albumId}: ${content.length} items, ${content.length - existing.filter((m) => m.hasData).length} to download`,
-	);
 
 	await mapWithConcurrency(content, HEAVY_DOWNLOAD_CONCURRENCY, (item) =>
 		captureAlbumContent(

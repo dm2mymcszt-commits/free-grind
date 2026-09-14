@@ -9,7 +9,6 @@ import {
 	applySelfBlockAction,
 	markConversationDeleteHandled,
 } from "../../services/conversationArchive";
-import { recordBlockEvent } from "../../utils/diagnostics";
 import { profileSchema } from "../../pages/app/profile-editor/profileEditorUtils";
 
 // chat.v1.conversation.delete fires identically for "we blocked/unblocked
@@ -75,7 +74,6 @@ export function useBlockProfile() {
 			// Archive any existing conversation with this profile right away
 			// instead of waiting on the WS round-trip — covers every entry
 			// point (grid, profile page, chat header), not just chat.
-			recordBlockEvent("block action", profileId);
 			void applySelfBlockAction(profileId, "block");
 		},
 	});
