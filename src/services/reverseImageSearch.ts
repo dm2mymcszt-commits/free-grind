@@ -5,7 +5,8 @@ import { isTauriRuntime } from "./tauriWebSocket";
 import { appLog } from "../utils/logger";
 
 /**
- * Reverse image search in Google Lens and Yandex at once.
+ * Reverse image search links for Google Lens and Yandex; the viewer lets the
+ * user pick which one to open.
  *
  * Both engines only take an image by URL when opened from outside, and most
  * photos the app shows are saved copies (data: URIs) or signed links that
@@ -99,12 +100,4 @@ export async function openExternal(url: string): Promise<void> {
 	} catch {
 		window.open(url, "_blank");
 	}
-}
-
-/** Opens both searches. Returns the links so the caller can offer them again. */
-export async function reverseSearchImage(imageUrl: string): Promise<ReverseSearchLinks> {
-	const links = await resolveReverseSearchLinks(imageUrl);
-	// Sent together: a phone switching to its browser may not come back for the second.
-	await Promise.all([openExternal(links.googleLens), openExternal(links.yandex)]);
-	return links;
 }
