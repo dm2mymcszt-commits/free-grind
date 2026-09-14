@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	createSyncOperation,
 	createSyncPackage,
+	serializeSyncPackage,
 	type ImmutableSyncOperation,
 	type JsonValue,
 	type SyncSection,
@@ -1222,6 +1223,111 @@ describe("durable Google Drive reconciliation store", () => {
 			).rejects.toThrow();
 		} finally {
 			await store.close();
+		}
+	});
+});
+
+describe("bounded reads", () => {
+	test("reads cached package headers without the bodies", async () => {
+		const { store } = await openTestStore();
+		try {
+			const syncPackage = await createSyncPackage({
+				packageId: "pkg-header",
+				accountNamespace: ACCOUNT,
+				sourceDeviceId: REMOTE_DEVICE,
+				createdAtMs: 1,
+				previousPackageDigest: null,
+				operations: [
+					createSyncOperation({
+						operationId: "op-header",
+						accountNamespace: ACCOUNT,
+						sourceDeviceId: REMOTE_DEVICE,
+						sequence: { originSequence: 4, logicalClock: 4 },
+						section: "core",
+						entityType: "conversation",
+						entityId: "header",
+						mutation: { kind: "upsert", value: { title: "Header" } },
+					}),
+				],
+			});
+			await store.writeCachedRemotePackages(ACCOUNT, [
+				{ cacheKey: "package", serialized: serializeSyncPackage(syncPackage) },
+				{ cacheKey: "not-json", serialized: "{not json" },
+				{ cacheKey: "not-a-package", serialized: '{"tampered":true}' },
+			]);
+
+			const headers = await store.readCachedRemotePackageHeaders(ACCOUNT, [
+				"package",
+				"not-json",
+				"not-a-package",
+				"missing",
+			]);
+
+			expect(headers.get("package")).toEqual({
+				packageId: "pkg-header",
+				accountNamespace: ACCOUNT,
+				sourceDeviceId: REMOTE_DEVICE,
+				sequenceStart: 4,
+				sequenceEnd: 4,
+				contentDigest: syncPackage.contentDigest,
+				previousPackageDigest: null,
+			});
+			expect(headers.has("not-json")).toBe(false);
+			expect(headers.get("not-a-package")?.packageId).toBeNull();
+			expect(headers.has("missing")).toBe(false);
+		} finally {
+			await store.close();
+		}
+	});
+
+	test("lists applied package digests for one account", async () => {
+		const { store, adapter } = await openTestStore();
+		try {
+			for (const [packageId, accountNamespace, digest] of [
+				["pkg-a", ACCOUNT, "a".repeat(64)],
+				["pkg-b", "acct-other-vault", "b".repeat(64)],
+			]) {
+				await adapter.execute(
+					`INSERT INTO sync_applied_packages (
+						package_id, account_namespace, source_device_id, sequence_start,
+						sequence_end, content_digest, previous_package_digest, applied_at_ms
+					 ) VALUES (?, ?, ?, 1, 1, ?, NULL, 1)`,
+					[packageId, accountNamespace, REMOTE_DEVICE, digest],
+				);
+			}
+			expect(await store.listAppliedPackageDigests(ACCOUNT)).toEqual(
+				new Map([["pkg-a", "a".repeat(64)]]),
+			);
+		} finally {
+			await store.close();
+		}
+	});
+
+	test("startup shadow repair pages through the whole outbox", async () => {
+		const adapter = new BunSqliteAdapter({ closeDatabase: false });
+		const first = await openTestStore({ adapter });
+		const entities = Array.from({ length: 610 }, (_, index) =>
+			entity("core", "conversation", `conversation-${index}`, { index }),
+		);
+		try {
+			await reconcile(first.store, entities);
+		} finally {
+			await first.store.close();
+		}
+		await adapter.execute("DELETE FROM sync_entity_shadow");
+
+		const reopened = await openTestStore({ adapter });
+		try {
+			const rows = await adapter.select<Array<{ count: number }>>(
+				"SELECT COUNT(*) AS count FROM sync_entity_shadow",
+			);
+			expect(rows[0].count).toBe(entities.length);
+			expect((await readConversationShadow(adapter, "conversation-609"))?.mutation).toEqual({
+				kind: "upsert",
+				value: { index: 609 },
+			});
+		} finally {
+			await reopened.store.close();
 		}
 	});
 });

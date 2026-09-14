@@ -1,6 +1,7 @@
 import {
 	SyncProtocolError,
 	parseAndVerifySyncPackage,
+	sha256HexSchema,
 	type ApplySyncPackageResult,
 	type SyncPackage,
 } from "./cloudSync";
@@ -38,6 +39,7 @@ import {
 } from "./googleDriveSyncNative";
 import {
 	openGoogleDriveSyncStore,
+	type CachedRemotePackageHeader,
 	type GoogleDriveSyncBootstrapState,
 	type GoogleDriveSyncPendingCounts,
 	type GoogleDriveSyncStore,
@@ -102,8 +104,10 @@ export type GoogleDriveSyncControllerStore = Pick<
 			GoogleDriveSyncStore,
 			| "getStatusSnapshot"
 			| "readCachedRemotePackages"
+			| "readCachedRemotePackageHeaders"
 			| "writeCachedRemotePackages"
 			| "pruneCachedRemotePackages"
+			| "listAppliedPackageDigests"
 		>
 	> &
 	Partial<Pick<GoogleDriveSyncStore, "recordCycleTimings">>;
@@ -168,11 +172,98 @@ type ClassifiedRemoteFile = Readonly<{
 	kind: "anchor" | "package";
 }>;
 
+/** A remote package's identity and chain fields: all an inventory needs to check. */
+type RemotePackageHeader = Readonly<{
+	packageId: string;
+	accountNamespace: string;
+	sourceDeviceId: string;
+	sequenceRange: Readonly<{ start: number; end: number }>;
+	contentDigest: string;
+	previousPackageDigest: string | null;
+}>;
+
+/**
+ * A remote package as an inventory holds it: its header, never its body.
+ * Holding bodies meant holding the entire remote history, hundreds of
+ * megabytes, which iOS answers by killing the web content process. A body is
+ * loaded, verified and dropped when a package has to be applied or compared.
+ */
 type RemotePackage = Readonly<{
+	metadata: GoogleDriveFileMetadata;
+	cacheKey: string;
+	syncPackage: RemotePackageHeader;
+}>;
+
+/** A package body whose content digest and authenticated filename have been verified. */
+type VerifiedRemotePackage = Readonly<{
 	metadata: GoogleDriveFileMetadata;
 	syncPackage: SyncPackage;
 	serialized: string;
 }>;
+
+function headerOf(syncPackage: SyncPackage): RemotePackageHeader {
+	return {
+		packageId: syncPackage.packageId,
+		accountNamespace: syncPackage.accountNamespace,
+		sourceDeviceId: syncPackage.sourceDeviceId,
+		sequenceRange: {
+			start: syncPackage.sequenceRange.start,
+			end: syncPackage.sequenceRange.end,
+		},
+		contentDigest: syncPackage.contentDigest,
+		previousPackageDigest: syncPackage.previousPackageDigest,
+	};
+}
+
+function sameHeader(left: RemotePackageHeader, right: RemotePackageHeader): boolean {
+	return (
+		left.packageId === right.packageId &&
+		left.accountNamespace === right.accountNamespace &&
+		left.sourceDeviceId === right.sourceDeviceId &&
+		left.sequenceRange.start === right.sequenceRange.start &&
+		left.sequenceRange.end === right.sequenceRange.end &&
+		left.contentDigest === right.contentDigest &&
+		left.previousPackageDigest === right.previousPackageDigest
+	);
+}
+
+/** Shape checks on a stored header; identity is checked against the filename separately. */
+function parseCachedHeader(stored: CachedRemotePackageHeader): RemotePackageHeader | null {
+	const {
+		packageId,
+		accountNamespace,
+		sourceDeviceId,
+		sequenceStart,
+		sequenceEnd,
+		contentDigest,
+		previousPackageDigest,
+	} = stored;
+	const digest = sha256HexSchema.safeParse(contentDigest);
+	const previousDigest = sha256HexSchema.nullable().safeParse(previousPackageDigest);
+	if (
+		typeof packageId !== "string" ||
+		typeof accountNamespace !== "string" ||
+		typeof sourceDeviceId !== "string" ||
+		!digest.success ||
+		!previousDigest.success ||
+		typeof sequenceStart !== "number" ||
+		typeof sequenceEnd !== "number" ||
+		!Number.isSafeInteger(sequenceStart) ||
+		!Number.isSafeInteger(sequenceEnd) ||
+		sequenceStart < 1 ||
+		sequenceEnd < sequenceStart
+	) {
+		return null;
+	}
+	return {
+		packageId,
+		accountNamespace,
+		sourceDeviceId,
+		sequenceRange: { start: sequenceStart, end: sequenceEnd },
+		contentDigest: digest.data,
+		previousPackageDigest: previousDigest.data,
+	};
+}
 
 type CycleResult = Readonly<{
 	remoteMutations: number;
@@ -349,7 +440,7 @@ function compareFileIds(left: ClassifiedRemoteFile, right: ClassifiedRemoteFile)
 }
 
 function sameLocalPackage(
-	remote: RemotePackage,
+	remote: VerifiedRemotePackage,
 	local: OutboundGoogleDriveSyncPackage,
 ): boolean {
 	return (
@@ -372,10 +463,10 @@ export class GoogleDriveSyncProfileController {
 	#storePromise: Promise<GoogleDriveSyncControllerStore> | null = null;
 	#queue: Promise<void> = Promise.resolve();
 	#coalescedSync: Promise<GoogleDriveSyncStatus> | null = null;
-	// Verified immutable packages memoized by content-addressed identity. One
-	// sync cycle loads the inventory three times and the five-minute catch-up
-	// reloads the same history again; without this each pass re-downloaded,
-	// decrypted, parsed and re-verified the entire remote history.
+	// Package headers memoized by content-addressed identity. One sync cycle
+	// loads the inventory three times and the five-minute catch-up reloads the
+	// same history again; without this each pass re-read the entire history.
+	// Headers only: see RemotePackage.
 	readonly #packageCache = new Map<string, RemotePackage>();
 	// Diagnostic only. Populated for the duration of one sync cycle so slow
 	// phases can be identified from the durable store instead of guessed at.
@@ -1393,6 +1484,17 @@ export class GoogleDriveSyncProfileController {
 		const packages = inventory.packages.filter(
 			(remote) => remote.syncPackage.sourceDeviceId !== localDeviceId,
 		);
+		// Receipts let an already-applied package be passed over on its header,
+		// which is the same check applyIncomingPackage makes, without loading its
+		// body. A store that cannot list them gets every package, as before.
+		const appliedDigests = store.listAppliedPackageDigests
+			? new Map(
+					await this.#activeAwait(
+						store.listAppliedPackageDigests(accountNamespace),
+						generation,
+					),
+				)
+			: null;
 
 		if (bootstrap.bootstrapPending) {
 			const baseline = bootstrap.localBaselineSequence;
@@ -1406,10 +1508,14 @@ export class GoogleDriveSyncProfileController {
 			this.#assertAuthorityCutoff(authorityPackages, bootstrap);
 			for (const remote of authorityPackages) {
 				if (remote.syncPackage.sequenceRange.end > bootstrap.authoritySequenceEnd) break;
+				// The cancellations below need the operations even when the package
+				// was applied before, so this path always loads the body. It runs once,
+				// while a device is being paired.
+				const body = await this.#loadPackageBody(remote, accountNamespace, generation);
 				const result = await this.#applyPackage(
 					store,
 					accountNamespace,
-					remote,
+					body,
 					generation,
 					{
 						localSourceDeviceId: localDeviceId,
@@ -1417,11 +1523,12 @@ export class GoogleDriveSyncProfileController {
 					},
 				);
 				remoteMutations += result.appliedOperations;
+				appliedDigests?.set(remote.syncPackage.packageId, remote.syncPackage.contentDigest);
 
 				// Apply/receipt comes first. If the process stops before supersession,
 				// replaying the already-applied package repeats these bounded, idempotent
 				// cancellations without ever reclassifying the old phone baseline as new.
-				for (const operation of remote.syncPackage.operations) {
+				for (const operation of body.syncPackage.operations) {
 					this.#assertActive(generation);
 					await this.#activeAwait(
 						store.supersedeUnuploadedEntityOperations({
@@ -1456,13 +1563,26 @@ export class GoogleDriveSyncProfileController {
 			) {
 				continue;
 			}
+			const appliedDigest = appliedDigests?.get(remote.syncPackage.packageId);
+			if (appliedDigest !== undefined) {
+				if (appliedDigest !== remote.syncPackage.contentDigest) {
+					throw new SyncProtocolError(
+						"identifier-collision",
+						`Package ID ${remote.syncPackage.packageId} identifies different content`,
+					);
+				}
+				this.#countCycleEvent("packageAlreadyApplied");
+				continue;
+			}
+			const body = await this.#loadPackageBody(remote, accountNamespace, generation);
 			const result = await this.#applyPackage(
 				store,
 				accountNamespace,
-				remote,
+				body,
 				generation,
 			);
 			remoteMutations += result.appliedOperations;
+			appliedDigests?.set(remote.syncPackage.packageId, remote.syncPackage.contentDigest);
 		}
 		return remoteMutations;
 	}
@@ -1565,12 +1685,21 @@ export class GoogleDriveSyncProfileController {
 			unconfirmedRemote = localRemote;
 		}
 
-		if (
-			unconfirmedRemote.length > orderedPending.length ||
-			unconfirmedRemote.some(
-				(remote, index) => !sameLocalPackage(remote, orderedPending[index]),
-			)
-		) {
+		let forked = unconfirmedRemote.length > orderedPending.length;
+		for (let index = 0; !forked && index < unconfirmedRemote.length; index += 1) {
+			const remote = unconfirmedRemote[index];
+			const local = orderedPending[index];
+			// Headers rule most out; the byte comparison needs the body, and this is
+			// only reached after an upload whose confirmation was lost.
+			forked =
+				remote.syncPackage.packageId !== local.syncPackage.packageId ||
+				remote.syncPackage.contentDigest !== local.syncPackage.contentDigest ||
+				!sameLocalPackage(
+					await this.#loadPackageBody(remote, accountNamespace, generation),
+					local,
+				);
+		}
+		if (forked) {
 			throw new GoogleDriveSyncControllerError(
 				"Google Drive contains same-device history that is not present in this installation's durable pending ledger. Upload stopped to prevent a fork after local sync-state loss or rollback.",
 			);
@@ -1614,7 +1743,7 @@ export class GoogleDriveSyncProfileController {
 	async #applyPackage(
 		store: GoogleDriveSyncControllerStore,
 		accountNamespace: string,
-		remote: RemotePackage,
+		remote: VerifiedRemotePackage,
 		generation: number,
 		bootstrapAuthority?: Readonly<{
 			localSourceDeviceId: string;
@@ -1958,21 +2087,21 @@ export class GoogleDriveSyncProfileController {
 		generation: number,
 	): Promise<RemoteInventory> {
 		const exact = await this.#listExactFiles(accountNamespace, generation);
-		// Bodies kept from an earlier run. Reuse still verifies everything a fresh
-		// download does; it only avoids fetching and decrypting what cannot have
-		// changed, which is what made a cold start slow.
+		// Headers of bodies kept from an earlier run, read without the bodies. A
+		// header is only trusted once it reproduces the file's authenticated name,
+		// and a body is verified in full before anything is applied from it.
 		const persistedKeys = exact
 			.filter((file) => file.kind === "package")
 			.map((file) => remotePackageCacheKey(accountNamespace, file.metadata))
 			.filter((key) => !this.#packageCache.has(key));
-		let persisted: ReadonlyMap<string, string> = new Map();
+		let persisted: ReadonlyMap<string, CachedRemotePackageHeader> = new Map();
 		if (persistedKeys.length > 0) {
 			try {
 				const store = await this.#activeAwait(this.#store(), generation);
 				persisted =
 					(await this.#activeAwait(
 						Promise.resolve(
-							store.readCachedRemotePackages?.(accountNamespace, persistedKeys),
+							store.readCachedRemotePackageHeaders?.(accountNamespace, persistedKeys),
 						),
 						generation,
 					)) ?? new Map();
@@ -1982,7 +2111,7 @@ export class GoogleDriveSyncProfileController {
 				persisted = new Map();
 			}
 		}
-		const freshlyDownloaded: Array<{ cacheKey: string; serialized: string }> = [];
+		let downloadedAny = false;
 		const anchors: Array<Readonly<{
 			file: ClassifiedRemoteFile;
 			value: GoogleDriveSyncAnchorV1;
@@ -2011,23 +2140,22 @@ export class GoogleDriveSyncProfileController {
 					packages.push(cached);
 					continue;
 				}
-				const storedBody = persisted.get(cacheKey);
-				if (storedBody !== undefined) {
-					try {
-						const restored = await this.#verifyPackageBody(
-							storedBody,
-							file.metadata,
-							accountNamespace,
-						);
+				const storedHeader = persisted.get(cacheKey);
+				if (storedHeader !== undefined) {
+					const restored = await this.#restoreHeader(
+						storedHeader,
+						file.metadata,
+						cacheKey,
+						accountNamespace,
+					);
+					if (restored) {
 						this.#countCycleEvent("packageCacheRestored");
 						this.#packageCache.set(cacheKey, restored);
 						packages.push(restored);
 						continue;
-					} catch (error) {
-						if (error instanceof GoogleDriveSyncCancelledError) throw error;
-						// A body that no longer verifies is discarded, never trusted.
-						this.#countCycleEvent("packageCacheRejected");
 					}
+					// A header that does not match its file is discarded, never trusted.
+					this.#countCycleEvent("packageCacheRejected");
 				}
 				this.#countCycleEvent("packageDownload");
 				const downloaded = await this.#downloadPackage(
@@ -2035,34 +2163,36 @@ export class GoogleDriveSyncProfileController {
 					accountNamespace,
 					generation,
 				);
-				this.#packageCache.set(cacheKey, downloaded);
-				freshlyDownloaded.push({ cacheKey, serialized: downloaded.serialized });
-				packages.push(downloaded);
+				const remote: RemotePackage = {
+					metadata: file.metadata,
+					cacheKey,
+					syncPackage: headerOf(downloaded.syncPackage),
+				};
+				this.#packageCache.set(cacheKey, remote);
+				packages.push(remote);
+				// Saved as soon as it verifies, so even a first sync of the whole
+				// history holds one body at a time.
+				await this.#persistPackageBody(accountNamespace, cacheKey, downloaded.serialized, generation);
+				downloadedAny = true;
 			}
 		}
 
 		// Keep the cache bounded by the history that still exists remotely. The
 		// listing above is always fetched fresh, so new and deleted remote packages
-		// are still detected; only already-verified immutable bodies are reused.
+		// are still detected; only already-verified immutable packages are reused.
 		for (const key of this.#packageCache.keys()) {
 			if (!seenPackageKeys.has(key)) this.#packageCache.delete(key);
 		}
 
-		if (freshlyDownloaded.length > 0 || persistedKeys.length > 0) {
+		if (downloadedAny || persistedKeys.length > 0) {
 			try {
 				const store = await this.#activeAwait(this.#store(), generation);
-				if (freshlyDownloaded.length > 0) {
-					await store.writeCachedRemotePackages?.(
-						accountNamespace,
-						freshlyDownloaded,
-					);
-				}
 				await store.pruneCachedRemotePackages?.(accountNamespace, [
 					...seenPackageKeys,
 				]);
 			} catch (error) {
 				if (error instanceof GoogleDriveSyncCancelledError) throw error;
-				// Failing to persist the cache must not fail the sync itself.
+				// Failing to prune the cache must not fail the sync itself.
 			}
 		}
 
@@ -2086,7 +2216,8 @@ export class GoogleDriveSyncProfileController {
 		for (const remote of packages) {
 			const key = remote.metadata.name;
 			const existing = uniquePackages.get(key);
-			if (existing && existing.serialized !== remote.serialized) {
+			// The content digest covers the whole body, so equal digests mean equal content.
+			if (existing && !sameHeader(existing.syncPackage, remote.syncPackage)) {
 				throw new GoogleDriveSyncControllerError(
 					"Duplicate immutable package names contain different content.",
 				);
@@ -2192,11 +2323,92 @@ export class GoogleDriveSyncProfileController {
 		);
 	}
 
+	/** A stored header, if it has the right shape and reproduces the file's authenticated name. */
+	async #restoreHeader(
+		stored: CachedRemotePackageHeader,
+		metadata: GoogleDriveFileMetadata,
+		cacheKey: string,
+		accountNamespace: string,
+	): Promise<RemotePackage | null> {
+		const header = parseCachedHeader(stored);
+		if (!header || header.accountNamespace !== accountNamespace) return null;
+		try {
+			const expectedFilename = await googleDriveSyncPackageFilename({
+				accountNamespace,
+				sourceDeviceId: header.sourceDeviceId,
+				packageId: header.packageId,
+				contentDigest: header.contentDigest,
+			});
+			if (expectedFilename !== metadata.name) return null;
+		} catch {
+			return null;
+		}
+		return { metadata, cacheKey, syncPackage: header };
+	}
+
+	/**
+	 * The verified body behind an inventory entry: the stored copy when it still
+	 * verifies and matches the header the inventory was checked with, otherwise
+	 * a fresh download. Callers hold it only as long as they need it.
+	 */
+	async #loadPackageBody(
+		remote: RemotePackage,
+		accountNamespace: string,
+		generation: number,
+	): Promise<VerifiedRemotePackage> {
+		try {
+			const store = await this.#activeAwait(this.#store(), generation);
+			const stored = await this.#activeAwait(
+				Promise.resolve(store.readCachedRemotePackages?.(accountNamespace, [remote.cacheKey])),
+				generation,
+			);
+			const body = stored?.get(remote.cacheKey);
+			if (body !== undefined) {
+				const verified = await this.#verifyPackageBody(body, remote.metadata, accountNamespace);
+				if (sameHeader(headerOf(verified.syncPackage), remote.syncPackage)) {
+					this.#countCycleEvent("packageBodyRestored");
+					return verified;
+				}
+			}
+		} catch (error) {
+			if (error instanceof GoogleDriveSyncCancelledError) throw error;
+			// A stored body that no longer verifies is replaced by a download below.
+		}
+		this.#countCycleEvent("packageDownload");
+		const downloaded = await this.#downloadPackage(remote.metadata, accountNamespace, generation);
+		if (!sameHeader(headerOf(downloaded.syncPackage), remote.syncPackage)) {
+			// The inventory's chain checks ran against a header this content does
+			// not have. Forget it so the next load rebuilds it from verified content.
+			this.#packageCache.delete(remote.cacheKey);
+			await this.#persistPackageBody(accountNamespace, remote.cacheKey, downloaded.serialized, generation);
+			throw new GoogleDriveSyncControllerError(
+				"A cached package header did not match the package's verified content. Sync stopped; it will retry from verified content.",
+			);
+		}
+		await this.#persistPackageBody(accountNamespace, remote.cacheKey, downloaded.serialized, generation);
+		return downloaded;
+	}
+
+	async #persistPackageBody(
+		accountNamespace: string,
+		cacheKey: string,
+		serialized: string,
+		generation: number,
+	): Promise<void> {
+		try {
+			const store = await this.#activeAwait(this.#store(), generation);
+			await store.writeCachedRemotePackages?.(accountNamespace, [{ cacheKey, serialized }]);
+		} catch (error) {
+			if (error instanceof GoogleDriveSyncCancelledError) throw error;
+			// Failing to persist the cache must not fail the sync itself.
+		}
+	}
+
 	async #downloadPackage(
 		metadata: GoogleDriveFileMetadata,
 		accountNamespace: string,
 		generation: number,
-	): Promise<RemotePackage> {
+	): Promise<VerifiedRemotePackage> {
 		const plaintext = await this.#downloadAndDecrypt(
 			metadata,
 			"package",
@@ -2219,7 +2431,7 @@ export class GoogleDriveSyncProfileController {
 		serialized: string,
 		metadata: GoogleDriveFileMetadata,
 		accountNamespace: string,
-	): Promise<RemotePackage> {
+	): Promise<VerifiedRemotePackage> {
 		const syncPackage = await parseAndVerifySyncPackage(serialized);
 		if (syncPackage.accountNamespace !== accountNamespace) {
 			throw new SyncProtocolError(

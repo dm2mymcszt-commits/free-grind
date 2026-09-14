@@ -142,6 +142,21 @@ export type ReconcileGoogleDriveSyncResult = Readonly<{
 	lastSequence: number | null;
 }>;
 
+/**
+ * A cached package's identity and chain fields as stored, unverified. Values
+ * are `unknown` because nothing has checked them yet: a row whose body is not
+ * a package reads back as nulls.
+ */
+export type CachedRemotePackageHeader = Readonly<{
+	packageId: unknown;
+	accountNamespace: unknown;
+	sourceDeviceId: unknown;
+	sequenceStart: unknown;
+	sequenceEnd: unknown;
+	contentDigest: unknown;
+	previousPackageDigest: unknown;
+}>;
+
 export type OutboundGoogleDriveSyncPackage = Readonly<{
 	syncPackage: SyncPackage;
 	serialized: string;
@@ -177,6 +192,24 @@ type OperationJsonRow = {
 	operation_json: string;
 	estimated_bytes?: number;
 };
+
+type CachedRemotePackageHeaderRow = {
+	cache_key: string;
+	package_id: unknown;
+	account_namespace: unknown;
+	source_device_id: unknown;
+	sequence_start: unknown;
+	sequence_end: unknown;
+	content_digest: unknown;
+	previous_package_digest: unknown;
+};
+
+/**
+ * Outbox rows read per page by the shadow repairs. The outbox holds every
+ * unsuperseded local change this device ever made; read in one query it was
+ * over 50 MB of JSON in the webview.
+ */
+const OUTBOX_REPAIR_PAGE_SIZE = 250;
 
 type ConfigRow = {
 	enabled: number | boolean;
@@ -967,6 +1000,68 @@ export class GoogleDriveSyncStore implements SyncApplyStore {
 			for (const row of rows) found.set(row.cache_key, row.serialized);
 		}
 		return found;
+	}
+
+	/**
+	 * The identity and chain fields of cached packages, read inside SQLite so the
+	 * bodies never cross into the webview. The whole cache runs to hundreds of
+	 * megabytes, and reading it all back at every launch is what got the page
+	 * killed on iOS. Fields are returned exactly as stored: callers must still
+	 * check them against the authenticated filename, and a body is verified in
+	 * full before it is applied.
+	 */
+	async readCachedRemotePackageHeaders(
+		accountNamespace: string,
+		cacheKeys: readonly string[],
+	): Promise<ReadonlyMap<string, CachedRemotePackageHeader>> {
+		accountNamespaceSchema.parse(accountNamespace);
+		const found = new Map<string, CachedRemotePackageHeader>();
+		const unique = [...new Set(cacheKeys)];
+		for (let start = 0; start < unique.length; start += 400) {
+			const chunk = unique.slice(start, start + 400);
+			if (chunk.length === 0) continue;
+			const placeholders = chunk.map(() => "?").join(", ");
+			const rows = await this.#db.select<CachedRemotePackageHeaderRow[]>(
+				`SELECT cache_key,
+						json_extract(serialized, '$.packageId') AS package_id,
+						json_extract(serialized, '$.accountNamespace') AS account_namespace,
+						json_extract(serialized, '$.sourceDeviceId') AS source_device_id,
+						json_extract(serialized, '$.sequenceRange.start') AS sequence_start,
+						json_extract(serialized, '$.sequenceRange.end') AS sequence_end,
+						json_extract(serialized, '$.contentDigest') AS content_digest,
+						json_extract(serialized, '$.previousPackageDigest') AS previous_package_digest
+				 FROM sync_remote_package_cache
+				 WHERE account_namespace = ? AND cache_key IN (${placeholders})
+				   AND json_valid(serialized)`,
+				[accountNamespace, ...chunk],
+			);
+			for (const row of rows) {
+				found.set(row.cache_key, {
+					packageId: row.package_id,
+					accountNamespace: row.account_namespace,
+					sourceDeviceId: row.source_device_id,
+					sequenceStart: row.sequence_start,
+					sequenceEnd: row.sequence_end,
+					contentDigest: row.content_digest,
+					previousPackageDigest: row.previous_package_digest,
+				});
+			}
+		}
+		return found;
+	}
+
+	/** Package id → content digest for every package this device has applied. */
+	async listAppliedPackageDigests(
+		accountNamespace: string,
+	): Promise<ReadonlyMap<string, string>> {
+		accountNamespaceSchema.parse(accountNamespace);
+		return this.#afterWrites(async () => {
+			const rows = await this.#db.select<Array<{ package_id: string; content_digest: string }>>(
+				"SELECT package_id, content_digest FROM sync_applied_packages WHERE account_namespace = ?",
+				[accountNamespace],
+			);
+			return new Map(rows.map((row) => [row.package_id, row.content_digest]));
+		});
 	}
 
 	async writeCachedRemotePackages(
@@ -2100,36 +2195,60 @@ export class GoogleDriveSyncStore implements SyncApplyStore {
 	}
 
 	async #repairOutboxShadow(accountNamespace: string, sourceDeviceId: string): Promise<void> {
-		const rows = await this.#db.select<OperationJsonRow[]>(
-			`SELECT operation_json FROM sync_outbound_operations
-			 WHERE account_namespace = ? AND source_device_id = ?
-			   AND superseded_at_ms IS NULL
-			 ORDER BY origin_sequence ASC`,
-			[accountNamespace, sourceDeviceId],
-		);
-		for (const row of rows) {
-			await this.#writeShadowIfWinning(parseOperation(row.operation_json));
+		let afterSequence = -1;
+		for (;;) {
+			const rows = await this.#db.select<Array<OperationJsonRow & { origin_sequence: number }>>(
+				`SELECT operation_json, origin_sequence FROM sync_outbound_operations
+				 WHERE account_namespace = ? AND source_device_id = ?
+				   AND superseded_at_ms IS NULL AND origin_sequence > ?
+				 ORDER BY origin_sequence ASC LIMIT ?`,
+				[accountNamespace, sourceDeviceId, afterSequence, OUTBOX_REPAIR_PAGE_SIZE],
+			);
+			for (const row of rows) {
+				await this.#writeShadowIfWinning(parseOperation(row.operation_json));
+			}
+			if (rows.length < OUTBOX_REPAIR_PAGE_SIZE) return;
+			afterSequence = rows[rows.length - 1].origin_sequence;
 		}
 	}
 
 	async #repairAllOutboxShadows(): Promise<void> {
 		const bootstrap = await this.#readBootstrapStateUnlocked();
-		const rows = await this.#db.select<OperationJsonRow[]>(
-			"SELECT operation_json FROM sync_outbound_operations WHERE superseded_at_ms IS NULL ORDER BY account_namespace, source_device_id, origin_sequence",
-		);
-		for (const row of rows) {
-			const operation = parseOperation(row.operation_json);
-			if (bootstrap.bootstrapPending && bootstrap.authorityDeviceId) {
-				const previous = await this.#getShadowOperation(operation);
-				if (previous?.sourceDeviceId === bootstrap.authorityDeviceId) {
-					// Applying an authority baseline and superseding its old local outbox
-					// entries are deliberately separate durable steps. Preserve the applied
-					// authority shadow across a crash between them, even when ordinary LWW
-					// ordering would temporarily prefer an unsuperseded baseline entry.
-					continue;
+		// Same order as a single query would give, one page at a time.
+		let after: [string, string, number] | null = null;
+		for (;;) {
+			const rows: Array<
+				OperationJsonRow & {
+					account_namespace: string;
+					source_device_id: string;
+					origin_sequence: number;
 				}
+			> = await this.#db.select(
+				`SELECT operation_json, account_namespace, source_device_id, origin_sequence
+				 FROM sync_outbound_operations
+				 WHERE superseded_at_ms IS NULL
+				   ${after ? "AND (account_namespace, source_device_id, origin_sequence) > (?, ?, ?)" : ""}
+				 ORDER BY account_namespace, source_device_id, origin_sequence
+				 LIMIT ?`,
+				after ? [...after, OUTBOX_REPAIR_PAGE_SIZE] : [OUTBOX_REPAIR_PAGE_SIZE],
+			);
+			for (const row of rows) {
+				const operation = parseOperation(row.operation_json);
+				if (bootstrap.bootstrapPending && bootstrap.authorityDeviceId) {
+					const previous = await this.#getShadowOperation(operation);
+					if (previous?.sourceDeviceId === bootstrap.authorityDeviceId) {
+						// Applying an authority baseline and superseding its old local outbox
+						// entries are deliberately separate durable steps. Preserve the applied
+						// authority shadow across a crash between them, even when ordinary LWW
+						// ordering would temporarily prefer an unsuperseded baseline entry.
+						continue;
+					}
+				}
+				await this.#writeShadowIfWinning(operation);
 			}
-			await this.#writeShadowIfWinning(operation);
+			if (rows.length < OUTBOX_REPAIR_PAGE_SIZE) return;
+			const last = rows[rows.length - 1];
+			after = [last.account_namespace, last.source_device_id, last.origin_sequence];
 		}
 	}
 

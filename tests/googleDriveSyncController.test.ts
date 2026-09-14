@@ -22,6 +22,7 @@ import {
 	type GoogleDriveVaultKeyInfo,
 } from "../src/services/googleDriveSyncNative";
 import type {
+	CachedRemotePackageHeader,
 	GoogleDriveSyncBootstrapState,
 	GoogleDriveSyncInboundHead,
 	GoogleDriveSyncStoreConfig,
@@ -366,6 +367,7 @@ class FakeStore implements GoogleDriveSyncControllerStore {
 	inboundHeads: GoogleDriveSyncInboundHead[] = [];
 	uploaded = new Map<string, string>();
 	applied = new Set<string>();
+	appliedDigests = new Map<string, string>();
 	applyOptions: unknown[] = [];
 	failAfterApplyOnce = false;
 	supersedeCalls: Array<{
@@ -537,12 +539,42 @@ class FakeStore implements GoogleDriveSyncControllerStore {
 	}
 
 	readonly remotePackageCache = new Map<string, string>();
+	bodyReads = 0;
 
 	async readCachedRemotePackages(_namespace: string, keys: readonly string[]) {
 		const found = new Map<string, string>();
 		for (const key of keys) {
 			const body = this.remotePackageCache.get(key);
-			if (body !== undefined) found.set(key, body);
+			if (body !== undefined) {
+				this.bodyReads += 1;
+				found.set(key, body);
+			}
+		}
+		return found;
+	}
+
+	// Mirrors the real store's json_extract: fields as stored, missing ones null.
+	async readCachedRemotePackageHeaders(_namespace: string, keys: readonly string[]) {
+		const found = new Map<string, CachedRemotePackageHeader>();
+		for (const key of keys) {
+			const body = this.remotePackageCache.get(key);
+			if (body === undefined) continue;
+			let value: Record<string, unknown> = {};
+			try {
+				value = JSON.parse(body) as Record<string, unknown>;
+			} catch {
+				continue;
+			}
+			const range = (value.sequenceRange ?? {}) as Record<string, unknown>;
+			found.set(key, {
+				packageId: value.packageId ?? null,
+				accountNamespace: value.accountNamespace ?? null,
+				sourceDeviceId: value.sourceDeviceId ?? null,
+				sequenceStart: range.start ?? null,
+				sequenceEnd: range.end ?? null,
+				contentDigest: value.contentDigest ?? null,
+				previousPackageDigest: value.previousPackageDigest ?? null,
+			});
 		}
 		return found;
 	}
@@ -615,6 +647,7 @@ class FakeStore implements GoogleDriveSyncControllerStore {
 		this.applyOptions.push(options);
 		const duplicate = this.applied.has(syncPackage.packageId);
 		this.applied.add(syncPackage.packageId);
+		this.appliedDigests.set(syncPackage.packageId, syncPackage.contentDigest);
 		if (this.failAfterApplyOnce) {
 			this.failAfterApplyOnce = false;
 			throw new Error("injected crash after durable apply receipt");
@@ -2576,6 +2609,112 @@ describe("immutable package reuse", () => {
 
 		expect(events.filter((event) => event === "download:package-1")).toHaveLength(1);
 		expect(events.filter((event) => event === "download:package-2")).toHaveLength(1);
+		expect(store.config.lastError).toBeNull();
+	});
+});
+
+/** A store that can list its apply receipts, as the real one does. */
+class ReceiptStore extends FakeStore {
+	async listAppliedPackageDigests() {
+		return new Map(this.appliedDigests);
+	}
+}
+
+describe("bounded package memory", () => {
+	async function seededHistory(events: string[]) {
+		const native = await FakeNative.create(events);
+		await native.seedAnchor(anchor());
+		const first = await syncPackage(ACCOUNT, AUTHORITY_DEVICE, [
+			await operation(ACCOUNT, AUTHORITY_DEVICE, 1, "first-entity"),
+		]);
+		const second = await syncPackage(
+			ACCOUNT,
+			AUTHORITY_DEVICE,
+			[await operation(ACCOUNT, AUTHORITY_DEVICE, 2, "second-entity")],
+			first.contentDigest,
+		);
+		await native.seedPackage(first, "package-1");
+		await native.seedPackage(second, "package-2");
+		return native;
+	}
+
+	function receiptStore(events: string[]): ReceiptStore {
+		const template = configuredStore(events);
+		return new ReceiptStore(events, { config: template.config, bootstrap: template.bootstrap });
+	}
+
+	test("a restarted controller checks applied history from headers alone", async () => {
+		const events: string[] = [];
+		const native = await seededHistory(events);
+		const store = receiptStore(events);
+
+		await adapter(native, store).syncNow({ profileId: PROFILE_ID });
+		expect(store.applied.size).toBe(2);
+
+		// What a relaunch sees: nothing in memory, every body on disk. Reading the
+		// bodies back to rebuild the inventory is what held the whole remote
+		// history in the webview and got it killed on iOS.
+		store.bodyReads = 0;
+		const appliesBefore = events.filter((event) => event.startsWith("apply:")).length;
+		await adapter(native, store).syncNow({ profileId: PROFILE_ID });
+
+		expect(store.bodyReads).toBe(0);
+		expect(events.filter((event) => event.startsWith("download:package"))).toHaveLength(2);
+		expect(events.filter((event) => event.startsWith("apply:")).length).toBe(appliesBefore);
+		expect(store.config.lastError).toBeNull();
+	});
+
+	test("a new package is loaded and applied while applied ones stay unread", async () => {
+		const events: string[] = [];
+		const native = await seededHistory(events);
+		const store = receiptStore(events);
+		await adapter(native, store).syncNow({ profileId: PROFILE_ID });
+
+		const [, second] = [...store.remotePackageCache.values()].map(
+			(body) => JSON.parse(body) as SyncPackage,
+		);
+		const third = await syncPackage(
+			ACCOUNT,
+			AUTHORITY_DEVICE,
+			[await operation(ACCOUNT, AUTHORITY_DEVICE, 3, "third-entity")],
+			second.contentDigest,
+		);
+		await native.seedPackage(third, "package-3");
+		store.bodyReads = 0;
+		await adapter(native, store).syncNow({ profileId: PROFILE_ID });
+
+		expect(store.applied.has(third.packageId)).toBe(true);
+		expect(store.bodyReads).toBe(1);
+		expect(store.config.lastError).toBeNull();
+	});
+
+	test("a receipt for different content under the same package id stops the sync", async () => {
+		const events: string[] = [];
+		const native = await seededHistory(events);
+		const store = receiptStore(events);
+		await adapter(native, store).syncNow({ profileId: PROFILE_ID });
+
+		const [packageId] = [...store.appliedDigests.keys()];
+		store.appliedDigests.set(packageId, "0".repeat(64));
+
+		await expect(adapter(native, store).syncNow({ profileId: PROFILE_ID })).rejects.toThrow(
+			"identifies different content",
+		);
+	});
+
+	test("a stored header that does not reproduce its filename is re-downloaded", async () => {
+		const events: string[] = [];
+		const native = await seededHistory(events);
+		const store = receiptStore(events);
+		await adapter(native, store).syncNow({ profileId: PROFILE_ID });
+
+		for (const [key, body] of store.remotePackageCache) {
+			const value = JSON.parse(body) as Record<string, unknown>;
+			store.remotePackageCache.set(key, JSON.stringify({ ...value, packageId: "pkg-forged" }));
+		}
+		await adapter(native, store).syncNow({ profileId: PROFILE_ID });
+
+		expect(events.filter((event) => event.startsWith("download:package"))).toHaveLength(4);
 		expect(store.config.lastError).toBeNull();
 	});
 });
