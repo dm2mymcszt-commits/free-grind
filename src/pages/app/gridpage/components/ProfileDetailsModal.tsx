@@ -1,4 +1,5 @@
 import { Ban, Check, ChevronLeft, Ellipsis, Flame, MessageCircle, Pencil, Phone, StickyNote, Star, Trash2, Triangle, X, Zap } from "lucide-react";
+import { BanWordDialog } from "../../../../components/ui/BanWordDialog";
 import toast from "react-hot-toast";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -388,6 +389,9 @@ export function ProfileDetailsModal({
 	const barTapOptionsRef = useRef<HTMLDivElement>(null);
 	const controlsBarRef = useRef<HTMLDivElement>(null);
 	const actionsMenuRef = useRef<HTMLDivElement>(null);
+	const [banWordRequest, setBanWordRequest] = useState<
+		{ text: string; title: string; prompt: string } | null
+	>(null);
 
 	const [profileNote, setProfileNote] = useState("");
 	const [profilePhoneNumber, setProfilePhoneNumber] = useState("");
@@ -950,6 +954,70 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 		setSelectedPhotoIndex(null);
 	};
 
+	// The same ban shortcuts a chat's menu offers, for someone you only have a
+	// profile for. Only shown when there is a real name or bio to ban: a
+	// placeholder like "Someone" would block everyone without a name.
+	const banName = activeProfile?.displayName?.trim() ?? "";
+	const banBio = activeProfile?.aboutMe?.trim() ?? "";
+	const actionsMenuItems = (
+		<>
+			<button
+				type="button"
+				disabled={isTriangleDisabled}
+				onClick={() => { setIsActionsMenuOpen(false); if (messageProfileId) onTriangleProfile?.(String(messageProfileId)); }}
+				className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text)] transition hover:bg-[var(--surface-2)] disabled:opacity-50"
+			>
+				<Triangle className="mr-2 h-4 w-4 opacity-70" />
+				{isLocatingProfile ? t("profile_details.locating") : t("profile_details.locate")}
+			</button>
+			{banName || banBio ? <div className="my-1 h-px bg-[var(--border)]" /> : null}
+			{banName ? (
+				<button
+					type="button"
+					onClick={() => {
+						setIsActionsMenuOpen(false);
+						setBanWordRequest({
+							text: banName,
+							title: "Ban name",
+							prompt: "Blocks people whose name, bio or messages match this.",
+						});
+					}}
+					className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text-muted)] transition hover:bg-[var(--surface-2)]"
+				>
+					<Ban className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+					<span className="min-w-0 truncate">Ban Name "{banName}"</span>
+				</button>
+			) : null}
+			{banBio ? (
+				<button
+					type="button"
+					onClick={() => {
+						setIsActionsMenuOpen(false);
+						setBanWordRequest({
+							text: banBio,
+							title: "Ban bio phrase",
+							prompt: "Trim this bio down to the phrase you want to block.",
+						});
+					}}
+					className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text-muted)] transition hover:bg-[var(--surface-2)]"
+				>
+					<Ban className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+					Ban Bio Phrase
+				</button>
+			) : null}
+		</>
+	);
+	const banWordDialog = (
+		<BanWordDialog
+			isOpen={banWordRequest !== null}
+			initialText={banWordRequest?.text ?? ""}
+			title={banWordRequest?.title}
+			prompt={banWordRequest?.prompt}
+			forbiddenOnly
+			onClose={() => setBanWordRequest(null)}
+		/>
+	);
+
 	const photoViewerOverlay = selectedPhotoIndex !== null && (
 		<PhotoViewer
 			isOpen={true}
@@ -1050,15 +1118,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 								</button>
 								{isActionsMenuOpen && (
 									<div className="absolute right-0 top-full z-50 mt-2 flex min-w-[190px] flex-col gap-1 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-2 shadow-lg">
-										<button
-											type="button"
-											disabled={isTriangleDisabled}
-											onClick={() => { setIsActionsMenuOpen(false); if (messageProfileId) onTriangleProfile?.(String(messageProfileId)); }}
-											className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text)] transition hover:bg-[var(--surface-2)] disabled:opacity-50"
-										>
-											<Triangle className="mr-2 h-4 w-4 opacity-70" />
-											{isLocatingProfile ? t("profile_details.locating") : t("profile_details.locate")}
-										</button>
+										{actionsMenuItems}
 									</div>
 								)}
 							</div>
@@ -1342,6 +1402,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 				>
 				{renderInlineLayout()}
 				{photoViewerOverlay}
+				{banWordDialog}
 				{barTapFlyEmoji && (
 					<>
 						{barTapFlyEmoji.particles.map((p, i) => p.emoji ? (
@@ -1536,12 +1597,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 												</button>
 												{isActionsMenuOpen && (
 													<div className="absolute right-0 top-full z-50 mt-2 flex min-w-[190px] flex-col gap-1 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-2 shadow-lg">
-														<button type="button" disabled={isTriangleDisabled}
-															onClick={() => { setIsActionsMenuOpen(false); if (messageProfileId) onTriangleProfile?.(String(messageProfileId)); }}
-															className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text)] transition hover:bg-[var(--surface-2)] disabled:opacity-50">
-															<Triangle className="mr-2 h-4 w-4 opacity-70" />
-															{isLocatingProfile ? t("profile_details.locating") : t("profile_details.locate")}
-														</button>
+														{actionsMenuItems}
 													</div>
 												)}
 											</div>
@@ -1696,6 +1752,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 				</>
 			)}
 			{photoViewerOverlay}
+			{banWordDialog}
 		</div>
 	);
 }
