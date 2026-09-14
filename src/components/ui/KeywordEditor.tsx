@@ -295,7 +295,9 @@ export function KeywordEditor({
 		alreadyThere.length === 0
 			? null
 			: alreadyThere.length === 1
-				? `Already in this list as ${MATCH_MODE_LABELS[alreadyThere[0].mode]}`
+				? // Case and the punctuation around a keyword are ignored, so the entry
+					// found can be spelled differently from what was typed: name it.
+					`Already in this list as "${alreadyThere[0].text}" (${MATCH_MODE_LABELS[alreadyThere[0].mode]})`
 				: `${alreadyThere.length} of these are already in this list`;
 
 	const filters: { value: Filter; label: string; count: number }[] = [

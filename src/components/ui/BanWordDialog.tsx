@@ -24,8 +24,9 @@ function listsFor(destination: Destination): KeywordListName[] {
 	return destination === "both" ? ["forbidden", "openers"] : [destination];
 }
 
+/** Names the entry found: case and edge punctuation are ignored, so it can be spelled differently. */
 function describeExisting(list: KeywordListName, entry: KeywordEntry): string {
-	return `${LIST_LABELS[list]} (${MATCH_MODE_LABELS[entry.mode]})`;
+	return `${LIST_LABELS[list]} as "${entry.text}" (${MATCH_MODE_LABELS[entry.mode]})`;
 }
 
 function joinLabels(labels: string[]): string {
