@@ -376,7 +376,7 @@ export function NavBar() {
                 `}
             </style>
 
-            <nav className="fixed inset-x-0 bottom-0 z-50 px-3 pb-[calc(env(safe-area-inset-bottom,0px)+10px)] md:px-4 md:pb-[calc(env(safe-area-inset-bottom,0px)+14px)]">
+            <nav className="no-touch-callout fixed inset-x-0 bottom-0 z-50 px-3 pb-[calc(env(safe-area-inset-bottom,0px)+10px)] md:px-4 md:pb-[calc(env(safe-area-inset-bottom,0px)+14px)]">
                 
                 {/* Structural Fix: A pure relative wrapper. Both Liquid Glass elements are now siblings so their blurs don't break each other. */}
                 <div className="relative mx-auto w-full max-w-4xl">
