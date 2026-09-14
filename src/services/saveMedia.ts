@@ -1,5 +1,4 @@
 import { platform } from "@tauri-apps/plugin-os";
-import { fetch } from "@tauri-apps/plugin-http";
 import { appCacheDir, join } from "@tauri-apps/api/path";
 import { mkdir, writeFile, remove, exists, BaseDirectory } from "@tauri-apps/plugin-fs";
 import {
@@ -17,6 +16,7 @@ import {
 import { AndroidFs, AndroidPublicGeneralPurposeDir, type AndroidFsUri } from "tauri-plugin-android-fs-api";
 import { isTauriRuntime } from "./tauriWebSocket";
 import { toDataUri } from "./mediaStore";
+import { readMediaBytes } from "./mediaBytes";
 import * as chatDb from "./chatDb";
 import type { DownloadedMediaEntry } from "../types/chat-db";
 import { appLog } from "../utils/logger";
@@ -76,10 +76,11 @@ function recordDownloadedMediaEntry(entry: Omit<DownloadedMediaEntry, "savedAt">
 }
 
 async function fetchMediaBytes(url: string): Promise<{ bytes: Uint8Array; contentType: string | null }> {
-	const response = await fetch(url);
-	if (!response.ok) throw new Error(`Failed to download media (${response.status})`);
-	const bytes = new Uint8Array(await response.arrayBuffer());
-	return { bytes, contentType: response.headers.get("content-type") };
+	// Saved chat media is shown as a data: URI, which fetch through the HTTP
+	// plugin cannot read, so saving it failed on iOS and fell back to a browser
+	// download on desktop.
+	const { bytes, mimeType } = await readMediaBytes(url);
+	return { bytes, contentType: mimeType };
 }
 
 function mimeTypeFor(type: "image" | "video", extension: string, contentType: string | null): string {

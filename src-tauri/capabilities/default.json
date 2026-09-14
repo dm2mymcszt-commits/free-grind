@@ -52,7 +52,8 @@
 			"identifier": "http:default",
 			"allow": [
 				{ "url": "https://*.cloudfront.net/*" },
-				{ "url": "https://cdns.grindr.com/*" }
+				{ "url": "https://cdns.grindr.com/*" },
+				{ "url": "https://yandex.com/*" }
 			]
 		},
 		"sql:default",

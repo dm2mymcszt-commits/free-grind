@@ -6718,7 +6718,7 @@ export function ChatPage() {
 					const meta = fullScreenMediaList[idx]?.meta;
 					if (!meta) return null;
 					return (
-						<p className="inline-flex items-center gap-1 rounded-full bg-black/65 px-3 py-1 text-xs font-semibold text-white ring-1 ring-white/25">
+						<p className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold tabular-nums text-white ring-1 ring-inset ring-white/15 backdrop-blur-xl">
 							<style>{`
 								@keyframes logo-shine { 0%, 100% { filter: drop-shadow(0 0 2px rgba(255,140,0,0.3)) brightness(1); } 50% { filter: drop-shadow(0 0 7px rgba(255,140,0,0.95)) brightness(1.25); } }
 								.logo-shine { animation: logo-shine 2.8s ease-in-out infinite; }

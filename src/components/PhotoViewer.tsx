@@ -1,10 +1,10 @@
-import { ChevronLeft, ChevronRight, Download, ScanSearch, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, ExternalLink, Loader2, ScanSearch, X, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import toast from "react-hot-toast";
 import { saveMediaToDevice } from "../services/saveMedia";
+import { openExternal, reverseSearchImage, type ReverseSearchLinks } from "../services/reverseImageSearch";
 import { appLog } from "../utils/logger";
 
 export type PhotoViewerMedia = {
@@ -32,6 +32,55 @@ function getMediaInfo(photo?: string | PhotoViewerMedia | null) {
 	return { url: photo.url || "", type: photo.type || "image", alt: photo.alt ?? "" };
 }
 
+const GLASS_BUTTON =
+	"inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-white ring-1 ring-inset ring-white/15 backdrop-blur-xl transition hover:bg-white/20 active:scale-95 disabled:opacity-50";
+
+/**
+ * A viewer control. Touches are handled on touchend so a swipe that starts on
+ * a button does not also press it, and the synthetic click that follows a
+ * touch is swallowed.
+ */
+function ViewerButton({
+	label,
+	onPress,
+	disabled,
+	className = "",
+	children,
+	gestureMovedRef,
+}: {
+	label: string;
+	onPress: () => void;
+	disabled?: boolean;
+	className?: string;
+	children: React.ReactNode;
+	gestureMovedRef: React.MutableRefObject<boolean>;
+}) {
+	return (
+		<button
+			type="button"
+			aria-label={label}
+			title={label}
+			disabled={disabled}
+			onClick={(event) => {
+				event.stopPropagation();
+				onPress();
+			}}
+			onTouchStart={(event) => {
+				event.stopPropagation();
+				gestureMovedRef.current = false;
+			}}
+			onTouchEnd={(event) => {
+				event.stopPropagation();
+				event.preventDefault();
+				if (!gestureMovedRef.current && !disabled) onPress();
+			}}
+			className={`${GLASS_BUTTON} ${className}`}
+		>
+			{children}
+		</button>
+	);
+}
+
 export function PhotoViewer({
 	isOpen,
 	onClose,
@@ -52,6 +101,9 @@ export function PhotoViewer({
 	const [zoomScale, setZoomScale] = useState(1);
 	const [zoomOffset, setZoomOffset] = useState({ x: 0, y: 0 });
 	const [isSaving, setIsSaving] = useState(false);
+	const [isSearching, setIsSearching] = useState(false);
+	// The links the last search opened, offered again in case a browser only took one.
+	const [searchLinks, setSearchLinks] = useState<ReverseSearchLinks | null>(null);
 	const [isPointerDragging, setIsPointerDragging] = useState(false);
 
 	const mediaRef = useRef<HTMLImageElement | HTMLVideoElement | null>(null);
@@ -391,17 +443,6 @@ export function PhotoViewer({
 		[dragOffset, showNext, showPrev, N],
 	);
 
-	const handleButtonTouchEnd = useCallback(
-		(e: React.TouchEvent, action: () => void) => {
-			e.stopPropagation();
-			e.preventDefault(); // prevent ghost click after touch
-			if (!gestureMovedRef.current) {
-				action();
-			}
-		},
-		[],
-	);
-
 	useEffect(() => {
 		if (!isOpen) return;
 		const onKey = (e: KeyboardEvent) => {
@@ -434,14 +475,31 @@ export function PhotoViewer({
 		}
 	};
 
-	// --- MEDIA SCANNER ---
-	const openExternalTool = async (targetUrl: string) => {
+	const handleReverseSearch = async () => {
+		const photo = photos[centerIdx];
+		if (!photo || isSearching) return;
+		setIsSearching(true);
+		setSearchLinks(null);
 		try {
-			await openUrl(targetUrl);
-		} catch {
-			window.open(targetUrl, "_blank");
+			setSearchLinks(await reverseSearchImage(getMediaInfo(photo).url));
+		} catch (error) {
+			appLog.error("Reverse image search failed", error);
+			toast.error(t("photo_viewer.reverse_search_failed", { defaultValue: "Couldn't start the image search." }));
+		} finally {
+			setIsSearching(false);
 		}
 	};
+
+	// A search belongs to the photo it was made for.
+	useEffect(() => {
+		setSearchLinks(null);
+	}, [centerIdx]);
+
+	useEffect(() => {
+		if (!searchLinks) return;
+		const timer = window.setTimeout(() => setSearchLinks(null), 12000);
+		return () => window.clearTimeout(timer);
+	}, [searchLinks]);
 
 	if (!isOpen || N === 0) return null;
 
@@ -459,89 +517,102 @@ export function PhotoViewer({
 
 	return createPortal(
 		<div className="fixed inset-0 z-[80] flex items-center justify-center bg-black overflow-hidden" onClick={onClose}>
-			<button
-				type="button"
-				onClick={(e) => { e.stopPropagation(); onClose(); }}
-				onTouchStart={(e) => { e.stopPropagation(); gestureMovedRef.current = false; }}
-				onTouchEnd={(e) => handleButtonTouchEnd(e, onClose)}
-				className="absolute left-3 top-[calc(env(safe-area-inset-top,0px)+2rem)] z-[83] inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md transition active:scale-90 sm:left-5 sm:top-5"
-				aria-label={t("profile_details.close_photo_viewer")}
+			{/* Top bar: close, what this is, and what can be done with it. */}
+			<div
+				className="pointer-events-none absolute inset-x-0 top-0 z-[83] bg-gradient-to-b from-black/75 via-black/35 to-transparent pb-10 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] sm:pt-4"
 			>
-				<ChevronLeft className="h-5 w-5" />
-			</button>
+				<div className="flex items-start justify-between gap-3 px-3 sm:px-5">
+					<div className="pointer-events-auto">
+						<ViewerButton
+							label={t("profile_details.close_photo_viewer")}
+							onPress={onClose}
+							gestureMovedRef={gestureMovedRef}
+						>
+							<X className="h-5 w-5" />
+						</ViewerButton>
+					</div>
 
-			<button
-				type="button"
-				onClick={(e) => { e.stopPropagation(); void handleSave(); }}
-				onTouchEnd={(e) => handleButtonTouchEnd(e, () => void handleSave())}
-				disabled={isSaving}
-				className="absolute right-3 top-[calc(env(safe-area-inset-top,0px)+2rem)] z-[83] inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md transition active:scale-90 disabled:opacity-50 sm:right-5 sm:top-5"
-				aria-label={t("profile_details.save_to_gallery")}
-			>
-				<Download className="h-5 w-5" />
-			</button>
+					{renderExtraInfo || N > 1 ? (
+						<div
+							className="pointer-events-auto flex min-w-0 flex-col items-center gap-1.5 pt-1.5"
+							onClick={(e) => e.stopPropagation()}
+						>
+							{renderExtraInfo ? renderExtraInfo(centerIdx) : null}
+							{N > 1 ? (
+								<p className="rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] font-semibold tabular-nums tracking-wide text-white/85 ring-1 ring-inset ring-white/10 backdrop-blur-xl">
+									{centerIdx + 1} / {N}
+								</p>
+							) : null}
+						</div>
+					) : null}
 
-			{getMediaInfo(photos[centerIdx]).type === "image" && (
-				<button
-					type="button"
-					onClick={(e) => {
-						e.stopPropagation();
-						const currentMedia = photos[centerIdx];
-						if (currentMedia) {
-							const { url } = getMediaInfo(currentMedia);
-							openExternalTool(`https://lens.google.com/uploadbyurl?url=${encodeURIComponent(url)}`);
-						}
-					}}
-					onTouchStart={(e) => { e.stopPropagation(); gestureMovedRef.current = false; }}
-					onTouchEnd={(e) => handleButtonTouchEnd(e, () => {
-						const currentMedia = photos[centerIdx];
-						if (currentMedia) {
-							const { url } = getMediaInfo(currentMedia);
-							openExternalTool(`https://lens.google.com/uploadbyurl?url=${encodeURIComponent(url)}`);
-						}
-					})}
-					className="absolute right-3 top-[calc(env(safe-area-inset-top,0px)+5.25rem)] z-[83] inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/45 bg-transparent text-white shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)] backdrop-blur-md transition active:scale-90 disabled:opacity-50 sm:right-5 sm:top-20"
-					aria-label="Google Lens Search"
-				>
-					<ScanSearch className="h-5 w-5" />
-				</button>
-			)}
+					<div className="pointer-events-auto relative flex items-center gap-2">
+						{getMediaInfo(photos[centerIdx]).type === "image" ? (
+							<ViewerButton
+								label={t("photo_viewer.reverse_search", { defaultValue: "Search this image on Google Lens and Yandex" })}
+								onPress={() => void handleReverseSearch()}
+								disabled={isSearching}
+								gestureMovedRef={gestureMovedRef}
+							>
+								{isSearching ? <Loader2 className="h-5 w-5 animate-spin" /> : <ScanSearch className="h-5 w-5" />}
+							</ViewerButton>
+						) : null}
+						<ViewerButton
+							label={t("profile_details.save_to_gallery")}
+							onPress={() => void handleSave()}
+							disabled={isSaving}
+							gestureMovedRef={gestureMovedRef}
+						>
+							{isSaving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Download className="h-5 w-5" />}
+						</ViewerButton>
+
+						{searchLinks ? (
+							<div
+								className="absolute right-0 top-full mt-2 w-56 overflow-hidden rounded-2xl bg-neutral-900/85 p-1.5 text-white shadow-2xl ring-1 ring-inset ring-white/15 backdrop-blur-xl"
+								onClick={(e) => e.stopPropagation()}
+							>
+								<p className="px-2.5 pb-1 pt-1.5 text-[11px] text-white/60">
+									{t("photo_viewer.reverse_search_opened", { defaultValue: "Opened in your browser" })}
+								</p>
+								{([
+									["Google Lens", searchLinks.googleLens],
+									["Yandex", searchLinks.yandex],
+								] as const).map(([name, url]) => (
+									<button
+										key={name}
+										type="button"
+										onClick={() => void openExternal(url)}
+										className="flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-left text-sm font-medium transition hover:bg-white/10"
+									>
+										{name}
+										<ExternalLink className="h-3.5 w-3.5 text-white/60" />
+									</button>
+								))}
+							</div>
+						) : null}
+					</div>
+				</div>
+			</div>
 
 			{N > 1 && (
 				<>
-					<button
-						type="button"
-						onClick={(e) => { e.stopPropagation(); showPrev(); }}
-						onTouchStart={(e) => { e.stopPropagation(); gestureMovedRef.current = false; }}
-						onTouchEnd={(e) => handleButtonTouchEnd(e, showPrev)}
-						className="absolute left-2 top-1/2 z-[83] inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-black/40 text-white shadow-lg backdrop-blur-md transition active:scale-90 sm:left-4 sm:h-11 sm:w-11"
-						aria-label={t("profile_details.previous_photo")}
+					<ViewerButton
+						label={t("profile_details.previous_photo")}
+						onPress={showPrev}
+						gestureMovedRef={gestureMovedRef}
+						className="absolute left-4 top-1/2 z-[83] hidden h-11 w-11 -translate-y-1/2 sm:inline-flex"
 					>
 						<ChevronLeft className="h-5 w-5" />
-					</button>
-					<button
-						type="button"
-						onClick={(e) => { e.stopPropagation(); showNext(); }}
-						onTouchStart={(e) => { e.stopPropagation(); gestureMovedRef.current = false; }}
-						onTouchEnd={(e) => handleButtonTouchEnd(e, showNext)}
-						className="absolute right-2 top-1/2 z-[83] inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-black/40 text-white shadow-lg backdrop-blur-md transition active:scale-90 sm:right-4 sm:h-11 sm:w-11"
-						aria-label={t("profile_details.next_photo")}
+					</ViewerButton>
+					<ViewerButton
+						label={t("profile_details.next_photo")}
+						onPress={showNext}
+						gestureMovedRef={gestureMovedRef}
+						className="absolute right-4 top-1/2 z-[83] hidden h-11 w-11 -translate-y-1/2 sm:inline-flex"
 					>
 						<ChevronRight className="h-5 w-5" />
-					</button>
+					</ViewerButton>
 				</>
-			)}
-
-			{N > 1 && (
-				<p
-					className={`absolute left-1/2 z-[83] -translate-x-1/2 rounded-full border border-white/15 bg-black/40 px-3 py-1 text-xs font-medium text-white shadow-lg backdrop-blur-md ${
-						renderFooter
-							? "bottom-[calc(env(safe-area-inset-bottom,0px)+5.5rem)]"
-							: "bottom-[calc(env(safe-area-inset-bottom,0px)+1.25rem)]"
-					}`}
-				>
-					{centerIdx + 1} / {N}
-				</p>
 			)}
 
 			<div
@@ -579,11 +650,11 @@ export function PhotoViewer({
 						return (
 							<div
 								key={slotIndex}
-								className="flex h-full w-screen flex-shrink-0 items-center justify-center p-3 sm:p-8"
+								className="flex h-full w-screen flex-shrink-0 items-center justify-center px-0 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] pt-[calc(env(safe-area-inset-top,0px)+3.75rem)] sm:px-20 sm:py-16"
 								onClick={onClose}
 							>
 								<div
-									className={`relative flex max-h-full max-w-full items-center justify-center overflow-hidden rounded-2xl border border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.85)] sm:rounded-3xl ${
+									className={`relative flex max-h-full max-w-full items-center justify-center overflow-hidden rounded-xl sm:rounded-2xl ${
 										zoomScale > 1
 											? isPointerDragging
 												? "cursor-grabbing"
@@ -604,7 +675,7 @@ export function PhotoViewer({
 											src={url}
 											controls
 											autoPlay={isCurrent}
-											className="max-h-[88vh] w-auto max-w-full object-contain rounded-2xl sm:rounded-3xl"
+											className="max-h-[calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-4.75rem)] sm:max-h-[calc(100dvh-8rem)] w-auto max-w-full object-contain"
 											style={zoomStyle}
 										/>
 									) : (
@@ -614,7 +685,7 @@ export function PhotoViewer({
 											alt={alt}
 											loading="eager"
 											draggable={false}
-											className="max-h-[88vh] w-auto max-w-full select-none object-contain rounded-2xl sm:rounded-3xl"
+											className="max-h-[calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-4.75rem)] sm:max-h-[calc(100dvh-8rem)] w-auto max-w-full select-none object-contain"
 											style={zoomStyle}
 										/>
 									)}
@@ -625,21 +696,12 @@ export function PhotoViewer({
 				</div>
 			</div>
 
-			{renderExtraInfo && (
-				<div
-					className="absolute left-1/2 top-[calc(env(safe-area-inset-top,0px)+2rem)] z-[83] flex -translate-x-1/2 items-center gap-2"
-					onClick={(e) => e.stopPropagation()}
-				>
-					{renderExtraInfo(centerIdx)}
-				</div>
-			)}
-
 			{zoomScale > 1 && (
 				<div
-					className={`absolute left-1/2 z-[84] flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/20 bg-black/60 px-3 py-1.5 shadow-xl backdrop-blur-md transition-all ${
+					className={`absolute left-1/2 z-[84] flex -translate-x-1/2 items-center gap-1 rounded-full bg-white/10 px-1.5 py-1 shadow-2xl ring-1 ring-inset ring-white/15 backdrop-blur-xl transition-all ${
 						renderFooter
 							? "bottom-[calc(env(safe-area-inset-bottom,0px)+5.5rem)]"
-							: "bottom-4"
+							: "bottom-[calc(env(safe-area-inset-bottom,0px)+1rem)]"
 					}`}
 					onClick={(e) => e.stopPropagation()}
 				>
