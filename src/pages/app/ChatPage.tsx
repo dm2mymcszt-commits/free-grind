@@ -912,7 +912,8 @@ export function ChatPage() {
 						unreadCount: 0,
 						muted: false,
 						pinned: false,
-						favorite: false,
+						// A stand-in has no stored flag; the profile says whether they are one.
+						favorite: targetProfileDetail?.isFavorite ?? false,
 						lastActivityTimestamp: Date.now(),
 					},
 				};
@@ -4506,12 +4507,34 @@ export function ChatPage() {
 		[isUpdatingConversationState, service, t],
 	);
 
+	// Pin and mute are properties of a conversation in the inbox. A chat opened
+	// from local history after it was deleted, or a profile with no chat yet,
+	// has nothing on the server for them to change.
+	const isSelectedConversationInInbox = useMemo(
+		() =>
+			selectedConversation != null &&
+			conversations.some(
+				(conversation) =>
+					conversation.data.conversationId === selectedConversation.data.conversationId,
+			),
+		[conversations, selectedConversation],
+	);
+
 	const togglePin = useCallback(() => {
 		if (!selectedConversation) {
 			return;
 		}
+		if (!isSelectedConversationInInbox) {
+			toast.error(
+				t("chat.errors.pin_not_in_inbox", {
+					defaultValue: "Only chats in your inbox can be pinned. Send a message to put this one back in your inbox.",
+				}),
+				{ id: "conversation-not-in-inbox" },
+			);
+			return;
+		}
 		return togglePinConversation(selectedConversation.data.conversationId, selectedConversation.data.pinned);
-	}, [selectedConversation, togglePinConversation]);
+	}, [isSelectedConversationInInbox, selectedConversation, t, togglePinConversation]);
 
 	// Purely local preference — no server round-trip, so this updates
 	// optimistically and durably in one step (unlike togglePinConversation,
@@ -4547,6 +4570,15 @@ export function ChatPage() {
 
 	const toggleMute = async () => {
 		if (!selectedConversation || isUpdatingConversationState) {
+			return;
+		}
+		if (!isSelectedConversationInInbox) {
+			toast.error(
+				t("chat.errors.mute_not_in_inbox", {
+					defaultValue: "Only chats in your inbox can be muted. Send a message to put this one back in your inbox.",
+				}),
+				{ id: "conversation-not-in-inbox" },
+			);
 			return;
 		}
 
@@ -4805,18 +4837,26 @@ export function ChatPage() {
 					await service.addFavorite(strId);
 				}
 
-				setConversations((previous) =>
-					previous.map((conv) => {
-						const isMatch = conv.data.participants.some(
-							(p) => String(p.profileId) === strId,
-						);
-						if (!isMatch) return conv;
-						return {
-							...conv,
-							data: { ...conv.data, favorite: !currentlyFavorite },
-						};
-					}),
-				);
+				const withFavorite = (conv: ConversationEntry): ConversationEntry =>
+					conv.data.participants.some((p) => String(p.profileId) === strId)
+						? { ...conv, data: { ...conv.data, favorite: !currentlyFavorite } }
+						: conv;
+				setConversations((previous) => previous.map(withFavorite));
+				// A chat reopened from local history lives here instead of in the
+				// inbox list. Left out, its star never filled and every tap added
+				// the favorite again.
+				setRecoveredConversations((previous) => {
+					let changed = false;
+					const next = new Map(previous);
+					for (const [conversationId, entry] of previous) {
+						const updated = withFavorite(entry);
+						if (updated !== entry) {
+							next.set(conversationId, updated);
+							changed = true;
+						}
+					}
+					return changed ? next : previous;
+				});
 				setTargetProfileDetail((previous: ProfileDetail | null) =>
 					previous && String(previous.profileId) === strId
 						? { ...previous, isFavorite: !currentlyFavorite }
@@ -4826,6 +4866,7 @@ export function ChatPage() {
 					currentlyFavorite
 						? t("favorites.removed")
 						: t("favorites.added"),
+					{ id: "favorite-toggle" },
 				);
 			} catch (error) {
 				toast.error(
