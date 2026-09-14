@@ -5,6 +5,8 @@
  * knows its viewport already ends at the keyboard.
  */
 
+import { postToNative } from "./nativeBridge";
+
 export const NATIVE_KEYBOARD_EVENT = "fg:native-keyboard";
 
 type NativeKeyboardWindow = Window & { __FG_NATIVE_KEYBOARD__?: { height: number } };
@@ -17,6 +19,15 @@ export function getNativeKeyboardHeight(): number | null {
 
 export function isNativeKeyboardResize(): boolean {
 	return getNativeKeyboardHeight() !== null;
+}
+
+/**
+ * Locking or unlocking the page left WebKit with a viewport sized for the
+ * previous state (the chat came up 81 points short) until the web view's
+ * frame next changed. The native side changes it by a point and back.
+ */
+export function refreshNativeViewport(): void {
+	postToNative({ type: "refreshViewport" });
 }
 
 /**

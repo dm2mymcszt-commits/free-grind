@@ -48,6 +48,34 @@ final class NativeKeyboardResize {
         }
     }
 
+    /// Makes WebKit measure the viewport again.
+    ///
+    /// Opening a chat locks the page, and WebKit then sized the viewport 81
+    /// points short of the screen, as if the safe areas still covered it. The
+    /// stale size only went away once the web view's frame really changed,
+    /// which until now meant opening the keyboard once. A one-point change and
+    /// back does the same without it.
+    func refreshViewport() {
+        guard keyboardHeight == 0, let webView = webView, let host = webView.superview else { return }
+        if #available(iOS 15.0, *) {
+            host.backgroundColor = webView.underPageBackgroundColor
+        }
+        let full = host.bounds.height - webView.frame.minY
+        var nudged = webView.frame
+        nudged.size.height = full - 1
+        webView.frame = nudged
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            guard let self = self, self.keyboardHeight == 0, let webView = self.webView,
+                let host = webView.superview
+            else {
+                return
+            }
+            var restored = webView.frame
+            restored.size.height = host.bounds.height - restored.minY
+            webView.frame = restored
+        }
+    }
+
     private func keyboardWillChangeFrame(_ notification: Notification) {
         guard let webView = webView,
             let host = webView.superview,

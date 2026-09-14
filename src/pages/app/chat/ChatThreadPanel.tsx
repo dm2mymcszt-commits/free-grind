@@ -102,6 +102,7 @@ import {
 	getNativeKeyboardHeight,
 	isNativeKeyboardResize,
 	NATIVE_KEYBOARD_EVENT,
+	refreshNativeViewport,
 } from "../../../utils/nativeKeyboard";
 import {
 	SKIP_BLOCK_CONFIRM_KEY,
@@ -1144,6 +1145,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 		body.style.left = "0";
 		body.style.right = "0";
 		body.style.width = "100%";
+		refreshNativeViewport();
 		return () => {
 			html.style.overflow = previousHtmlOverflow;
 			body.style.position = previousBodyPosition;
@@ -1152,6 +1154,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 			body.style.right = previousBodyRight;
 			body.style.width = previousBodyWidth;
 			window.scrollTo(0, 0);
+			refreshNativeViewport();
 		};
 	}, [isDesktop, selectedConversation, targetProfileId]);
 

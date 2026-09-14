@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { platform } from "@tauri-apps/plugin-os";
 import { isTauriRuntime } from "../services/tauriWebSocket";
-import { getNativeBridge } from "../utils/diagnostics";
+import { getNativeBridge } from "../utils/nativeBridge";
 import logo from "../images/freegrind-logo.webp";
 
 function isIos(): boolean {

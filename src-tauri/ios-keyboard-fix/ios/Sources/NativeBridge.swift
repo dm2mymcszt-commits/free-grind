@@ -10,10 +10,12 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
 
     private weak var webView: WKWebView?
     private let badge: ScreenshotBadge
+    private let keyboard: NativeKeyboardResize
 
-    init(webView: WKWebView, badge: ScreenshotBadge) {
+    init(webView: WKWebView, badge: ScreenshotBadge, keyboard: NativeKeyboardResize) {
         self.webView = webView
         self.badge = badge
+        self.keyboard = keyboard
         super.init()
     }
 
@@ -27,6 +29,8 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
         case "badge":
             let visible = (body["visible"] as? NSNumber)?.boolValue ?? false
             badge.update(visible: visible, accent: color(from: body["accent"]))
+        case "refreshViewport":
+            keyboard.refreshViewport()
         case "terminations":
             if let webView = webView {
                 WebContentTerminations.send(to: webView)

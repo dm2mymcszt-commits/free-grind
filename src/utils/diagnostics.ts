@@ -13,6 +13,7 @@
 
 import { getCacheStats } from "./boundedCache";
 import { isBackgroundWorkPaused, SAFE_MODE_UNTIL_KEY } from "./backgroundWorkGate";
+import { postToNative } from "./nativeBridge";
 
 const STATE_KEY = "fg-diag-state";
 const RESTARTS_KEY = "fg-diag-restarts";
@@ -313,30 +314,15 @@ function installIpcTrace(current: DiagnosticsState): void {
 	}
 }
 
-type NativeBridgeWindow = Window & {
-	webkit?: { messageHandlers?: Record<string, { postMessage: (message: unknown) => void } | undefined> };
-	__FG_NATIVE_TERMINATIONS__?: NativeTermination[];
-};
-
-/** The iOS build's native message handler, when this build has one. */
-export function getNativeBridge(): { postMessage: (message: unknown) => void } | null {
-	if (typeof window === "undefined") return null;
-	return (window as NativeBridgeWindow).webkit?.messageHandlers?.fgNative ?? null;
-}
-
 /** Asks the native side for its record of why the web content process ended; arrives as NATIVE_TERMINATIONS_EVENT. */
 export function requestNativeTerminations(): void {
-	try {
-		getNativeBridge()?.postMessage({ type: "terminations" });
-	} catch {
-		// Older builds have no handler.
-	}
+	postToNative({ type: "terminations" });
 }
 
 /** null when this build cannot tell, as distinct from an empty list. */
 export function getNativeTerminations(): NativeTermination[] | null {
 	if (typeof window === "undefined") return null;
-	return (window as NativeBridgeWindow).__FG_NATIVE_TERMINATIONS__ ?? null;
+	return (window as Window & { __FG_NATIVE_TERMINATIONS__?: NativeTermination[] }).__FG_NATIVE_TERMINATIONS__ ?? null;
 }
 
 export function installDiagnostics(): void {

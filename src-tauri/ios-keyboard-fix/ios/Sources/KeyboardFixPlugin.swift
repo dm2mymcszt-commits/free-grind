@@ -87,10 +87,11 @@ class KeyboardFixPlugin: Plugin {
             // the chat, which locks the page, got a viewport 81 points short.
             webview.scrollView.contentInsetAdjustmentBehavior = .never
 
-            self.keyboardResize = NativeKeyboardResize(webView: webview)
+            let keyboardResize = NativeKeyboardResize(webView: webview)
+            self.keyboardResize = keyboardResize
 
             let badge = ScreenshotBadge(webView: webview)
-            let bridge = NativeBridge(webView: webview, badge: badge)
+            let bridge = NativeBridge(webView: webview, badge: badge, keyboard: keyboardResize)
             let controller = webview.configuration.userContentController
             controller.removeScriptMessageHandler(forName: NativeBridge.name)
             controller.add(bridge, name: NativeBridge.name)
