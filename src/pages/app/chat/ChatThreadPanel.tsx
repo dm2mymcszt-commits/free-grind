@@ -1357,80 +1357,86 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 											{displayName}
 										</p>
 									</div>
-									<p className="text-sm text-[var(--text-muted)]">
+									<p className="truncate text-sm text-[var(--text-muted)]">
 										{distanceLabel
 											? `${onlineMeta.label} · ${distanceLabel}`
 											: onlineMeta.label}
 									</p>
 								</div>
 							</div>
-							<div className="flex items-center gap-2">
-            {isDesktop && showBlockGroup && (
-                <>
-                    <button
-                        type="button"
-                        onClick={() => {
-                            if (profileId == null || !onToggleFavorite) return;
-                            void onToggleFavorite(profileId, isFavorite);
-                        }}
-                        disabled={isTogglingFavorite || profileId == null || !onToggleFavorite}
-                        title={isFavorite ? t("chat.unfavorite") : t("chat.favorite")}
-                        className={`rounded-xl border p-2 transition disabled:opacity-60 ${
-                            isFavorite
-                                ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] hover:brightness-110"
-                                : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--text)]"
-                        }`}
-                    >
-                        {isTogglingFavorite ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                            <Star className={`h-4 w-4 ${isFavorite ? "fill-current" : ""}`} />
-                        )}
-                    </button>
-                    <button
-                        type="button"
-                        disabled={isUpdatingConversationState || !selectedConversation}
-                        onClick={togglePin}
-                        title={selectedConversation?.data.pinned ? t("chat.unpin") : t("chat.pin")}
-                        className={`rounded-xl border p-2 transition disabled:opacity-40 disabled:cursor-not-allowed ${
-                            selectedConversation?.data.pinned
-                                ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] hover:brightness-110"
-                                : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--text)]"
-                        }`}
-                    >
-                        <Pin className="h-4 w-4" />
-                    </button>
-                    <button
-                        type="button"
-                        onClick={requestBlockProfile}
-                        disabled={isBlockingProfile || profileId == null || !onBlockProfile}
-                        title={isBlockingProfile ? t("profile_details.block_in_progress") : t("profile_details.block")}
-                        className="rounded-xl border border-red-500/40 bg-red-500/10 p-2 text-red-300 transition hover:bg-red-500/20 disabled:opacity-60"
-                    >
-                        {isBlockingProfile ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                            <Ban className="h-4 w-4" />
-                        )}
-                    </button>
-                </>
-            )}
-
-            {isDesktop && showUnblockButton && (
-                <button
-                    type="button"
-                    onClick={requestUnblockProfile}
-                    disabled={isUnblockingProfile || profileId == null || !onUnblockProfile}
-                    title={isUnblockingProfile ? t("profile_details.unblock_in_progress") : t("profile_details.unblock")}
-                    className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-2 text-emerald-300 transition hover:bg-emerald-500/20 disabled:opacity-60"
-                >
-                    {isUnblockingProfile ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                        <ShieldCheck className="h-4 w-4" />
-                    )}
-                </button>
-            )}
+							<div className="flex shrink-0 items-center gap-2">
+								{/* Favorite and block stay one tap away on every screen size; pin
+									and received media join them only where there is room. */}
+								{showBlockGroup && (
+									<button
+										type="button"
+										onClick={() => {
+											if (profileId == null || !onToggleFavorite) return;
+											void onToggleFavorite(profileId, isFavorite);
+										}}
+										disabled={isTogglingFavorite || profileId == null || !onToggleFavorite}
+										title={isFavorite ? t("chat.unfavorite") : t("chat.favorite")}
+										aria-label={isFavorite ? t("chat.unfavorite") : t("chat.favorite")}
+										className={`shrink-0 rounded-xl border p-2 transition disabled:opacity-60 ${
+											isFavorite
+												? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] hover:brightness-110"
+												: "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--text)]"
+										}`}
+									>
+										{isTogglingFavorite ? (
+											<Loader2 className="h-4 w-4 animate-spin" />
+										) : (
+											<Star className={`h-4 w-4 ${isFavorite ? "fill-current" : ""}`} />
+										)}
+									</button>
+								)}
+								{isDesktop && showBlockGroup && (
+									<button
+										type="button"
+										disabled={isUpdatingConversationState || !selectedConversation}
+										onClick={togglePin}
+										title={selectedConversation?.data.pinned ? t("chat.unpin") : t("chat.pin")}
+										className={`rounded-xl border p-2 transition disabled:opacity-40 disabled:cursor-not-allowed ${
+											selectedConversation?.data.pinned
+												? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] hover:brightness-110"
+												: "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--text)]"
+										}`}
+									>
+										<Pin className="h-4 w-4" />
+									</button>
+								)}
+								{showBlockGroup && (
+									<button
+										type="button"
+										onClick={requestBlockProfile}
+										disabled={isBlockingProfile || profileId == null || !onBlockProfile}
+										title={isBlockingProfile ? t("profile_details.block_in_progress") : t("profile_details.block")}
+										aria-label={t("profile_details.block")}
+										className="shrink-0 rounded-xl border border-red-500/40 bg-red-500/10 p-2 text-red-300 transition hover:bg-red-500/20 disabled:opacity-60"
+									>
+										{isBlockingProfile ? (
+											<Loader2 className="h-4 w-4 animate-spin" />
+										) : (
+											<Ban className="h-4 w-4" />
+										)}
+									</button>
+								)}
+								{showUnblockButton && (
+									<button
+										type="button"
+										onClick={requestUnblockProfile}
+										disabled={isUnblockingProfile || profileId == null || !onUnblockProfile}
+										title={isUnblockingProfile ? t("profile_details.unblock_in_progress") : t("profile_details.unblock")}
+										aria-label={t("profile_details.unblock")}
+										className="shrink-0 rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-2 text-emerald-300 transition hover:bg-emerald-500/20 disabled:opacity-60"
+									>
+										{isUnblockingProfile ? (
+											<Loader2 className="h-4 w-4 animate-spin" />
+										) : (
+											<ShieldCheck className="h-4 w-4" />
+										)}
+									</button>
+								)}
 
 								{isDesktop && onOpenMediaSheet && (
 									<button
@@ -1532,27 +1538,6 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 												<PencilLine className="mr-2 h-4 w-4 opacity-70" />
 												{localNickname ? t("chat.nicknames.edit") : t("chat.nicknames.set")}
 											</button>
-											{!isDesktop && showBlockGroup && (
-												<button
-													type="button"
-													onClick={() => {
-														setIsHeaderActionsMenuOpen(false);
-														if (profileId == null || !onToggleFavorite) return;
-														void onToggleFavorite(profileId, isFavorite);
-													}}
-													disabled={isTogglingFavorite || profileId == null || !onToggleFavorite}
-													className={`flex items-center rounded-lg px-2 py-2 text-left text-sm transition disabled:opacity-60 ${
-														isFavorite ? "text-[var(--accent)] hover:bg-[var(--accent)]/10" : "text-[var(--text)] hover:bg-[var(--surface-2)]"
-													}`}
-												>
-													{isTogglingFavorite ? (
-														<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-													) : (
-														<Star className={`mr-2 h-4 w-4 ${isFavorite ? "fill-current" : ""}`} />
-													)}
-													{isFavorite ? t("chat.unfavorite") : t("chat.favorite")}
-												</button>
-											)}
 											{!isDesktop && (
 												<button
 													type="button"
@@ -1674,28 +1659,6 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 											)}
 											{/* — Destructive — */}
 											<div className="my-1 h-px bg-[var(--border)]" />
-											{!isDesktop && showBlockGroup && (
-												<button
-													type="button"
-													onClick={requestBlockProfile}
-													disabled={isBlockingProfile || profileId == null || !onBlockProfile}
-													className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-red-400 transition hover:bg-red-500/10 disabled:opacity-60"
-												>
-													<Ban className="mr-2 h-4 w-4 opacity-70" />
-													{isBlockingProfile ? t("profile_details.block_in_progress") : t("profile_details.block")}
-												</button>
-											)}
-											{!isDesktop && showUnblockButton && (
-												<button
-													type="button"
-													onClick={requestUnblockProfile}
-													disabled={isUnblockingProfile || profileId == null || !onUnblockProfile}
-													className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-emerald-400 transition hover:bg-emerald-500/10 disabled:opacity-60"
-												>
-													<ShieldCheck className="mr-2 h-4 w-4 opacity-70" />
-													{isUnblockingProfile ? t("profile_details.unblock_in_progress") : t("profile_details.unblock")}
-												</button>
-											)}
 											<button
 												type="button"
 												onClick={requestDeleteConversation}
