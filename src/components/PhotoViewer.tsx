@@ -44,6 +44,8 @@ const TAP_SLOP = 10;
 /** How far a photo must be dragged up or down to close the viewer. */
 const DISMISS_DISTANCE = 110;
 const ZOOM_TRANSITION = "transform 220ms cubic-bezier(0.22, 1, 0.36, 1)";
+/** Black space between two photos while swiping from one to the next. */
+const SLIDE_GAP = 24;
 
 type Gesture = {
 	startX: number;
@@ -251,11 +253,11 @@ export function PhotoViewer({
 	const clampZoom = useCallback((next: Zoom): Zoom => {
 		if (next.scale <= 1) return NO_ZOOM;
 		const media = mediaRef.current;
-		const scroller = scrollerRef.current;
-		if (!media || !scroller) return next;
+		const root = rootRef.current;
+		if (!media || !root) return next;
 		// offsetWidth ignores the transform: the photo's size at 100%.
-		const maxX = Math.max(0, (media.offsetWidth * next.scale - scroller.clientWidth) / 2);
-		const maxY = Math.max(0, (media.offsetHeight * next.scale - scroller.clientHeight) / 2);
+		const maxX = Math.max(0, (media.offsetWidth * next.scale - root.clientWidth) / 2);
+		const maxY = Math.max(0, (media.offsetHeight * next.scale - root.clientHeight) / 2);
 		return { scale: next.scale, x: clamp(next.x, -maxX, maxX), y: clamp(next.y, -maxY, maxY) };
 	}, []);
 
@@ -550,10 +552,13 @@ export function PhotoViewer({
 	const extraInfo = renderExtraInfo ? renderExtraInfo(index) : null;
 	const isZoomed = zoom.scale > 1;
 	const dismissProgress = Math.min(Math.abs(dismissY) / 400, 1);
-	const chromeClass = chromeHidden || dismissY !== 0 ? "pointer-events-none opacity-0" : "opacity-100";
+	const chromeVisible = !chromeHidden && dismissY === 0;
+	const chromeClass = chromeVisible ? "opacity-100" : "pointer-events-none opacity-0";
+	// The shaded areas behind the controls let taps and clicks through to the photo.
+	const chromeHitClass = chromeVisible ? "pointer-events-auto" : "";
 
 	return createPortal(
-		<div ref={rootRef} className="fixed inset-0 z-[80] select-none text-white" data-lenis-prevent>
+		<div ref={rootRef} className="fixed inset-0 z-[80] select-none overflow-clip text-white" data-lenis-prevent>
 			<div className="absolute inset-0 bg-black" style={{ opacity: 1 - dismissProgress * 0.75 }} />
 
 			<div
@@ -567,8 +572,10 @@ export function PhotoViewer({
 					// A click on the black around a photo closes it on a computer.
 					if (isDesktop && (event.target as HTMLElement).dataset.slide === "backdrop") onClose();
 				}}
-				className="absolute inset-0 z-[1] flex overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+				className="absolute inset-y-0 z-[1] flex overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 				style={{
+					left: -SLIDE_GAP / 2,
+					right: -SLIDE_GAP / 2,
 					overflowX: isZoomed || N < 2 ? "hidden" : "auto",
 					scrollSnapType: "x mandatory",
 					overscrollBehavior: "contain",
@@ -594,9 +601,13 @@ export function PhotoViewer({
 					return (
 						<div
 							key={slideIndex}
+							className="h-full w-full shrink-0"
+							style={{ paddingInline: SLIDE_GAP / 2, scrollSnapAlign: "center", scrollSnapStop: "always" }}
+						>
+						<div
 							data-slide="backdrop"
-							className={`relative flex h-full w-full shrink-0 items-center justify-center overflow-hidden ${isDesktop ? "px-20 py-16" : ""}`}
-							style={{ scrollSnapAlign: "center", scrollSnapStop: "always", ...videoPadding }}
+							className={`relative flex h-full w-full items-center justify-center overflow-hidden ${isDesktop ? "px-20 py-16" : ""}`}
+							style={videoPadding}
 						>
 							{!isNear || !url ? null : type === "video" ? (
 								<video
@@ -639,17 +650,18 @@ export function PhotoViewer({
 								/>
 							)}
 						</div>
+						</div>
 					);
 				})}
 			</div>
 
 			{/* Top: close, what this is, and what can be done with it. */}
 			<div
-				className={`absolute inset-x-0 top-0 z-[5] bg-gradient-to-b from-black/70 via-black/30 to-transparent pb-14 transition-opacity duration-200 ${chromeClass}`}
+				className={`pointer-events-none absolute inset-x-0 top-0 z-[5] bg-gradient-to-b from-black/70 via-black/30 to-transparent pb-14 transition-opacity duration-200 ${chromeClass}`}
 				style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.5rem)" }}
 			>
 				<div className="grid grid-cols-[1fr_auto_1fr] items-start gap-2 px-3 sm:px-5">
-					<div className="justify-self-start">
+					<div className={`justify-self-start ${chromeHitClass}`}>
 						<ViewerButton label={t("profile_details.close_photo_viewer")} onPress={onClose}>
 							<X className="h-5 w-5" />
 						</ViewerButton>
@@ -664,7 +676,7 @@ export function PhotoViewer({
 						) : null}
 					</div>
 
-					<div className="relative flex items-center gap-2 justify-self-end">
+					<div className={`relative flex items-center gap-2 justify-self-end ${chromeHitClass}`}>
 						{current.type === "image" ? (
 							<ViewerButton
 								label={t("photo_viewer.reverse_search", { defaultValue: "Search this image on Google Lens and Yandex" })}
@@ -793,12 +805,12 @@ export function PhotoViewer({
 
 			{hasFooter ? (
 				<div
-					className={`absolute inset-x-0 bottom-0 z-[3] bg-gradient-to-t from-black/80 via-black/40 to-transparent px-3 pt-16 transition-opacity duration-200 ${chromeClass}`}
+					className={`pointer-events-none absolute inset-x-0 bottom-0 z-[3] bg-gradient-to-t from-black/80 via-black/40 to-transparent px-3 pt-16 transition-opacity duration-200 ${chromeClass}`}
 					style={{
 						paddingBottom: keyboardOpen ? "0.75rem" : "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)",
 					}}
 				>
-					<div className="mx-auto w-full max-w-lg">{footer}</div>
+					<div className={`mx-auto w-full max-w-lg ${chromeHitClass}`}>{footer}</div>
 				</div>
 			) : null}
 		</div>,
