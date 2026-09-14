@@ -1058,10 +1058,16 @@ export function ChatThreadMessages({
                         const s = totalSec % 60;
                         return `${m}:${s.toString().padStart(2, "0")}`;
                     })();
-                    const replyLabel = (replyText || replyThumbUrl || replyIsAudio || hasReply)
+                    // A reply to a profile photo carries the photo itself, drawn by its
+                    // own card below; the generic quote used to appear above it too, as
+                    // a blurred copy under an empty "Reply to """.
+                    const showReplyQuote = message.type !== "ProfilePhotoReply"
+                        && Boolean(replyText || replyThumbUrl || replyIsAudio || hasReply);
+                    const replyOtherName = selectedConversation.data.name?.trim();
+                    const replyLabel = showReplyQuote
                         ? replySenderId === userId
                             ? mine ? "Reply to myself" : "Reply to you"
-                            : `Reply to "${selectedConversation.data.name || ""}"`
+                            : replyOtherName ? `Reply to "${replyOtherName}"` : "Reply"
                         : null;
                     // Strip the "> quoted\n" prefix that gets embedded in body.text on send
                     let displayText = messageText;
@@ -1286,7 +1292,7 @@ export function ChatThreadMessages({
                                         </span>
                                     ) : null}
 
-                                    {(replyText || replyThumbUrl || replyIsAudio || hasReply) ? (
+                                    {showReplyQuote ? (
                                         <div className={isMediaOnlyBubble && hasReply
                                             ? `relative w-full p-3 ${mine ? "bg-[var(--accent)] text-[var(--accent-contrast)]" : "bg-[var(--surface-2)] text-[var(--text)]"}`
                                             : "contents"
@@ -1876,21 +1882,20 @@ export function ChatThreadMessages({
                                         const hash = typeof body?.imageHash === "string" ? body.imageHash : null;
                                         const photoUrl = cachedPhotoUri ?? (hash ? getThumbImageUrl(hash, "320x320") : null);
                                         return (
-                                            <div className={`relative mb-2.5 mt-1 flex overflow-hidden rounded-[6px] text-xs ${mine ? "bg-black/20" : "bg-black/[0.08]"}`}>
+                                            <div className={`relative mb-2 mt-1 flex items-center gap-2.5 overflow-hidden rounded-[6px] py-2 pl-[11px] pr-3 text-xs ${mine ? "bg-black/20" : "bg-black/[0.08]"}`}>
                                                 <div className={`absolute left-0 top-0 h-full w-[3px] shrink-0 ${mine ? "bg-white/60" : "bg-[var(--accent)]/50"}`} />
-                                                <div className="min-w-0 flex-1 py-[13px] pl-[13px] pr-2.5">
-                                                    <p className="mb-0.5 font-semibold opacity-60 truncate">{t("chat.thread.replied_to_photo")}</p>
-                                                    <p className="opacity-60">{t("chat.thread.shared_image")}</p>
-                                                </div>
-                                                {photoUrl && (
-                                                    <div className="relative w-14 shrink-0 self-stretch overflow-hidden">
-                                                        <img
-                                                            src={photoUrl}
-                                                            alt=""
-                                                            className="absolute inset-0 h-full w-full object-cover object-top"
-                                                        />
-                                                    </div>
-                                                )}
+                                                {photoUrl ? (
+                                                    <img
+                                                        src={photoUrl}
+                                                        alt=""
+                                                        className="h-12 w-9 shrink-0 rounded-[4px] object-cover object-top"
+                                                    />
+                                                ) : null}
+                                                <p className="min-w-0 font-semibold leading-snug opacity-70">
+                                                    {mine
+                                                        ? t("chat.thread.replied_to_their_photo", { defaultValue: "Replied to their profile photo" })
+                                                        : t("chat.thread.replied_to_photo")}
+                                                </p>
                                             </div>
                                         );
                                     })() : null}
