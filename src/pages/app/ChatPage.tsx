@@ -102,7 +102,16 @@ import {
 	type ChatFiltersDraft,
 } from "./chat/chatUtils";
 import { loadChatFiltersDraft, saveChatFiltersDraft } from "./chat/chat-filters-storage";
-import { fetchAndStoreMedia, hydrateMediaByMessageId, isSignedUrlExpired } from "../../services/mediaStore";
+import { fetchAndStoreMedia, getCachedMediaUri, hydrateMediaByMessageId, isSignedUrlExpired } from "../../services/mediaStore";
+import { saveMediaBytesToDevice, saveMediaToDevice } from "../../services/saveMedia";
+import {
+	deletionNeedsConfirmation,
+	describeDeletionConfirmation,
+	isSelectableMediaMessage,
+	planMediaDeletion,
+	type MediaDeletionPlan,
+	type MediaSelectionItem,
+} from "./chat/mediaSelection";
 import { captureAlbum, captureAlbumsForMessages, getLocalAlbum } from "../../services/albumStore";
 import { captureReplyPreviewsForMessages } from "../../services/replyMediaStore";
 import { useAvatarCache } from "../../hooks/useAvatarCache";
@@ -564,6 +573,19 @@ export function ChatPage() {
 	const headerActionsMenuRef = useRef<HTMLDivElement | null>(null);
 	const messageLongPressTimeoutRef = useRef<number | null>(null);
 	const messageLongPressTriggeredRef = useRef(false);
+	// Photos and videos picked in the thread, by message id; null when not picking.
+	const [mediaSelection, setMediaSelection] = useState<ReadonlySet<string> | null>(null);
+	const [isWorkingOnMediaSelection, setIsWorkingOnMediaSelection] = useState(false);
+	const [isDeletingConfirmedMedia, setIsDeletingConfirmedMedia] = useState(false);
+	const [pendingMediaDeletion, setPendingMediaDeletion] = useState<{
+		plan: MediaDeletionPlan;
+		resolve: (deletedMessageIds: string[]) => void;
+	} | null>(null);
+	const startMediaSelectionRef = useRef<(message: UiMessage) => void>(() => undefined);
+	const mediaSelectionRef = useRef(mediaSelection);
+	useEffect(() => {
+		mediaSelectionRef.current = mediaSelection;
+	}, [mediaSelection]);
 	const [isMutatingMessageId, setIsMutatingMessageId] = useState<string | null>(
 		null,
 	);
@@ -691,6 +713,14 @@ export function ChatPage() {
 			clearMessageLongPress();
 			messageLongPressTimeoutRef.current = window.setTimeout(() => {
 				messageLongPressTriggeredRef.current = true;
+				const message = threadMessagesRef.current.find((item) => item.messageId === messageId);
+				if (message && isSelectableMediaMessage(message)) {
+					// A held photo or video starts picking several; the usual actions
+					// stay one tap away in the selection bar while it is the only one.
+					startMediaSelectionRef.current(message);
+					return;
+				}
+				if (mediaSelectionRef.current) return;
 				setOpenMessageActionId((current) =>
 					current === messageId ? null : messageId,
 				);
@@ -5849,6 +5879,192 @@ export function ChatPage() {
 		}
 	};
 
+	const startMediaSelection = useCallback((message: UiMessage) => {
+		if (isLocalClientMessageId(message.messageId) || !isSelectableMediaMessage(message)) return;
+		setOpenMessageActionId(null);
+		// Holding another one while already picking adds it rather than starting over.
+		setMediaSelection((current) => new Set([...(current ?? []), message.messageId]));
+	}, []);
+	startMediaSelectionRef.current = startMediaSelection;
+
+	const toggleMediaSelection = useCallback((message: UiMessage) => {
+		if (isLocalClientMessageId(message.messageId) || !isSelectableMediaMessage(message)) return;
+		setMediaSelection((current) => {
+			const next = new Set(current ?? []);
+			if (next.has(message.messageId)) next.delete(message.messageId);
+			else next.add(message.messageId);
+			return next;
+		});
+	}, []);
+
+	const cancelMediaSelection = useCallback(() => setMediaSelection(null), []);
+
+	// Picking belongs to one conversation.
+	useEffect(() => {
+		setMediaSelection(null);
+	}, [selectedConversation?.data.conversationId]);
+
+	/** Where a thread message's photo or video can be read from: the saved copy first, then its link. */
+	const resolveThreadMediaItem = useCallback(async (message: UiMessage): Promise<MediaSelectionItem | null> => {
+		const mine = userId != null && Number(message.senderId) === Number(userId);
+		const target = getMediaCaptureTarget(message);
+		const kind: "image" | "video" =
+			target?.kind === "video" || /video/i.test(`${message.type} ${message.chat1Type ?? ""}`) ? "video" : "image";
+		const inMemory = target ? getCachedMediaUri(target.mediaKey) : null;
+		if (inMemory) return { messageId: message.messageId, mine, kind, source: { url: inMemory } };
+		const saved =
+			(target ? await chatDb.getMediaFile(target.mediaKey).catch(() => null) : null)
+			?? (await chatDb.getMediaFileByMessageId(message.messageId).catch(() => null));
+		if (saved?.dataBase64) {
+			return { messageId: message.messageId, mine, kind, source: { base64: saved.dataBase64, mimeType: saved.mimeType } };
+		}
+		return target ? { messageId: message.messageId, mine, kind, source: { url: target.url } } : null;
+	}, [userId]);
+
+	/** Saves picked media one after another, with progress in a single toast. */
+	const saveMediaItems = useCallback(async (items: readonly MediaSelectionItem[]) => {
+		if (items.length === 0) return;
+		const conversationId = selectedConversation?.data.conversationId ?? null;
+		const toastId = toast.loading(t("profile_details.save_all_progress", { done: 0, total: items.length }));
+		let succeeded = 0;
+		for (const [index, item] of items.entries()) {
+			try {
+				const saved = "url" in item.source
+					? await saveMediaToDevice(item.source.url, item.kind, conversationId)
+					: await saveMediaBytesToDevice(item.source.base64, item.source.mimeType, item.kind, conversationId);
+				if (saved) succeeded += 1;
+			} catch (error) {
+				appLog.error("[ChatPage] saving picked media failed", error);
+			}
+			toast.loading(t("profile_details.save_all_progress", { done: index + 1, total: items.length }), { id: toastId });
+		}
+		if (succeeded === items.length) {
+			toast.success(t("profile_details.save_all_success", { count: succeeded }), { id: toastId });
+		} else {
+			toast.error(
+				t("profile_details.save_all_partial", { succeeded, total: items.length, failed: items.length - succeeded }),
+				{ id: toastId },
+			);
+		}
+	}, [selectedConversation?.data.conversationId, t]);
+
+	const runMediaDeletion = useCallback(async (plan: MediaDeletionPlan): Promise<string[]> => {
+		const conversationId = selectedConversation?.data.conversationId;
+		if (!conversationId) return [];
+		const deleted: string[] = [];
+		let failed = 0;
+		const work = [
+			...plan.unsend.map((messageId) => ({ messageId, unsend: true })),
+			...plan.deleteForMe.map((messageId) => ({ messageId, unsend: false })),
+		];
+		for (const { messageId, unsend } of work) {
+			try {
+				if (unsend) {
+					await service.unsendMessage({ conversationId, messageId });
+					// Grindr keeps an emptied "unsent" row in the history; deleting it
+					// too keeps that placeholder from coming back on the next load.
+					await service.deleteMessage({ conversationId, messageId }).catch((error) => {
+						appLog.warn(`[ChatPage] removing unsent media ${messageId} from history failed`, error);
+					});
+				} else {
+					await service.deleteMessage({ conversationId, messageId });
+				}
+				// Gone from this device too: the row and its saved copy, or the grid
+				// would keep showing a photo the chat no longer has.
+				await chatLog.removeMessage(messageId);
+				await chatDb.deleteMediaFilesForMessage(messageId).catch(() => undefined);
+				deleted.push(messageId);
+			} catch (error) {
+				appLog.warn(`[ChatPage] deleting picked media ${messageId} failed`, error);
+				failed += 1;
+			}
+		}
+		if (deleted.length > 0) {
+			const gone = new Set(deleted);
+			setThreadMessages((current) => current.filter((item) => !gone.has(item.messageId)));
+		}
+		if (failed > 0) {
+			toast.error(
+				t("chat.media_selection.delete_partial", {
+					defaultValue: "Deleted {{deleted}}, {{failed}} couldn't be deleted.",
+					deleted: deleted.length,
+					failed,
+				}),
+				{ id: "media-selection-delete" },
+			);
+		} else if (deleted.length > 0) {
+			toast.success(
+				t("chat.media_selection.deleted", { defaultValue: "Deleted {{count}}", count: deleted.length }),
+				{ id: "media-selection-delete" },
+			);
+		}
+		return deleted;
+	}, [selectedConversation?.data.conversationId, service, t]);
+
+	/**
+	 * Deletes picked media: the user's own are unsent, theirs deleted for the
+	 * user. Asks first only when something of the user's is about to be unsent.
+	 * Resolves with the message ids that were deleted.
+	 */
+	const deleteMediaItems = useCallback((items: readonly MediaSelectionItem[]): Promise<string[]> => {
+		const plan = planMediaDeletion(items);
+		if (plan.notDeletable > 0) {
+			toast(
+				t("chat.media_selection.not_deletable", {
+					defaultValue: "Skipped {{count}}: saved without a link to its message, so there is nothing to delete.",
+					count: plan.notDeletable,
+				}),
+				{ id: "media-selection-not-deletable" },
+			);
+		}
+		if (plan.unsend.length === 0 && plan.deleteForMe.length === 0) return Promise.resolve([]);
+		if (!deletionNeedsConfirmation(plan)) return runMediaDeletion(plan);
+		return new Promise((resolve) => setPendingMediaDeletion({ plan, resolve }));
+	}, [runMediaDeletion, t]);
+
+	const pickedThreadMessages = useCallback(
+		() => threadMessages.filter((message) => mediaSelection?.has(message.messageId)),
+		[mediaSelection, threadMessages],
+	);
+
+	const saveSelectedMedia = useCallback(async () => {
+		if (isWorkingOnMediaSelection) return;
+		setIsWorkingOnMediaSelection(true);
+		try {
+			const items = (await Promise.all(pickedThreadMessages().map(resolveThreadMediaItem))).filter(
+				(item): item is MediaSelectionItem => item !== null,
+			);
+			await saveMediaItems(items);
+			setMediaSelection(null);
+		} finally {
+			setIsWorkingOnMediaSelection(false);
+		}
+	}, [isWorkingOnMediaSelection, pickedThreadMessages, resolveThreadMediaItem, saveMediaItems]);
+
+	const deleteSelectedMedia = useCallback(async () => {
+		if (isWorkingOnMediaSelection) return;
+		setIsWorkingOnMediaSelection(true);
+		try {
+			const items = pickedThreadMessages().map((message): MediaSelectionItem => ({
+				messageId: message.messageId,
+				mine: userId != null && Number(message.senderId) === Number(userId),
+				kind: "image",
+				source: { url: "" },
+			}));
+			const deleted = await deleteMediaItems(items);
+			if (deleted.length > 0) setMediaSelection(null);
+		} finally {
+			setIsWorkingOnMediaSelection(false);
+		}
+	}, [deleteMediaItems, isWorkingOnMediaSelection, pickedThreadMessages, userId]);
+
+	const openSelectedMediaActions = useCallback(() => {
+		const [only] = mediaSelection ?? [];
+		if (!only || (mediaSelection?.size ?? 0) !== 1) return;
+		setMediaSelection(null);
+		setOpenMessageActionId(only);
+	}, [mediaSelection]);
+
 	const handleStopAlbumShare = useCallback(async (albumId: number) => {
 		if (!selectedConversation || isMutatingMessageId) return;
 		const recipient = getOtherParticipant(selectedConversation, userId);
@@ -6483,6 +6699,14 @@ export function ChatPage() {
 			headerActionsMenuRef={headerActionsMenuRef}
 			togglePin={togglePin}
 			toggleMute={toggleMute}
+			selectedMediaIds={mediaSelection}
+			onStartMediaSelection={startMediaSelection}
+			onToggleMediaSelection={toggleMediaSelection}
+			onSaveSelectedMedia={saveSelectedMedia}
+			onDeleteSelectedMedia={deleteSelectedMedia}
+			onOpenSelectedMediaActions={openSelectedMediaActions}
+			onCancelMediaSelection={cancelMediaSelection}
+			isWorkingOnSelectedMedia={isWorkingOnMediaSelection}
 			isHidden={isSelectedConversationHidden}
 			toggleHide={toggleHide}
 			onDeleteConversation={deleteConversationFromChat}
@@ -6665,6 +6889,8 @@ export function ChatPage() {
 						openAlbumViewerById={openAlbumViewerById}
 						openFullScreenImage={(url) => openFullScreenImage(url)}
 						senderPhotoUrl={otherPhotoUrl}
+						onSaveMediaItems={saveMediaItems}
+						onDeleteMediaItems={deleteMediaItems}
 					/>
 				);
 			})() : null}
@@ -6735,6 +6961,32 @@ export function ChatPage() {
 							) : null}
 						</p>
 					);
+				}}
+			/>
+
+			<ConfirmDialog
+				isOpen={pendingMediaDeletion !== null}
+				title={t("chat.media_selection.unsend_title", { defaultValue: "Unsend and delete?" })}
+				message={pendingMediaDeletion ? describeDeletionConfirmation(pendingMediaDeletion.plan) : ""}
+				confirmLabel={t("chat.media_selection.unsend_confirm", { defaultValue: "Unsend and delete" })}
+				cancelLabel={t("common.cancel", { defaultValue: "Cancel" })}
+				confirmTone="danger"
+				isProcessing={isDeletingConfirmedMedia}
+				onConfirm={async () => {
+					const pending = pendingMediaDeletion;
+					if (!pending || isDeletingConfirmedMedia) return;
+					setIsDeletingConfirmedMedia(true);
+					try {
+						const deleted = await runMediaDeletion(pending.plan);
+						setPendingMediaDeletion(null);
+						pending.resolve(deleted);
+					} finally {
+						setIsDeletingConfirmedMedia(false);
+					}
+				}}
+				onCancel={() => {
+					pendingMediaDeletion?.resolve([]);
+					setPendingMediaDeletion(null);
 				}}
 			/>
 

@@ -1724,6 +1724,35 @@ export async function markMessageUnsentLocally(messageId: string): Promise<void>
 	});
 }
 
+/** Who sent each of these messages, for the ones stored locally. */
+export async function getMessageSenderIds(messageIds: readonly string[]): Promise<Map<string, string>> {
+	const unique = [...new Set(messageIds)];
+	const senders = new Map<string, string>();
+	if (unique.length === 0) return senders;
+	const db = await getDb();
+	for (let start = 0; start < unique.length; start += 400) {
+		const chunk = unique.slice(start, start + 400);
+		const placeholders = chunk.map((_, index) => `$${index + 1}`).join(", ");
+		const rows = await db.select<Array<{ message_id: string; sender_id: string | number | null }>>(
+			`SELECT message_id, sender_id FROM messages WHERE message_id IN (${placeholders})`,
+			chunk,
+		);
+		for (const row of rows) {
+			if (row.sender_id != null) senders.set(row.message_id, String(row.sender_id));
+		}
+	}
+	return senders;
+}
+
+/** Drops the saved copies of a message's media, which outlive the message row otherwise. */
+export async function deleteMediaFilesForMessage(messageId: string): Promise<void> {
+	const db = await getDb();
+
+	await executeWithLockRetry(db, "delete-message-media", async () => {
+		await db.execute("DELETE FROM media_files WHERE message_id = $1", [messageId]);
+	});
+}
+
 export async function deleteMessageRow(messageId: string): Promise<void> {
 	const db = await getDb();
 

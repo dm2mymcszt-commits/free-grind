@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Download, Images, LayoutGrid, Loader2, Play, X } from "lucide-react";
+import { Check, CircleCheck, Download, Images, LayoutGrid, Loader2, Play, Trash2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
 import { ProfileImage } from "../../../components/ui/profile-image";
@@ -12,6 +12,7 @@ import { fetchAndEncode, toDataUri } from "../../../services/mediaStore";
 import { captureAlbum, getLocalAlbum } from "../../../services/albumStore";
 import * as chatDb from "../../../services/chatDb";
 import { extractImageHashFromSignedUrl } from "./chatUtils";
+import type { MediaSelectionItem } from "./mediaSelection";
 import { appLog } from "../../../utils/logger";
 
 const IMAGE_HASH_KEY_PREFIX = "image:hash:";
@@ -42,6 +43,8 @@ type SharedAlbum = {
 
 type LocalMediaItem = {
 	mediaKey: string;
+	/** The message it came in, when the app saved it from the chat. */
+	messageId: string | null;
 	kind: "image" | "video";
 	dataUri: string;
 	mimeType: string | null;
@@ -57,15 +60,21 @@ type Props = {
 	onClose: () => void;
 	openAlbumViewerById: (albumId: number) => void | Promise<void>;
 	openFullScreenImage: (imageUrl: string) => void;
+	onSaveMediaItems: (items: readonly MediaSelectionItem[]) => Promise<void>;
+	/** Resolves with the message ids that were deleted. */
+	onDeleteMediaItems: (items: readonly MediaSelectionItem[]) => Promise<string[]>;
 };
 
 export function ChatMediaSheet({
 	conversationId,
 	senderProfileId,
+	userId,
 	isDesktop,
 	senderPhotoUrl,
 	onClose,
 	openAlbumViewerById,
+	onSaveMediaItems,
+	onDeleteMediaItems,
 }: Props) {
 	const { t } = useTranslation();
 	const service = useApiFunctions();
@@ -77,6 +86,97 @@ export function ChatMediaSheet({
 	const [failedCovers, setFailedCovers] = useState<Set<number>>(new Set());
 	const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 	const [isSavingAll, setIsSavingAll] = useState(false);
+	// Picked tiles, by media key; null when not picking.
+	const [selected, setSelected] = useState<ReadonlySet<string> | null>(null);
+	const [isWorkingOnSelection, setIsWorkingOnSelection] = useState(false);
+	const longPressTimerRef = useRef<number | null>(null);
+	const longPressFiredRef = useRef(false);
+
+	const clearTileLongPress = () => {
+		if (longPressTimerRef.current != null) {
+			window.clearTimeout(longPressTimerRef.current);
+			longPressTimerRef.current = null;
+		}
+	};
+
+	const pickTile = (mediaKey: string) => {
+		setSelected((current) => new Set([...(current ?? []), mediaKey]));
+	};
+
+	const toggleTile = (mediaKey: string) => {
+		setSelected((current) => {
+			const next = new Set(current ?? []);
+			if (next.has(mediaKey)) next.delete(mediaKey);
+			else next.add(mediaKey);
+			return next;
+		});
+	};
+
+	const startTileLongPress = (mediaKey: string) => {
+		longPressFiredRef.current = false;
+		clearTileLongPress();
+		longPressTimerRef.current = window.setTimeout(() => {
+			longPressTimerRef.current = null;
+			longPressFiredRef.current = true;
+			navigator.vibrate?.(30);
+			pickTile(mediaKey);
+		}, 420);
+	};
+
+	useEffect(() => () => {
+		if (longPressTimerRef.current != null) window.clearTimeout(longPressTimerRef.current);
+	}, []);
+
+	const pickedMedia = () => media.filter((item) => selected?.has(item.mediaKey));
+
+	const handleSaveSelected = async () => {
+		const picked = pickedMedia();
+		if (picked.length === 0 || isWorkingOnSelection) return;
+		setIsWorkingOnSelection(true);
+		try {
+			await onSaveMediaItems(
+				picked.map((item) => ({
+					messageId: item.messageId,
+					mine: false,
+					kind: item.kind,
+					source: { base64: item.base64, mimeType: item.mimeType },
+				})),
+			);
+			setSelected(null);
+		} finally {
+			setIsWorkingOnSelection(false);
+		}
+	};
+
+	const handleDeleteSelected = async () => {
+		const picked = pickedMedia();
+		if (picked.length === 0 || isWorkingOnSelection) return;
+		setIsWorkingOnSelection(true);
+		try {
+			// The grid only knows the message; who sent it is in the saved history.
+			const senders = await chatDb
+				.getMessageSenderIds(picked.flatMap((item) => (item.messageId ? [item.messageId] : [])))
+				.catch(() => new Map<string, string>());
+			const deleted = await onDeleteMediaItems(
+				picked.map((item) => {
+					const senderId = item.messageId ? senders.get(item.messageId) : undefined;
+					return {
+						messageId: item.messageId,
+						mine: userId != null && senderId != null && Number(senderId) === Number(userId),
+						kind: item.kind,
+						source: { base64: item.base64, mimeType: item.mimeType },
+					};
+				}),
+			);
+			if (deleted.length > 0) {
+				const gone = new Set(deleted);
+				setMedia((previous) => previous.filter((item) => !item.messageId || !gone.has(item.messageId)));
+				setSelected(null);
+			}
+		} finally {
+			setIsWorkingOnSelection(false);
+		}
+	};
 
 	const handleSaveAll = async () => {
 		if (media.length === 0) {
@@ -240,6 +340,7 @@ export function ChatMediaSheet({
 				setMedia(
 					files.map((f) => ({
 						mediaKey: f.mediaKey,
+						messageId: f.messageId,
 						kind: f.kind === "video" ? "video" : "image",
 						dataUri: toDataUri(f.mimeType, f.dataBase64),
 						mimeType: f.mimeType,
@@ -316,6 +417,7 @@ export function ChatMediaSheet({
 								...previous,
 								{
 									mediaKey,
+									messageId: null,
 									kind: "image" as const,
 									dataUri: toDataUri(fetched.mimeType, fetched.base64),
 									mimeType: fetched.mimeType,
@@ -359,9 +461,56 @@ export function ChatMediaSheet({
 		<BottomSheet onClose={onClose} isDesktop={isDesktop} panelClassName="max-h-[82dvh]">
 			<div className="flex flex-col" style={{ minHeight: "60vh" }}>
 				{/* Header */}
+				{selected ? (
+				<div className="flex items-center justify-between gap-2 px-4 pb-3">
+					<p className="min-w-0 truncate text-sm font-semibold text-[var(--text)]">
+						{selected.size === 0
+							? t("chat.media_selection.pick_hint", { defaultValue: "Tap photos to select" })
+							: t("chat.media_selection.count", { defaultValue: "{{count}} selected", count: selected.size })}
+					</p>
+					<div className="flex shrink-0 items-center gap-2">
+						<button
+							type="button"
+							onClick={() => void handleSaveSelected()}
+							disabled={selected.size === 0 || isWorkingOnSelection}
+							className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-[var(--text)] transition hover:border-[var(--accent)] disabled:opacity-40"
+						>
+							{isWorkingOnSelection ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+							{t("chat.media_selection.save", { defaultValue: "Save" })}
+						</button>
+						<button
+							type="button"
+							onClick={() => void handleDeleteSelected()}
+							disabled={selected.size === 0 || isWorkingOnSelection}
+							className="inline-flex items-center gap-1.5 rounded-lg bg-red-500/10 px-2.5 py-1.5 text-xs font-medium text-red-400 transition hover:bg-red-500/20 disabled:opacity-40"
+						>
+							<Trash2 className="h-3.5 w-3.5" />
+							{t("chat.actions.delete")}
+						</button>
+						<button
+							type="button"
+							onClick={() => setSelected(null)}
+							aria-label={t("common.cancel", { defaultValue: "Cancel" })}
+							className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--surface-2)] hover:text-[var(--text)]"
+						>
+							<X className="h-4 w-4" />
+						</button>
+					</div>
+				</div>
+				) : (
 				<div className="flex items-center justify-between px-4 pb-3">
 					<p className="text-sm font-semibold text-[var(--text)]">{t("chat.media_sheet.title")}</p>
 					<div className="flex items-center gap-2">
+						{tab === "media" && media.length > 0 && (
+							<button
+								type="button"
+								onClick={() => setSelected(new Set())}
+								className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-[var(--text)] transition hover:border-[var(--accent)]"
+							>
+								<CircleCheck className="h-3.5 w-3.5" />
+								{t("chat.media_selection.select", { defaultValue: "Select" })}
+							</button>
+						)}
 						{tab === "media" && media.length > 0 && (
 							<button
 								type="button"
@@ -378,6 +527,7 @@ export function ChatMediaSheet({
 						</SheetClose>
 					</div>
 				</div>
+				)}
 
 				{/* Tab bar */}
 				<div className="flex border-b border-[var(--border)] px-2 pb-0 pt-1">
@@ -385,7 +535,10 @@ export function ChatMediaSheet({
 						<button
 							key={tab_item.id}
 							type="button"
-							onClick={() => setTab(tab_item.id)}
+							onClick={() => {
+								setTab(tab_item.id);
+								if (tab_item.id !== "media") setSelected(null);
+							}}
 							className={`flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium transition border-b-2 -mb-px ${
 								tab === tab_item.id
 									? "border-[var(--accent)] text-[var(--accent)]"
@@ -470,12 +623,35 @@ export function ChatMediaSheet({
 						</div>
 					) : (
 						<div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
-							{media.map((item, idx) => (
+							{media.map((item, idx) => {
+								const isPicked = selected?.has(item.mediaKey) ?? false;
+								return (
 								<button
 									key={item.mediaKey}
 									type="button"
-									onClick={() => setViewerIndex(idx)}
-									className="group relative aspect-square overflow-hidden rounded-lg bg-[var(--surface-2)]"
+									onTouchStart={() => startTileLongPress(item.mediaKey)}
+									onTouchMove={clearTileLongPress}
+									onTouchEnd={clearTileLongPress}
+									onTouchCancel={clearTileLongPress}
+									onContextMenu={(event) => {
+										event.preventDefault();
+										if (isDesktop) {
+											if (selected) toggleTile(item.mediaKey);
+											else pickTile(item.mediaKey);
+										}
+									}}
+									onClick={() => {
+										if (longPressFiredRef.current) {
+											longPressFiredRef.current = false;
+											return;
+										}
+										if (selected) toggleTile(item.mediaKey);
+										else setViewerIndex(idx);
+									}}
+									aria-pressed={selected ? isPicked : undefined}
+									className={`no-touch-callout group relative aspect-square select-none overflow-hidden rounded-lg bg-[var(--surface-2)] ${
+										isPicked ? "ring-2 ring-inset ring-[var(--accent)]" : ""
+									}`}
 								>
 									{item.kind === "video" ? (
 										<>
@@ -493,11 +669,25 @@ export function ChatMediaSheet({
 										<img
 											src={item.dataUri}
 											alt=""
-											className="h-full w-full object-cover transition group-hover:scale-105"
+											draggable={false}
+											className={`h-full w-full object-cover transition group-hover:scale-105 ${isPicked ? "scale-95 rounded-md" : ""}`}
 										/>
 									)}
+									{selected ? (
+										<span
+											aria-hidden
+											className={`pointer-events-none absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full shadow ${
+												isPicked
+													? "bg-[var(--accent)] text-[var(--accent-contrast)]"
+													: "border-2 border-white/90 bg-black/30"
+											}`}
+										>
+											{isPicked ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : null}
+										</span>
+									) : null}
 								</button>
-							))}
+								);
+							})}
 						</div>
 					)}
 				</div>

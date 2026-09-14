@@ -5,6 +5,7 @@ import {
 	Check,
 	CheckCheck,
 	ChevronLeft,
+	CircleCheck,
 	Copy,
 	Download,
 	Ellipsis,
@@ -78,6 +79,7 @@ import { getThumbImageUrl } from "../../../utils/media";
 import { formatDistance } from "../gridpage/utils";
 import { ProfileImage } from "../../../components/ui/profile-image";
 import { ChatThreadMessages } from "./ChatThreadMessages";
+import { isSelectableMediaMessage } from "./mediaSelection";
 import { AudioMessagePlayer } from "./AudioMessagePlayer";
 import { ConfirmDialog } from "../../../components/ui/confirm-dialog";
 import { BanWordDialog } from "../../../components/ui/BanWordDialog";
@@ -260,6 +262,16 @@ type ChatThreadPanelProps = {
 	isPartnerTyping?: boolean;
 	isArchived?: boolean;
 	archivedReason?: ArchivedReason | null;
+	/** Photos and videos being picked, by message id; null when not picking. */
+	selectedMediaIds: ReadonlySet<string> | null;
+	onStartMediaSelection: (message: UiMessage) => void;
+	onToggleMediaSelection: (message: UiMessage) => void;
+	onSaveSelectedMedia: () => void | Promise<void>;
+	onDeleteSelectedMedia: () => void | Promise<void>;
+	/** The usual actions for the one picked message. */
+	onOpenSelectedMediaActions: () => void;
+	onCancelMediaSelection: () => void;
+	isWorkingOnSelectedMedia: boolean;
 };
 
 
@@ -704,7 +716,25 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 		onStopAlbumShareFromDrawer,
 		onSendLocation,
 		onSendGiphy,
+		selectedMediaIds,
+		onStartMediaSelection,
+		onToggleMediaSelection,
+		onSaveSelectedMedia,
+		onDeleteSelectedMedia,
+		onOpenSelectedMediaActions,
+		onCancelMediaSelection,
+		isWorkingOnSelectedMedia,
 	} = props;
+
+	// Escape leaves picking on a computer.
+	useEffect(() => {
+		if (!selectedMediaIds) return;
+		const handleKeyDown = (event: KeyboardEvent) => {
+			if (event.key === "Escape") onCancelMediaSelection();
+		};
+		window.addEventListener("keydown", handleKeyDown);
+		return () => window.removeEventListener("keydown", handleKeyDown);
+	}, [onCancelMediaSelection, selectedMediaIds]);
 
     const [savedPhrases, setSavedPhrases] = useState<string[]>([]);
 
@@ -1781,6 +1811,9 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 						hasChattedBefore={hasChattedBefore}
 						lastMessageTimestamp={lastMessageTimestamp}
 						composerHeight={composerHeight}
+						selectedMediaIds={selectedMediaIds}
+						onStartMediaSelection={onStartMediaSelection}
+						onToggleMediaSelection={onToggleMediaSelection}
 					/>
 				)
 			) : (
@@ -1795,7 +1828,64 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 				</div>
 			)}
 
-					{isArchived ? (
+					{selectedMediaIds ? (
+						<div
+							ref={composerRef}
+							className={`${!isDesktop ? "shrink-0 px-[var(--app-px)] py-3" : "mt-3 pt-3 -mx-3 sm:-mx-4 px-3 sm:px-4"} border-t border-[var(--border)] bg-[var(--surface)]`}
+							style={
+								!isDesktop
+									? { paddingBottom: "max(12px, env(safe-area-inset-bottom))" }
+									: undefined
+							}
+						>
+							<div className="flex items-center gap-2">
+								<button
+									type="button"
+									onClick={onCancelMediaSelection}
+									aria-label={t("common.cancel", { defaultValue: "Cancel" })}
+									className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--surface-2)] text-[var(--text)] transition hover:bg-[var(--surface-3)]"
+								>
+									<X className="h-5 w-5" />
+								</button>
+								<div className="min-w-0 flex-1">
+									<p className="truncate text-sm font-semibold text-[var(--text)]">
+										{selectedMediaIds.size === 0
+											? t("chat.media_selection.pick_hint", { defaultValue: "Tap photos to select" })
+											: t("chat.media_selection.count", { defaultValue: "{{count}} selected", count: selectedMediaIds.size })}
+									</p>
+								</div>
+								{!isDesktop && selectedMediaIds.size === 1 ? (
+									<button
+										type="button"
+										onClick={onOpenSelectedMediaActions}
+										disabled={isWorkingOnSelectedMedia}
+										aria-label={t("chat.actions.title")}
+										className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--surface-2)] text-[var(--text)] transition hover:bg-[var(--surface-3)] disabled:opacity-40"
+									>
+										<Ellipsis className="h-5 w-5" />
+									</button>
+								) : null}
+								<button
+									type="button"
+									onClick={() => void onSaveSelectedMedia()}
+									disabled={selectedMediaIds.size === 0 || isWorkingOnSelectedMedia}
+									className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-[var(--surface-2)] px-3.5 text-sm font-semibold text-[var(--text)] transition hover:bg-[var(--surface-3)] disabled:opacity-40"
+								>
+									{isWorkingOnSelectedMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+									<span className="max-[359px]:hidden">{t("chat.media_selection.save", { defaultValue: "Save" })}</span>
+								</button>
+								<button
+									type="button"
+									onClick={() => void onDeleteSelectedMedia()}
+									disabled={selectedMediaIds.size === 0 || isWorkingOnSelectedMedia}
+									className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-red-500/10 px-3.5 text-sm font-semibold text-red-400 transition hover:bg-red-500/20 disabled:opacity-40"
+								>
+									<Trash2 className="h-4 w-4" />
+									<span className="max-[359px]:hidden">{t("chat.actions.delete")}</span>
+								</button>
+							</div>
+						</div>
+					) : isArchived ? (
 						<div
 							ref={composerRef}
 					className={`${!isDesktop ? "shrink-0 px-[var(--app-px)] py-3" : "mt-3 pt-3 -mx-3 sm:-mx-4 px-3 sm:px-4"} bg-[var(--surface)]`}
@@ -2780,6 +2870,15 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 												},
 											});
 										}
+									}
+
+									if (isSelectableMediaMessage(message)) {
+										rows.push({
+											key: "select",
+											icon: <CircleCheck className="h-3.5 w-3.5" />,
+											label: t("chat.media_selection.select_more", { defaultValue: "Select more" }),
+											onClick: () => onStartMediaSelection(message),
+										});
 									}
 
 									if (hasText && !mine) {

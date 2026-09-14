@@ -1,4 +1,4 @@
-import { Album, Ban, Copy, Download, Eye, Hourglass, Lock, MessageCircleQuestion, MessageSquarePlus, Mic, MoreVertical, Play, Repeat2, Reply, ShieldCheck, Trash2, Undo2 } from "lucide-react";
+import { Album, Ban, Check, CircleCheck, Copy, Download, Eye, Hourglass, Lock, MessageCircleQuestion, MessageSquarePlus, Mic, MoreVertical, Play, Repeat2, Reply, ShieldCheck, Trash2, Undo2 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { MapLocationPreview } from "../gridpage/components/MapLocationPreview";
 import { AudioMessagePlayer } from "./AudioMessagePlayer";
@@ -57,6 +57,7 @@ import {
 	getMessageVideoUrl,
 	isLocalClientMessageId,
 } from "./chatUtils";
+import { isSelectableMediaMessage } from "./mediaSelection";
 
 type ChatThreadMessagesProps = {
 	isDesktop: boolean;
@@ -96,6 +97,10 @@ type ChatThreadMessagesProps = {
 	lastMessageTimestamp?: number | null;
 	composerHeight?: number;
 	onBanWord?: (text: string) => void;
+	/** Photos and videos being picked, by message id; null when not picking. */
+	selectedMediaIds?: ReadonlySet<string> | null;
+	onStartMediaSelection?: (message: UiMessage) => void;
+	onToggleMediaSelection?: (message: UiMessage) => void;
 };
 
 const getReactionEmoji = (type: number): string => {
@@ -307,6 +312,9 @@ export function ChatThreadMessages({
 	lastMessageTimestamp = null,
 	composerHeight: _composerHeight = 88,
 	onBanWord,
+	selectedMediaIds = null,
+	onStartMediaSelection,
+	onToggleMediaSelection,
 }: ChatThreadMessagesProps) {
 	const { t } = useTranslation();
 	useLocalMediaCache();
@@ -512,7 +520,7 @@ export function ChatThreadMessages({
 	const handleMobileTouchStart = useCallback(
 		(event: React.TouchEvent<HTMLDivElement>, message: UiMessage) => {
 			startMessageLongPress(message.messageId);
-			if (isDesktop || event.touches.length !== 1 || isLocalClientMessageId(message.messageId)) {
+			if (isDesktop || selectedMediaIds || event.touches.length !== 1 || isLocalClientMessageId(message.messageId)) {
 				swipeStateRef.current = null;
 				return;
 			}
@@ -524,7 +532,7 @@ export function ChatThreadMessages({
 				triggered: false,
 			};
 		},
-		[isDesktop, startMessageLongPress],
+		[isDesktop, selectedMediaIds, startMessageLongPress],
 	);
 
 	const handleMobileTouchMove = useCallback(
@@ -715,6 +723,18 @@ export function ChatThreadMessages({
 			});
 		}
 
+		if (onToggleMediaSelection && isSelectableMediaMessage(message)) {
+			const picked = selectedMediaIds?.has(message.messageId) ?? false;
+			actions.push({
+				key: "select",
+				label: picked
+					? t("chat.media_selection.deselect", { defaultValue: "Deselect" })
+					: t("chat.media_selection.select", { defaultValue: "Select" }),
+				icon: <CircleCheck className="h-4 w-4" />,
+				onClick: () => (selectedMediaIds ? onToggleMediaSelection(message) : onStartMediaSelection?.(message)),
+			});
+		}
+
 		if (!mine && hasText) {
 			actions.push({
 				key: "ban-word",
@@ -760,6 +780,9 @@ export function ChatThreadMessages({
 		contextMenuTarget,
 		userId,
 		isMutatingMessageId,
+		selectedMediaIds,
+		onStartMediaSelection,
+		onToggleMediaSelection,
 		t,
 		handleReply,
 		handleCopy,
@@ -1217,6 +1240,9 @@ export function ChatThreadMessages({
                         !isAlbumLiveAgain &&
                         (!isLatestShare || !msgBody?.isViewable);
 
+                    const isPickable = !pending && !isLocalClientMessageId(message.messageId) && isSelectableMediaMessage(message);
+                    const isPicked = isPickable && (selectedMediaIds?.has(message.messageId) ?? false);
+
                     return (
                     /* Use Fragment to allow rendering the separator and the message as a single map item */
                     <Fragment key={message.messageId}>
@@ -1241,7 +1267,17 @@ export function ChatThreadMessages({
                                     messageElementRefs.current.delete(message.messageId);
                                 }
                             }}
-                            className={`relative flex w-full ${mine ? "justify-end" : "justify-start"} ${isLastMessage && !mine ? "pb-6" : ""}`}
+                            className={`relative flex w-full ${mine ? "justify-end" : "justify-start"} ${isLastMessage && !mine ? "pb-6" : ""} ${selectedMediaIds && !isPickable ? "opacity-40" : ""} transition-opacity`}
+                        onClickCapture={selectedMediaIds ? (event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            if (messageLongPressTriggeredRef.current) {
+                                messageLongPressTriggeredRef.current = false;
+                                return;
+                            }
+                            if (isPickable) onToggleMediaSelection?.(message);
+                        } : undefined}
+                        onDoubleClickCapture={selectedMediaIds ? (event) => event.stopPropagation() : undefined}
                         style={{ touchAction: "pan-y" }}
                         onTouchStart={(event) => handleMobileTouchStart(event, message)}
                         onTouchEnd={handleMobileTouchEnd}
@@ -1283,8 +1319,20 @@ export function ChatThreadMessages({
                                                         ? "bg-[var(--accent)] text-[var(--accent-contrast)] rounded-br-[3px]"
                                                         : "bg-[var(--surface-2)] text-[var(--text)] rounded-bl-[3px]"
                                                 }`
-                                    } ${isActiveSearchMatch ? "ring-2 ring-[var(--accent)]" : ""} ${(localOnly || isCachedExpiredAlbum) ? "opacity-50" : ""}`}
+                                    } ${isActiveSearchMatch || isPicked ? "ring-2 ring-[var(--accent)]" : ""} ${isPicked ? "ring-offset-2 ring-offset-[var(--surface)]" : ""} ${(localOnly || isCachedExpiredAlbum) ? "opacity-50" : ""}`}
                                 >
+                                    {selectedMediaIds && isPickable ? (
+                                        <span
+                                            aria-hidden
+                                            className={`pointer-events-none absolute left-2 top-2 z-30 flex h-6 w-6 items-center justify-center rounded-full shadow-md transition ${
+                                                isPicked
+                                                    ? "bg-[var(--accent)] text-[var(--accent-contrast)]"
+                                                    : "border-2 border-white/90 bg-black/30"
+                                            }`}
+                                        >
+                                            {isPicked ? <Check className="h-4 w-4" strokeWidth={3} /> : null}
+                                        </span>
+                                    ) : null}
                                     <div className={isMediaOnlyBubble && hasReply ? `overflow-hidden rounded-2xl ${mine ? "rounded-br-[3px]" : "rounded-bl-[3px]"}` : "contents"}>
                                     {localOnly && !hasVisualMedia ? (
                                         <span className="mb-1.5 block w-fit rounded-full bg-black/15 px-2 py-0.5 text-[10px] font-semibold">
