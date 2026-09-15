@@ -27,6 +27,7 @@ import type { StoredAlbumMediaSummary } from "../types/chat-db";
 import { appLog } from "../utils/logger";
 import { isAutoDownloadMediaEnabled } from "../utils/mediaSettings";
 import { limitChatDbBlobRead } from "../utils/chatDbBlobLimiter";
+import { isPictureUrl, sniffMediaMime } from "../utils/mediaMime";
 
 /**
  * Mirrors newly-downloaded album content into the device's Downloads
@@ -113,6 +114,23 @@ export function getCachedAlbumContentThumbUri(albumId: number, contentId: number
 const CACHED_THUMB_MAX_CHARS = 512 * 1024;
 
 /**
+ * A saved preview as something an <img> can show, or null when the bytes are
+ * a video. Previews are stored under the album item's type, so a video's JPEG
+ * preview is labelled video/mp4, and without a separate preview the video
+ * itself was kept as one.
+ */
+function previewDataUri(contentType: string | null, base64: string): string | null {
+	const mimeType = sniffMediaMime(base64) ?? contentType;
+	if (/^(video|audio)\//i.test(mimeType ?? "")) return null;
+	return toDataUri(mimeType, base64);
+}
+
+// Items whose only saved preview is the video itself, and items whose preview
+// link turned out to be a video too: nothing to look up again.
+const noPictureThumbKeys = new Set<string>();
+const noPicturePreviewUrlKeys = new Set<string>();
+
+/**
  * Rebuilds this album's in-memory state from chatDb: whether it is fully
  * captured, its fallback cover, and small previews of its items.
  *
@@ -134,13 +152,19 @@ async function refreshAlbumCacheState(albumId: number): Promise<StoredAlbumMedia
 		chatDb.getAlbumMediaThumbs(String(albumId), CACHED_THUMB_MAX_CHARS),
 	);
 	if (!albumCoverCache.has(albumId)) {
-		const cover = thumbs.find((thumb) => thumb.contentId === summaries[0].contentId);
+		// The first item's preview, or the first real picture when that is a video.
+		const first = thumbs.find((thumb) => thumb.contentId === summaries[0].contentId);
+		const cover = [first, ...thumbs]
+			.map((thumb) => (thumb ? previewDataUri(thumb.contentType, thumb.thumbBase64) : null))
+			.find((uri): uri is string => uri !== null);
 		if (cover) {
-			albumCoverCache.set(albumId, toDataUri(cover.contentType, cover.thumbBase64));
+			albumCoverCache.set(albumId, cover);
 		}
 	}
 	for (const thumb of thumbs) {
-		albumContentThumbCache.set(thumb.contentId, toDataUri(thumb.contentType, thumb.thumbBase64));
+		const uri = previewDataUri(thumb.contentType, thumb.thumbBase64);
+		if (uri) albumContentThumbCache.set(thumb.contentId, uri);
+		else noPictureThumbKeys.add(thumb.contentId);
 	}
 
 	if (summaries.every((item) => item.hasData)) {
@@ -308,7 +332,7 @@ export function ensureAlbumContentThumbCaptured(
 	previewUrl: string | null,
 ): Promise<void> {
 	const key = albumContentKey(albumId, contentId);
-	if (albumContentThumbCache.has(key)) {
+	if (albumContentThumbCache.has(key) || noPicturePreviewUrlKeys.has(key) || (noPictureThumbKeys.has(key) && !previewUrl)) {
 		return Promise.resolve();
 	}
 	const inFlight = contentThumbCaptureInFlight.get(key);
@@ -320,13 +344,15 @@ export function ensureAlbumContentThumbCaptured(
 			const existing = await limitChatDbBlobRead(() =>
 				chatDb.getAlbumMediaThumb(key, CACHED_THUMB_MAX_CHARS),
 			);
-			if (existing) {
-				albumContentThumbCache.set(key, toDataUri(existing.contentType ?? contentType, existing.thumbBase64));
+			const existingUri = existing ? previewDataUri(existing.contentType ?? contentType, existing.thumbBase64) : null;
+			if (existingUri) {
+				albumContentThumbCache.set(key, existingUri);
 				for (const listener of albumCacheListeners) listener();
 				return;
 			}
 
 			if (!previewUrl) {
+				if (existing) noPictureThumbKeys.add(key);
 				return;
 			}
 			const fetched = await fetchAndEncode(previewUrl);
@@ -339,8 +365,13 @@ export function ensureAlbumContentThumbCaptured(
 				contentType: contentType ?? fetched.mimeType,
 				thumbBase64: fetched.base64,
 			});
-			albumContentThumbCache.set(key, toDataUri(fetched.mimeType, fetched.base64));
-			for (const listener of albumCacheListeners) listener();
+			const fetchedUri = previewDataUri(fetched.mimeType, fetched.base64);
+			if (fetchedUri) {
+				albumContentThumbCache.set(key, fetchedUri);
+				for (const listener of albumCacheListeners) listener();
+			} else {
+				noPicturePreviewUrlKeys.add(key);
+			}
 		} catch (error) {
 			appLog.warn(`[album-store] failed to capture content thumb ${key}`, error);
 		} finally {
@@ -769,15 +800,18 @@ export async function getLocalAlbum(albumId: number): Promise<LocalAlbumContent 
 		const realContentId = Number(
 			separatorIndex >= 0 ? m.contentId.slice(separatorIndex + 1) : m.contentId,
 		);
-		const url = m.dataBase64 ? toDataUri(m.contentType, m.dataBase64) : null;
-		const thumbUrl = m.thumbDataBase64 ? toDataUri(m.contentType, m.thumbDataBase64) : url;
+		const mimeType = (m.dataBase64 ? sniffMediaMime(m.dataBase64) : null) ?? m.contentType;
+		const url = m.dataBase64 ? toDataUri(mimeType, m.dataBase64) : null;
+		// A video keeps no picture unless a real preview was saved alongside it.
+		const preview = m.thumbDataBase64 ? previewDataUri(m.contentType, m.thumbDataBase64) : null;
+		const thumbUrl = preview ?? (isPictureUrl(url) ? url : null);
 
 		return {
 			contentId: realContentId,
-			contentType: m.contentType,
+			contentType: m.contentType ?? mimeType,
 			thumbUrl,
 			url,
-			coverUrl: url,
+			coverUrl: thumbUrl ?? url,
 			processing: false,
 		};
 	});

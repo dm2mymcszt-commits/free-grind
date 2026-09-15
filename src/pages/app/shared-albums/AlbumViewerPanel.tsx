@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
-import { Download, Images, MessageCircle, Play, UserRound, X } from "lucide-react";
+import { Download, Images, MessageCircle, UserRound, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { AlbumMediaTile } from "../../../components/AlbumMediaTile";
 import toast from "react-hot-toast";
 import { Button } from "../../../components/ui/button";
 import { EmptyState } from "../../../components/ui/states";
@@ -175,15 +176,12 @@ export function AlbumViewerPanel({
 							style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom, 0px))" }}
 						>
 							{viewer.content.map((item, index) => {
-								const isVideo = item.contentType?.startsWith("video/");
-								const mediaUrl = isVideo
-									? (item.thumbUrl || item.coverUrl || item.url)
-									: (item.thumbUrl || item.url || item.coverUrl);
 								const isActive = index === fullScreenIndex;
 
 								return (
 									<button
 										key={item.contentId}
+										aria-label={t("shared_albums.content_alt", { index: index + 1 })}
 										type="button"
 										onClick={() => openFullScreen(index)}
 										className={`group relative aspect-square overflow-hidden rounded-xl transition-all duration-150 ${
@@ -192,30 +190,8 @@ export function AlbumViewerPanel({
 												: "hover:scale-[1.02] hover:shadow-lg active:scale-[0.97]"
 										}`}
 									>
-										{mediaUrl ? (
-											<>
-												<img
-													src={mediaUrl ?? undefined}
-													alt={t("shared_albums.content_alt", { index: index + 1 })}
-													loading="lazy"
-													className="h-full w-full object-cover"
-												/>
-												{isVideo && (
-													<div className="absolute inset-0 flex items-center justify-center bg-black/30">
-														<div className="flex h-8 w-8 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm">
-															<Play className="h-4 w-4 fill-white text-white" />
-														</div>
-													</div>
-												)}
-												{!isVideo && (
-													<div className={`absolute inset-0 bg-black/0 transition-colors duration-150 group-hover:bg-black/10 ${isActive ? "bg-black/20" : ""}`} />
-												)}
-											</>
-										) : (
-											<div className="flex h-full w-full items-center justify-center bg-[var(--surface-2)] text-[10px] text-[var(--text-muted)]">
-												{t("shared_albums.unavailable")}
-											</div>
-										)}
+										<AlbumMediaTile item={item} />
+										<div className={`pointer-events-none absolute inset-0 transition-colors duration-150 group-hover:bg-black/10 ${isActive ? "bg-black/20" : ""}`} />
 									</button>
 								);
 							})}
