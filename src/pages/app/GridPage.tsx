@@ -60,6 +60,8 @@ import {
 	GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
 	type GoogleDriveSyncDataAppliedDetail,
 } from "../../services/googleDriveSyncRuntime";
+import { logProfileEdit, logProfileOpen } from "../../services/statsLog";
+import { isLocationFinderEnabled } from "../../utils/locationFinderSettings";
 
 const EXPLORE_LOCATION_STORAGE_KEY = "grid_explore_location_v1";
 
@@ -420,6 +422,7 @@ export function GridPage() {
 		setIsTogglingDistance(true);
 		try {
 			await apiFunctions.updateMyProfile({ showDistance: next });
+			logProfileEdit(["showDistance"]);
 		} catch {
 			queryClient.setQueryData(["my-own-profile"], (current: typeof myProfile) =>
 				current ? { ...current, showDistance: !next } : current,
@@ -930,6 +933,9 @@ export function GridPage() {
 		}
 
 		let cancelled = false;
+
+		// This pop-up never reports the visit to Grindr.
+		logProfileOpen(activeProfileId, { viewRecorded: false, surface: "grid_popup" });
 
 		const loadProfileDetails = async () => {
 			const cachedProfile = getCachedProfileDetail(activeProfileId);
@@ -1746,7 +1752,7 @@ export function GridPage() {
 				onClose={() => setActiveProfileId(null)}
 				onMessageProfile={handleMessageProfile}
 				onTagClick={handleTagClick}
-				onTriangleProfile={handleTriangleProfile}
+				onTriangleProfile={isLocationFinderEnabled() ? handleTriangleProfile : undefined}
 				onBlockProfile={handleBlockProfile}
 				onUnblockProfile={handleUnblockProfile}
 				onToggleFavoriteProfile={handleToggleFavoriteProfile}

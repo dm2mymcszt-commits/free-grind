@@ -67,6 +67,15 @@ const CHAT_ENTITY_SPECS: readonly ChatEntitySpec[] = [
 	{ section: "core", entityType: "saved-phrase", table: "saved_phrases", primaryKey: "phrase", pageSize: 1_000 },
 	{ section: "core", entityType: "saved-location", table: "saved_locations", primaryKey: "id", pageSize: 1_000 },
 	{ section: "core", entityType: "block-event", table: "block_events", primaryKey: "id", pageSize: 1_000 },
+	// Stats logs. Rows never change after they are written, so these only ever
+	// add operations. Most are keyed by the device that wrote them; a distance
+	// row is keyed by the view, which both devices describe identically.
+	{ section: "core", entityType: "stats-block", table: "stats_block_log", primaryKey: "id", pageSize: 2_000 },
+	{ section: "core", entityType: "stats-location", table: "stats_location_log", primaryKey: "id", pageSize: 2_000 },
+	{ section: "core", entityType: "stats-coverage", table: "stats_coverage_log", primaryKey: "id", pageSize: 2_000 },
+	{ section: "core", entityType: "stats-profile-edit", table: "stats_profile_edit_log", primaryKey: "id", pageSize: 2_000 },
+	{ section: "core", entityType: "stats-profile-open", table: "stats_profile_open_log", primaryKey: "id", pageSize: 2_000 },
+	{ section: "core", entityType: "stats-view-distance", table: "stats_view_distance_log", primaryKey: "id", pageSize: 2_000 },
 	{
 		section: "core",
 		entityType: "album",
@@ -188,6 +197,7 @@ export const CLOUD_SYNCABLE_DB_SETTING_KEYS = new Set([
 	"privacy",
 	"recentGifs",
 	"seenTimestamps",
+	"stats",
 ]);
 
 function toJsonValue(value: unknown): JsonValue {

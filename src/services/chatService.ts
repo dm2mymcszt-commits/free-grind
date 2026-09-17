@@ -46,6 +46,7 @@ import { isReadReceiptsHidden } from "../utils/privacy";
 import { ApiFunctionError, assertSuccess, parseJsonSafe } from "./apiHelpers";
 import { sendViaRealtime } from "./chatRealtime";
 import { preserveAndAutoBlockConversation } from "./autoBlockConversation";
+import type { StatsBlockReason } from "./statsLog";
 
 export { ApiFunctionError as ChatApiError };
 
@@ -305,6 +306,7 @@ export function createChatService(fetchRest: RestFetcher, t: (key: string) => st
 									);
 									await assertSuccess(blockResponse, t("chat.errors.block_profile"));
 								},
+								stats: { source: "inbox_filter", reason: { label: reason } },
 							});
 							notifyAutoBlock(displayName || String(profileId), reason);
 						} catch (error) {
@@ -329,8 +331,9 @@ export function createChatService(fetchRest: RestFetcher, t: (key: string) => st
 					lastMessageSenderId != null && String(lastMessageSenderId) === String(profileId);
 				if (profileId && lastMessageIsIncoming) {
 					const automationRunner = {
-						blockProfile: (pid: string) =>
+						blockProfile: (pid: string, statsReason?: StatsBlockReason) =>
 							preserveAndAutoBlockConversation({
+								stats: { source: "automation", reason: statsReason },
 								conversation: entry,
 								profileId: pid,
 								displayName,

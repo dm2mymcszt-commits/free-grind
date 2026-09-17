@@ -9,6 +9,7 @@ import {
 	applySelfBlockAction,
 	markConversationDeleteHandled,
 } from "../../services/conversationArchive";
+import { logBlockEvent } from "../../services/statsLog";
 import { profileSchema } from "../../pages/app/profile-editor/profileEditorUtils";
 
 // chat.v1.conversation.delete fires identically for "we blocked/unblocked
@@ -65,6 +66,7 @@ export function useBlockProfile() {
 			markConversationSelfAction(profileId, "block");
 		},
 		onSuccess: (_, profileId) => {
+			logBlockEvent({ eventType: "block", profileId, method: "manual", source: "manual" });
 			// Manually update the cache for blocked IDs to keep UI in sync
 			queryClient.setQueryData<string[]>(["blocked-profile-ids"], (old) => {
 				if (!old) return [profileId];
@@ -93,6 +95,7 @@ export function useUnblockProfile() {
 			markConversationSelfAction(profileId, "unblock");
 		},
 		onSuccess: (_, profileId) => {
+			logBlockEvent({ eventType: "unblock", profileId, method: "manual", source: "manual" });
 			// Manually update the cache for blocked IDs to keep UI in sync
 			queryClient.setQueryData<string[]>(["blocked-profile-ids"], (old) => {
 				if (!old) return [];

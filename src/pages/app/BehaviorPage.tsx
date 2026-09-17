@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Ban, ShieldOff, Trash2 } from "lucide-react";
+import { Ban, ShieldOff, Trash2, Triangle } from "lucide-react";
 import { BackToSettings } from "../../components/BackToSettings";
 import { ToggleRow } from "../../components/ui/toggle-row";
 import { useTranslation } from "react-i18next";
@@ -11,6 +11,10 @@ import {
 	isUnblockConfirmSkipped,
 	isDeleteConversationConfirmSkipped,
 } from "../../utils/blockConfirm";
+import {
+	isLocationFinderEnabled,
+	setLocationFinderEnabled,
+} from "../../utils/locationFinderSettings";
 
 export function BehaviorPage() {
 	const { t } = useTranslation();
@@ -19,6 +23,7 @@ export function BehaviorPage() {
 	const [confirmBeforeDeleteConversation, setConfirmBeforeDeleteConversation] = useState(
 		() => !isDeleteConversationConfirmSkipped(),
 	);
+	const [locationFinderEnabled, setLocationFinderEnabledState] = useState(isLocationFinderEnabled);
 
 	return (
 		<section className="app-screen">
@@ -61,6 +66,22 @@ export function BehaviorPage() {
 						onChange={(checked) => {
 							setConfirmBeforeDeleteConversation(checked);
 							window.localStorage.setItem(SKIP_DELETE_CONVERSATION_CONFIRM_KEY, String(!checked));
+						}}
+					/>
+				</div>
+				<div className="surface-card overflow-hidden divide-y divide-[var(--border)]">
+					<ToggleRow
+						icon={<Triangle className="h-5 w-5" />}
+						iconClass="bg-sky-500/15 text-sky-400"
+						label={t("behavior.location_finder", { defaultValue: "Location Finder" })}
+						description={t("behavior.location_finder_desc", {
+							defaultValue:
+								"Show Locate in a profile's menu. It finds roughly where someone is by moving your location on Grindr, which could get your account flagged.",
+						})}
+						checked={locationFinderEnabled}
+						onChange={(checked) => {
+							setLocationFinderEnabledState(checked);
+							setLocationFinderEnabled(checked);
 						}}
 					/>
 				</div>

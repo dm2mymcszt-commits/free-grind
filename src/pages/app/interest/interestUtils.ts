@@ -28,6 +28,13 @@ export type InterestItem = {
 	isFromCache?: boolean;
 	isMutual?: boolean;
 	onlineUntil?: number | null;
+	/**
+	 * The distance Grindr listed with this view, straight from the response.
+	 * Never written to the viewer store (toStoredView leaves it out): it moves
+	 * whenever either of you moves, and storing it would rewrite every row on
+	 * every sweep. The Stats distance log records it once per view instead.
+	 */
+	distanceMeters?: number | null;
 };
 
 export const PREVIEW_ID_PREFIX = "preview:";
@@ -110,6 +117,7 @@ function mergeViewItem(
 		isFromCache: incoming.isFromCache ?? cached.isFromCache,
 		isMutual: incoming.isMutual ?? cached.isMutual,
 		onlineUntil: incoming.onlineUntil ?? cached.onlineUntil,
+		distanceMeters: incoming.distanceMeters ?? cached.distanceMeters,
 	};
 }
 
@@ -249,6 +257,7 @@ export function normalizeViews(
 			canOpenProfile: true,
 			isFromCache: false,
 			onlineUntil: toNumber(obj.onlineUntil),
+			distanceMeters: toNumber(obj.distance),
 		};
 	}).filter((it): it is InterestItem => it !== null);
 
@@ -272,6 +281,7 @@ export function normalizeViews(
 			canOpenProfile: recoveredMatch ? true : (getViewProfileId(obj) !== null),
 			isFromCache: !!recoveredMatch,
 			onlineUntil: recoveredMatch ? recoveredMatch.onlineUntil : toNumber(obj.onlineUntil),
+			distanceMeters: toNumber(obj.distance),
 		};
 	}).filter((it): it is InterestItem => it !== null);
 

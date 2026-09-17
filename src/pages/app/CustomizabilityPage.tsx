@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Flame, Languages, LayoutGrid, Monitor, Moon, Ruler, Smile, Sparkles, Star, Sun, RotateCcw } from "lucide-react";
+import { ChartColumn, Flame, Languages, LayoutGrid, Monitor, Moon, Ruler, Smile, Sparkles, Star, Sun, RotateCcw } from "lucide-react";
 import toast from "react-hot-toast";
 import { usePreferences, ACCENT_PRESETS, type ColorScheme } from "../../contexts/PreferencesContext";
 import { BackToSettings } from "../../components/BackToSettings";
@@ -18,6 +18,11 @@ import {
 	setEmojiStyle,
 	type EmojiStyle,
 } from "../../utils/emojiStyle";
+import {
+	isStatsEnabled,
+	setStatsEnabled,
+	STATS_SETTINGS_UPDATED_EVENT,
+} from "../../services/statsLog";
 
 function normalizeHex(value: string): string {
 	const cleaned = value.trim().replace(/^#/, "");
@@ -120,6 +125,7 @@ export function CustomizabilityPage() {
 	const [showRightNow, setShowRightNow] = useState(() => window.localStorage.getItem("fg-show-right-now") !== "false");
 	const [showInterest, setShowInterest] = useState(() => window.localStorage.getItem("fg-show-interest") !== "false");
 	const [defaultInterestTab, setDefaultInterestTab] = useState(() => window.localStorage.getItem("fg-interest-default-tab") || "taps");
+	const [statsEnabled, setStatsEnabledState] = useState(isStatsEnabled);
 	const schemeOptions: {
 		value: ColorScheme;
 		label: string;
@@ -149,6 +155,21 @@ export function CustomizabilityPage() {
 	useEffect(() => {
 		setCustomHex(accentColor);
 	}, [accentColor]);
+
+	// The setting is per account and synced, so it can change under this page.
+	useEffect(() => {
+		const sync = () => setStatsEnabledState(isStatsEnabled());
+		window.addEventListener(STATS_SETTINGS_UPDATED_EVENT, sync);
+		return () => window.removeEventListener(STATS_SETTINGS_UPDATED_EVENT, sync);
+	}, []);
+
+	const handleStatsToggle = (checked: boolean) => {
+		setStatsEnabledState(checked);
+		setStatsEnabled(checked).catch(() => {
+			setStatsEnabledState(!checked);
+			toast.error(t("customizability.show_stats_failed", { defaultValue: "Could not change the Stats setting." }));
+		});
+	};
 
 	const handleSchemeChange = (scheme: ColorScheme) => {
 		void setPreferences({ colorScheme: scheme });
@@ -570,6 +591,17 @@ export function CustomizabilityPage() {
 								]}
 							/>
 						)}
+						<ToggleRow
+							icon={<ChartColumn className="h-5 w-5" />}
+							iconClass="bg-sky-500/15 text-sky-400"
+							label={t("customizability.show_stats", { defaultValue: "Stats" })}
+							description={t("customizability.show_stats_desc", {
+								defaultValue:
+									"Record what the Stats page needs: why people were blocked, where you were, when this device was collecting views, your profile edits and the profiles you open. It only writes when those things happen, nothing runs in the background, and the records sync with Google Drive. Turning this on applies to all your devices.",
+							})}
+							checked={statsEnabled}
+							onChange={handleStatsToggle}
+						/>
 					</div>
 				</div>
 

@@ -768,6 +768,9 @@
         "show_right_now_desc": "Show the Right Now tab in the bottom navigation.",
         "show_interest": "Interest Tab",
         "show_interest_desc": "Show the Interest tab in the bottom navigation.",
+        "show_stats": "Stats",
+        "show_stats_desc": "Record what the Stats page needs: why people were blocked, where you were, when this device was collecting views, your profile edits and the profiles you open. It only writes when those things happen, nothing runs in the background, and the records sync with Google Drive. Turning this on applies to all your devices.",
+        "show_stats_failed": "Could not change the Stats setting.",
         "default_interest_view": "Default Interest View",
         "interest_show_taps": "Taps First",
         "interest_show_views": "Views First",
@@ -819,7 +822,32 @@
         }
     },
     "behavior": {
-        "subtitle": "Manage confirmation prompts before blocking profiles or deleting chats."
+        "subtitle": "Manage confirmation prompts before blocking profiles or deleting chats, and which tools profiles offer.",
+        "location_finder": "Location Finder",
+        "location_finder_desc": "Show Locate in a profile's menu. It finds roughly where someone is by moving your location on Grindr, which could get your account flagged."
+    },
+    "location_finder": {
+        "title": "Location finder",
+        "explain": "Finds roughly where this person is. Your location on Grindr is moved to three points around them and their distance is measured from each one, over several rounds.",
+        "duration": "Takes {{duration}}. Your real location is put back at the end.",
+        "duration_unknown": "up to about 2 minutes",
+        "duration_seconds_one": "about {{count}} second",
+        "duration_seconds_other": "about {{count}} seconds",
+        "duration_minutes_one": "about {{count}} minute",
+        "duration_minutes_other": "about {{count}} minutes",
+        "keep_open": "Keep GrindFlop open until it finishes. If it closes early, your location is not put back.",
+        "risk": "Moving your location over and over could get your account flagged or banned.",
+        "start": "Start",
+        "running": "Finding their location…",
+        "restoring": "Putting your location back…",
+        "elapsed": "{{elapsed}} · {{duration}} in total",
+        "hide": "Hide",
+        "result": "Approximate location",
+        "accuracy": "Within about {{error}} m",
+        "copy": "Copy location",
+        "copied": "Copied",
+        "copy_failed": "Could not copy the location.",
+        "close": "Close"
     },
     "notifications_page": {
         "subtitle": "Choose which notifications you get, and whether they show up while the app is open.",

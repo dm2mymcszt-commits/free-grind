@@ -11,6 +11,8 @@ import { getThumbImageUrl, validateMediaHash } from "../../utils/media";
 import { ProfileImage } from "../../components/ui/profile-image";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { EmptyState, ErrorState } from "../../components/ui/states";
+import { logBlockEvent } from "../../services/statsLog";
+import { SKIP_UNBLOCK_CONFIRM_KEY, isUnblockConfirmSkipped } from "../../utils/blockConfirm";
 
 type BlockedProfileListItem = {
 	profileId: string;
@@ -44,6 +46,8 @@ export function SettingsBlockedPage() {
 	const [mutatingProfileId, setMutatingProfileId] = useState<string | null>(null);
 	const [isUnblockingAll, setIsUnblockingAll] = useState(false);
 	const [confirmUnblockAll, setConfirmUnblockAll] = useState(false);
+	const [pendingUnblockProfileId, setPendingUnblockProfileId] = useState<string | null>(null);
+	const [dontAskAgainChecked, setDontAskAgainChecked] = useState(false);
 
 	// ── Sentinel ref for IntersectionObserver ─────────────────────────────
 	const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -214,12 +218,8 @@ export function SettingsBlockedPage() {
 	// ── Handlers ─────────────────────────────────────────────────────────
 	const isLoading = isLoadingIds || (!initialBatchLoaded && (blockedIdsData?.length ?? 0) > 0);
 
-	const handleUnblock = async (profileId: string) => {
+	const performUnblock = async (profileId: string) => {
 		if (isUnblocking) return;
-
-		const requiresConfirm = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
-		const confirmed = requiresConfirm ? window.confirm(t("profile_details.unblock_confirm")) : true;
-		if (!confirmed) return;
 
 		setMutatingProfileId(profileId);
 		try {
@@ -240,15 +240,38 @@ export function SettingsBlockedPage() {
 		}
 	};
 
+	// Confirmed through the app's own pop-up, as everywhere else that unblocks:
+	// the native confirm box never appears in the iOS app.
 	const handleUnblockPress = (profileId: string) => {
-		if (mutatingProfileId) return;
-		void handleUnblock(profileId);
+		if (mutatingProfileId || isUnblocking) return;
+		if (isUnblockConfirmSkipped()) {
+			void performUnblock(profileId);
+			return;
+		}
+		setDontAskAgainChecked(false);
+		setPendingUnblockProfileId(profileId);
+	};
+
+	const handleCancelUnblockConfirm = () => {
+		if (isUnblocking) return;
+		setPendingUnblockProfileId(null);
+	};
+
+	const handleConfirmUnblock = async () => {
+		if (!pendingUnblockProfileId || isUnblocking) return;
+		const profileId = pendingUnblockProfileId;
+		if (dontAskAgainChecked) {
+			localStorage.setItem(SKIP_UNBLOCK_CONFIRM_KEY, "true");
+		}
+		setPendingUnblockProfileId(null);
+		await performUnblock(profileId);
 	};
 
 	const handleUnblockAll = async () => {
 		setIsUnblockingAll(true);
 		try {
 			await apiFunctions.unblockAllProfiles();
+			logBlockEvent({ eventType: "unblock", profileId: null, method: "manual", source: "unblock_all" });
 			toast.success(t("settings_blocked.unblock_all_success", { defaultValue: "All users unblocked." }));
 			profileCacheRef.current = new Map();
 			setProfileCache(new Map());
@@ -476,6 +499,20 @@ export function SettingsBlockedPage() {
 				onCancel={() => setConfirmUnblockAll(false)}
 				isProcessing={isUnblockingAll}
 				confirmTone="danger"
+			/>
+
+			<ConfirmDialog
+				isOpen={pendingUnblockProfileId !== null}
+				title={t("profile_details.unblock")}
+				message={t("profile_details.unblock_confirm")}
+				confirmLabel={t("profile_details.unblock")}
+				cancelLabel={t("chat.actions.cancel")}
+				onConfirm={handleConfirmUnblock}
+				onCancel={handleCancelUnblockConfirm}
+				isProcessing={isUnblocking}
+				dontAskAgainLabel={t("profile_details.dont_ask_again")}
+				dontAskAgainChecked={dontAskAgainChecked}
+				onDontAskAgainChange={setDontAskAgainChecked}
 			/>
 		</PullToRefreshContainer>
 	);

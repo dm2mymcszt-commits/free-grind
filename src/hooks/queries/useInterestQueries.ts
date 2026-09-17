@@ -6,6 +6,7 @@ import {
 	getActiveInterestViewsAccount,
 	interestViewsStore,
 } from "../../services/interestViewsStore";
+import { logViewerDistances, markStatsRecording } from "../../services/statsLog";
 import { fromStoredView, toStoredView, normalizeViews, normalizeTaps, PREVIEW_ID_PREFIX } from "../../pages/app/interest/interestUtils";
 import { useTranslation } from "react-i18next";
 import { DEFAULT_STALE_TIME_MS } from "../../config/ui-constants";
@@ -51,17 +52,21 @@ export function useInterestData() {
 			const listedImageHashes = new Set(
 				listedNow.flatMap((item) => (item.imageHash ? [item.imageHash] : [])),
 			);
+			const listedViewers = normalizedViews
+				.filter((item) => !item.profileId.startsWith(PREVIEW_ID_PREFIX))
+				.filter(
+					(item) =>
+						listedProfileIds.has(item.profileId) ||
+						(item.imageHash != null && listedImageHashes.has(item.imageHash)),
+				);
 			await interestViewsStore.upsertMany(
-				normalizedViews
-					.filter((item) => !item.profileId.startsWith(PREVIEW_ID_PREFIX))
-					.filter(
-						(item) =>
-							listedProfileIds.has(item.profileId) ||
-							(item.imageHash != null && listedImageHashes.has(item.imageHash)),
-					)
-					.map((item) => toStoredView(item)),
+				listedViewers.map((item) => toStoredView(item)),
 				account,
 			);
+			if (getActiveInterestViewsAccount() === account) {
+				markStatsRecording("interest_page");
+				logViewerDistances(listedViewers, "views_list", PREVIEW_ID_PREFIX);
+			}
 
 			// What the server itself is still listing this fetch. `normalizedViews`
 			// above deliberately keeps viewers the server has dropped — that is

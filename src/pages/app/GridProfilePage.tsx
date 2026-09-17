@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	useLocation,
 	useNavigate,
@@ -14,6 +14,13 @@ import { usePreferences } from "../../contexts/PreferencesContext";
 import { decodeGeohash, encodeGeohash } from "../../utils/geohash";
 import { validateMediaHash } from "../../utils/media";
 import { ProfileDetailsModal } from "./gridpage/components/ProfileDetailsModal";
+import {
+	LocationFinderDialog,
+	type LocationFinderEvent,
+	type LocationFinderResult,
+	type LocationFinderStage,
+} from "./gridpage/components/LocationFinderDialog";
+import { isLocationFinderEnabled } from "../../utils/locationFinderSettings";
 import { useTapProfile } from "./gridpage/hooks/useTapProfile";
 import { loadBrowseFiltersDraft } from "./browse-filters-storage";
 import {
@@ -43,6 +50,8 @@ import {
 	GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
 	type GoogleDriveSyncDataAppliedDetail,
 } from "../../services/googleDriveSyncRuntime";
+import { logProfileOpen } from "../../services/statsLog";
+import { isRecordProfileViewsEnabled } from "../../utils/privacy";
 
 const profileRouteParamsSchema = z.object({
 	profileId: z.string().min(1),
@@ -120,6 +129,14 @@ export function GridProfilePage() {
 		null,
 	);
 	const [isLocatingProfile, setIsLocatingProfile] = useState(false);
+	const [isFinderOpen, setIsFinderOpen] = useState(false);
+	const [finderStage, setFinderStage] = useState<LocationFinderStage>("confirm");
+	const [finderTargetId, setFinderTargetId] = useState<string | null>(null);
+	const [finderEvents, setFinderEvents] = useState<LocationFinderEvent[]>([]);
+	const [finderResult, setFinderResult] = useState<LocationFinderResult | null>(null);
+	const [finderStartedAt, setFinderStartedAt] = useState<number | null>(null);
+	const finderEventIdRef = useRef(0);
+	const [locationFinderEnabled] = useState(isLocationFinderEnabled);
 	const [chatContactStatus, setChatContactStatus] = useState<ChatContactIndexRecord | null>(null);
 
 	const [mutatingFavoriteProfileId, setMutatingFavoriteProfileId] = useState<string | null>(
@@ -240,6 +257,10 @@ export function GridProfilePage() {
 		let cancelled = false;
 
 		void apiFunctions.recordProfileView(profileId);
+		logProfileOpen(profileId, {
+			viewRecorded: isRecordProfileViewsEnabled(),
+			surface: "profile_page",
+		});
 
 		const loadProfileDetails = async () => {
 			const cachedProfile = getCachedProfileDetail(profileId);
@@ -506,18 +527,21 @@ export function GridProfilePage() {
         };
     };
 
+    // The finder reports into its pop-up (LocationFinderDialog) rather than
+    // toasts, and is started from there, after its warning.
+    const reportFinder = (tone: LocationFinderEvent["tone"], text: string) => {
+        finderEventIdRef.current += 1;
+        const id = finderEventIdRef.current;
+        setFinderEvents((current) => [...current, { id, tone, text }]);
+    };
+
     const handleTriangleProfile = async (targetProfileId: string) => {
         if (!geohash) {
-            toast.error(t("browse_page.errors.location_required"));
+            reportFinder("error", t("browse_page.errors.location_required"));
             return;
         }
 
         if (isLocatingProfile) {
-            return;
-        }
-
-        const confirmed = window.confirm(t("profile_details.location_finder_confirm"));
-        if (!confirmed) {
             return;
         }
 
@@ -532,7 +556,8 @@ export function GridProfilePage() {
             originalLat = (decoded.lat[0] + decoded.lat[1]) / 2;
             originalLon = (decoded.lon[0] + decoded.lon[1]) / 2;
         } catch (error) {
-            toast.error(
+            reportFinder(
+                "error",
                 error instanceof Error
                     ? error.message
                     : t("browse_page.errors.location_read_failed"),
@@ -579,7 +604,7 @@ export function GridProfilePage() {
         try {
             const initialDist = await getDistanceFromProfile();
             if (initialDist === null) {
-                toast.error(t("profile_details.location_finder_error_distance"));
+                reportFinder("error", t("profile_details.location_finder_error_distance"));
                 return;
             }
 
@@ -592,7 +617,7 @@ export function GridProfilePage() {
             // Degrees per meter (approximate)
             let offset = (initialDist*1.5) / 111320;
 
-            toast.success(t("profile_details.location_finder_start", { distance: Math.round(initialDist), rounds }));
+            reportFinder("info", t("profile_details.location_finder_start", { distance: Math.round(initialDist), rounds }));
 
             for (let i = 0; i < rounds; i++) {
                 const points = [
@@ -616,14 +641,14 @@ export function GridProfilePage() {
                     currentLon = estimate.lon;
                     offset /= 3; // Zoom in for the next round
 
-                    toast.success(t("profile_details.location_finder_round_complete", {
+                    reportFinder("info", t("profile_details.location_finder_round_complete", {
                         round: i + 1,
                         lat: currentLat.toFixed(6),
                         lon: currentLon.toFixed(6),
                         distance: Math.round(results[0].dist)
                     }));
 
-                    toast.success(t("profile_details.location_finder_error_estimate", {
+                    reportFinder("info", t("profile_details.location_finder_error_estimate", {
                         round: i + 1,
                         error: Math.round(offset * 111320)
                     }));
@@ -631,25 +656,52 @@ export function GridProfilePage() {
             }
 
             const finalCoords = `${currentLat.toFixed(6)}, ${currentLon.toFixed(6)}`;
-            toast.success(t("profile_details.location_finder_final_location", {
+            reportFinder("success", t("profile_details.location_finder_final_location", {
                 lat: currentLat.toFixed(6),
                 lon: currentLon.toFixed(6),
                 error: Math.round(offset * 111320)
             }));
+            setFinderResult({ lat: currentLat, lon: currentLon, errorMeters: Math.round(offset * 111320) });
 
             try {
                 await navigator.clipboard.writeText(finalCoords);
-                toast.success(t("profile_details.location_finder_location_copied"));
+                reportFinder("info", t("profile_details.location_finder_location_copied"));
             } catch (err) {
                 appLog.error("Failed to copy location to clipboard", err);
             }
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : t("profile_details.location_finder_error_general"));
+            reportFinder("error", error instanceof Error ? error.message : t("profile_details.location_finder_error_general"));
         } finally {
             await waitMs(10000);
             await putServerLocation(originalLat, originalLon, geohash);
             setIsLocatingProfile(false);
         }
+    };
+
+    const openLocationFinder = (targetProfileId: string) => {
+        // A run already going (possibly hidden) is shown, not restarted.
+        if (!isLocatingProfile) {
+            setFinderTargetId(targetProfileId);
+            setFinderStage("confirm");
+            setFinderEvents([]);
+            setFinderResult(null);
+            setFinderStartedAt(null);
+        }
+        setIsFinderOpen(true);
+    };
+
+    const startLocationFinder = async () => {
+        if (!finderTargetId) return;
+        setFinderStage("running");
+        setFinderStartedAt(Date.now());
+        await handleTriangleProfile(finderTargetId);
+        setFinderStage("finished");
+        // Hidden during the run: bring the result back up.
+        setIsFinderOpen(true);
+    };
+
+    const closeLocationFinder = () => {
+        setIsFinderOpen(false);
     };
 
 	const handleTagClick = async (tag: string) => {
@@ -674,7 +726,7 @@ export function GridProfilePage() {
 				onTagClick={handleTagClick}
 				onSendQuickMessage={handleSendQuickMessage}
 				onSendProfilePhotoReply={handleSendProfilePhotoReply}
-				onTriangleProfile={handleTriangleProfile}
+				onTriangleProfile={locationFinderEnabled ? openLocationFinder : undefined}
 				onBlockProfile={handleBlockProfile}
 				onUnblockProfile={handleUnblockProfile}
 				onToggleFavoriteProfile={handleToggleFavoriteProfile}
@@ -697,6 +749,18 @@ export function GridProfilePage() {
 				chatContactStatus={chatContactStatus}
 				genderOptions={genderOptions}
 				pronounOptions={pronounOptions}
+			/>
+
+			<LocationFinderDialog
+				isOpen={isFinderOpen}
+				stage={finderStage}
+				profileName={activeProfile?.displayName?.trim() || (finderTargetId ? `Profile ${finderTargetId}` : "")}
+				distanceMeters={activeProfile?.distance}
+				events={finderEvents}
+				result={finderResult}
+				startedAt={finderStartedAt}
+				onStart={() => void startLocationFinder()}
+				onClose={closeLocationFinder}
 			/>
 
 			<ConfirmDialog

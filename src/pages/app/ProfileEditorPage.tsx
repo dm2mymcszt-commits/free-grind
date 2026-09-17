@@ -57,6 +57,8 @@ import {
 	profileSchema,
 	profileToDraft,
 } from "./profile-editor/profileEditorUtils";
+import { logProfileEdit } from "../../services/statsLog";
+import { describePhotoChange } from "../../utils/statsLogRules";
 
 // Grindr caps how many of each of these a profile can carry — enforced
 // client-side here since the multi-select toggle is the only way to add one.
@@ -532,6 +534,7 @@ export function ProfileEditorPage() {
 		}
 
 		setIsSaving(true);
+		const editedFields: string[] = [];
 
 		try {
 			if (hasProfileChanges) {
@@ -611,6 +614,7 @@ export function ProfileEditorPage() {
 					}
 
 					await apiFunctions.replaceMyProfile(mergedProfile);
+					editedFields.push(...Object.keys(payload));
 
 					setRawProfile(mergedProfile);
 					// Update local profile state immediately
@@ -626,6 +630,7 @@ export function ProfileEditorPage() {
 
 			if (hasVisitingModeChanges) {
 				await apiFunctions.updateVisitingMode(draftVisitingMode);
+				editedFields.push("visitingMode");
 				setSavedVisitingMode(draftVisitingMode);
 			}
 
@@ -642,6 +647,8 @@ export function ProfileEditorPage() {
 					: t("profile_editor.toasts.error_update");
 			toast.error(message);
 		} finally {
+			// Whatever did reach Grindr, even if a later step failed.
+			logProfileEdit(editedFields);
 			setIsSaving(false);
 		}
 	};
@@ -671,6 +678,7 @@ export function ProfileEditorPage() {
 					primaryImageHash: primaryImageHash ?? null,
 					secondaryImageHashes,
 				});
+				logProfileEdit(describePhotoChange(profilePhotoHashes, sanitized));
 
 				const deletedHashes =
 					options?.deletedHashes?.filter((hash) => validateMediaHash(hash)) ??
@@ -700,7 +708,7 @@ export function ProfileEditorPage() {
 				setIsSavingPhotos(false);
 			}
 		},
-		[apiFunctions, loadProfile, userId, t],
+		[apiFunctions, loadProfile, profilePhotoHashes, userId, t],
 	);
 
 	const handleUploadPhoto = (

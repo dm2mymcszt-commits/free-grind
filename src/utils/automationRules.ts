@@ -3,6 +3,7 @@ import { getForbiddenWords, notifyAutoBlock } from "./autoblock";
 import { normalizeWholeText, parseKeywordList } from "./keywordList";
 import { appLog } from "./logger";
 import type { ProfileDetail } from "../types/grid";
+import type { StatsBlockReason } from "./statsLogRules";
 
 // ---------------------------------------------------------------------------
 // Custom automation rules — user-defined "when X then Y" chat automations,
@@ -265,25 +266,51 @@ export async function clearAutomationSeenHistoryForSender(senderId: string): Pro
 // per-condition keyword list rather than the one global forbidden-words
 // setting, and are checked rarely enough (rule evaluation, not every
 // keystroke) that there's no need for autoblock.ts's regex cache.
-function textContainsKeyword(text: string | null | undefined, keywordsCsv: string): boolean {
-	if (!text) return false;
+function matchedKeyword(text: string | null | undefined, keywordsCsv: string): string | null {
+	if (!text) return null;
 	const entries = parseKeywordList(keywordsCsv);
 
 	// Quoted entries match only when the whole text is that entry.
 	const wholeText = normalizeWholeText(text);
-	if (entries.some((entry) => entry.mode === "whole" && normalizeWholeText(entry.text) === wholeText)) {
-		return true;
-	}
+	const whole = entries.find(
+		(entry) => entry.mode === "whole" && normalizeWholeText(entry.text) === wholeText,
+	);
+	if (whole) return whole.text;
 
 	const keywords = entries
 		.filter((entry) => entry.mode === "anywhere")
 		.map((entry) => entry.text.toLowerCase());
-	if (keywords.length === 0) return false;
+	if (keywords.length === 0) return null;
 
 	const sorted = [...keywords].sort((a, b) => b.length - a.length);
 	const pattern = sorted.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
 	const regex = new RegExp(`(?:^|\\W)(${pattern})(?:$|\\W)`, "i");
-	return regex.test(text.toLowerCase());
+	return regex.exec(text.toLowerCase())?.[1] ?? null;
+}
+
+function textContainsKeyword(text: string | null | undefined, keywordsCsv: string): boolean {
+	return matchedKeyword(text, keywordsCsv) !== null;
+}
+
+/** The keyword a matched rule was caught by, when a keyword condition caught it. */
+function ruleMatchedKeyword(
+	rule: AutomationRule,
+	profile: AutomationProfileSnapshot | null,
+	messageText: string | null,
+): string | null {
+	for (const condition of rule.conditions) {
+		if (!("keywords" in condition) || condition.negate) continue;
+		const keywords = condition.useForbiddenList ? getForbiddenWords() : condition.keywords;
+		const text =
+			condition.type === "bio_contains_keyword"
+				? profile?.aboutMe
+				: condition.type === "display_name_contains_keyword"
+					? profile?.displayName
+					: messageText;
+		const keyword = matchedKeyword(text, keywords);
+		if (keyword) return keyword;
+	}
+	return null;
 }
 
 function conditionMatches(
@@ -320,7 +347,8 @@ function conditionMatches(
 }
 
 export interface AutomationActionRunner {
-	blockProfile: (profileId: string) => Promise<unknown>;
+	/** `reason` names the rule that fired, for the Stats block log. */
+	blockProfile: (profileId: string, reason?: StatsBlockReason) => Promise<unknown>;
 	sendText: (payload: { targetProfileId: number; text: string }) => Promise<unknown>;
 	shareAlbum: (payload: {
 		albumId: number;
@@ -405,7 +433,13 @@ export async function runAutomationRulesForSender(
 		for (const action of rule.actions) {
 			try {
 				if (action.type === "block") {
-					await runner.blockProfile(senderId);
+					await runner.blockProfile(senderId, {
+						kind: "rule",
+						label: rule.name || "Automation rule",
+						detail: ruleMatchedKeyword(rule, profile, messageText ?? null),
+						ruleId: rule.id,
+						ruleName: rule.name || null,
+					});
 					result.blocked = true;
 					notifyAutoBlock(profile?.displayName || senderId, rule.name || "Automation rule");
 				} else if (action.type === "send_message") {

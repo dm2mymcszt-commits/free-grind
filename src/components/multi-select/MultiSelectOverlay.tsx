@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { useApiFunctions } from "../../hooks/useApiFunctions";
 import { deleteConversationOnly } from "../../services/chatDb";
 import { markConversationDeleteHandled } from "../../services/conversationArchive";
+import { logBlockEvent } from "../../services/statsLog";
 
 export function MultiSelectOverlay() {
     const { isActive, selectedItems, viewType, deactivateMode, selectableItems, setSelectedItems } = useMultiSelect();
@@ -105,6 +106,7 @@ export function MultiSelectOverlay() {
                         const targetId = item.profileId || item.id;
                         try {
                             await api.blockProfile(targetId);
+                            logBlockEvent({ eventType: "block", profileId: targetId, method: "manual", source: "multi_select" });
                             successCount++;
                         } catch (e) {
                             console.error(`Failed to block profile ${targetId}`, e);

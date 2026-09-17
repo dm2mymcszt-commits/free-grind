@@ -38,6 +38,7 @@ import { loadAutomationRulesCache } from "../utils/automationRules";
 import { loadMediaSettingsCache } from "../utils/mediaSettings";
 import { loadPrivacyCache } from "../utils/privacy";
 import { loadSeenCache } from "../services/seenStore";
+import { loadStatsSettingsCache } from "../services/statsLog";
 import { runInboxSync } from "../services/inboxSync";
 import { runTapsAutomationSync } from "../services/tapsSync";
 import { syncSavedPhrasesFromServer } from "../services/savedPhrases";
@@ -401,6 +402,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 				loadMediaSettingsCache(),
 				loadPrivacyCache(),
 				loadSeenCache(),
+				loadStatsSettingsCache(),
 			]);
 			if (!isCurrentSetup() || !activeStoresMatch()) return;
 			completedProfileSetupRef.current = profileId;

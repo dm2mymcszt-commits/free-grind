@@ -82,6 +82,7 @@ import {
 	preserveAndAutoBlockConversation,
 	withPreservingBlock,
 } from "../services/autoBlockConversation";
+import { logBlockEvent, type StatsBlockReason } from "../services/statsLog";
 
 let cachedIsAndroid: boolean | null = null;
 
@@ -432,6 +433,13 @@ export function ChatRealtimeBridge() {
 
 			try {
 				await apiFunctions.blockProfile(pidStr);
+				logBlockEvent({
+					eventType: "block",
+					profileId: pidStr,
+					method: "auto",
+					source: "counter_block",
+					reason: { kind: "counter_block", label: "They blocked you" },
+				});
 				toast.success(
 					`🛡️ Counter-blocked ${name} (they blocked you)!`,
 					{ id: `counter-block-${pidStr}` }
@@ -783,7 +791,7 @@ export function ChatRealtimeBridge() {
 							);
 							const autoBlockRunner = {
 								...apiFunctions,
-								blockProfile: (targetProfileId: string) =>
+								blockProfile: (targetProfileId: string, reason?: StatsBlockReason) =>
 									preserveAndAutoBlockConversation({
 										conversation: realtimeConversation,
 										profileId: targetProfileId,
@@ -797,6 +805,7 @@ export function ChatRealtimeBridge() {
 										// Automation rules mark a sender seen before acting, so a
 										// deferred block here would never be retried.
 										mayDeferOnIncompleteCapture: false,
+										stats: { source: "automation", reason },
 									}),
 							};
 							const isWhitelisted = isProfileAutoblockWhitelisted(pidStr) ||
@@ -896,6 +905,7 @@ export function ChatRealtimeBridge() {
 											userId: userIdRef.current,
 											getAlbum: (albumId) => apiFunctions.getAlbum(albumId),
 											blockProfile: () => apiFunctions.blockProfile(pidStr),
+											stats: { source: "live_chat", reason: { label: blockReason } },
 										});
 										void notifyAutoBlock(detectedDisplayName || pidStr, blockReason);
 										continue;

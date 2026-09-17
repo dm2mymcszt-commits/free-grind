@@ -14,6 +14,7 @@ import { geohashSchema } from "../utils/geohash";
 import { UNIT_PRESETS, type UnitsPreset } from "../utils/units";
 import { REVEAL_STRENGTH_SUBTLE, REVEAL_STRENGTH_PRONOUNCED, type RevealStrength } from "../config/ui-constants";
 import { getSetting, setSetting } from "../services/chatDb";
+import { logLocationChange } from "../services/statsLog";
 import {
 	GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
 	type GoogleDriveSyncDataAppliedDetail,
@@ -547,6 +548,15 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
 					locationName: preferences.locationName ?? null,
 					useAutoLocation: preferences.useAutoLocation,
 				} satisfies StoredLocationPrefs);
+				// Only this path counts as moving: a location that arrives through
+				// Google Drive sync was already logged by the device that set it.
+				if (newValues.geohash !== undefined && newValues.geohash !== currentState.geohash) {
+					logLocationChange({
+						geohash: preferences.geohash,
+						name: preferences.locationName,
+						automatic: preferences.useAutoLocation,
+					});
+				}
 			}
 
 			// Persist the rest to localStorage (geohash/locationName/useAutoLocation excluded, see above)

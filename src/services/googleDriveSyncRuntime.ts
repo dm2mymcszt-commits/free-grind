@@ -13,6 +13,7 @@ import {
 import { createGoogleDriveSyncControllerAdapter } from "./googleDriveSyncController";
 import { SAVED_PHRASES_UPDATED_EVENT } from "./savedPhrases";
 import { loadSeenCache } from "./seenStore";
+import { loadStatsSettingsCache } from "./statsLog";
 import { loadAutomationRulesCache } from "../utils/automationRules";
 import { loadAutomationCache } from "../utils/autoblock";
 import { appLog } from "../utils/logger";
@@ -157,6 +158,7 @@ const defaultRemoteApplyDependencies: GoogleDriveRemoteApplyRefreshDependencies 
 		loadAutomationRulesCache,
 		loadPrivacyCache,
 		loadSeenCache,
+		loadStatsSettingsCache,
 	],
 	dispatchApplied: dispatchRemoteApply,
 	reportCacheError: (error, loaderIndex) => {

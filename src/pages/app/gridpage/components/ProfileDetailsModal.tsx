@@ -238,8 +238,8 @@ export function ProfileDetailsModal({
 	const effectiveTapVisualState = isTappingProfile ? "single" : visualStateValue;
 	const isTapActive = effectiveTapVisualState !== "none";
 	const isTapDisabled = isOwnProfile || !onTapProfile || isTappingProfile || isTapBlocked;
-	const isTriangleDisabled =
-		!onTriangleProfile || !messageProfileId || isLocatingProfile;
+	// Stays tappable while a run is going: it reopens the finder's pop-up.
+	const isTriangleDisabled = !onTriangleProfile || !messageProfileId;
 	const tapButtonClassName =
 		isTapActive
 			? "inline-flex h-16 w-16 items-center justify-center rounded-full border-2 border-[var(--accent)] bg-[var(--surface)] text-4xl leading-none text-[var(--text)] hover:brightness-110 overflow-hidden relative"
@@ -961,16 +961,19 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 	const banBio = activeProfile?.aboutMe?.trim() ?? "";
 	const actionsMenuItems = (
 		<>
-			<button
-				type="button"
-				disabled={isTriangleDisabled}
-				onClick={() => { setIsActionsMenuOpen(false); if (messageProfileId) onTriangleProfile?.(String(messageProfileId)); }}
-				className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text)] transition hover:bg-[var(--surface-2)] disabled:opacity-50"
-			>
-				<Triangle className="mr-2 h-4 w-4 opacity-70" />
-				{isLocatingProfile ? t("profile_details.locating") : t("profile_details.locate")}
-			</button>
-			{banName || banBio ? <div className="my-1 h-px bg-[var(--border)]" /> : null}
+			{/* Left out entirely when the location finder is switched off in Settings. */}
+			{onTriangleProfile ? (
+				<button
+					type="button"
+					disabled={isTriangleDisabled}
+					onClick={() => { setIsActionsMenuOpen(false); if (messageProfileId) onTriangleProfile(String(messageProfileId)); }}
+					className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text)] transition hover:bg-[var(--surface-2)] disabled:opacity-50"
+				>
+					<Triangle className="mr-2 h-4 w-4 opacity-70" />
+					{isLocatingProfile ? t("profile_details.locating") : t("profile_details.locate")}
+				</button>
+			) : null}
+			{onTriangleProfile && (banName || banBio) ? <div className="my-1 h-px bg-[var(--border)]" /> : null}
 			{banName ? (
 				<button
 					type="button"

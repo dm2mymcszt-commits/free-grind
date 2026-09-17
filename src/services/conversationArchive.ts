@@ -25,6 +25,7 @@ import type { ArchivedReason, BlockState } from "../types/chat-db";
 import type { Message } from "../types/messages";
 import { appLog } from "../utils/logger";
 import { consumeSelfBlockAction } from "../utils/selfBlockActions";
+import { logBlockEvent } from "./statsLog";
 
 // A synthetic, locally-generated block/unblock marker (see chatDb.insertSystemMessage)
 // was inserted — dispatched so any mounted chat UI can append it live.
@@ -877,6 +878,13 @@ export async function reconcileCounterBlocks(
 	for (const [profileId, conversationId] of targets) {
 		try {
 			await options.blockProfile(profileId);
+			logBlockEvent({
+				eventType: "block",
+				profileId,
+				method: "auto",
+				source: "counter_block",
+				reason: { kind: "counter_block", label: "They blocked you" },
+			});
 			counterBlocked.push(profileId);
 			appLog.info(
 				`[counter-block] blocked ${profileId} back for ${conversationId}`,

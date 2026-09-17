@@ -23,6 +23,11 @@ import {
 	applySelfBlockAction,
 	markConversationDeleteHandled,
 } from "./conversationArchive";
+import {
+	logAutoBlock,
+	type StatsAutoBlockContext,
+	type StatsBlockReason,
+} from "./statsLog";
 
 type PreserveAndAutoBlockOptions = {
 	conversation: ConversationEntry;
@@ -57,6 +62,8 @@ type PreserveAndAutoBlockOptions = {
 	 * with a partial capture.
 	 */
 	mayDeferOnIncompleteCapture?: boolean;
+	/** Where the block came from and why, for the Stats block log. */
+	stats?: StatsAutoBlockContext;
 };
 
 // The shared inbox service and BackgroundInboxScanner can notice the same
@@ -239,6 +246,7 @@ export function preserveAndAutoBlockConversation(
 		markSelfBlockAction(conversationId, "block");
 		markConversationDeleteHandled(conversationId);
 		await options.blockProfile();
+		logAutoBlock(options.profileId, options.stats);
 		await applySelfBlockAction(options.profileId, "block");
 	})();
 
@@ -285,6 +293,7 @@ type PreserveAndAutoBlockProfileOptions = {
 	 * asked for — see ApplySelfBlockActionOptions.
 	 */
 	materializeMissingConversation?: boolean;
+	stats?: StatsAutoBlockContext;
 };
 
 /**
@@ -309,6 +318,7 @@ export async function preserveAndAutoBlockProfile(
 		// No conversation exists for this profile, so there is no history,
 		// album or attachment that blocking could destroy.
 		await options.blockProfile();
+		logAutoBlock(profileId, options.stats);
 		await applySelfBlockAction(profileId, "block", {
 			materializeMissingConversation: options.materializeMissingConversation,
 		});
@@ -325,6 +335,7 @@ export async function preserveAndAutoBlockProfile(
 		getAlbum: options.getAlbum,
 		blockProfile: options.blockProfile,
 		mayDeferOnIncompleteCapture: options.mayDeferOnIncompleteCapture,
+		stats: options.stats,
 	});
 }
 
@@ -472,7 +483,7 @@ function buildMinimalConversationEntry(
  * conversation first. Automation rules take the whole object as their
  * runner, and every background trigger that can block through one — a new
  * chat, an incoming message, a tap, a view — must go through the preserving
- * path, not the raw endpoint.
+ * path, not the raw endpoint. The rule that fired arrives as `reason`.
  */
 export function withPreservingBlock<
 	T extends {
@@ -483,8 +494,9 @@ export function withPreservingBlock<
 >(api: T, userId: number | null): T {
 	return {
 		...api,
-		blockProfile: (profileId: string) =>
+		blockProfile: (profileId: string, reason?: StatsBlockReason) =>
 			preserveAndAutoBlockProfile({
+				stats: { source: "automation", reason },
 				profileId,
 				userId,
 				listMessages: (conversationId) => api.listMessages({ conversationId }),

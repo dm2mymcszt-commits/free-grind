@@ -94,6 +94,7 @@ export function BackgroundInboxScanner() {
                     userId,
                     getAlbum: (albumId) => api.getAlbum(albumId),
                     blockProfile: () => api.blockProfile(profileId),
+                    stats: { source: "inbox_scan", reason: { label: reason } },
                 });
                 void notifyAutoBlock(displayName, reason);
                 window.dispatchEvent(new Event("fg-refresh-inbox"));

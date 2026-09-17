@@ -129,6 +129,12 @@ const TABLE_SPECS: TableSpec[] = [
 	{ section: "core", table: "saved_phrases", source: "chatDb", pageSize: 2000, sinceColumn: "created_at" },
 	{ section: "core", table: "saved_locations", source: "chatDb", pageSize: 2000, sinceColumn: "created_at" },
 	{ section: "core", table: "block_events", source: "chatDb", pageSize: 2000, sinceColumn: "created_at" },
+	{ section: "core", table: "stats_block_log", source: "chatDb", pageSize: 2000, sinceColumn: "created_at" },
+	{ section: "core", table: "stats_location_log", source: "chatDb", pageSize: 2000, sinceColumn: "created_at" },
+	{ section: "core", table: "stats_coverage_log", source: "chatDb", pageSize: 5000, sinceColumn: "created_at" },
+	{ section: "core", table: "stats_profile_edit_log", source: "chatDb", pageSize: 2000, sinceColumn: "created_at" },
+	{ section: "core", table: "stats_profile_open_log", source: "chatDb", pageSize: 2000, sinceColumn: "created_at" },
+	{ section: "core", table: "stats_view_distance_log", source: "chatDb", pageSize: 2000, sinceColumn: "created_at" },
 	{
 		section: "core",
 		table: "albums",

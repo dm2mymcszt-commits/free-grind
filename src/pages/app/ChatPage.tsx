@@ -23,6 +23,7 @@ import { ChatApiError } from "../../services/chatService";
 import { showAlbumApiWarning } from "../../utils/albumWarning";
 import { setConversationDirectory } from "../../services/conversationDirectory";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
+import { TextInputDialog } from "../../components/ui/text-input-dialog";
 import * as chatDb from "../../services/chatDb";
 import type { ArchivedReason } from "../../types/chat-db";
 import {
@@ -561,6 +562,12 @@ export function ChatPage() {
 	const [localNicknamesByProfileId, setLocalNicknamesByProfileId] = useState<
 		Record<string, string>
 	>({});
+	const [nicknameEdit, setNicknameEdit] = useState<{
+		profileKey: string;
+		initialValue: string;
+		hasNickname: boolean;
+	} | null>(null);
+	const [isSavingNickname, setIsSavingNickname] = useState(false);
 	const [chatContactIndexByProfileId, setChatContactIndexByProfileId] = useState<
 		Record<string, ChatContactIndexRecord>
 	>({});
@@ -5007,18 +5014,22 @@ export function ChatPage() {
 		],
 	);
 
+	// Asked through TextInputDialog: window.prompt never appears in the iOS app.
 	const editLocalNicknameFromChat = useCallback(
-		async (profileId: number, defaultName: string) => {
+		(profileId: number, defaultName: string) => {
 			const profileKey = String(profileId);
 			const existingNickname = localNicknamesByProfileId[profileKey] ?? "";
-			const input = window.prompt(
-				t("chat.nicknames.prompt"),
-				existingNickname || defaultName,
-			);
-			if (input === null) {
-				return;
-			}
+			setNicknameEdit({
+				profileKey,
+				initialValue: existingNickname || defaultName,
+				hasNickname: existingNickname !== "",
+			});
+		},
+		[localNicknamesByProfileId],
+	);
 
+	const saveLocalNickname = useCallback(
+		async (profileKey: string, input: string) => {
 			const normalized = input.trim();
 			try {
 				await setLocalNicknameForProfile(profileKey, normalized || null);
@@ -5036,6 +5047,7 @@ export function ChatPage() {
 						? t("chat.nicknames.saved")
 						: t("chat.nicknames.cleared"),
 				);
+				return true;
 			} catch (error) {
 				appLog.warn("[chat] failed to save local nickname", error);
 				const fallbackMessage = t("chat.nicknames.save_failed");
@@ -5048,9 +5060,10 @@ export function ChatPage() {
 				toast.error(
 					message || fallbackMessage,
 				);
+				return false;
 			}
 		},
-		[localNicknamesByProfileId, t],
+		[t],
 	);
 
 	const sendTextMessage = useCallback(
@@ -7021,6 +7034,25 @@ export function ChatPage() {
 				isProcessing={isNukingArchived}
 				onConfirm={handleNukeAllArchived}
 				onCancel={() => setIsNukeArchivedOpen(false)}
+			/>
+
+			<TextInputDialog
+				isOpen={nicknameEdit !== null}
+				title={nicknameEdit?.hasNickname ? t("chat.nicknames.edit") : t("chat.nicknames.set")}
+				message={t("chat.nicknames.prompt")}
+				initialValue={nicknameEdit?.initialValue ?? ""}
+				confirmLabel={t("common.save", { defaultValue: "Save" })}
+				cancelLabel={t("common.cancel", { defaultValue: "Cancel" })}
+				isProcessing={isSavingNickname}
+				onConfirm={async (value) => {
+					if (!nicknameEdit) return;
+					setIsSavingNickname(true);
+					const saved = await saveLocalNickname(nicknameEdit.profileKey, value);
+					setIsSavingNickname(false);
+					// A failed save stays open, so the name typed is not lost.
+					if (saved) setNicknameEdit(null);
+				}}
+				onCancel={() => setNicknameEdit(null)}
 			/>
 		</section>
 	);

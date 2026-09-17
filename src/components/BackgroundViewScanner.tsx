@@ -33,6 +33,7 @@ import {
 	isProfileAutoblockWhitelisted,
 } from "../utils/privacy";
 import { appLog } from "../utils/logger";
+import { logViewerDistances, markStatsRecording } from "../services/statsLog";
 import {
 	VIEW_RECEIVED_EVENT,
 	type ViewReceivedDetail,
@@ -251,6 +252,16 @@ export function BackgroundViewScanner() {
 
 				const profile = profileDetail as AutoBlockProfile;
 				const displayName = profile.name || profile.displayName || event.fallbackName || `Profile ${profileId}`;
+				// The full profile carries a distance even when the views list does not.
+				logViewerDistances(
+					[{
+						profileId,
+						timestamp: event.timestamp,
+						distanceMeters: profile.distanceMeters ?? profile.distance,
+					}],
+					"profile",
+					PREVIEW_ID_PREFIX,
+				);
 
 				// Preserve the existing "Disable Auto-Block for Active Chats" promise
 				// for view-triggered blocking too. If the conversation is already local,
@@ -283,6 +294,7 @@ export function BackgroundViewScanner() {
 					listMessages: (conversationId) => api.listMessages({ conversationId }),
 					getAlbum: (albumId) => api.getAlbum(albumId),
 					blockProfile: () => api.blockProfile(profileId),
+					stats: { source: "view_scan", reason: { label: reason } },
 					// Someone who only ever looked at the profile has no chat to
 					// preserve; inventing one would file them under Archived Chats
 					// as a conversation that never happened.
@@ -360,6 +372,13 @@ export function BackgroundViewScanner() {
 						await interestViewsStore.upsertMany(currentViewers.map(toStoredView), account);
 						if (isCancelled) return;
 						window.localStorage.setItem("fg-view-scanner-last-run", Date.now().toString());
+						if (getActiveInterestViewsAccount() === account) {
+							markStatsRecording("view_scan");
+						}
+					}
+
+					if (getActiveInterestViewsAccount() === account) {
+						logViewerDistances(currentViewers, "views_list", PREVIEW_ID_PREFIX);
 					}
 
 					if (autoBlockEnabled && userId != null) {

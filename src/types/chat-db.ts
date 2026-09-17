@@ -178,5 +178,12 @@ export type FullDbExport = {
 		// Absent from files written by older builds; the importer skips any
 		// table key it doesn't find, so those still import cleanly.
 		block_events: Record<string, unknown>[];
+		// Stats logs — also absent from older files, skipped the same way.
+		stats_block_log: Record<string, unknown>[];
+		stats_location_log: Record<string, unknown>[];
+		stats_coverage_log: Record<string, unknown>[];
+		stats_profile_edit_log: Record<string, unknown>[];
+		stats_profile_open_log: Record<string, unknown>[];
+		stats_view_distance_log: Record<string, unknown>[];
 	};
 };

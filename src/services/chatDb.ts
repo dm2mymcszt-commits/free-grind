@@ -383,6 +383,108 @@ async function getDb(): Promise<Database> {
 				await db.execute(
 					"CREATE INDEX IF NOT EXISTS idx_block_events_timestamp ON block_events(timestamp DESC)",
 				);
+
+				// Stats logs (services/statsLog.ts). Append-only records the Stats
+				// page reads and nothing else does, written only while Stats is on.
+				// Every id carries the writing device's id, so two devices never
+				// overwrite each other's rows through Google Drive sync; the page
+				// collapses the same event recorded by both.
+				await db.execute(`
+					CREATE TABLE IF NOT EXISTS stats_block_log (
+						id TEXT PRIMARY KEY,
+						event_type TEXT NOT NULL,
+						profile_id TEXT,
+						timestamp INTEGER NOT NULL,
+						method TEXT NOT NULL,
+						source TEXT NOT NULL,
+						reason_kind TEXT,
+						reason_detail TEXT,
+						reason_label TEXT,
+						rule_id TEXT,
+						rule_name TEXT,
+						device_id TEXT NOT NULL,
+						device_name TEXT,
+						created_at INTEGER NOT NULL
+					)
+				`);
+				await db.execute(
+					"CREATE INDEX IF NOT EXISTS idx_stats_block_log_timestamp ON stats_block_log(timestamp)",
+				);
+				await db.execute(`
+					CREATE TABLE IF NOT EXISTS stats_location_log (
+						id TEXT PRIMARY KEY,
+						timestamp INTEGER NOT NULL,
+						geohash TEXT NOT NULL,
+						lat REAL,
+						lon REAL,
+						name TEXT,
+						automatic INTEGER NOT NULL DEFAULT 0,
+						device_id TEXT NOT NULL,
+						device_name TEXT,
+						created_at INTEGER NOT NULL
+					)
+				`);
+				await db.execute(
+					"CREATE INDEX IF NOT EXISTS idx_stats_location_log_timestamp ON stats_location_log(timestamp)",
+				);
+				await db.execute(`
+					CREATE TABLE IF NOT EXISTS stats_coverage_log (
+						id TEXT PRIMARY KEY,
+						hour_start INTEGER NOT NULL,
+						first_at INTEGER NOT NULL,
+						source TEXT NOT NULL,
+						device_id TEXT NOT NULL,
+						device_name TEXT,
+						created_at INTEGER NOT NULL
+					)
+				`);
+				await db.execute(
+					"CREATE INDEX IF NOT EXISTS idx_stats_coverage_log_hour ON stats_coverage_log(hour_start)",
+				);
+				await db.execute(`
+					CREATE TABLE IF NOT EXISTS stats_profile_edit_log (
+						id TEXT PRIMARY KEY,
+						timestamp INTEGER NOT NULL,
+						fields_json TEXT NOT NULL,
+						device_id TEXT NOT NULL,
+						device_name TEXT,
+						created_at INTEGER NOT NULL
+					)
+				`);
+				await db.execute(`
+					CREATE TABLE IF NOT EXISTS stats_profile_open_log (
+						id TEXT PRIMARY KEY,
+						profile_id TEXT NOT NULL,
+						timestamp INTEGER NOT NULL,
+						view_recorded INTEGER NOT NULL DEFAULT 0,
+						surface TEXT NOT NULL,
+						device_id TEXT NOT NULL,
+						device_name TEXT,
+						created_at INTEGER NOT NULL
+					)
+				`);
+				await db.execute(
+					"CREATE INDEX IF NOT EXISTS idx_stats_profile_open_log_timestamp ON stats_profile_open_log(timestamp)",
+				);
+				// Keyed by the view itself rather than the device: the view time
+				// comes from Grindr, so two devices that see the same view write
+				// the same id and it is stored once.
+				await db.execute(`
+					CREATE TABLE IF NOT EXISTS stats_view_distance_log (
+						id TEXT PRIMARY KEY,
+						profile_id TEXT NOT NULL,
+						view_timestamp INTEGER NOT NULL,
+						observed_at INTEGER NOT NULL,
+						distance_meters REAL NOT NULL,
+						source TEXT NOT NULL,
+						device_id TEXT NOT NULL,
+						device_name TEXT,
+						created_at INTEGER NOT NULL
+					)
+				`);
+				await db.execute(
+					"CREATE INDEX IF NOT EXISTS idx_stats_view_distance_log_view ON stats_view_distance_log(view_timestamp)",
+				);
 			});
 
 			return db;
@@ -2428,7 +2530,103 @@ const FULL_EXPORT_TABLES: {
 			"display_name", "avatar_media_hash", "created_at",
 		],
 	},
+	{
+		name: "stats_block_log",
+		primaryKey: "id",
+		columns: [
+			"id", "event_type", "profile_id", "timestamp", "method", "source",
+			"reason_kind", "reason_detail", "reason_label", "rule_id", "rule_name",
+			"device_id", "device_name", "created_at",
+		],
+	},
+	{
+		name: "stats_location_log",
+		primaryKey: "id",
+		columns: [
+			"id", "timestamp", "geohash", "lat", "lon", "name", "automatic",
+			"device_id", "device_name", "created_at",
+		],
+	},
+	{
+		name: "stats_coverage_log",
+		primaryKey: "id",
+		columns: [
+			"id", "hour_start", "first_at", "source", "device_id", "device_name",
+			"created_at",
+		],
+	},
+	{
+		name: "stats_profile_edit_log",
+		primaryKey: "id",
+		columns: ["id", "timestamp", "fields_json", "device_id", "device_name", "created_at"],
+	},
+	{
+		name: "stats_profile_open_log",
+		primaryKey: "id",
+		columns: [
+			"id", "profile_id", "timestamp", "view_recorded", "surface",
+			"device_id", "device_name", "created_at",
+		],
+	},
+	{
+		name: "stats_view_distance_log",
+		primaryKey: "id",
+		columns: [
+			"id", "profile_id", "view_timestamp", "observed_at", "distance_meters",
+			"source", "device_id", "device_name", "created_at",
+		],
+	},
 ];
+
+export type StatsLogTable =
+	| "stats_block_log"
+	| "stats_location_log"
+	| "stats_coverage_log"
+	| "stats_profile_edit_log"
+	| "stats_profile_open_log"
+	| "stats_view_distance_log";
+
+/**
+ * Appends rows to a Stats log. Rows are immutable once written, so an id that
+ * already exists is left as it is: the coverage log relies on that to record
+ * each hour once no matter how many sweeps land in it, and the distance log
+ * to store a view once however many times it is listed.
+ */
+export async function insertStatsLogRows(
+	name: StatsLogTable,
+	rows: PortableTableRow[],
+): Promise<void> {
+	if (rows.length === 0) return;
+	const table = requirePortableTable(name);
+	const db = await getDb();
+	await executeWithLockRetry(db, `insert-${table.name}`, async () => {
+		for (const row of rows) {
+			const columns = table.columns.filter((column) => row[column] !== undefined);
+			const placeholders = columns.map((_, index) => `$${index + 1}`).join(", ");
+			await db.execute(
+				`INSERT INTO ${table.name} (${columns.join(", ")}) VALUES (${placeholders})
+				 ON CONFLICT(${table.primaryKey}) DO NOTHING`,
+				columns.map((column) => row[column] ?? null),
+			);
+		}
+	});
+}
+
+export function insertStatsLogRow(name: StatsLogTable, row: PortableTableRow): Promise<void> {
+	return insertStatsLogRows(name, [row]);
+}
+
+/** The most recent location in the log, from any device. */
+export async function getLatestStatsLocation(): Promise<{
+	geohash: string;
+	name: string | null;
+} | null> {
+	const db = await getDb();
+	const rows = await db.select<{ geohash: string; name: string | null }[]>(
+		"SELECT geohash, name FROM stats_location_log ORDER BY timestamp DESC LIMIT 1",
+	);
+	return rows[0] ?? null;
+}
 
 export type PortableTable = (typeof FULL_EXPORT_TABLES)[number];
 
