@@ -2628,6 +2628,16 @@ export async function getLatestStatsLocation(): Promise<{
 	return rows[0] ?? null;
 }
 
+/**
+ * Read-only access for the Stats page (pages/app/stats/statsData.ts), which
+ * does its counting in SQL rather than pulling whole tables into memory. The
+ * statements are the page's own constants, never user input.
+ */
+export async function selectStatsRows<T>(sql: string, params: unknown[] = []): Promise<T[]> {
+	const db = await getDb();
+	return db.select<T[]>(sql, params);
+}
+
 export type PortableTable = (typeof FULL_EXPORT_TABLES)[number];
 
 export type PortableTableRow = Record<string, unknown>;

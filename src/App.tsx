@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Routes, Route, Link, Navigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { AuthProvider } from "./contexts/AuthContext";
@@ -54,6 +54,9 @@ import { useRenderPhase } from "./hooks/useRenderPhase";
 import { MultiSelectProvider } from "./contexts/MultiSelectContext";
 import { MultiSelectOverlay } from "./components/multi-select/MultiSelectOverlay";
 import { GoogleDriveSyncLifecycleBridge } from "./components/GoogleDriveSyncLifecycleBridge";
+
+// Only downloaded and parsed when Stats is opened: nothing of it runs otherwise.
+const StatsPage = lazy(() => import("./pages/app/stats/StatsPage"));
 
 function ErrorPage() {
 	const { t } = useTranslation();
@@ -214,6 +217,14 @@ export default function App() {
 												<Route path="/browse/location" element={<BrowseLocationPage />} />
 												<Route path="/right-now" element={<RightNowPage />} />
 												<Route path="/interest" element={<InterestPage />} />
+												<Route
+													path="/stats"
+													element={
+														<Suspense fallback={null}>
+															<StatsPage />
+														</Suspense>
+													}
+												/>
 												<Route path="/chat" element={<ChatPage />} />
 												<Route path="/chat/filters" element={<ChatFiltersPage />} />
 												<Route path="/chat/search" element={<ChatSearchPage />} />

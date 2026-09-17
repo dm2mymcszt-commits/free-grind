@@ -1,4 +1,4 @@
-import { Grid as GridIcon, Droplet, Flame, MessageCircle, MapPin, Settings } from "lucide-react";
+import { ChartColumn, Grid as GridIcon, Droplet, Flame, MessageCircle, MapPin, Settings } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { useState, useEffect, useRef } from "react";
@@ -23,6 +23,7 @@ import {
     GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
     type GoogleDriveSyncDataAppliedDetail,
 } from "../services/googleDriveSyncRuntime";
+import { isStatsEnabled, STATS_SETTINGS_UPDATED_EVENT } from "../services/statsLog";
 
 /**
  * Extracts and validates chat messages from a variety of possible realtime envelope formats.
@@ -95,6 +96,13 @@ export function NavBar() {
     // Read preferences directly from localStorage (defaulting to true if not set)
     const [showRightNow] = useState(() => window.localStorage.getItem("fg-show-right-now") !== "false");
     const [showInterest] = useState(() => window.localStorage.getItem("fg-show-interest") !== "false");
+    // Per account and synced, so it can change while the bar is on screen.
+    const [showStats, setShowStats] = useState(isStatsEnabled);
+    useEffect(() => {
+        const sync = () => setShowStats(isStatsEnabled());
+        window.addEventListener(STATS_SETTINGS_UPDATED_EVENT, sync);
+        return () => window.removeEventListener(STATS_SETTINGS_UPDATED_EVENT, sync);
+    }, []);
 
     const navItems = [
         {
@@ -418,7 +426,21 @@ export function NavBar() {
                         >
                             <MapPin className="h-6 w-6 md:h-7 md:w-7" strokeWidth={1.8} />
                         </div>
-                        
+
+                        {showStats && (
+                            <div
+                                className="flex h-[3.2rem] w-[5rem] cursor-pointer items-center justify-center rounded-full text-[var(--text-muted)] transition-all duration-300 hover:scale-105 hover:bg-[var(--accent)] hover:text-white hover:shadow-[0_0_15px_var(--accent)] active:scale-95 md:h-[3.8rem] md:w-[6rem]"
+                                title={t("nav.stats", "Stats")}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowBrowseMenu(false);
+                                    navigate('/stats');
+                                }}
+                            >
+                                <ChartColumn className="h-6 w-6 md:h-7 md:w-7" strokeWidth={1.8} />
+                            </div>
+                        )}
+
                         <div
                             className="flex h-[3.2rem] w-[5rem] cursor-pointer items-center justify-center rounded-full text-[var(--text-muted)] transition-all duration-300 hover:scale-105 hover:bg-[var(--accent)] hover:text-white hover:shadow-[0_0_15px_var(--accent)] active:scale-95 md:h-[3.8rem] md:w-[6rem]"
                             title={t("nav.settings", "Settings")}
