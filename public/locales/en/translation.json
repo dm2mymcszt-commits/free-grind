@@ -264,7 +264,20 @@
         "error_nothing_saved": "Nothing from this album was saved on this device.",
         "cached_section_desc": "Their owners stopped sharing these. You're seeing the copies saved on this device.",
         "saved_section_title": "Saved on this device",
-        "feed_failed_saved_only": "Couldn't load the albums shared with you right now. Showing the ones saved on this device."
+        "feed_failed_saved_only": "Couldn't load the albums shared with you right now. Showing the ones saved on this device.",
+        "badge_new_hint": "You haven't opened this album yet",
+        "select": "Select",
+        "select_all": "Select all",
+        "deselect_all": "Deselect all",
+        "selected_count_one": "{{count}} selected",
+        "selected_count_other": "{{count}} selected",
+        "confirm_delete_many_title_one": "Delete {{count}} album?",
+        "confirm_delete_many_title_other": "Delete {{count}} albums?",
+        "confirm_delete_many_message": "They are removed from your list and from this device. Albums that are still shared with you also stop being shared.",
+        "deleting_progress": "Deleting {{done}}/{{total}}…",
+        "toast_deleted_many_one": "{{count}} album removed",
+        "toast_deleted_many_other": "{{count}} albums removed",
+        "delete_partial": "Removed {{done}} of {{total}} albums; {{failed}} failed"
     },
     "right_now": {
         "title": "Right Now",

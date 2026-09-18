@@ -229,7 +229,20 @@
         "error_nothing_saved": "Von diesem Album wurde nichts auf diesem Gerät gespeichert.",
         "cached_section_desc": "Diese Alben werden nicht mehr geteilt. Du siehst die auf diesem Gerät gespeicherten Kopien.",
         "saved_section_title": "Auf diesem Gerät gespeichert",
-        "feed_failed_saved_only": "Die mit dir geteilten Alben konnten gerade nicht geladen werden. Angezeigt werden die auf diesem Gerät gespeicherten."
+        "feed_failed_saved_only": "Die mit dir geteilten Alben konnten gerade nicht geladen werden. Angezeigt werden die auf diesem Gerät gespeicherten.",
+        "badge_new_hint": "Du hast dieses Album noch nicht geöffnet",
+        "select": "Auswählen",
+        "select_all": "Alle auswählen",
+        "deselect_all": "Keine auswählen",
+        "selected_count_one": "{{count}} ausgewählt",
+        "selected_count_other": "{{count}} ausgewählt",
+        "confirm_delete_many_title_one": "{{count}} Album löschen?",
+        "confirm_delete_many_title_other": "{{count}} Alben löschen?",
+        "confirm_delete_many_message": "Sie werden aus deiner Liste und von diesem Gerät entfernt. Alben, die noch mit dir geteilt werden, werden nicht mehr geteilt.",
+        "deleting_progress": "Wird gelöscht {{done}}/{{total}}…",
+        "toast_deleted_many_one": "{{count}} Album entfernt",
+        "toast_deleted_many_other": "{{count}} Alben entfernt",
+        "delete_partial": "{{done}} von {{total}} Alben entfernt; {{failed}} fehlgeschlagen"
     },
     "right_now": {
         "title": "Right Now",

@@ -1,4 +1,4 @@
-import { Album, ChevronLeft, Clock3, Film, HardDriveDownload, Layers, RefreshCw, Star, Trash2, Wifi } from "lucide-react";
+import { Album, Check, ChevronLeft, Clock3, Film, HardDriveDownload, Layers, ListChecks, RefreshCw, Star, Trash2, Wifi, X } from "lucide-react";
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -39,6 +39,7 @@ import { type AlbumOwner, mediaHashFromUrl, readAlbumOwners, rememberAlbumOwners
 import { PhotoViewer, type PhotoViewerMedia } from "../../components/PhotoViewer";
 import { PhotoActionBar } from "../../components/PhotoActionBar";
 import { useRevealOnScroll } from "../../hooks/useRevealOnScroll";
+import { useLongPress } from "../../hooks/useLongPress";
 
 /** Timestamps from the feed are milliseconds; accept seconds too. */
 function toMs(value: number | null | undefined): number | null {
@@ -88,17 +89,33 @@ function mergeWithSaved(live: AlbumContentItem[], saved: AlbumContentItem[]): Al
 function AlbumCard({
 	item,
 	onClick,
+	onLongPress,
 	onDelete,
 	isDeleting,
+	isSelecting,
+	isSelected,
 	t,
 }: {
 	item: SharedAlbumItem;
 	onClick: () => void;
+	/** Long press, or right click on PC: starts selecting with this album. */
+	onLongPress: () => void;
 	onDelete: () => void;
 	isDeleting: boolean;
+	isSelecting: boolean;
+	isSelected: boolean;
 	t: TFunction;
 }) {
 	const { ref, revealClass } = useRevealOnScroll();
+	// The click that follows a long press must not also open or toggle the album.
+	const wasLongPressedRef = useRef(false);
+	const longPress = useLongPress(() => {
+		wasLongPressedRef.current = true;
+		onLongPress();
+		window.setTimeout(() => {
+			wasLongPressedRef.current = false;
+		}, 350);
+	}, 450);
 	const cover = albumCover(item);
 	const avatarUrl = albumAvatar(item);
 	const counts = formatAlbumCounts(t, item.album.contentCount.imageCount, item.album.contentCount.videoCount);
@@ -107,9 +124,29 @@ function AlbumCard({
 
 	return (
 		<div ref={ref} className={revealClass}>
-			{/* A size container: on a phone a card is ~110px wide, too narrow for the full-size avatar. */}
-			<div className="@container group relative w-full overflow-hidden rounded-2xl bg-[var(--surface-2)] shadow-[0_10px_28px_rgba(0,0,0,0.22)] ring-1 ring-inset ring-white/5 transition-transform duration-200 hover:-translate-y-0.5">
-				<button type="button" onClick={onClick} className="block w-full text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]">
+			{/* A size container: on a phone a card is ~110px wide, too narrow for the full-size avatar.
+			    Not selectable as text: a press on a card is a tap or a long press, and a
+			    selection used to take in whole cards (and iOS offered Copy / Look Up). */}
+			<div
+				className={cn(
+					"@container group no-touch-callout relative w-full overflow-hidden rounded-2xl bg-[var(--surface-2)] shadow-[0_10px_28px_rgba(0,0,0,0.22)] ring-inset transition-transform duration-200",
+					isSelected ? "scale-[0.96] ring-2 ring-[var(--accent)]" : "ring-1 ring-white/5",
+					!isSelecting && "hover:-translate-y-0.5",
+				)}
+				onContextMenu={(event) => {
+					event.preventDefault();
+					onLongPress();
+				}}
+				{...(isSelecting ? {} : longPress)}
+			>
+				<button
+					type="button"
+					onClick={() => {
+						if (!wasLongPressedRef.current) onClick();
+					}}
+					aria-pressed={isSelecting ? isSelected : undefined}
+					className="block w-full text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+				>
 					<div className="relative aspect-[4/6] w-full">
 						{cover ? (
 							<img
@@ -125,7 +162,12 @@ function AlbumCard({
 								<Album className="h-5 w-5 opacity-40" />
 							</div>
 						)}
-						<div className="absolute inset-0 bg-gradient-to-b from-black/5 via-black/20 to-black/55" />
+						<div
+							className={cn(
+								"absolute inset-0 transition-colors duration-200",
+								isSelected ? "bg-black/45" : "bg-gradient-to-b from-black/5 via-black/20 to-black/55",
+							)}
+						/>
 
 						<div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-2.5 pt-6 text-center text-white @min-[150px]:gap-3 @min-[150px]:px-3">
 							<div className="relative">
@@ -156,7 +198,10 @@ function AlbumCard({
 
 						<div className="absolute inset-x-2 top-2 flex flex-wrap items-center gap-1 pr-8">
 							{item.hasUnseenContent ? (
-								<span className="flex h-6 items-center rounded-full bg-[var(--accent)] px-2 text-[10px] font-bold uppercase tracking-wide text-[var(--accent-contrast)] shadow">
+								<span
+									className="flex h-6 items-center rounded-full bg-[var(--accent)] px-2 text-[10px] font-bold uppercase tracking-wide text-[var(--accent-contrast)] shadow"
+									title={t("shared_albums.badge_new_hint")}
+								>
 									{t("shared_albums.badge_new")}
 								</span>
 							) : null}
@@ -175,19 +220,33 @@ function AlbumCard({
 						</div>
 					</div>
 				</button>
-				<button
-					type="button"
-					onClick={(event) => {
-						event.stopPropagation();
-						onDelete();
-					}}
-					disabled={isDeleting}
-					title={t("shared_albums.delete")}
-					aria-label={t("shared_albums.delete")}
-					className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition hover:bg-red-500/85 disabled:opacity-50 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:focus-visible:opacity-100"
-				>
-					<Trash2 className="h-3.5 w-3.5" />
-				</button>
+				{isSelecting ? (
+					<span
+						className={cn(
+							"pointer-events-none absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full border-2 shadow-lg transition-colors duration-200",
+							isSelected
+								? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)]"
+								: "border-white/70 bg-black/35 backdrop-blur-sm",
+						)}
+						aria-hidden
+					>
+						{isSelected ? <Check className="h-4 w-4" strokeWidth={3} /> : null}
+					</span>
+				) : (
+					<button
+						type="button"
+						onClick={(event) => {
+							event.stopPropagation();
+							onDelete();
+						}}
+						disabled={isDeleting}
+						title={t("shared_albums.delete")}
+						aria-label={t("shared_albums.delete")}
+						className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition hover:bg-red-500/85 disabled:opacity-50 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:focus-visible:opacity-100"
+					>
+						<Trash2 className="h-3.5 w-3.5" />
+					</button>
+				)}
 			</div>
 		</div>
 	);
@@ -206,6 +265,9 @@ export function SharedAlbumsPage() {
 	const [error, setError] = useState<string | null>(null);
 	const [feedError, setFeedError] = useState<string | null>(null);
 	const [items, setItems] = useState<SharedAlbumItem[]>([]);
+	/** Album ids picked for deletion; null when not selecting. */
+	const [selectedIds, setSelectedIds] = useState<ReadonlySet<number> | null>(null);
+	const isSelecting = selectedIds !== null;
 	const [viewer, setViewer] = useState<AlbumViewer | null>(null);
 	const [fullScreenIndex, setFullScreenIndex] = useState<number | null>(null);
 	const [, setAlbumCacheTick] = useState(0);
@@ -412,8 +474,49 @@ export function SharedAlbumsPage() {
 		setFilters((previous) => ({ ...previous, [key]: !previous[key] }));
 	};
 
-	const [confirmDeleteItem, setConfirmDeleteItem] = useState<SharedAlbumItem | null>(null);
-	const [deletingAlbumId, setDeletingAlbumId] = useState<number | null>(null);
+	// Selecting several albums to delete them together.
+	const toggleSelected = useCallback((albumId: number) => {
+		setSelectedIds((previous) => {
+			const next = new Set(previous ?? []);
+			if (next.has(albumId)) next.delete(albumId);
+			else next.add(albumId);
+			return next;
+		});
+	}, []);
+	const exitSelection = useCallback(() => setSelectedIds(null), []);
+	const selectedItems = useMemo(
+		() => (selectedIds ? items.filter((item) => selectedIds.has(item.album.albumId)) : []),
+		[items, selectedIds],
+	);
+	const allSelected = items.length > 0 && selectedItems.length === items.length;
+	const toggleSelectAll = () =>
+		setSelectedIds(allSelected ? new Set() : new Set(items.map((item) => item.album.albumId)));
+
+	// A refresh or filter can drop albums that were selected.
+	useEffect(() => {
+		setSelectedIds((previous) => {
+			if (!previous) return previous;
+			const present = new Set(items.map((item) => item.album.albumId));
+			const kept = [...previous].filter((albumId) => present.has(albumId));
+			return kept.length === previous.size ? previous : new Set(kept);
+		});
+	}, [items]);
+
+	useEffect(() => {
+		if (!isSelecting) return;
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.key === "Escape" && !document.querySelector("dialog[open]")) {
+				event.preventDefault();
+				exitSelection();
+			}
+		};
+		window.addEventListener("keydown", onKeyDown);
+		return () => window.removeEventListener("keydown", onKeyDown);
+	}, [exitSelection, isSelecting]);
+
+	const [confirmDeleteItems, setConfirmDeleteItems] = useState<SharedAlbumItem[] | null>(null);
+	const [deleteProgress, setDeleteProgress] = useState<{ done: number; total: number } | null>(null);
+	const isDeleting = deleteProgress !== null;
 
 	const closeViewerState = useCallback(() => {
 		openRequestRef.current += 1;
@@ -436,26 +539,51 @@ export function SharedAlbumsPage() {
 		closeViewerState();
 	}, [closeViewerState]);
 
-	const handleDeleteAlbum = useCallback(async (item: SharedAlbumItem) => {
-		if (deletingAlbumId != null) return;
-		setDeletingAlbumId(item.album.albumId);
-		try {
-			if (!item.localOnly) {
-				await apiFunctions.removeAlbumShare({ albumId: item.album.albumId });
+	/**
+	 * Removes albums one after the other: stops the share when it is still
+	 * live, then drops the saved copy. Albums that fail stay listed (and stay
+	 * selected), so the user can try them again.
+	 */
+	const handleDeleteAlbums = useCallback(async (targets: SharedAlbumItem[]) => {
+		if (deleteProgress || targets.length === 0) return;
+		setDeleteProgress({ done: 0, total: targets.length });
+		const removed = new Set<number>();
+		let lastError: string | null = null;
+		for (const [index, item] of targets.entries()) {
+			try {
+				if (!item.localOnly) {
+					await apiFunctions.removeAlbumShare({ albumId: item.album.albumId });
+				}
+				await deleteLocalAlbum(item.album.albumId);
+				removed.add(item.album.albumId);
+			} catch (deleteError) {
+				lastError = deleteError instanceof Error ? deleteError.message : null;
 			}
-			await deleteLocalAlbum(item.album.albumId);
-			setItems((previous) => previous.filter((entry) => entry.album.albumId !== item.album.albumId));
-			if (viewer?.item.album.albumId === item.album.albumId) closeViewer();
-			toast.success(t("shared_albums.toast_deleted"));
-		} catch (deleteError) {
-			toast.error(
-				deleteError instanceof Error ? deleteError.message : t("shared_albums.error_delete_fallback"),
-			);
-		} finally {
-			setDeletingAlbumId(null);
-			setConfirmDeleteItem((previous) => (previous?.album.albumId === item.album.albumId ? null : previous));
+			setDeleteProgress({ done: index + 1, total: targets.length });
 		}
-	}, [apiFunctions, closeViewer, deletingAlbumId, t, viewer]);
+
+		setItems((previous) => previous.filter((entry) => !removed.has(entry.album.albumId)));
+		if (viewer && removed.has(viewer.item.album.albumId)) closeViewer();
+		setSelectedIds((previous) => {
+			if (!previous) return previous;
+			const left = [...previous].filter((albumId) => !removed.has(albumId));
+			return left.length === 0 ? null : new Set(left);
+		});
+		const failed = targets.length - removed.size;
+		if (failed === 0) {
+			toast.success(
+				targets.length === 1
+					? t("shared_albums.toast_deleted")
+					: t("shared_albums.toast_deleted_many", { count: removed.size }),
+			);
+		} else if (targets.length === 1) {
+			toast.error(lastError ?? t("shared_albums.error_delete_fallback"));
+		} else {
+			toast.error(t("shared_albums.delete_partial", { done: removed.size, total: targets.length, failed }));
+		}
+		setDeleteProgress(null);
+		setConfirmDeleteItems(null);
+	}, [apiFunctions, closeViewer, deleteProgress, t, viewer]);
 
 	/**
 	 * Opens the viewer at once and fills it in: the saved copy first when there
@@ -697,9 +825,12 @@ export function SharedAlbumsPage() {
 			<AlbumCard
 				key={`${item.profileId}:${item.album.albumId}`}
 				item={item}
-				onClick={() => void openViewer(item)}
-				onDelete={() => setConfirmDeleteItem(item)}
-				isDeleting={deletingAlbumId === item.album.albumId}
+				onClick={() => (isSelecting ? toggleSelected(item.album.albumId) : void openViewer(item))}
+				onLongPress={() => toggleSelected(item.album.albumId)}
+				onDelete={() => setConfirmDeleteItems([item])}
+				isDeleting={isDeleting}
+				isSelecting={isSelecting}
+				isSelected={selectedIds?.has(item.album.albumId) ?? false}
 				t={t}
 			/>
 		));
@@ -711,7 +842,7 @@ export function SharedAlbumsPage() {
 				contentClassName="flex flex-1 flex-col min-h-0"
 				style={{ overflow: "visible", overflowX: "hidden" }}
 				onRefresh={handleRefresh}
-				isDisabled={isLoading || isRefreshing}
+				isDisabled={isLoading || isRefreshing || isSelecting}
 				isAtTop={() => (feedContainerRef.current?.scrollTop ?? 0) <= 0}
 				refreshingLabel={t("shared_albums.loading_title")}
 				spinnerColor="var(--accent)"
@@ -742,15 +873,34 @@ export function SharedAlbumsPage() {
 										].join(" · ")}
 								</p>
 							</div>
-							<button
-								type="button"
-								onClick={handleRefresh}
-								disabled={isRefreshing || isLoading}
-								className="shrink-0 rounded-xl p-2 text-[var(--text-muted)] transition hover:text-[var(--text)] disabled:opacity-50"
-								aria-label={t("shared_albums.refresh")}
-							>
-								<RefreshCw className={`h-5 w-5 ${isRefreshing || isLoading ? "animate-spin" : ""}`} />
-							</button>
+							<div className="flex shrink-0 items-center gap-1">
+								{items.length > 0 ? (
+									<button
+										type="button"
+										onClick={() => (isSelecting ? exitSelection() : setSelectedIds(new Set()))}
+										disabled={isLoading || isDeleting}
+										aria-pressed={isSelecting}
+										className={cn(
+											"inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-semibold transition disabled:opacity-50",
+											isSelecting
+												? "bg-[var(--accent)] text-[var(--accent-contrast)]"
+												: "text-[var(--text-muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]",
+										)}
+									>
+										<ListChecks className="h-4 w-4" />
+										{isSelecting ? t("shared_albums.cancel") : t("shared_albums.select")}
+									</button>
+								) : null}
+								<button
+									type="button"
+									onClick={handleRefresh}
+									disabled={isRefreshing || isLoading || isSelecting}
+									className="rounded-xl p-2 text-[var(--text-muted)] transition hover:text-[var(--text)] disabled:opacity-50"
+									aria-label={t("shared_albums.refresh")}
+								>
+									<RefreshCw className={`h-5 w-5 ${isRefreshing || isLoading ? "animate-spin" : ""}`} />
+								</button>
+							</div>
 						</div>
 
 						{/* Row 2: filter pills */}
@@ -782,7 +932,15 @@ export function SharedAlbumsPage() {
 				</header>
 
 				<FeedScrollContainer ref={feedContainerRef}>
-					<div className="mx-auto w-full max-w-6xl px-[var(--app-px)] pb-[calc(env(safe-area-inset-bottom,0px)+120px)]">
+					<div
+						className={cn(
+							"mx-auto w-full max-w-6xl px-[var(--app-px)]",
+							// Room for the selection bar above the nav bar.
+							isSelecting
+								? "pb-[calc(env(safe-area-inset-bottom,0px)+200px)]"
+								: "pb-[calc(env(safe-area-inset-bottom,0px)+120px)]",
+						)}
+					>
 						{isLoading ? (
 							<div className="grid gap-4" style={gridStyle}>
 								{Array.from({ length: 12 }).map((_, i) => (
@@ -856,6 +1014,42 @@ export function SharedAlbumsPage() {
 			 * app-screen's padding (a gap at the top) and trap them under the
 			 * bottom NavBar's stacking context instead of covering it.
 			 */}
+			{isSelecting ? (
+				<div className="album-panel-in pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom,0px)+96px)] z-[52] flex justify-center px-3 md:bottom-[calc(env(safe-area-inset-bottom,0px)+108px)]">
+					<div className="pointer-events-auto flex w-full max-w-md items-center gap-1.5 rounded-full border border-white/10 bg-[color-mix(in_srgb,var(--surface)_86%,transparent)] p-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+						<button
+							type="button"
+							onClick={exitSelection}
+							disabled={isDeleting}
+							aria-label={t("shared_albums.cancel")}
+							className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[var(--text)] transition hover:bg-[var(--surface-2)] disabled:opacity-50"
+						>
+							<X className="h-5 w-5" />
+						</button>
+						<span className="min-w-0 flex-1 truncate text-sm font-semibold tabular-nums text-[var(--text)]">
+							{t("shared_albums.selected_count", { count: selectedItems.length })}
+						</span>
+						<button
+							type="button"
+							onClick={toggleSelectAll}
+							disabled={isDeleting}
+							className="h-10 shrink-0 rounded-full bg-[var(--surface-2)] px-3.5 text-sm font-semibold text-[var(--text)] transition hover:brightness-110 disabled:opacity-50"
+						>
+							{allSelected ? t("shared_albums.deselect_all") : t("shared_albums.select_all")}
+						</button>
+						<button
+							type="button"
+							onClick={() => setConfirmDeleteItems(selectedItems)}
+							disabled={selectedItems.length === 0 || isDeleting}
+							className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-red-500 px-4 text-sm font-semibold text-white transition hover:bg-red-600 disabled:opacity-40"
+						>
+							<Trash2 className="h-4 w-4" />
+							{t("shared_albums.delete")}
+						</button>
+					</div>
+				</div>
+			) : null}
+
 			{viewer ? (
 				<AlbumViewerPanel
 					key={viewer.item.album.albumId}
@@ -866,7 +1060,7 @@ export function SharedAlbumsPage() {
 					closeViewer={closeViewer}
 					openFullScreen={openFullScreen}
 					onRetry={() => void openViewer(viewer.item)}
-					onDelete={() => setConfirmDeleteItem(viewer.item)}
+					onDelete={() => setConfirmDeleteItems([viewer.item])}
 					onMessageProfile={handleMessageProfile}
 					onViewProfile={handleViewProfile}
 				/>
@@ -896,14 +1090,28 @@ export function SharedAlbumsPage() {
 			)}
 
 			<ConfirmDialog
-				isOpen={confirmDeleteItem !== null}
-				title={t("shared_albums.confirm_delete_title")}
-				message={t("shared_albums.confirm_delete_message")}
-				confirmLabel={deletingAlbumId != null ? t("shared_albums.deleting") : t("shared_albums.delete")}
+				isOpen={confirmDeleteItems !== null}
+				title={
+					(confirmDeleteItems?.length ?? 0) > 1
+						? t("shared_albums.confirm_delete_many_title", { count: confirmDeleteItems?.length ?? 0 })
+						: t("shared_albums.confirm_delete_title")
+				}
+				message={
+					(confirmDeleteItems?.length ?? 0) > 1
+						? t("shared_albums.confirm_delete_many_message")
+						: t("shared_albums.confirm_delete_message")
+				}
+				confirmLabel={
+					deleteProgress
+						? deleteProgress.total > 1
+							? t("shared_albums.deleting_progress", deleteProgress)
+							: t("shared_albums.deleting")
+						: t("shared_albums.delete")
+				}
 				cancelLabel={t("shared_albums.cancel")}
-				onConfirm={() => confirmDeleteItem ? void handleDeleteAlbum(confirmDeleteItem) : undefined}
-				onCancel={() => setConfirmDeleteItem(null)}
-				isProcessing={deletingAlbumId != null}
+				onConfirm={() => (confirmDeleteItems ? void handleDeleteAlbums(confirmDeleteItems) : undefined)}
+				onCancel={() => setConfirmDeleteItems(null)}
+				isProcessing={isDeleting}
 				confirmTone="danger"
 			/>
 		</>
