@@ -4,9 +4,29 @@
  */
 
 import type { createApiFunctions } from "../../../services/apiFunctions";
+import { classifyProfileAccess } from "../../../utils/profileAccessStatus";
+import type { ProfileDetail } from "../GridPage.types";
 import { normalizeTimestamp } from "./statsCompute";
 
 type ApiFunctions = ReturnType<typeof createApiFunctions>;
+
+/**
+ * What Grindr says about one person right now. `unreachable`: the check could
+ * not finish, so nothing is known either way.
+ */
+export type PersonState =
+	| "open"
+	| "you_blocked"
+	| "blocked_you"
+	| "deleted"
+	| "unreachable";
+
+export type PersonLookup = {
+	state: PersonState;
+	name: string | null;
+	imageHash: string | null;
+	detail: ProfileDetail | null;
+};
 
 export type TapEntry = {
 	profileId: string;
@@ -26,6 +46,10 @@ export type GrindrStats = {
 	blockedIds: () => Promise<Set<string>>;
 	taps: () => Promise<TapEntry[]>;
 	ownAlbums: () => Promise<OwnAlbumShares[]>;
+	/** Never rejects. Reading a profile this way does not leave a view. */
+	person: (profileId: string) => Promise<PersonLookup>;
+	/** The answer already in hand, if this person was asked about. */
+	knownPerson: (profileId: string) => PersonLookup | null;
 };
 
 function once<T>(load: () => Promise<T>): () => Promise<T> {
@@ -40,10 +64,52 @@ function once<T>(load: () => Promise<T>): () => Promise<T> {
 const MAX_ALBUMS = 20;
 
 export function createGrindrStats(api: ApiFunctions): GrindrStats {
+	const blockedIds = once(
+		async () => new Set((await api.getBlockedProfileIds()).map(String)),
+	);
+	const people = new Map<string, Promise<PersonLookup>>();
+	const known = new Map<string, PersonLookup>();
+
+	const lookUp = async (profileId: string): Promise<PersonLookup> => {
+		const nothing = { name: null, imageHash: null, detail: null };
+		try {
+			const detail = await api.getProfileDetail(profileId);
+			const access = classifyProfileAccess(detail);
+			if (access === "accessible") {
+				return {
+					state: "open",
+					name: detail.displayName?.trim() || null,
+					imageHash: detail.profileImageMediaHash ?? null,
+					detail,
+				};
+			}
+			if (access === "not_found") return { state: "deleted", ...nothing };
+			// The same stub comes back whichever side did the blocking.
+			const mine = await blockedIds();
+			return {
+				state: mine.has(profileId) ? "you_blocked" : "blocked_you",
+				...nothing,
+			};
+		} catch {
+			return { state: "unreachable", ...nothing };
+		}
+	};
+
 	return {
-		blockedIds: once(
-			async () => new Set((await api.getBlockedProfileIds()).map(String)),
-		),
+		blockedIds,
+		person: (profileId) => {
+			let pending = people.get(profileId);
+			if (!pending) {
+				pending = lookUp(profileId).then((result) => {
+					if (result.state === "unreachable") people.delete(profileId);
+					else known.set(profileId, result);
+					return result;
+				});
+				people.set(profileId, pending);
+			}
+			return pending;
+		},
+		knownPerson: (profileId) => known.get(profileId) ?? null,
 		taps: once(async () => {
 			const response = await api.getTaps();
 			return response.profiles.flatMap((entry): TapEntry[] => {

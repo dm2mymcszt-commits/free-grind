@@ -19,8 +19,8 @@ import {
 } from "../StatsUi";
 import { useStatsResource } from "../useStatsResource";
 import {
+	conversationPerson,
 	periodLabel,
-	personLabel,
 	viewerWarning,
 	viewsIn,
 	type SectionProps,
@@ -36,8 +36,6 @@ export function RankingsSection({
 	context,
 	period,
 	locale,
-	openProfile,
-	openChat,
 }: SectionProps) {
 	const { t } = useTranslation();
 	const me = context.me;
@@ -65,11 +63,11 @@ export function RankingsSection({
 		const info = personName(context, profileId);
 		return {
 			key: profileId,
-			name: personLabel(info.name, profileId),
+			profileId,
+			name: info.name,
 			imageHash: info.imageHash,
 			sub,
 			value,
-			onOpen: () => openProfile(profileId),
 		};
 	};
 
@@ -128,14 +126,14 @@ export function RankingsSection({
 		sub: string,
 		value: string,
 	): PersonRowItem => {
-		const contact = context.contactsByConversation.get(conversationId);
+		const person = conversationPerson(context, conversationId);
 		return {
 			key: conversationId,
-			name: personLabel(contact?.name, contact?.profileId ?? "?"),
-			imageHash: contact?.imageHash ?? null,
+			profileId: person?.profileId ?? null,
+			name: person?.name ?? null,
+			imageHash: person?.imageHash ?? null,
 			sub,
 			value,
-			onOpen: () => openChat(conversationId),
 		};
 	};
 

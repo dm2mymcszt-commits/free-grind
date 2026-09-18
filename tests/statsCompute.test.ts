@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	addLocalDays,
 	attributeViewsToPlaces,
+	blockedYouIn,
 	bucketize,
 	buildBuckets,
 	collapseBlockLog,
@@ -203,6 +204,28 @@ describe("block log", () => {
 			}),
 		]);
 		expect(mistakes.map((entry) => entry.profile_id)).toEqual(["1"]);
+	});
+
+	test("someone who blocked you twice counts once, at their newest block", () => {
+		const blocked = (profileId: string | null, conversationId: string, timestamp: number) => ({
+			profileId,
+			conversationId,
+			timestamp,
+		});
+		const people = blockedYouIn(
+			[
+				blocked("1", "1:9", at(14, 19, 36)),
+				blocked("1", "1:9", at(14, 19, 37)),
+				blocked(null, "2:9", at(12)),
+				blocked(null, "2:9", at(13)),
+				blocked("3", "3:9", at(1)),
+			],
+			{ start: at(10), end: NOW },
+		);
+		expect(people).toEqual([
+			blocked("1", "1:9", at(14, 19, 37)),
+			blocked(null, "2:9", at(13)),
+		]);
 	});
 });
 

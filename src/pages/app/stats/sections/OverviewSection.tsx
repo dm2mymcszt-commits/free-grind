@@ -1,5 +1,7 @@
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
+	blockedYouIn,
 	countByDay,
 	inPeriod,
 	percentChange,
@@ -32,13 +34,14 @@ import {
 	StatsGrid,
 	type TileItem,
 } from "../StatsUi";
+import { PersonLink } from "../statsPeople";
 import { useStatsResource } from "../useStatsResource";
 import {
 	chartAxis,
 	chartStart,
+	conversationPerson,
 	coverageForRange,
 	periodLabel,
-	personLabel,
 	sumValues,
 	viewerRangeComplete,
 	viewsIn,
@@ -91,7 +94,6 @@ export function OverviewSection({
 	context,
 	period,
 	locale,
-	openChat,
 }: SectionProps) {
 	const { t } = useTranslation();
 	const me = context.me;
@@ -149,9 +151,7 @@ export function OverviewSection({
 	const previousUnique = new Set(previousViews.map((view) => view.profileId))
 		.size;
 	const blocked = blocksIn(blocks, period);
-	const blockedYou = blocks.blockedYou.filter((row) =>
-		inPeriod(row.timestamp, period),
-	).length;
+	const blockedYou = blockedYouIn(blocks.blockedYou, period).length;
 
 	const start = chartStart(period, [
 		context.views[0]?.timestamp,
@@ -263,10 +263,7 @@ export function OverviewSection({
 			...comparison(
 				blockedYou,
 				period.previous
-					? blocks.blockedYou.filter(
-							(row) =>
-								period.previous && inPeriod(row.timestamp, period.previous),
-						).length
+					? blockedYouIn(blocks.blockedYou, period.previous).length
 					: null,
 				neutralKpi,
 			),
@@ -331,6 +328,9 @@ export function OverviewSection({
 		(a, b) => b[1] - a[1],
 	)[0];
 	const busiestChat = mostMessages[0];
+	const busiestPerson = busiestChat
+		? conversationPerson(context, busiestChat.conversationId)
+		: null;
 	const reasons = new Map<string, number>();
 	const autoBlocks = blocks.log.filter(
 		(row: BlockLogRow) =>
@@ -345,7 +345,7 @@ export function OverviewSection({
 		);
 	const topReason = [...reasons.entries()].sort((a, b) => b[1] - a[1])[0];
 
-	const highlights: { label: string; value: string; onOpen?: () => void }[] = [
+	const highlights: { label: string; value: ReactNode }[] = [
 		{
 			label: t("stats.highlight.best_time", { defaultValue: "Busiest time" }),
 			value: bestCell
@@ -357,25 +357,29 @@ export function OverviewSection({
 		},
 		{
 			label: t("stats.highlight.top_viewer", { defaultValue: "Top viewer" }),
-			value: topViewer
-				? `${personLabel(personName(context, topViewer[0]).name, topViewer[0])} · ${topViewer[1]}`
-				: "–",
+			value: topViewer ? (
+				<PersonLink
+					profileId={topViewer[0]}
+					name={personName(context, topViewer[0]).name}
+					suffix={String(topViewer[1])}
+				/>
+			) : (
+				"–"
+			),
 		},
 		{
 			label: t("stats.highlight.busiest_chat", {
 				defaultValue: "Busiest chat",
 			}),
-			value: busiestChat
-				? `${personLabel(
-						context.contactsByConversation.get(busiestChat.conversationId)
-							?.name,
-						context.contactsByConversation.get(busiestChat.conversationId)
-							?.profileId ?? "?",
-					)} · ${busiestChat.count}`
-				: "–",
-			onOpen: busiestChat
-				? () => openChat(busiestChat.conversationId)
-				: undefined,
+			value: busiestChat ? (
+				<PersonLink
+					profileId={busiestPerson?.profileId ?? null}
+					name={busiestPerson?.name}
+					suffix={String(busiestChat.count)}
+				/>
+			) : (
+				"–"
+			),
 		},
 		{
 			label: t("stats.highlight.top_reason", {
@@ -520,17 +524,7 @@ export function OverviewSection({
 						>
 							<dt className="text-[var(--text-muted)]">{item.label}</dt>
 							<dd className="min-w-0 truncate text-right font-medium">
-								{item.onOpen ? (
-									<button
-										type="button"
-										onClick={item.onOpen}
-										className="hover:text-[var(--accent)]"
-									>
-										{item.value}
-									</button>
-								) : (
-									item.value
-								)}
+								{item.value}
 							</dd>
 						</div>
 					))}

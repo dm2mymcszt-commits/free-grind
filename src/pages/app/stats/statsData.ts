@@ -6,6 +6,7 @@
  */
 
 import * as chatDb from "../../../services/chatDb";
+import { deriveOtherProfileIdFromConversationId } from "../../../services/conversationArchive";
 import { interestViewsStore } from "../../../services/interestViewsStore";
 import type { StatsPeriod } from "./statsCompute";
 import {
@@ -621,17 +622,22 @@ export async function loadBlockData(me: number): Promise<BlockData> {
 	]);
 	const collapsed = collapseBlockLog(log);
 	const logStart = collapsed[0]?.timestamp ?? Infinity;
+	// A deleted chat has no conversations row, but its id still names them.
+	const profileOf = (profileId: string | null, conversationId: string) =>
+		profileId != null
+			? String(profileId)
+			: deriveOtherProfileIdFromConversationId(conversationId, me);
 	return {
 		log: collapsed,
 		earlierSelfBlocks: selfNotes
 			.filter((note) => note.timestamp < logStart)
 			.map((note) => ({
 				timestamp: note.timestamp,
-				profileId: note.profile_id,
+				profileId: profileOf(note.profile_id, note.conversation_id),
 				conversationId: note.conversation_id,
 			})),
 		blockedYou: blockedYou.map((row) => ({
-			profileId: row.profile_id,
+			profileId: profileOf(row.profile_id, row.conversation_id),
 			conversationId: row.conversation_id,
 			timestamp: row.timestamp,
 			name: row.display_name,

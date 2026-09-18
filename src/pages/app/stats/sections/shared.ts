@@ -1,7 +1,8 @@
 import type { TFunction } from "i18next";
+import { deriveOtherProfileIdFromConversationId } from "../../../../services/conversationArchive";
 import type { UnitsPreset } from "../../../../utils/units";
 import type { GrindrStats } from "../statsGrindr";
-import type { StatsContext } from "../statsData";
+import { personName, type PersonInfo, type StatsContext } from "../statsData";
 import {
 	addLocalDays,
 	buildBuckets,
@@ -22,8 +23,6 @@ export type SectionProps = {
 	grindr: GrindrStats;
 	locale: string;
 	unitsPreset: UnitsPreset;
-	openProfile: (profileId: string) => void;
-	openChat: (conversationId: string) => void;
 };
 
 /** Viewer rows are deleted 30 days after their last view, so nothing older is complete. */
@@ -122,9 +121,23 @@ export function sumValues(values: readonly number[]): number {
 	return values.reduce((total, value) => total + value, 0);
 }
 
-export function personLabel(
-	name: string | null | undefined,
-	profileId: string,
-): string {
-	return name?.trim() || `Profile ${profileId}`;
+/**
+ * Who a chat was with. A chat deleted from this device keeps its messages but
+ * not its profile id or name; the id is still inside the conversation id.
+ */
+export function conversationPerson(
+	context: StatsContext,
+	conversationId: string,
+): PersonInfo | null {
+	const contact = context.contactsByConversation.get(conversationId);
+	const profileId =
+		contact?.profileId ??
+		deriveOtherProfileIdFromConversationId(conversationId, context.me);
+	if (!profileId) return null;
+	const known = personName(context, profileId);
+	return {
+		profileId,
+		name: contact?.name?.trim() || known.name,
+		imageHash: contact?.imageHash ?? known.imageHash,
+	};
 }

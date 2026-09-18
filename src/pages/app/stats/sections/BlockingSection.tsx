@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getForbiddenKeywordEntries } from "../../../../utils/autoblock";
 import {
+	blockedYouIn,
 	countByDay,
 	DAY_MS,
 	findAutoBlockMistakes,
@@ -36,7 +37,6 @@ import {
 	chartAxis,
 	chartStart,
 	periodLabel,
-	personLabel,
 	type SectionProps,
 } from "./shared";
 
@@ -55,7 +55,6 @@ export function BlockingSection({
 	period,
 	grindr,
 	locale,
-	openProfile,
 }: SectionProps) {
 	const { t } = useTranslation();
 	const me = context.me;
@@ -194,9 +193,7 @@ export function BlockingSection({
 			neverReplied += 1;
 	}
 
-	const blockedYou = data.blockedYou.filter((row) =>
-		inPeriod(row.timestamp, period),
-	);
+	const blockedYou = blockedYouIn(data.blockedYou, period);
 	const blockedYouDelay = median(
 		blockedYou
 			.filter((row) => row.firstTs != null)
@@ -419,10 +416,10 @@ export function BlockingSection({
 									const info = personName(context, row.profile_id as string);
 									return {
 										key: row.id,
-										name: personLabel(info.name, row.profile_id as string),
+										profileId: row.profile_id,
+										name: info.name,
 										imageHash: info.imageHash,
 										sub: `${reasonLabel(t, row.reason_kind)} · ${formatDay(row.timestamp, locale)}`,
-										onOpen: () => openProfile(row.profile_id as string),
 									};
 								})}
 							/>
@@ -491,7 +488,8 @@ export function BlockingSection({
 								row.firstOutTs != null && row.firstOutTs < row.timestamp;
 							return {
 								key: `${row.conversationId}:${row.timestamp}`,
-								name: personLabel(row.name ?? info?.name, row.profileId ?? "?"),
+								profileId: row.profileId,
+								name: row.name ?? info?.name ?? null,
 								imageHash: row.imageHash ?? info?.imageHash ?? null,
 								sub: [
 									formatDay(row.timestamp, locale),
@@ -501,19 +499,20 @@ export function BlockingSection({
 												delay: formatDuration(row.timestamp - row.firstTs),
 											})
 										: null,
-									replied
-										? t("stats.blocking.you_had_replied", {
-												defaultValue: "you had replied",
+									row.firstTs == null
+										? t("stats.blocking.no_messages", {
+												defaultValue: "no messages saved",
 											})
-										: t("stats.blocking.you_had_not_replied", {
-												defaultValue: "you hadn't replied",
-											}),
+										: replied
+											? t("stats.blocking.you_had_replied", {
+													defaultValue: "you had replied",
+												})
+											: t("stats.blocking.you_had_not_replied", {
+													defaultValue: "you hadn't replied",
+												}),
 								]
 									.filter(Boolean)
 									.join(" · "),
-								onOpen: row.profileId
-									? () => openProfile(row.profileId as string)
-									: undefined,
 							};
 						})}
 					/>

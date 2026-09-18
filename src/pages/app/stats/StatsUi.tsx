@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { ProfileImage } from "../../../components/ui/profile-image";
 import { getThumbImageUrl, validateMediaHash } from "../../../utils/media";
 import { cn } from "../../../utils/cn";
+import { personDisplayName, personStateLabel, usePerson } from "./statsPeople";
 
 // ---------------------------------------------------------------------------
 // Cards
@@ -616,11 +617,13 @@ export function CoverageStrip({ cells }: { cells: CoverageCell[] }) {
 
 export type PersonRowItem = {
 	key: string;
-	name: string;
+	/** Their profile opens when this is set. */
+	profileId: string | null;
+	/** The name saved on this device. Without one, Grindr is asked. */
+	name: string | null;
 	imageHash: string | null;
 	sub?: string;
 	value?: string;
-	onOpen?: () => void;
 };
 
 export function PeopleList({
@@ -633,55 +636,78 @@ export function PeopleList({
 	return (
 		<ol className="divide-y divide-[var(--border)]">
 			{rows.map((row, index) => (
-				<li key={row.key}>
-					<button
-						type="button"
-						onClick={row.onOpen}
-						disabled={!row.onOpen}
-						className="flex w-full items-center gap-3 py-2 text-left disabled:cursor-default"
-					>
-						{numbered ? (
-							<span
-								className={cn(
-									"w-4 shrink-0 text-sm font-semibold tabular-nums",
-									index < 3
-										? "text-[var(--accent)]"
-										: "text-[var(--text-muted)]",
-								)}
-							>
-								{index + 1}
-							</span>
-						) : null}
-						<span className="h-9 w-9 shrink-0 overflow-hidden rounded-full">
-							<ProfileImage
-								src={
-									row.imageHash && validateMediaHash(row.imageHash)
-										? getThumbImageUrl(row.imageHash)
-										: null
-								}
-								alt=""
-								iconClassName="h-4 w-4"
-							/>
-						</span>
-						<span className="min-w-0 flex-1">
-							<span className="block truncate text-sm">{row.name}</span>
-							{row.sub ? (
-								<span className="block truncate text-xs text-[var(--text-muted)]">
-									{row.sub}
-								</span>
-							) : null}
-						</span>
-						{row.value ? (
-							<span className="shrink-0 text-sm font-semibold tabular-nums">
-								{row.value}
-							</span>
-						) : null}
-						{row.onOpen ? (
-							<ChevronRight className="h-4 w-4 shrink-0 text-[var(--text-muted)]" />
-						) : null}
-					</button>
-				</li>
+				<PersonRow
+					key={row.key}
+					row={row}
+					rank={numbered ? index + 1 : null}
+				/>
 			))}
 		</ol>
+	);
+}
+
+function PersonRow({ row, rank }: { row: PersonRowItem; rank: number | null }) {
+	const { t } = useTranslation();
+	const person = usePerson(row.profileId, row.name);
+	const status = personStateLabel(t, person.lookup?.state);
+	const imageHash = row.imageHash ?? person.lookup?.imageHash ?? null;
+	return (
+		<li>
+			<button
+				type="button"
+				onClick={person.open}
+				disabled={!person.open || person.opening}
+				className="flex w-full items-center gap-3 py-2 text-left disabled:cursor-default"
+			>
+				{rank != null ? (
+					<span
+						className={cn(
+							"w-4 shrink-0 text-sm font-semibold tabular-nums",
+							rank <= 3 ? "text-[var(--accent)]" : "text-[var(--text-muted)]",
+						)}
+					>
+						{rank}
+					</span>
+				) : null}
+				<span className="h-9 w-9 shrink-0 overflow-hidden rounded-full">
+					<ProfileImage
+						src={
+							imageHash && validateMediaHash(imageHash)
+								? getThumbImageUrl(imageHash)
+								: null
+						}
+						alt=""
+						iconClassName="h-4 w-4"
+					/>
+				</span>
+				<span className="min-w-0 flex-1">
+					<span className="flex min-w-0 items-baseline gap-1.5">
+						<span className="truncate text-sm">
+							{personDisplayName(t, row.name, person)}
+						</span>
+						{status ? (
+							<span className="shrink-0 text-xs text-[var(--text-muted)]">
+								{status}
+							</span>
+						) : null}
+					</span>
+					{row.sub ? (
+						<span className="block truncate text-xs text-[var(--text-muted)]">
+							{row.sub}
+						</span>
+					) : null}
+				</span>
+				{row.value ? (
+					<span className="shrink-0 text-sm font-semibold tabular-nums">
+						{row.value}
+					</span>
+				) : null}
+				{person.opening ? (
+					<Loader2 className="h-4 w-4 shrink-0 animate-spin text-[var(--text-muted)]" />
+				) : person.open ? (
+					<ChevronRight className="h-4 w-4 shrink-0 text-[var(--text-muted)]" />
+				) : null}
+			</button>
+		</li>
 	);
 }

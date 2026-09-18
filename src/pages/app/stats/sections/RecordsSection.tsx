@@ -38,13 +38,14 @@ import {
 	type StatsSource,
 } from "../StatsUi";
 import { useStatsResource } from "../useStatsResource";
-import { personLabel, type SectionProps } from "./shared";
+import { PersonLink } from "../statsPeople";
+import { conversationPerson, type SectionProps } from "./shared";
 
 type RecordTile = {
 	icon: ReactNode;
 	label: string;
 	value: string;
-	sub: string;
+	sub: ReactNode;
 	source: StatsSource;
 };
 
@@ -101,9 +102,9 @@ export function RecordsSection({ context, locale }: SectionProps) {
 	);
 	const mostAuto = [...autoPerDay.entries()].sort((a, b) => b[1] - a[1])[0];
 
-	const fastestContact = records.fastestReply
-		? context.contactsByConversation.get(records.fastestReply.conversationId)
-		: undefined;
+	const fastestPerson = records.fastestReply
+		? conversationPerson(context, records.fastestReply.conversationId)
+		: null;
 
 	const tiles: RecordTile[] = [
 		{
@@ -157,9 +158,15 @@ export function RecordsSection({ context, locale }: SectionProps) {
 			value: records.fastestReply
 				? formatDuration(records.fastestReply.gap)
 				: none,
-			sub: records.fastestReply
-				? `${personLabel(fastestContact?.name, fastestContact?.profileId ?? "?")} · ${formatDay(records.fastestReply.timestamp, locale)}`
-				: "",
+			sub: records.fastestReply ? (
+				<PersonLink
+					profileId={fastestPerson?.profileId ?? null}
+					name={fastestPerson?.name}
+					suffix={formatDay(records.fastestReply.timestamp, locale)}
+				/>
+			) : (
+				""
+			),
 			source: "device",
 		},
 		{
@@ -171,7 +178,13 @@ export function RecordsSection({ context, locale }: SectionProps) {
 			sub: mostFromOne
 				? (() => {
 						const [profileId, day] = mostFromOne[0].split("|");
-						return `${personLabel(personName(context, profileId).name, profileId)} · ${formatDayKey(day, locale)}`;
+						return (
+							<PersonLink
+								profileId={profileId}
+								name={personName(context, profileId).name}
+								suffix={formatDayKey(day, locale)}
+							/>
+						);
 					})()
 				: "",
 			source: "device",
@@ -184,9 +197,15 @@ export function RecordsSection({ context, locale }: SectionProps) {
 			value: records.biggestAlbum
 				? formatNumber(records.biggestAlbum.items, locale)
 				: none,
-			sub: records.biggestAlbum
-				? `${personLabel(personName(context, records.biggestAlbum.profileId).name, records.biggestAlbum.profileId)} · ${formatDay(records.biggestAlbum.createdAt, locale)}`
-				: "",
+			sub: records.biggestAlbum ? (
+				<PersonLink
+					profileId={records.biggestAlbum.profileId}
+					name={personName(context, records.biggestAlbum.profileId).name}
+					suffix={formatDay(records.biggestAlbum.createdAt, locale)}
+				/>
+			) : (
+				""
+			),
 			source: "device",
 		},
 		{

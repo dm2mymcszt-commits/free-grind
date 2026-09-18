@@ -43,7 +43,6 @@ import {
 	chartStart,
 	coverageForRange,
 	periodLabel,
-	personLabel,
 	viewerWarning,
 	viewsIn,
 	type SectionProps,
@@ -71,7 +70,6 @@ export function ViewersSection({
 	grindr,
 	locale,
 	unitsPreset,
-	openProfile,
 }: SectionProps) {
 	const { t } = useTranslation();
 	const resource = useStatsResource(async () => {
@@ -751,7 +749,8 @@ export function ViewersSection({
 							const info = personName(context, contact.profileId);
 							return {
 								key: contact.profileId,
-								name: personLabel(info.name, contact.profileId),
+								profileId: contact.profileId,
+								name: info.name,
 								imageHash: info.imageHash,
 								sub: t("stats.viewers.favorite_sub", {
 									defaultValue: "last viewed {{date}}",
@@ -762,7 +761,6 @@ export function ViewersSection({
 									defaultValue_one: "{{count}} view",
 									count: list.length,
 								}),
-								onOpen: () => openProfile(contact.profileId),
 							};
 						})}
 					/>

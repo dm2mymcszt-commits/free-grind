@@ -22,7 +22,8 @@ import {
 	Trophy,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../../contexts/useAuth";
 import { usePreferences } from "../../../contexts/PreferencesContext";
 import { useApiFunctions } from "../../../hooks/useApiFunctions";
@@ -36,6 +37,7 @@ import {
 	STATS_SETTINGS_UPDATED_EVENT,
 } from "../../../services/statsLog";
 import { cn } from "../../../utils/cn";
+import { setCachedProfileDetail } from "../gridpage/cache";
 import { resolvePeriod, type StatsPeriodKey } from "./statsCompute";
 import { loadStatsContext, type StatsContext } from "./statsData";
 import {
@@ -45,6 +47,7 @@ import {
 	formatTime,
 } from "./statsFormat";
 import { createGrindrStats } from "./statsGrindr";
+import { StatsPeopleContext, type StatsPeople } from "./statsPeople";
 import { SectionError, SectionLoading } from "./StatsUi";
 import { useStatsResource } from "./useStatsResource";
 import { BlockingSection } from "./sections/BlockingSection";
@@ -120,7 +123,7 @@ const SECTIONS: {
 		key: "rankings",
 		icon: Trophy,
 		label: "Rankings",
-		description: "Tap a person to open their profile or chat.",
+		description: "Tap a person to open their profile.",
 		component: RankingsSection,
 	},
 	{
@@ -191,7 +194,15 @@ export default function StatsPage() {
 		const stored = readStorage(PERIOD_STORAGE_KEY);
 		return stored === "30d" || stored === "all" ? stored : "7d";
 	});
-	const [sectionKey, setSectionKey] = useState<SectionKey>("overview");
+	// Kept in the address so coming back from a profile lands on the same section.
+	const [searchParams, setSearchParams] = useSearchParams();
+	const sectionKey: SectionKey =
+		SECTIONS.find((entry) => entry.key === searchParams.get("section"))?.key ??
+		"overview";
+	const setSectionKey = (key: SectionKey) =>
+		setSearchParams(key === "overview" ? {} : { section: key }, {
+			replace: true,
+		});
 	const [refreshToken, setRefreshToken] = useState(0);
 
 	const contextResource = useStatsResource(
@@ -209,6 +220,44 @@ export default function StatsPage() {
 		void refreshToken;
 		return createGrindrStats(api);
 	}, [api, refreshToken]);
+
+	const people = useMemo<StatsPeople>(
+		() => ({
+			lookUp: grindr.person,
+			known: grindr.knownPerson,
+			open: async (profileId) => {
+				const result = await grindr.person(profileId);
+				if (result.state === "deleted") {
+					toast(
+						t("stats.person.deleted_toast", {
+							defaultValue: "This profile no longer exists.",
+						}),
+					);
+				} else if (result.state === "blocked_you") {
+					toast(
+						t("stats.person.blocked_you_toast", {
+							defaultValue:
+								"This person has blocked you, so their profile can't be opened.",
+						}),
+					);
+				} else {
+					// Open, blocked by you (the profile offers Unblock), or Grindr
+					// could not be asked: the profile page handles each of those.
+					if (result.detail) setCachedProfileDetail(profileId, result.detail);
+					navigate(`/profile/${profileId}`, {
+						state: {
+							returnTo:
+								sectionKey === "overview"
+									? "/stats"
+									: `/stats?section=${sectionKey}`,
+						},
+					});
+				}
+				return result;
+			},
+		}),
+		[grindr, navigate, sectionKey, t],
+	);
 
 	const [driveStatus, setDriveStatus] = useState<GoogleDriveSyncStatus | null>(
 		null,
@@ -426,22 +475,16 @@ export default function StatsPage() {
 							onRetry={contextResource.reload}
 						/>
 					) : context ? (
-						<SectionComponent
-							key={`${section.key}:${periodKey}:${context.loadedAt}`}
-							context={context}
-							period={period}
-							grindr={grindr}
-							locale={locale}
-							unitsPreset={unitsPreset}
-							openProfile={(profileId) =>
-								navigate(`/profile/${profileId}`, {
-									state: { returnTo: "/stats" },
-								})
-							}
-							openChat={(conversationId) =>
-								navigate(`/chat/${encodeURIComponent(conversationId)}`)
-							}
-						/>
+						<StatsPeopleContext.Provider value={people}>
+							<SectionComponent
+								key={`${section.key}:${periodKey}:${context.loadedAt}`}
+								context={context}
+								period={period}
+								grindr={grindr}
+								locale={locale}
+								unitsPreset={unitsPreset}
+							/>
+						</StatsPeopleContext.Provider>
 					) : null}
 				</main>
 			</div>

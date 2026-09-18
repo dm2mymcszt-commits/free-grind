@@ -428,6 +428,24 @@ export function findAutoBlockMistakes(
 	return mistakes;
 }
 
+/**
+ * Everyone who blocked you in a range, each once at their newest block:
+ * blocking you twice is still one person, and the same block is sometimes
+ * recorded twice a second apart.
+ */
+export function blockedYouIn<
+	T extends { profileId: string | null; conversationId: string; timestamp: number },
+>(rows: readonly T[], range: { start: number | null; end: number }): T[] {
+	const newest = new Map<string, T>();
+	for (const row of rows) {
+		if (!inPeriod(row.timestamp, range)) continue;
+		const key = row.profileId ?? row.conversationId;
+		const kept = newest.get(key);
+		if (!kept || row.timestamp > kept.timestamp) newest.set(key, row);
+	}
+	return [...newest.values()].sort((a, b) => b.timestamp - a.timestamp);
+}
+
 // ---------------------------------------------------------------------------
 // Chats
 // ---------------------------------------------------------------------------
