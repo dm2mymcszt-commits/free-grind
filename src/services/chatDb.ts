@@ -41,6 +41,11 @@ import type {
 	StoredMessage,
 } from "../types/chat-db";
 import type { IndexedMessage } from "../types/chat-cache";
+import {
+	blockEventId,
+	findSameBlockEvent,
+	type StoredBlockEventTime,
+} from "../utils/blockEventIdentity";
 import { appLog } from "../utils/logger";
 import { getMessageText } from "../utils/messageText";
 import { guardAgainstClosedPool } from "./sqlitePoolGuard";
@@ -1644,10 +1649,22 @@ async function recordBlockEvent(
 	const displayName = conversation?.entry.data.name?.trim() || null;
 	const avatarMediaHash = otherParticipant?.primaryMediaHash ?? null;
 
-	const id = `${conversationId}:${eventType}:${timestamp}`;
 	const db = await getDb();
 	const now = Date.now();
 	await executeWithLockRetry(db, "insert-block-event", async () => {
+		// Another sighting of an event already stored (the other device's row,
+		// or this device noticing twice) updates that row instead of adding
+		// one. The conversation's block_state cannot catch this when the chat
+		// has no conversations row, which is common for people who blocked us.
+		const stored = await db.select<StoredBlockEventTime[]>(
+			"SELECT id, event_type, timestamp FROM block_events WHERE conversation_id = $1",
+			[conversationId],
+		);
+		const id =
+			findSameBlockEvent(stored, eventType, timestamp)?.id ??
+			blockEventId(conversationId, eventType, timestamp);
+		// Only fills in what is missing: the time stays that of the first
+		// sighting, and a name is never replaced by nothing.
 		await db.execute(
 			`
 			INSERT INTO block_events (
@@ -1655,9 +1672,9 @@ async function recordBlockEvent(
 				display_name, avatar_media_hash, created_at
 			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 			ON CONFLICT(id) DO UPDATE SET
-				profile_id = excluded.profile_id,
-				display_name = excluded.display_name,
-				avatar_media_hash = excluded.avatar_media_hash
+				profile_id = COALESCE(excluded.profile_id, block_events.profile_id),
+				display_name = COALESCE(excluded.display_name, block_events.display_name),
+				avatar_media_hash = COALESCE(excluded.avatar_media_hash, block_events.avatar_media_hash)
 			`,
 			[id, otherProfileId, conversationId, eventType, timestamp, displayName, avatarMediaHash, now],
 		);
