@@ -1,60 +1,74 @@
-import { useRef, useState } from "react";
-import { Download, Images, MessageCircle, UserRound, X } from "lucide-react";
+import { type CSSProperties, useRef, useState } from "react";
+import {
+	Clock3,
+	CloudOff,
+	Download,
+	HardDriveDownload,
+	MessageCircle,
+	RotateCw,
+	Trash2,
+	UserRound,
+	X,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { AlbumMediaTile } from "../../../components/AlbumMediaTile";
 import toast from "react-hot-toast";
+import { AlbumMediaTile } from "../../../components/AlbumMediaTile";
 import { Button } from "../../../components/ui/button";
-import { EmptyState } from "../../../components/ui/states";
-import { PageHeaderBackground } from "../../../components/ui/PageHeaderBackground";
+import { ProfileImage } from "../../../components/ui/profile-image";
 import { saveMediaBatch } from "../../../services/saveMedia";
 import { appLog } from "../../../utils/logger";
+import { cn } from "../../../utils/cn";
 import type { AlbumViewer } from "../../../types/shared-albums";
-
-type AlbumContent = AlbumViewer["content"][number];
+import { formatAlbumCounts, formatTimeLeft } from "./albumFormat";
 
 type AlbumViewerPanelProps = {
 	viewer: AlbumViewer;
-	viewerIndex: number;
+	avatarUrl: string | null;
+	coverUrl: string | null;
 	fullScreenIndex: number | null;
-	selectedViewerItem: AlbumContent | null;
 	closeViewer: () => void;
 	openFullScreen: (index: number) => void;
+	onRetry: () => void;
+	onDelete: () => void;
 	onMessageProfile: (profileId: number) => void;
 	onViewProfile: (profileId: number) => void;
-	hideProfileActions?: boolean;
 };
+
+/** How long the closing animation runs before the viewer unmounts. */
+const CLOSE_MS = 220;
 
 export function AlbumViewerPanel({
 	viewer,
-	viewerIndex,
+	avatarUrl,
+	coverUrl,
 	fullScreenIndex,
-	selectedViewerItem,
 	closeViewer,
 	openFullScreen,
+	onRetry,
+	onDelete,
 	onMessageProfile,
 	onViewProfile,
-	hideProfileActions = false,
 }: AlbumViewerPanelProps) {
 	const { t } = useTranslation();
 	const [isSavingAll, setIsSavingAll] = useState(false);
 	const [isClosing, setIsClosing] = useState(false);
 	const isClosingRef = useRef(false);
+	const { item, content, status } = viewer;
 
 	const handleClose = () => {
 		if (isClosingRef.current) return;
 		isClosingRef.current = true;
 		setIsClosing(true);
-		setTimeout(() => closeViewer(), 280);
+		setTimeout(() => closeViewer(), CLOSE_MS);
 	};
 
 	const handleSaveAll = async () => {
-		const items = (viewer?.content ?? [])
-			.filter(Boolean)
-			.map((item) => ({
-				url: item?.url || item?.coverUrl || "",
-				type: (item?.contentType?.startsWith("video/") ? "video" : "image") as "image" | "video",
+		const items = content
+			.map((entry) => ({
+				url: entry.url || entry.coverUrl || "",
+				type: (entry.contentType?.startsWith("video/") ? "video" : "image") as "image" | "video",
 			}))
-			.filter((item): item is { url: string; type: "image" | "video" } => !!item.url);
+			.filter((entry) => !!entry.url);
 
 		if (items.length === 0) {
 			toast.error(t("profile_details.save_all_empty"));
@@ -68,7 +82,7 @@ export function AlbumViewerPanel({
 		try {
 			const result = await saveMediaBatch(items, (done, total) => {
 				toast.loading(t("profile_details.save_all_progress", { done, total }), { id: toastId });
-			}, viewer.conversationId);
+			}, item.conversationId);
 
 			if (result.failed === 0) {
 				toast.success(t("profile_details.save_all_success", { count: result.succeeded }), {
@@ -92,138 +106,229 @@ export function AlbumViewerPanel({
 		}
 	};
 
+	const counts =
+		status === "ready"
+			? {
+					images: content.filter((entry) => !entry.contentType?.startsWith("video/")).length,
+					videos: content.filter((entry) => entry.contentType?.startsWith("video/")).length,
+				}
+			: { images: item.album.contentCount.imageCount, videos: item.album.contentCount.videoCount };
+	const countsLabel = formatAlbumCounts(t, counts.images, counts.videos);
+	const subtitle = [
+		viewer.albumName?.trim() || null,
+		item.totalAlbumsShared && item.totalAlbumsShared > 1
+			? t("shared_albums.album_position", { number: item.albumNumber, total: item.totalAlbumsShared })
+			: null,
+		countsLabel,
+	]
+		.filter(Boolean)
+		.join(" · ");
+	const timeLeft = !item.localOnly ? formatTimeLeft(t, item.expiresAt) : null;
+	const skeletonCount = Math.min(
+		Math.max(item.album.contentCount.imageCount + item.album.contentCount.videoCount, item.savedCount, 3),
+		12,
+	);
+
 	return (
-		<div className={`fixed inset-0 z-[55] flex flex-col no-touch-callout isolate ${isClosing ? "pointer-events-none" : ""}`}>
+		<div
+			className={cn(
+				"fixed inset-0 z-[55] flex items-stretch justify-center no-touch-callout isolate md:items-center md:px-6 md:pb-6 md:pt-[calc(var(--titlebar-height,0px)+24px)]",
+				isClosing && "pointer-events-none",
+			)}
+		>
 			<div
-				className={`absolute inset-0 bg-black/45 backdrop-blur-sm ${isClosing ? "animate-backdrop-out" : "animate-backdrop-in"}`}
+				className={cn(
+					"absolute inset-0 bg-black/60 backdrop-blur-sm",
+					isClosing ? "animate-backdrop-out" : "animate-backdrop-in",
+				)}
 				onClick={handleClose}
 			/>
 
 			<div
 				role="dialog"
 				aria-modal="true"
-				className={`relative mx-auto flex h-full w-full max-w-4xl flex-col overflow-hidden bg-[var(--bg)] shadow-2xl transform-gpu will-change-transform ${
-					isClosing ? "animate-modal-top-out" : "animate-modal-top-in"
-				} md:border-x md:border-[var(--border)]`}
-				onClick={(e) => e.stopPropagation()}
+				aria-label={item.profileName}
+				className={cn(
+					"relative flex h-full w-full flex-col overflow-hidden bg-[var(--bg)] md:h-auto md:max-h-full md:max-w-3xl md:rounded-[28px] md:border md:border-[var(--border)] md:shadow-[0_32px_80px_rgba(0,0,0,0.5)]",
+					isClosing ? "album-panel-out" : "album-panel-in",
+				)}
+				onClick={(event) => event.stopPropagation()}
 			>
+				{/* Ambient backdrop: the album's own cover, heavily blurred. Faded
+				    out with a mask: a gradient to the page colour drawn over it
+				    left a seam where the blur met the edge. */}
+				<div
+					className="pointer-events-none absolute inset-x-0 top-0 h-60 overflow-hidden"
+					style={{
+						maskImage: "linear-gradient(to bottom, black 0%, black 25%, transparent 100%)",
+						WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 25%, transparent 100%)",
+					}}
+					aria-hidden
+				>
+					{coverUrl ? (
+						<img
+							src={coverUrl}
+							alt=""
+							className="h-full w-full scale-125 object-cover opacity-40 blur-3xl"
+						/>
+					) : (
+						<div className="h-full w-full bg-[radial-gradient(ellipse_at_top,color-mix(in_srgb,var(--accent)_24%,transparent),transparent_70%)]" />
+					)}
+				</div>
+
 				{/* Header */}
-				<header className="relative shrink-0 overflow-hidden px-[var(--app-px)] pb-5 pt-[calc(env(safe-area-inset-top,0px)+1rem)]">
-					<PageHeaderBackground color="var(--accent)" />
-					<div className="flex items-center justify-between gap-3">
-						<div className="flex min-w-0 items-center gap-3">
-							<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[var(--surface-2)] text-[var(--text)]">
-								<Images className="h-5 w-5" />
+				<header className="relative shrink-0 px-4 pb-4 pt-[calc(env(safe-area-inset-top,0px)+14px)] md:px-6 md:pt-6">
+					<div className="flex items-start gap-3">
+						<div className="relative shrink-0">
+							<div className="h-12 w-12 overflow-hidden rounded-full ring-2 ring-white/15 md:h-14 md:w-14">
+								<ProfileImage src={avatarUrl} alt={item.profileName} loading="eager" />
 							</div>
-							<div className="min-w-0">
-								<h2 className="truncate text-xl font-bold tracking-tight text-[var(--text)]">
-									{viewer.albumName?.trim() || `Album #${viewer.albumId}`}
-								</h2>
-								<div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-									<span className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
-										<UserRound className="h-3 w-3 shrink-0" />
-										<span className="truncate max-w-[160px]">{viewer.profileName}</span>
-									</span>
-									<span className="h-1 w-1 shrink-0 rounded-full bg-[var(--border)]" />
-									<span className="text-xs text-[var(--text-muted)]">
-										{t("shared_albums.items_count", { count: viewer.content.length })}
-										{fullScreenIndex !== null && selectedViewerItem
-											? ` · ${viewerIndex + 1}/${viewer.content.length}`
-											: ""}
-									</span>
-								</div>
-							</div>
+							{item.isOnline ? (
+								<span className="absolute bottom-0.5 right-0.5 h-3 w-3 rounded-full bg-emerald-400 ring-2 ring-[var(--bg)]" />
+							) : null}
 						</div>
 
-						<div className="flex shrink-0 items-center gap-2">
-							{viewer.content.length > 0 && (
+						<div className="min-w-0 flex-1 pt-0.5">
+							<h2 className="truncate text-lg font-bold leading-tight tracking-tight text-[var(--text)] md:text-xl">
+								{item.profileName}
+							</h2>
+							<p className="mt-1 truncate text-[13px] text-[var(--text-muted)]">{subtitle}</p>
+							{timeLeft || item.localOnly || viewer.isSavedCopy ? (
+								<div className="mt-2 flex flex-wrap gap-1.5">
+									{timeLeft ? (
+										<span className="inline-flex items-center gap-1 rounded-full bg-[var(--surface-2)] px-2 py-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
+											<Clock3 className="h-3 w-3" />
+											{timeLeft}
+										</span>
+									) : null}
+									{item.localOnly || viewer.isSavedCopy ? (
+										<span className="inline-flex items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--accent)_16%,transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--accent-readable)]">
+											<HardDriveDownload className="h-3 w-3" />
+											{t("shared_albums.saved_copy_badge")}
+										</span>
+									) : null}
+								</div>
+							) : null}
+						</div>
+
+						<div className="flex shrink-0 items-center gap-1.5">
+							{status === "ready" && content.length > 0 ? (
 								<button
 									type="button"
 									onClick={() => void handleSaveAll()}
 									disabled={isSavingAll}
 									aria-label={t("profile_details.save_all")}
-									className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[var(--surface-2)] px-3 text-xs font-medium text-[var(--text-muted)] transition hover:bg-[var(--surface-3)] hover:text-[var(--text)] active:scale-90 disabled:opacity-50"
+									title={t("profile_details.save_all")}
+									className="inline-flex h-10 items-center gap-1.5 rounded-full bg-[color-mix(in_srgb,var(--surface-2)_85%,transparent)] px-3 text-sm font-semibold text-[var(--text)] backdrop-blur-md transition hover:bg-[var(--surface-2)] active:scale-95 disabled:opacity-50"
 								>
-									<Download className="h-3.5 w-3.5" />
-									{t("profile_details.save_all")}
+									<Download className="h-4 w-4" />
+									<span className="hidden sm:inline">{t("profile_details.save_all")}</span>
 								</button>
-							)}
+							) : null}
 							<button
 								type="button"
 								onClick={handleClose}
 								aria-label={t("shared_albums.close_viewer")}
-								className="shrink-0 rounded-full bg-[var(--surface-2)] p-2 text-[var(--text-muted)] transition hover:bg-[var(--surface-3)] hover:text-[var(--text)] active:scale-90"
+								className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--surface-2)_85%,transparent)] text-[var(--text)] backdrop-blur-md transition hover:bg-[var(--surface-2)] active:scale-95"
 							>
 								<X className="h-5 w-5" />
 							</button>
 						</div>
 					</div>
+
+					{viewer.isSavedCopy && !item.localOnly ? (
+						<p className="mt-3 rounded-2xl bg-[var(--surface)] px-3 py-2 text-xs leading-relaxed text-[var(--text-muted)] ring-1 ring-inset ring-[var(--border)]">
+							{t("shared_albums.saved_copy_note")}
+						</p>
+					) : null}
 				</header>
 
-				<div className="shrink-0 border-t border-[var(--border)]" />
-
-				{viewer.content.length === 0 ? (
-					<div className="flex-1 p-4 sm:p-6">
-						<EmptyState
-							title={t("shared_albums.empty_album_title")}
-							description={t("shared_albums.empty_album_desc")}
-						/>
-					</div>
-				) : (
-					<div className="min-h-0 flex-1 overflow-y-auto">
-						<div
-							className="grid grid-cols-3 gap-1 p-3 sm:grid-cols-4 sm:gap-1.5 sm:p-4 lg:grid-cols-5"
-							style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom, 0px))" }}
-						>
-							{viewer.content.map((item, index) => {
-								const isActive = index === fullScreenIndex;
-
-								return (
-									<button
-										key={item.contentId}
-										aria-label={t("shared_albums.content_alt", { index: index + 1 })}
-										type="button"
-										onClick={() => openFullScreen(index)}
-										className={`group relative aspect-square overflow-hidden rounded-xl transition-all duration-150 ${
-											isActive
-												? "ring-2 ring-[var(--accent)] ring-offset-1 ring-offset-[var(--bg)] scale-[0.97]"
-												: "hover:scale-[1.02] hover:shadow-lg active:scale-[0.97]"
-										}`}
-									>
-										<AlbumMediaTile item={item} />
-										<div className={`pointer-events-none absolute inset-0 transition-colors duration-150 group-hover:bg-black/10 ${isActive ? "bg-black/20" : ""}`} />
-									</button>
-								);
-							})}
+				{/* Body */}
+				<div className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain" data-lenis-prevent>
+					{status === "error" ? (
+						<div className="flex min-h-[280px] flex-col items-center justify-center gap-3 px-6 py-10 text-center">
+							<div className="flex h-14 w-14 items-center justify-center rounded-full bg-[var(--surface-2)] text-[var(--text-muted)]">
+								<CloudOff className="h-6 w-6" />
+							</div>
+							<div className="max-w-sm">
+								<p className="text-base font-semibold text-[var(--text)]">
+									{t("shared_albums.error_open_title")}
+								</p>
+								<p className="mt-1 text-sm leading-relaxed text-[var(--text-muted)]">{viewer.error}</p>
+							</div>
+							<div className="mt-2 flex flex-wrap justify-center gap-2">
+								<Button type="button" variant="secondary" size="sm" onClick={onRetry} className="gap-1.5">
+									<RotateCw className="h-4 w-4" />
+									{t("shared_albums.retry")}
+								</Button>
+								<Button type="button" variant="danger" size="sm" onClick={onDelete} className="gap-1.5">
+									<Trash2 className="h-4 w-4" />
+									{t("shared_albums.remove_from_list")}
+								</Button>
+							</div>
 						</div>
-					</div>
-				)}
+					) : status === "ready" && content.length === 0 ? (
+						<div className="flex min-h-[240px] flex-col items-center justify-center gap-1 px-6 py-10 text-center">
+							<p className="text-base font-semibold text-[var(--text)]">{t("shared_albums.empty_album_title")}</p>
+							<p className="text-sm text-[var(--text-muted)]">{t("shared_albums.empty_album_desc")}</p>
+						</div>
+					) : (
+						<div className="grid grid-cols-3 gap-1.5 px-3 pb-4 sm:grid-cols-4 md:gap-2 md:px-6 md:pb-6">
+							{status === "loading"
+								? Array.from({ length: skeletonCount }, (_, index) => (
+										<div
+											key={index}
+											className="aspect-[3/4] animate-pulse rounded-xl bg-[var(--surface-2)] md:rounded-2xl"
+										/>
+									))
+								: content.map((entry, index) => (
+										<button
+											key={entry.contentId}
+											type="button"
+											aria-label={t("shared_albums.content_alt", { index: index + 1 })}
+											onClick={() => openFullScreen(index)}
+											style={{ "--tile-delay": `${Math.min(index, 16) * 28}ms` } as CSSProperties}
+											className={cn(
+												"album-tile-in group relative aspect-[3/4] overflow-hidden rounded-xl bg-[var(--surface-2)] outline-none transition-transform duration-200 active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-[var(--accent)] md:rounded-2xl",
+												index === fullScreenIndex && "ring-2 ring-[var(--accent)]",
+											)}
+										>
+											<div className="h-full w-full transition-transform duration-300 ease-out group-hover:scale-[1.04]">
+												<AlbumMediaTile item={entry} />
+											</div>
+											<div className="pointer-events-none absolute inset-0 rounded-[inherit] ring-1 ring-inset ring-white/10 transition-colors duration-200 group-hover:bg-white/5" />
+										</button>
+									))}
+						</div>
+					)}
+				</div>
 
-				{!hideProfileActions && (
-					<div
-						className="relative z-10 shrink-0 border-t border-[var(--border)] px-[var(--app-px)] pt-3 flex gap-2"
-						style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
-					>
+				{/* Footer */}
+				<footer
+					className="relative shrink-0 border-t border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_92%,transparent)] px-4 pt-3 md:flex md:justify-end md:px-6 md:pb-4"
+					style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom, 0px))" }}
+				>
+					<div className="flex gap-2 md:w-auto">
 						<Button
 							type="button"
 							variant="secondary"
-							onClick={() => onMessageProfile(viewer.profileId)}
-							className="flex-1 gap-1.5"
-						>
-							<MessageCircle className="h-4 w-4" />
-							{t("profile_details.message")}
-						</Button>
-						<Button
-							type="button"
-							variant="secondary"
-							onClick={() => onViewProfile(viewer.profileId)}
-							className="flex-1 gap-1.5"
+							onClick={() => onViewProfile(item.profileId)}
+							className="flex-1 gap-1.5 md:flex-none md:px-5"
 						>
 							<UserRound className="h-4 w-4" />
 							{t("chat.view_profile")}
 						</Button>
+						<Button
+							type="button"
+							variant="primary"
+							onClick={() => onMessageProfile(item.profileId)}
+							className="flex-1 gap-1.5 font-semibold md:flex-none md:px-5"
+						>
+							<MessageCircle className="h-4 w-4" />
+							{t("profile_details.message")}
+						</Button>
 					</div>
-				)}
+				</footer>
 			</div>
 		</div>
 	);

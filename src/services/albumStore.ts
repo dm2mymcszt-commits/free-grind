@@ -745,42 +745,6 @@ export async function captureConversationAlbumsForArchival(
 	return results;
 }
 
-/**
- * Caches an album's cover from the shared-albums page into chatDb, so the tile
- * remains visible even after the share expires. Intentionally fire-and-forget —
- * the caller doesn't need to await it.
- */
-export async function cacheAlbumFromSharedPage(params: {
-	albumId: number;
-	albumName: string | null;
-	ownerProfileId: number;
-	conversationId: string | null;
-	coverUrl: string | null;
-}): Promise<void> {
-	const { albumId, albumName, ownerProfileId, conversationId, coverUrl } = params;
-	try {
-		await chatDb.upsertAlbum({
-			albumId: String(albumId),
-			ownerProfileId: String(ownerProfileId),
-			albumName,
-			conversationId,
-			sharedViaMessageId: null,
-		});
-		if (coverUrl && !albumCoverCache.has(albumId)) {
-			const fetched = await fetchAndEncode(coverUrl);
-			if (fetched) {
-				await chatDb.upsertAlbumPreviewCover(String(albumId), fetched.base64, fetched.mimeType);
-				albumCoverCache.set(albumId, toDataUri(fetched.mimeType, fetched.base64));
-				for (const listener of albumCacheListeners) {
-					listener();
-				}
-			}
-		}
-	} catch (error) {
-		appLog.warn(`[album-store] failed to cache album ${albumId} from shared page`, error);
-	}
-}
-
 export type LocalAlbumContent = {
 	albumId: number;
 	albumName: string | null;

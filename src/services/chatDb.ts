@@ -2227,6 +2227,32 @@ export async function getAlbumMediaSummaries(albumId: string): Promise<StoredAlb
 	}));
 }
 
+export type AlbumMediaCounts = {
+	albumId: string;
+	/** Items whose file is stored on this device. */
+	savedCount: number;
+	savedVideoCount: number;
+};
+
+/**
+ * How many items of each album have their file stored, for every album at
+ * once. typeof() reads a value's type from the row header, so no file is read.
+ */
+export async function getAlbumMediaCounts(): Promise<AlbumMediaCounts[]> {
+	const db = await getDb();
+	const rows = await db.select<{ album_id: string; saved: number | null; saved_videos: number | null }[]>(
+		`SELECT album_id,
+			SUM(typeof(data_base64) = 'text') AS saved,
+			SUM(typeof(data_base64) = 'text' AND content_type LIKE 'video/%') AS saved_videos
+		 FROM album_media GROUP BY album_id`,
+	);
+	return rows.map((row) => ({
+		albumId: row.album_id,
+		savedCount: row.saved ?? 0,
+		savedVideoCount: row.saved_videos ?? 0,
+	}));
+}
+
 // The preview column, falling back to the file itself, but only when the value
 // is at most $2 characters: a video saved without a separate thumbnail keeps
 // its whole file in both columns, and that must never be read as a preview.
