@@ -1,5 +1,5 @@
 import { Loader2 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 type ConfirmDialogProps = {
 	isOpen: boolean;
@@ -11,9 +11,13 @@ type ConfirmDialogProps = {
 	onCancel: () => void;
 	isProcessing?: boolean;
 	confirmTone?: "default" | "danger";
+	/** Keeps the confirm button off until something in `children` is done, such as ticking a box. */
+	confirmDisabled?: boolean;
 	dontAskAgainLabel?: string;
 	dontAskAgainChecked?: boolean;
 	onDontAskAgainChange?: (checked: boolean) => void;
+	/** Extra content under the message, such as options that go with the choice. */
+	children?: ReactNode;
 };
 
 export function ConfirmDialog({
@@ -26,9 +30,11 @@ export function ConfirmDialog({
 	onCancel,
 	isProcessing = false,
 	confirmTone = "default",
+	confirmDisabled = false,
 	dontAskAgainLabel,
 	dontAskAgainChecked = false,
 	onDontAskAgainChange,
+	children,
 }: ConfirmDialogProps) {
 	const dialogRef = useRef<HTMLDialogElement | null>(null);
 
@@ -88,7 +94,7 @@ export function ConfirmDialog({
 	return (
 		<dialog
 			ref={dialogRef}
-			className="fixed inset-0 m-auto h-fit w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-[var(--border)] bg-[color-mix(in_srgb,var(--surface)_92%,black_8%)] p-0 text-[var(--text)] shadow-2xl backdrop:bg-black/45"
+			className="fixed inset-0 m-auto h-fit max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-sm overflow-y-auto rounded-2xl border border-[var(--border)] bg-[color-mix(in_srgb,var(--surface)_92%,black_8%)] p-0 text-[var(--text)] shadow-2xl backdrop:bg-black/45"
 			onClick={(event) => {
 				if (event.target === dialogRef.current && !isProcessing) {
 					onCancel();
@@ -98,6 +104,8 @@ export function ConfirmDialog({
 			<div className="p-4">
 				<p className="text-sm font-semibold text-[var(--text)]">{title}</p>
 				<p className="mt-2 text-sm leading-relaxed text-[var(--text-muted)]">{message}</p>
+
+				{children}
 
 				{dontAskAgainLabel && onDontAskAgainChange ? (
 					<label className="mt-4 flex cursor-pointer items-center justify-between gap-3 text-sm text-[var(--text-muted)]">
@@ -128,7 +136,7 @@ export function ConfirmDialog({
 					<button
 						type="button"
 						onClick={() => void onConfirm()}
-						disabled={isProcessing}
+						disabled={isProcessing || confirmDisabled}
 						className={confirmButtonClassName}
 					>
 						{isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}

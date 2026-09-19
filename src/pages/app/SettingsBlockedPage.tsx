@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { BackToSettings } from "../../components/BackToSettings";
 import { PullToRefreshContainer } from "./components/PullToRefreshContainer";
+import { BlockListTransferCard } from "./components/BlockListTransferCard";
 import { useApiFunctions } from "../../hooks/useApiFunctions";
 import { useBlockedProfileIds, useUnblockProfile } from "../../hooks/queries/useProfileQueries";
 import { getThumbImageUrl, validateMediaHash } from "../../utils/media";
@@ -306,6 +307,9 @@ export function SettingsBlockedPage() {
 			</header>
 
 			<div className="grid gap-6">
+				{/* Above the list: with thousands blocked, the bottom of it is never reached. */}
+				<BlockListTransferCard />
+
 				{isLoading ? (
 					<div>
 						<div className="mb-2 flex items-center gap-2 px-1">

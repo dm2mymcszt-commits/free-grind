@@ -141,8 +141,8 @@ export type BackupDestination = {
 	location: "downloads-folder" | "ios-files-app" | "browser-download";
 };
 
-export async function createBackupWriter(): Promise<BackupDestination> {
-	const fileName = backupFileName();
+/** Also writes other exports (the block list) to the same places, under their own name. */
+export async function createBackupWriter(fileName = backupFileName()): Promise<BackupDestination> {
 
 	if (isAndroid()) {
 		return { writer: createAndroidWriter(fileName), fileName, location: "downloads-folder" };

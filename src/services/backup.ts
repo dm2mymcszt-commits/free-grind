@@ -15,6 +15,7 @@ import {
 	recordPeerImport,
 } from "./backupPeers";
 import { appLog } from "../utils/logger";
+import { BLOCK_IMPORT_STORAGE_PREFIX } from "../utils/blockListImportRules";
 
 /**
  * Backup v2 — a device transfer, not just a chat archive.
@@ -228,6 +229,20 @@ const LOCAL_STORAGE_DENYLIST = new Set([
 ]);
 
 /**
+ * Keys denied by prefix, for stores that keep one key per account. A block
+ * list import in progress belongs to the device running it: restored
+ * elsewhere, two devices would block the same list at once.
+ */
+const LOCAL_STORAGE_DENIED_PREFIXES = [BLOCK_IMPORT_STORAGE_PREFIX];
+
+function isDeniedLocalStorageKey(key: string): boolean {
+	return (
+		LOCAL_STORAGE_DENYLIST.has(key) ||
+		LOCAL_STORAGE_DENIED_PREFIXES.some((prefix) => key.startsWith(prefix))
+	);
+}
+
+/**
  * `fg-view-autoblock-state:<accountId>` is deliberately *not* denied. It is
  * the watermark of which interest views the auto-blocker already judged, so
  * carrying it means the restored device skips them rather than re-evaluating
@@ -239,7 +254,7 @@ function exportLocalStorageEntries(): { k: string; v: string }[] {
 	try {
 		for (let index = 0; index < window.localStorage.length; index += 1) {
 			const key = window.localStorage.key(index);
-			if (!key || LOCAL_STORAGE_DENYLIST.has(key)) {
+			if (!key || isDeniedLocalStorageKey(key)) {
 				continue;
 			}
 			const value = window.localStorage.getItem(key);
@@ -257,7 +272,7 @@ function importLocalStorageEntry(entry: { k?: unknown; v?: unknown }): boolean {
 	if (typeof entry?.k !== "string" || typeof entry.v !== "string") {
 		return false;
 	}
-	if (LOCAL_STORAGE_DENYLIST.has(entry.k)) {
+	if (isDeniedLocalStorageKey(entry.k)) {
 		return false;
 	}
 	try {
@@ -274,7 +289,7 @@ function clearImportableLocalStorage(): void {
 		const doomed: string[] = [];
 		for (let index = 0; index < window.localStorage.length; index += 1) {
 			const key = window.localStorage.key(index);
-			if (key && !LOCAL_STORAGE_DENYLIST.has(key)) {
+			if (key && !isDeniedLocalStorageKey(key)) {
 				doomed.push(key);
 			}
 		}

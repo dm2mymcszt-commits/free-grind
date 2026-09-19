@@ -2,6 +2,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { NavBar } from "../components/NavBar";
 import { BackgroundViewScanner } from "../components/BackgroundViewScanner";
 import { BackgroundInboxScanner } from "../components/BackgroundInboxScanner";
+import { BlockListImportRunner } from "../components/BlockListImportRunner";
 import { useDesktopBreakpoint } from "../hooks/useDesktopBreakpoint";
 
 export function ProtectedLayout() {
@@ -23,6 +24,9 @@ export function ProtectedLayout() {
             
             {/* Scans incoming unread chats to automatically apply block rules */}
             <BackgroundInboxScanner />
+
+            {/* Keeps a block list import going, a few blocks a minute, on every page */}
+            <BlockListImportRunner />
 			
             <div className="app-page-container">
                 <Outlet />
