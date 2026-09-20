@@ -47,7 +47,10 @@ import {
 	type StoredBlockEventTime,
 } from "../utils/blockEventIdentity";
 import { appLog } from "../utils/logger";
-import { isFalseBlockedByOtherMarker } from "../utils/blockAttribution";
+import {
+	isFalseBlockedByOtherMarker,
+	restoredStateAfterFalseMarker,
+} from "../utils/blockAttribution";
 import { getMessageText } from "../utils/messageText";
 import { guardAgainstClosedPool } from "./sqlitePoolGuard";
 
@@ -1094,14 +1097,35 @@ export async function repairFalseBlockedByOtherMarkers(): Promise<number> {
 	for (const [conversationId, types] of byConversation) {
 		const blockedByOther = types.get("SystemBlocked");
 		const blockedBySelf = types.get("SystemBlockedBySelf");
+		const markerTimestamps = {
+			blockedByOther: blockedByOther?.timestamp ?? null,
+			blockedBySelf: blockedBySelf?.timestamp ?? null,
+			unblockedBySelf: types.get("SystemUnblockedBySelf")?.timestamp ?? null,
+		};
+		// A chat this account unblocked cannot still be blocked_by_me. The first
+		// version of this pass restored exactly that when it cleared a false
+		// marker from an unblocked chat, which stranded it in the archive with
+		// no way out: the unblock button only appears while the server's block
+		// list still holds that person, and it correctly no longer does. Checked
+		// before the false-marker branch because such a chat has already lost
+		// its marker and would never reach it.
 		if (
-			!blockedByOther ||
-			!isFalseBlockedByOtherMarker({
-				blockedByOther: blockedByOther.timestamp,
-				blockedBySelf: blockedBySelf?.timestamp ?? null,
-				unblockedBySelf: types.get("SystemUnblockedBySelf")?.timestamp ?? null,
-			})
+			markerTimestamps.unblockedBySelf != null &&
+			markerTimestamps.blockedBySelf != null &&
+			markerTimestamps.unblockedBySelf > markerTimestamps.blockedBySelf
 		) {
+			const stranded = await getConversation(conversationId).catch(() => null);
+			if (stranded?.blockState === "blocked_by_me") {
+				await setBlockState(conversationId, null);
+				await setConversationArchived(conversationId, false, null);
+				repaired += 1;
+				appLog.info("[chat-db] freed a chat left blocked_by_me after its own unblock", {
+					conversationId,
+				});
+			}
+		}
+
+		if (!blockedByOther || !isFalseBlockedByOtherMarker(markerTimestamps)) {
 			continue;
 		}
 
@@ -1118,7 +1142,18 @@ export async function repairFalseBlockedByOtherMarkers(): Promise<number> {
 		// has legitimately cleared it, and that null must stand.
 		const conversation = await getConversation(conversationId).catch(() => null);
 		if (conversation?.blockState === "blocked_by_other") {
-			await setBlockState(conversationId, "blocked_by_me");
+			const restored = restoredStateAfterFalseMarker(markerTimestamps);
+			await setBlockState(conversationId, restored);
+			// The false marker is also what archived the chat. If this account's
+			// own last move was an unblock, there is nothing left holding it
+			// there — leaving it archived is what made an unblocked person look
+			// unreachable, with no unblock button to press because the server's
+			// block list (correctly) no longer holds them. Unarchiving hands it
+			// back to the normal sweeps, which will archive it again, properly
+			// attributed, if they really did block this account.
+			if (restored === null) {
+				await setConversationArchived(conversationId, false, null);
+			}
 		}
 
 		repaired += 1;

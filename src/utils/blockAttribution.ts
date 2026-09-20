@@ -73,6 +73,26 @@ export type ConversationBlockMarkers = {
  * points away from this account. Judged purely on the gap, so a block minutes
  * later is still taken at face value.
  */
+/**
+ * The block_state a conversation should be left in once its false marker is
+ * removed: whatever this account's own last action implies.
+ *
+ * The false marker overwrote block_state with blocked_by_other, so putting
+ * back "blocked_by_me" unconditionally is wrong for the unblock case — the
+ * chat would stay archived, and the stored state would contradict the server's
+ * block list, which no longer holds that person. null means "not blocked by
+ * anyone as far as this account did anything", and lets the normal sweeps
+ * re-decide from fresh evidence, including concluding that they really did
+ * block you.
+ */
+export function restoredStateAfterFalseMarker(
+	markers: ConversationBlockMarkers,
+): BlockState | null {
+	const { blockedBySelf, unblockedBySelf } = markers;
+	if (blockedBySelf == null) return null;
+	return unblockedBySelf != null && unblockedBySelf > blockedBySelf ? null : "blocked_by_me";
+}
+
 export function isFalseBlockedByOtherMarker(
 	markers: ConversationBlockMarkers,
 	settleMs: number = SELF_ACTION_SETTLE_MS,

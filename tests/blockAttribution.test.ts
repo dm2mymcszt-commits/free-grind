@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	isFalseBlockedByOtherMarker,
 	resolveBlockAttribution,
+	restoredStateAfterFalseMarker,
 } from "../src/utils/blockAttribution";
 
 describe("resolveBlockAttribution", () => {
@@ -216,5 +217,42 @@ describe("isFalseBlockedByOtherMarker", () => {
 				unblockedBySelf: null,
 			}),
 		).toBe(false);
+	});
+});
+
+// What the conversation is left in once its false marker is deleted. Getting
+// this wrong leaves an unblocked person stranded in the archive with no
+// unblock button, because the server's block list no longer holds them.
+describe("restoredStateAfterFalseMarker", () => {
+	const BLOCK = 1_000;
+
+	test("a block with no unblock after it goes back to blocked_by_me", () => {
+		expect(
+			restoredStateAfterFalseMarker({
+				blockedBySelf: BLOCK,
+				blockedByOther: BLOCK + 240_000,
+				unblockedBySelf: null,
+			}),
+		).toBe("blocked_by_me");
+	});
+
+	test("an unblock after the block clears the state entirely", () => {
+		expect(
+			restoredStateAfterFalseMarker({
+				blockedBySelf: BLOCK,
+				unblockedBySelf: BLOCK + 120_000,
+				blockedByOther: BLOCK + 123_000,
+			}),
+		).toBeNull();
+	});
+
+	test("an unblock older than the block does not clear it", () => {
+		expect(
+			restoredStateAfterFalseMarker({
+				unblockedBySelf: BLOCK - 60_000,
+				blockedBySelf: BLOCK,
+				blockedByOther: BLOCK + 60_000,
+			}),
+		).toBe("blocked_by_me");
 	});
 });
