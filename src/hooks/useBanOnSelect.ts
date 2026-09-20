@@ -18,10 +18,10 @@ import { BAN_ON_SELECT_UPDATED_EVENT, isBanOnSelectEnabled } from "../utils/auto
 
 /**
  * What a selection is, which decides where the keyword may go: a message may
- * be banned as a forbidden keyword or as an opening message, while a bio or a
- * Right Now post only ever belongs in the keyword list.
+ * be banned as a forbidden keyword or as an opening message, while a name, a
+ * bio or a Right Now post only ever belongs in the keyword list.
  */
-export type BanSelectionKind = "message" | "profile";
+export type BanSelectionKind = "message" | "name" | "profile";
 
 export type BanSelection = { text: string; kind: BanSelectionKind };
 
@@ -67,23 +67,27 @@ function readMarkedSelection(): BanSelection | null {
 	const host = element?.closest(`[${BAN_SELECTABLE_ATTRIBUTE}]`);
 	if (!host) return null;
 
-	return { text, kind: host.getAttribute(BAN_SELECTABLE_ATTRIBUTE) === "profile" ? "profile" : "message" };
+	const marked = host.getAttribute(BAN_SELECTABLE_ATTRIBUTE);
+	const kind: BanSelectionKind =
+		marked === "profile" || marked === "name" ? marked : "message";
+	return { text, kind };
 }
 
 /**
  * Watches for a finished selection inside marked text. Mount it wherever the
  * Ban keyword dialog lives; `clearSelection` is the dialog's onClose.
  *
- * `accept` is the kind this host owns. Two hosts are never on screen together
- * today (the chat thread and the profile are separate routes), but naming the
- * kind means that if they ever are, a highlight opens one dialog rather than
- * both of them at once.
+ * `accept` is the kind, or kinds, this host owns. Two hosts are never on screen
+ * together today (the chat thread and the profile are separate routes), but
+ * naming the kinds means that if they ever are, a highlight opens one dialog
+ * rather than both of them at once.
  */
-export function useBanOnSelect(accept: BanSelectionKind): {
+export function useBanOnSelect(accept: BanSelectionKind | readonly BanSelectionKind[]): {
 	enabled: boolean;
 	selection: BanSelection | null;
 	clearSelection: () => void;
 } {
+	const acceptKey = (Array.isArray(accept) ? accept : [accept]).join(",");
 	const enabled = useBanOnSelectEnabled();
 	const [selection, setSelection] = useState<BanSelection | null>(null);
 	// Mirrors `selection` for the listeners: without it, every click inside the
@@ -116,7 +120,7 @@ export function useBanOnSelect(accept: BanSelectionKind): {
 			window.setTimeout(() => {
 				if (pendingRef.current) return;
 				const found = readMarkedSelection();
-				if (!found || found.kind !== accept) return;
+				if (!found || !acceptKey.split(",").includes(found.kind)) return;
 				pendingRef.current = found;
 				setSelection(found);
 			}, 0);
@@ -136,7 +140,9 @@ export function useBanOnSelect(accept: BanSelectionKind): {
 			document.removeEventListener("pointerup", capture);
 			document.removeEventListener("keyup", handleKeyUp);
 		};
-	}, [enabled, accept, clearSelection]);
+		// acceptKey rather than `accept` so a caller passing an inline array
+		// does not re-subscribe on every render.
+	}, [enabled, acceptKey, clearSelection]);
 
 	return { enabled, selection, clearSelection };
 }

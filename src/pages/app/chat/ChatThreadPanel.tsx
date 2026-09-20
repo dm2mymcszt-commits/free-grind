@@ -83,7 +83,10 @@ import { isSelectableMediaMessage } from "./mediaSelection";
 import { AudioMessagePlayer } from "./AudioMessagePlayer";
 import { ConfirmDialog } from "../../../components/ui/confirm-dialog";
 import { BanWordDialog } from "../../../components/ui/BanWordDialog";
-import { useBanOnSelect } from "../../../hooks/useBanOnSelect";
+import { banSelectableProps, useBanOnSelect, type BanSelectionKind } from "../../../hooks/useBanOnSelect";
+
+/** Stable identity, so the selection listener is not re-subscribed every render. */
+const BAN_SELECT_KINDS: readonly BanSelectionKind[] = ["message", "name"];
 import { classifyProfileAccess } from "../../../utils/profileAccessStatus";
 import { useApiFunctions } from "../../../hooks/useApiFunctions";
 import {
@@ -611,15 +614,28 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 	// Highlighting a message opens the same dialog the "Ban word" action does,
 	// already trimmed to what was highlighted. Its own request is kept apart
 	// from banWordRequest so closing the dialog can also drop the highlight.
-	const { selection: banSelection, clearSelection: clearBanSelection } = useBanOnSelect("message");
+	const {
+		enabled: banOnSelect,
+		selection: banSelection,
+		clearSelection: clearBanSelection,
+	} = useBanOnSelect(BAN_SELECT_KINDS);
 	const activeBanRequest = banWordRequest
 		?? (banSelection
-			? {
-					text: banSelection.text,
-					title: "Ban keyword",
-					prompt: "Trim this down to what you want to block.",
-					forbiddenOnly: false,
-				}
+			? banSelection.kind === "name"
+				? {
+						text: banSelection.text,
+						title: "Ban name",
+						// A name belongs in the keyword list only, exactly like the
+						// "Ban Name" menu item it doubles for.
+						prompt: "Blocks people whose name, bio or messages match this.",
+						forbiddenOnly: true,
+					}
+				: {
+						text: banSelection.text,
+						title: "Ban keyword",
+						prompt: "Trim this down to what you want to block.",
+						forbiddenOnly: false,
+					}
 			: null);
 	const closeBanWord = () => {
 		setBanWordRequest(null);
@@ -1262,13 +1278,28 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 				const realProfileName = (
 					(selectedConversation ? selectedConversation.data.name : targetProfileDetail?.displayName) ?? ""
 				).trim();
-				// Once a conversation is blocked, the profile endpoint answers with
-				// a stub whose displayName is literally "4" (blocked) or "3" (gone),
-				// and that placeholder can end up saved as the conversation's name.
-				// Banning it would add a keyword matching anyone actually called
-				// that, so it is never offered — see utils/profileAccessStatus.ts.
-				const bannableProfileName =
-					realProfileName === "3" || realProfileName === "4" ? "" : realProfileName;
+				// Names the app shows but nobody chose, which must never become a
+				// keyword: the "3"/"4" access stubs a blocked or deleted profile
+				// answers with (utils/profileAccessStatus.ts), which can end up
+				// saved as the conversation's name, and the placeholders shown when
+				// a conversation has no name at all. Banning any of them would
+				// match every person genuinely called that. A nickname invented on
+				// this device is excluded already: realProfileName reads the stored
+				// name, never localNickname.
+				const unbannableNames = [
+					"3",
+					"4",
+					t("chat.conversation"),
+					t("chat.unknown"),
+					t("chat.notifications.someone"),
+				];
+				const bannableProfileName = unbannableNames.includes(realProfileName)
+					? ""
+					: realProfileName;
+				// Selecting the header name bans it, but only when the name on
+				// screen *is* that bannable name — not a nickname, not a placeholder.
+				const isHeaderNameBannable =
+					bannableProfileName !== "" && displayName === bannableProfileName;
 
 				// Blocking a chat with a live conversation archives it — that's why
 				// the existing-conversation case keys off isArchived. There's no
@@ -1419,7 +1450,14 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 								</button>
 								<div className="min-w-0">
 									<div className="flex items-center gap-1.5 min-w-0">
-										<p className="truncate text-lg font-semibold">
+										<p
+											className={`truncate text-lg font-semibold${
+												banOnSelect && isHeaderNameBannable ? " ban-selectable" : ""
+											}`}
+											{...(banOnSelect && isHeaderNameBannable
+												? banSelectableProps("name")
+												: {})}
+										>
 											{displayName}
 										</p>
 									</div>
