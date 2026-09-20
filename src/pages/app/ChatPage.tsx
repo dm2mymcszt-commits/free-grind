@@ -25,7 +25,7 @@ import { setConversationDirectory } from "../../services/conversationDirectory";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { TextInputDialog } from "../../components/ui/text-input-dialog";
 import * as chatDb from "../../services/chatDb";
-import type { ArchivedReason } from "../../types/chat-db";
+import type { ArchivedReason, BlockState } from "../../types/chat-db";
 import {
 	archiveConversation,
 	unarchiveConversation,
@@ -281,8 +281,11 @@ export function ChatPage() {
 	// happens to contain at any given moment. A conversation that's gone from
 	// the server by definition never comes back via /v4/inbox to repopulate
 	// `conversations` on its own, so it can't be the source for this.
+	// blockState rides along with the reason: "archived" alone never says who
+	// blocked whom, and that is the one thing someone looking at an archived
+	// chat actually wants to know. null means the record does not say.
 	const [archivedConversations, setArchivedConversations] = useState<
-		Map<string, { reason: ArchivedReason; entry: ConversationEntry }>
+		Map<string, { reason: ArchivedReason; entry: ConversationEntry; blockState?: BlockState | null }>
 	>(new Map());
 	const archivedConversationsRef = useRef(archivedConversations);
 	useEffect(() => {
@@ -1022,6 +1025,7 @@ export function ChatPage() {
 					next.set(stored.conversationId, {
 						reason: stored.archivedReason ?? "ws_delete",
 						entry: stored.entry,
+						blockState: stored.blockState ?? null,
 					});
 					return next;
 				});
@@ -1405,6 +1409,7 @@ export function ChatPage() {
 						next.set(c.conversationId, {
 							reason: c.archivedReason ?? "ws_delete",
 							entry: c.entry,
+							blockState: c.blockState ?? null,
 						});
 					}
 					return next;
@@ -3330,7 +3335,7 @@ export function ChatPage() {
 
 			const nextArchived = new Map<
 				string,
-				{ reason: ArchivedReason; entry: ConversationEntry }
+				{ reason: ArchivedReason; entry: ConversationEntry; blockState?: BlockState | null }
 			>();
 			const nextActive: ConversationEntry[] = [];
 			for (const item of stored) {
@@ -3338,6 +3343,7 @@ export function ChatPage() {
 					nextArchived.set(item.conversationId, {
 						reason: item.archivedReason ?? "ws_delete",
 						entry: item.entry,
+						blockState: item.blockState ?? null,
 					});
 				} else {
 					nextActive.push(item.entry);
@@ -4378,6 +4384,7 @@ export function ChatPage() {
 						next.set(stored.conversationId, {
 							reason: stored.archivedReason ?? "not_found",
 							entry: stored.entry,
+							blockState: stored.blockState ?? null,
 						});
 						return next;
 					});
@@ -6777,6 +6784,11 @@ export function ChatPage() {
 			archivedReason={
 				selectedConversationId
 					? archivedConversations.get(selectedConversationId)?.reason ?? null
+					: null
+			}
+			archivedBlockState={
+				selectedConversationId
+					? archivedConversations.get(selectedConversationId)?.blockState ?? null
 					: null
 			}
 			localNickname={

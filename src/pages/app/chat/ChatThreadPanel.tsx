@@ -101,7 +101,7 @@ import { ToggleRow } from "../../../components/ui/toggle-row";
 import { BottomDrawer } from "../../../components/ui/bottom-drawer";
 import { BottomSheet, SheetClose } from "../../../components/ui/bottom-sheet";
 import { GiphyPickerSheet } from "./GiphyPickerSheet";
-import type { ArchivedReason } from "../../../types/chat-db";
+import type { ArchivedReason, BlockState } from "../../../types/chat-db";
 import { useAvatarCache } from "../../../hooks/useAvatarCache";
 import { resolveAvatarSrc } from "../../../services/avatarStore";
 import { matchSlashCommandsByPrefix, type SlashCommandDef } from "./slashCommands";
@@ -267,6 +267,8 @@ type ChatThreadPanelProps = {
 	isPartnerTyping?: boolean;
 	isArchived?: boolean;
 	archivedReason?: ArchivedReason | null;
+	/** Who blocked whom, when the record says. null means it does not. */
+	archivedBlockState?: BlockState | null;
 	/** Photos and videos being picked, by message id; null when not picking. */
 	selectedMediaIds: ReadonlySet<string> | null;
 	onStartMediaSelection: (message: UiMessage) => void;
@@ -669,6 +671,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 		isFavorite = false,
 		isArchived = false,
 		archivedReason = null,
+		archivedBlockState = null,
 		isTogglingFavorite = false,
 		localNickname = null,
 		onEditLocalNickname,
@@ -2004,14 +2007,29 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 									<p className="text-sm font-semibold text-[var(--text)]">
 										{t("chat.archived.title", { defaultValue: "Conversation archived" })}
 									</p>
+									{/* Say which of the three archives this is. "Archived" alone
+										left the unblock button's absence as the only clue, and
+										that clue reads backwards: it is missing precisely when
+										this account is *not* the one blocking. The stored
+										block_state is used rather than the live block list,
+										which is briefly empty while it loads and would flicker
+										through "they blocked you". */}
 									<p className="text-xs text-[var(--text-muted)]">
 										{archivedReason === "not_found"
 											? t("chat.archived.not_found", {
-													defaultValue: "This conversation is no longer available. You can still read the history.",
+													defaultValue: "Their profile is gone — deleted or banned. You can still read the history.",
 												})
-											: t("chat.archived.blocked_or_deleted", {
-													defaultValue: "This conversation is archived. You can still read the history, but can no longer send messages or view this person's profile.",
-												})}
+											: archivedBlockState === "blocked_by_me"
+												? t("chat.archived.blocked_by_me", {
+														defaultValue: "You blocked this person. Unblock them to write again — the history stays either way.",
+													})
+												: archivedBlockState === "blocked_by_other"
+													? t("chat.archived.blocked_by_other", {
+															defaultValue: "This person blocked you, so there is nothing to unblock on your side. You can still read the history.",
+														})
+													: t("chat.archived.blocked_or_deleted", {
+															defaultValue: "This conversation is archived. You can still read the history, but can no longer send messages or view this person's profile.",
+														})}
 									</p>
 								</div>
 							</div>
