@@ -133,6 +133,7 @@ import { SCROLL_RESTORATION_TIMEOUT_MS } from "../../config/ui-constants";
 import { clearAutomationSeenHistoryForSender, runAutomationRulesForSender } from "../../utils/automationRules";
 import { withPreservingBlock } from "../../services/autoBlockConversation";
 import { consumeSelfBlockAction } from "../../utils/selfBlockActions";
+import { resolveBlockAttribution } from "../../utils/blockAttribution";
 import { isReadReceiptsHidden, checkAndAutoWhitelistActiveChat } from "../../utils/privacy";
 import { getDisplayName } from "../../services/conversationDirectory";
 import freegrindLogo from "../../images/freegrind-logo.webp";
@@ -2592,6 +2593,14 @@ export function ChatPage() {
 					void archiveConversation(conversationId, "ws_delete");
 					archiveConversationsLocally([conversationId], "ws_delete");
 					const storedConversation = await chatDb.getConversation(conversationId).catch(() => null);
+					// Who this belongs to is decided by resolveBlockAttribution, not
+					// here — see its doc comment for why an existing block_state and
+					// an inconclusive lookup both mean "attribute nothing".
+					const knownBlockState = storedConversation?.blockState ?? null;
+					// Only consumed when it can still be acted on: once block_state
+					// is set, the marker was already spent by the block that set it.
+					const selfMarked =
+						knownBlockState === null && consumeSelfBlockAction(conversationId, "block");
 					// Falls back to parsing the conversationId itself when
 					// other_profile_id hasn't been backfilled yet (only ever set
 					// from a live /v4/inbox entry's participant list) — otherwise a
@@ -2603,23 +2612,32 @@ export function ChatPage() {
 					// Fetches fresh rather than relying on blockedProfileIdsData's
 					// query staleTime — a 403 here is rare enough that a live
 					// round trip is cheap, and getting self vs. other right matters
-					// more than saving one request for exactly this decision.
-					const isSelf =
-						consumeSelfBlockAction(conversationId, "block") ||
-						(otherProfileId
+					// more than saving one request for exactly this decision. null is
+					// "could not tell", which attributes nothing at all.
+					const blockedByMeLookup =
+						knownBlockState === null && !selfMarked && otherProfileId
 							? await service
 									.getBlockedProfileIds()
 									.then((ids) => ids.includes(otherProfileId))
-									.catch(() => false)
-							: false);
-					const claimed = await claimBlockStateTransition(
-						conversationId,
-						isSelf ? "blocked_by_me" : "blocked_by_other",
-					).catch(() => false);
-					if (claimed) {
-						await chatDb
-							.insertSystemMessage(conversationId, isSelf ? "SystemBlockedBySelf" : "SystemBlocked")
-							.catch(() => {});
+									.catch(() => null)
+							: null;
+					const attribution = resolveBlockAttribution({
+						knownBlockState,
+						selfMarked,
+						blockedByMeLookup,
+					});
+					if (attribution) {
+						const claimed = await claimBlockStateTransition(conversationId, attribution).catch(
+							() => false,
+						);
+						if (claimed) {
+							await chatDb
+								.insertSystemMessage(
+									conversationId,
+									attribution === "blocked_by_me" ? "SystemBlockedBySelf" : "SystemBlocked",
+								)
+								.catch(() => {});
+						}
 					}
 				}
 				const isDraft = conversationId.startsWith("direct:") || 

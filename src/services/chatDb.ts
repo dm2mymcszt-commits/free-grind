@@ -47,6 +47,7 @@ import {
 	type StoredBlockEventTime,
 } from "../utils/blockEventIdentity";
 import { appLog } from "../utils/logger";
+import { isFalseBlockedByOtherMarker } from "../utils/blockAttribution";
 import { getMessageText } from "../utils/messageText";
 import { guardAgainstClosedPool } from "./sqlitePoolGuard";
 
@@ -623,6 +624,9 @@ export async function setActiveChatDbUser(profileId: number | null): Promise<voi
 		await repairArchivedConversationPreviews().catch((error) => {
 			appLog.warn("[chat-db] failed to repair archived conversation previews", error);
 		});
+		await repairFalseBlockedByOtherMarkers().catch((error) => {
+			appLog.warn("[chat-db] failed to repair false blocked-by-other markers", error);
+		});
 		await purgeEmptySyntheticBlockedConversations().catch((error) => {
 			appLog.warn("[chat-db] failed to purge empty synthetic blocked conversations", error);
 		});
@@ -1039,6 +1043,90 @@ export async function repairArchivedConversationPreviews(): Promise<number> {
 			conversation.otherProfileId,
 		);
 		repaired += 1;
+	}
+
+	return repaired;
+}
+
+/**
+ * Removes "You were blocked" markers that record a block nobody made.
+ *
+ * ChatPage's 403 handler used to re-derive who blocked whom every time an
+ * inaccessible thread was opened, ignoring the block_state already on the
+ * conversation. By then this device's own block marker had been spent by the
+ * block that set that state, and the two remaining signals both fail *towards*
+ * "they blocked me" — an other_profile_id that was never backfilled, and a
+ * block-list request that errored. So opening a chat you had blocked wrote a
+ * permanent "You were blocked" under your own "You blocked this person", moved
+ * block_state to blocked_by_other, and fed a phantom into the Stats "Blocked
+ * you" figures. resolveBlockAttribution now prevents new ones; this clears the
+ * ones already written.
+ *
+ * Deliberately narrow — a marker is only false when this account's own block
+ * was already in force when it was written:
+ *  - "they blocked me" *before* my block is a real block I counter-blocked;
+ *  - my block, then my unblock, then theirs is a real block too.
+ * Both are left alone. Anything else keeps its marker.
+ *
+ * Rows are Drive-synced with tombstones, so removing them here propagates to
+ * the other devices on the next full reconcile instead of coming back.
+ */
+export async function repairFalseBlockedByOtherMarkers(): Promise<number> {
+	const db = await getDb();
+	// insertSystemMessage keys these by type and conversation, so a
+	// conversation holds at most one row of each type and the timestamps can
+	// simply be compared against each other.
+	const markers = await db.select<
+		{ conversation_id: string; message_id: string; type: string; timestamp: number }[]
+	>(
+		`SELECT conversation_id, message_id, type, timestamp FROM messages
+		 WHERE type IN ('SystemBlocked', 'SystemBlockedBySelf', 'SystemUnblockedBySelf')`,
+	);
+
+	const byConversation = new Map<string, Map<string, { messageId: string; timestamp: number }>>();
+	for (const marker of markers) {
+		const entry = byConversation.get(marker.conversation_id) ?? new Map();
+		entry.set(marker.type, { messageId: marker.message_id, timestamp: marker.timestamp });
+		byConversation.set(marker.conversation_id, entry);
+	}
+
+	let repaired = 0;
+	for (const [conversationId, types] of byConversation) {
+		const blockedByOther = types.get("SystemBlocked");
+		const blockedBySelf = types.get("SystemBlockedBySelf");
+		if (
+			!blockedByOther ||
+			!isFalseBlockedByOtherMarker({
+				blockedByOther: blockedByOther.timestamp,
+				blockedBySelf: blockedBySelf?.timestamp ?? null,
+				unblockedBySelf: types.get("SystemUnblockedBySelf")?.timestamp ?? null,
+			})
+		) {
+			continue;
+		}
+
+		await deleteMessageRow(blockedByOther.messageId);
+		// The Stats "Blocked you" list reads block_events directly, so the
+		// phantom has to come out of there too or it stays in the figures.
+		await executeWithLockRetry(db, "delete-false-block-event", async () => {
+			await db.execute(
+				"DELETE FROM block_events WHERE conversation_id = $1 AND event_type = 'blocked' AND timestamp = $2",
+				[conversationId, blockedByOther.timestamp],
+			);
+		});
+		// Only when it still holds the wrong attribution: an unblock since then
+		// has legitimately cleared it, and that null must stand.
+		const conversation = await getConversation(conversationId).catch(() => null);
+		if (conversation?.blockState === "blocked_by_other") {
+			await setBlockState(conversationId, "blocked_by_me");
+		}
+
+		repaired += 1;
+		appLog.info("[chat-db] removed a false \"You were blocked\" marker", {
+			conversationId,
+			blockedBySelfAt: blockedBySelf?.timestamp ?? null,
+			falseMarkerAt: blockedByOther.timestamp,
+		});
 	}
 
 	return repaired;

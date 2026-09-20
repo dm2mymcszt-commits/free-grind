@@ -1,5 +1,6 @@
 import { Ban, Check, ChevronLeft, Ellipsis, Flame, MessageCircle, Pencil, Phone, StickyNote, Star, Trash2, Triangle, X, Zap } from "lucide-react";
 import { BanWordDialog } from "../../../../components/ui/BanWordDialog";
+import { useBanOnSelect } from "../../../../hooks/useBanOnSelect";
 import toast from "react-hot-toast";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -392,6 +393,17 @@ export function ProfileDetailsModal({
 	const [banWordRequest, setBanWordRequest] = useState<
 		{ text: string; title: string; prompt: string } | null
 	>(null);
+	// Highlighting the bio or a Right Now post opens the same dialog the
+	// "Ban Bio Phrase" action does, already trimmed to what was highlighted.
+	const { selection: banSelection, clearSelection: clearBanSelection } = useBanOnSelect("profile");
+	const activeBanRequest = banWordRequest
+		?? (banSelection
+			? {
+					text: banSelection.text,
+					title: "Ban keyword",
+					prompt: "Trim this down to the phrase you want to block.",
+				}
+			: null);
 
 	const [profileNote, setProfileNote] = useState("");
 	const [profilePhoneNumber, setProfilePhoneNumber] = useState("");
@@ -1012,12 +1024,15 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 	);
 	const banWordDialog = (
 		<BanWordDialog
-			isOpen={banWordRequest !== null}
-			initialText={banWordRequest?.text ?? ""}
-			title={banWordRequest?.title}
-			prompt={banWordRequest?.prompt}
+			isOpen={activeBanRequest !== null}
+			initialText={activeBanRequest?.text ?? ""}
+			title={activeBanRequest?.title}
+			prompt={activeBanRequest?.prompt}
 			forbiddenOnly
-			onClose={() => setBanWordRequest(null)}
+			onClose={() => {
+				setBanWordRequest(null);
+				clearBanSelection();
+			}}
 		/>
 	);
 

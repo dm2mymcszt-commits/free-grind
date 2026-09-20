@@ -34,6 +34,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import type { ProfileDetail } from "../../GridPage.types";
 import type { TravelPlan } from "../../../../types/travel";
 import { useSpotifyTracks } from "../../../../hooks/queries/useProfileQueries";
+import { banSelectableProps, useBanOnSelectEnabled } from "../../../../hooks/useBanOnSelect";
 import { ProfileMusicSection } from "./ProfileMusicSection";
 import {
 	formatDistance,
@@ -189,6 +190,8 @@ export function ProfileDetailsContent({
 }: ProfileDetailsContentProps) {
 	const { t } = useTranslation();
 	const { unitsPreset } = usePreferences();
+	// Opts the free text in; ProfileDetailsModal hosts the dialog it opens.
+	const banOnSelect = useBanOnSelectEnabled();
 	const hasChatHistory = Boolean(chatContactStatus?.hasChatted) || (chatContactStatus?.unreadCount ?? 0) > 0;
 	const lastMessageLabel = formatRelativeTime(chatContactStatus?.lastMessageTimestamp ?? null);
 	const visibleTravelPlans = useMemo(
@@ -588,7 +591,12 @@ export function ProfileDetailsContent({
 									border: "1px solid color-mix(in srgb, var(--right-now), transparent 70%)",
 								}}
 							>
-								<p className="whitespace-pre-wrap text-base leading-relaxed text-[var(--text)]">{rightNowTextTrimmed}</p>
+								<p
+									className={`whitespace-pre-wrap text-base leading-relaxed text-[var(--text)]${banOnSelect ? " ban-selectable" : ""}`}
+									{...(banOnSelect ? banSelectableProps("profile") : {})}
+								>
+									{rightNowTextTrimmed}
+								</p>
 							</div>
 						</div>
 					)}
@@ -630,7 +638,10 @@ export function ProfileDetailsContent({
 								{t("profile_details.about")}
 							</p>
 							<div className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
-								<p className="whitespace-pre-wrap text-base leading-relaxed text-[var(--text)]">
+								<p
+									className={`whitespace-pre-wrap text-base leading-relaxed text-[var(--text)]${banOnSelect ? " ban-selectable" : ""}`}
+									{...(banOnSelect ? banSelectableProps("profile") : {})}
+								>
 									{activeProfile.aboutMe?.trim()}
 								</p>
 							</div>

@@ -21,6 +21,8 @@ describe("classifyBlockReason", () => {
 		["Distance Limit (42km)", "distance", "42km"],
 		["Has active 'Right Now' status", "right_now", null],
 		["Forbidden 'Looking For' tag", "looking_for", null],
+		["Has an X / Twitter account", "social_link", null],
+		["Scanner: Has an X / Twitter account", "social_link", null],
 		["Name keyword: cash", "name_keyword", "cash"],
 		['Name keyword: "cash"', "name_keyword", "cash"],
 		["Name Keyword: cash", "name_keyword", "cash"],

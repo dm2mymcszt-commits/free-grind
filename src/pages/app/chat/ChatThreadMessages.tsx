@@ -18,6 +18,7 @@ import { ProfileImage } from "../../../components/ui/profile-image";
 import freegrindLogo from "../../../images/freegrind-logo.webp";
 import { usePreferences } from "../../../contexts/PreferencesContext";
 import { useLocalMediaCache } from "../../../hooks/useLocalMediaCache";
+import { banSelectableProps, useBanOnSelectEnabled } from "../../../hooks/useBanOnSelect";
 import {
     getCachedMediaUri,
     getMessageFallbackMediaKey,
@@ -350,6 +351,9 @@ export function ChatThreadMessages({
 	useLocalMediaCache();
 	useAlbumCache();
 	useAvatarCache();
+	// Only opts the text bubbles in; the dialog the selection opens lives with
+	// the rest of the ban-keyword wiring in ChatThreadPanel.
+	const banOnSelect = useBanOnSelectEnabled();
 	const { blurIncomingMedia } = usePreferences();
 	const [revealedMediaMessageIds, setRevealedMediaMessageIds] = useState<Set<string>>(
 		() => new Set(),
@@ -2038,7 +2042,10 @@ export function ChatThreadMessages({
                                                 </div>
                                             </div>
                                         ) : (
-                                            <p className="whitespace-pre-wrap break-words">
+                                            <p
+                                                className={`whitespace-pre-wrap break-words${banOnSelect ? " ban-selectable" : ""}`}
+                                                {...(banOnSelect ? banSelectableProps("message") : {})}
+                                            >
                                                 {renderTextWithLinks(displayText, mine, (url) =>
                                                 openUrl(url).catch(() => window.open(url, "_blank"))
                                             )}

@@ -21,6 +21,7 @@ import type { ProfileDetail } from "../types/grid";
 import {
 	getMatchedForbiddenWord,
 	hasRightNowStatus,
+	hasTwitterAccount,
 	INTEREST_VIEW_SCAN_EVENT,
 	isForbiddenLookingFor,
 	isInterestViewAutoBlockEnabled,
@@ -98,6 +99,7 @@ function getProfileBlockReason(profile: AutoBlockProfile): string | null {
 	if (isOutsideDistanceLimits(distance)) return "Distance limit";
 	if (hasRightNowStatus(profile)) return "Has active 'Right Now' status";
 	if (isForbiddenLookingFor(profile.lookingFor)) return "Forbidden 'Looking For' tag";
+	if (hasTwitterAccount(profile)) return "Has an X / Twitter account";
 	if (matchedName) return `Name keyword: ${matchedName}`;
 	if (matchedBio) return `Bio keyword: ${matchedBio}`;
 	return null;

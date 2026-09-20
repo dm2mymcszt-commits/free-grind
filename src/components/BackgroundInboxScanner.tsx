@@ -6,6 +6,7 @@ import {
     isOutsideDistanceLimits, 
     isForbiddenLookingFor,
     hasRightNowStatus,
+    hasTwitterAccount,
     notifyAutoBlock,
     getMatchedForbiddenWord,
     getMatchedFirstMessageWord
@@ -234,6 +235,8 @@ export function BackgroundInboxScanner() {
                                         blockReason = "Has active 'Right Now' status";
                                     } else if (isForbiddenLookingFor(lookingForTags)) {
                                         blockReason = "Forbidden 'Looking For' tag";
+                                    } else if (hasTwitterAccount(p)) {
+                                        blockReason = "Has an X / Twitter account";
                                     } else if (matchedName) {
                                         blockReason = `Name keyword: ${matchedName}`;
                                     } else if (matchedBio) {

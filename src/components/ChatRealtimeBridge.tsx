@@ -65,6 +65,7 @@ import {
 	isOutsideAgeLimits, 
 	isOutsideDistanceLimits, 
 	hasRightNowStatus, 
+	hasTwitterAccount,
 	isForbiddenLookingFor 
 } from "../utils/autoblock";
 import { isProfileAutoblockWhitelisted, checkAndAutoWhitelistActiveChat } from "../utils/privacy";
@@ -860,6 +861,8 @@ export function ChatRealtimeBridge() {
 												blockReason = "Has active 'Right Now' status";
 											} else if (isForbiddenLookingFor(lookingForTags)) {
 												blockReason = "Forbidden 'Looking For' tag";
+											} else if (hasTwitterAccount(profile)) {
+												blockReason = "Has an X / Twitter account";
 											} else if (matchedName) {
 												blockReason = `Name keyword: "${matchedName}"`;
 											} else if (matchedBio) {

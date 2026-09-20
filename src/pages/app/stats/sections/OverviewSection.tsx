@@ -67,6 +67,7 @@ const REASON_LABELS: Record<string, string> = {
 	distance: "Distance",
 	right_now: "Right Now status",
 	looking_for: "Looking for",
+	social_link: "X / Twitter account",
 	name_keyword: "Name keyword",
 	bio_keyword: "Bio keyword",
 	message_keyword: "Message keyword",

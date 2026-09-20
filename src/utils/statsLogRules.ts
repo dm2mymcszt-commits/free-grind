@@ -13,6 +13,7 @@ export type StatsBlockReasonKind =
 	| "distance"
 	| "right_now"
 	| "looking_for"
+	| "social_link"
 	| "name_keyword"
 	| "bio_keyword"
 	| "message_keyword"
@@ -76,6 +77,9 @@ export function classifyBlockReason(label: string | null | undefined): Classifie
 		return { kind: "message_keyword", detail: unquote(match[1]) };
 	}
 	if (/^keyword match$/i.test(text)) return { kind: "keyword", detail: null };
+	// After the keyword branches on purpose: "Bio keyword: twitter" is a
+	// keyword block, not a social-link one.
+	if (/^has an x \/ twitter account$/i.test(text)) return { kind: "social_link", detail: null };
 	if (/^first message was media/i.test(text)) return { kind: "first_media", detail: null };
 	if ((match = text.match(/^first message:\s*(.*)$/i))) {
 		return { kind: "first_message", detail: unquote(match[1]) };

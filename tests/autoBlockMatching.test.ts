@@ -43,6 +43,7 @@ const {
 	getMatchedForbiddenWord,
 	getMatchedFirstMessageWord,
 	hasRightNowStatus,
+	hasTwitterAccount,
 	loadAutomationCache,
 } = await import("../src/utils/autoblock");
 const chatDb = await import("../src/services/chatDb");
@@ -147,6 +148,40 @@ describe("right now status", () => {
 	test("the setting still gates it", () => {
 		store.set("fg-block-right-now", "false");
 		expect(hasRightNowStatus({ rightNow: "HOSTING" })).toBe(false);
+	});
+});
+
+// Only the X link is a signal — Instagram and Facebook handles are ordinary
+// and must never be what gets someone blocked.
+describe("X / Twitter account", () => {
+	beforeEach(() => {
+		store.clear();
+		store.set("fg-block-twitter", "true");
+	});
+
+	test("a linked X handle counts", () => {
+		expect(hasTwitterAccount({ socialNetworks: { twitter: { userId: "EpsyPuppy" } } })).toBe(true);
+	});
+
+	test("an empty, missing or absent handle never counts", () => {
+		expect(hasTwitterAccount({ socialNetworks: { twitter: { userId: "  " } } })).toBe(false);
+		expect(hasTwitterAccount({ socialNetworks: { twitter: { userId: null } } })).toBe(false);
+		expect(hasTwitterAccount({ socialNetworks: {} })).toBe(false);
+		expect(hasTwitterAccount({})).toBe(false);
+		expect(hasTwitterAccount(null)).toBe(false);
+	});
+
+	test("the other networks are left alone", () => {
+		expect(
+			hasTwitterAccount({
+				socialNetworks: { instagram: { userId: "epsy_404" }, facebook: { userId: "epsy" } },
+			} as never),
+		).toBe(false);
+	});
+
+	test("the setting still gates it", () => {
+		store.set("fg-block-twitter", "false");
+		expect(hasTwitterAccount({ socialNetworks: { twitter: { userId: "EpsyPuppy" } } })).toBe(false);
 	});
 });
 

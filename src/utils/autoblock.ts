@@ -26,7 +26,29 @@ export const INTEREST_VIEW_SCAN_EVENT = "fg-trigger-view-scan";
 export const INBOX_AUTOBLOCK_NOTIFICATIONS_STORAGE_KEY = "fg-notify-autoblock";
 export const INTEREST_VIEW_AUTOBLOCK_NOTIFICATIONS_STORAGE_KEY = "fg-notify-autoblock-interest-views";
 
+/**
+ * "Select text to ban it": while this is on, message bubbles and a profile's
+ * free text become selectable, and letting go of a selection opens the Ban
+ * keyword dialog on what was highlighted. Off by default — selection is
+ * disabled app-wide (layout.css) so the app doesn't feel like a web page, and
+ * this is the one thing allowed to turn it back on.
+ */
+export const BAN_ON_SELECT_STORAGE_KEY = "fg-ban-on-select";
+/** Fired on the window when the toggle changes, so open views follow it live. */
+export const BAN_ON_SELECT_UPDATED_EVENT = "fg-ban-on-select-updated";
+
 export type AutoBlockNotificationSource = "inbox" | "interest_views";
+
+export function isBanOnSelectEnabled(): boolean {
+    return typeof window !== "undefined"
+        && window.localStorage.getItem(BAN_ON_SELECT_STORAGE_KEY) === "true";
+}
+
+export function setBanOnSelectEnabled(enabled: boolean): void {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(BAN_ON_SELECT_STORAGE_KEY, String(enabled));
+    window.dispatchEvent(new Event(BAN_ON_SELECT_UPDATED_EVENT));
+}
 
 export function isInterestViewAutoBlockEnabled(): boolean {
     return typeof window !== "undefined"
@@ -250,6 +272,28 @@ export function hasRightNowStatus(profile: { rightNow?: string | null; rightNowT
 
     return hasHosting || hasText || hasPosted;
 }
+
+// --- Social Link Blocker ---
+/**
+ * An X/Twitter handle on a Grindr profile is, in practice, an advert: the
+ * account is there to funnel people to NSFW or paid content (OnlyFans and
+ * the like) rather than to talk. Instagram and Facebook links are ordinary
+ * and are deliberately left alone — only the X link counts as a signal.
+ *
+ * Only reachable where the full profile has been fetched (the two scanners
+ * and the live chat bridge); the inbox list endpoint never carries
+ * socialNetworks, exactly like the "Looking For" tags this sits next to.
+ */
+export function hasTwitterAccount(
+    profile: { socialNetworks?: { twitter?: { userId?: string | null } | null } | null } | null | undefined,
+): boolean {
+    if (!profile) return false;
+    if (window.localStorage.getItem("fg-block-twitter") !== "true") return false;
+
+    const handle = profile.socialNetworks?.twitter?.userId;
+    return typeof handle === "string" && handle.trim().length > 0;
+}
+// --------------------------------------------------------
 
 // --- Grindr Tag Blocker ---
 export function isForbiddenLookingFor(profileLookingFor: number[] | null | undefined): boolean {

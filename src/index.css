@@ -881,6 +881,24 @@
 		user-select: none;
 	}
 
+	/*
+	 * Selection is off app-wide (layout.css) so dragging scrolls instead of
+	 * highlighting. The "select text to ban it" setting puts it back on for
+	 * exactly the text worth banning a word from — a message bubble, a bio, a
+	 * Right Now post — and nothing else, so the rest of the app still drags.
+	 */
+	.ban-selectable {
+		-webkit-user-select: text;
+		user-select: text;
+		cursor: text;
+		/*
+		 * iOS would otherwise answer a long press with its own Copy/Look Up
+		 * bar on top of the app's message actions sheet. Selection by drag
+		 * still works; only the duplicate native menu is suppressed.
+		 */
+		-webkit-touch-callout: none;
+	}
+
 	.right-now-map-tooltip {
 		background: transparent !important;
 		border: 0 !important;

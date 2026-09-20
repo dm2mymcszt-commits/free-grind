@@ -83,6 +83,8 @@ import { isSelectableMediaMessage } from "./mediaSelection";
 import { AudioMessagePlayer } from "./AudioMessagePlayer";
 import { ConfirmDialog } from "../../../components/ui/confirm-dialog";
 import { BanWordDialog } from "../../../components/ui/BanWordDialog";
+import { useBanOnSelect } from "../../../hooks/useBanOnSelect";
+import { classifyProfileAccess } from "../../../utils/profileAccessStatus";
 import { useApiFunctions } from "../../../hooks/useApiFunctions";
 import {
 	getShowReadReceiptToggle,
@@ -605,6 +607,24 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 			prompt: "Trim this message down to what you want to block.",
 			forbiddenOnly: false,
 		});
+
+	// Highlighting a message opens the same dialog the "Ban word" action does,
+	// already trimmed to what was highlighted. Its own request is kept apart
+	// from banWordRequest so closing the dialog can also drop the highlight.
+	const { selection: banSelection, clearSelection: clearBanSelection } = useBanOnSelect("message");
+	const activeBanRequest = banWordRequest
+		?? (banSelection
+			? {
+					text: banSelection.text,
+					title: "Ban keyword",
+					prompt: "Trim this down to what you want to block.",
+					forbiddenOnly: false,
+				}
+			: null);
+	const closeBanWord = () => {
+		setBanWordRequest(null);
+		clearBanSelection();
+	};
 
 	const {
 		navigate,
@@ -1242,6 +1262,13 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 				const realProfileName = (
 					(selectedConversation ? selectedConversation.data.name : targetProfileDetail?.displayName) ?? ""
 				).trim();
+				// Once a conversation is blocked, the profile endpoint answers with
+				// a stub whose displayName is literally "4" (blocked) or "3" (gone),
+				// and that placeholder can end up saved as the conversation's name.
+				// Banning it would add a keyword matching anyone actually called
+				// that, so it is never offered — see utils/profileAccessStatus.ts.
+				const bannableProfileName =
+					realProfileName === "3" || realProfileName === "4" ? "" : realProfileName;
 
 				// Blocking a chat with a live conversation archives it — that's why
 				// the existing-conversation case keys off isArchived. There's no
@@ -1645,17 +1672,20 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 														: "Add Whitelist"}
 												</button>
 											)}
-											{/* — Keyword banning — */}
-											{!isArchived && (
-												<>
+											{/* — Keyword banning —
+											   Offered on archived conversations too: the reason
+											   someone was blocked is often only obvious afterwards,
+											   and the keyword that would have caught them is worth
+											   adding whenever you work it out. */}
+											<>
 													<div className="my-1 h-px bg-[var(--border)]" />
-													{realProfileName ? (
+													{bannableProfileName ? (
 														<button
 															type="button"
 															onClick={() => {
 																setIsHeaderActionsMenuOpen(false);
 																setBanWordRequest({
-																	text: realProfileName,
+																	text: bannableProfileName,
 																	title: "Ban name",
 																	prompt: "Blocks people whose name, bio or messages match this.",
 																	forbiddenOnly: true,
@@ -1664,7 +1694,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 															className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text-muted)] transition hover:bg-[var(--surface-2)]"
 														>
 															<Ban className="mr-2 h-4 w-4 opacity-50" />
-															Ban Name "{realProfileName}"
+															Ban Name "{bannableProfileName}"
 														</button>
 													) : null}
 													<button
@@ -1676,6 +1706,18 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 															try {
 																const profile = await apiFunctions.getProfileDetail(String(profileId));
 																toast.dismiss(loadToast);
+																// A blocked or deleted profile still answers 200, with
+																// every field nulled out — saying "no bio" there would
+																// blame the person for something the block is doing.
+																const access = classifyProfileAccess(profile);
+																if (access === "blocked") {
+																	toast.error("Their bio can't be read while the block is in place. Unblock to read it, or ban a word from their messages instead.");
+																	return;
+																}
+																if (access === "not_found") {
+																	toast.error("This profile is gone, so there is no bio left to read.");
+																	return;
+																}
 																const bio = profile.aboutMe || "";
 																if (!bio.trim()) { toast.error("This user has no bio!"); return; }
 																setBanWordRequest({
@@ -1694,8 +1736,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 														<Ban className="mr-2 h-4 w-4 opacity-50" />
 														Ban Bio Phrase
 													</button>
-												</>
-											)}
+											</>
 											{/* — Destructive — */}
 											<div className="my-1 h-px bg-[var(--border)]" />
 											<button
@@ -2970,12 +3011,12 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 
 
 			<BanWordDialog
-				isOpen={banWordRequest !== null}
-				initialText={banWordRequest?.text ?? ""}
-				title={banWordRequest?.title}
-				prompt={banWordRequest?.prompt}
-				forbiddenOnly={banWordRequest?.forbiddenOnly ?? false}
-				onClose={() => setBanWordRequest(null)}
+				isOpen={activeBanRequest !== null}
+				initialText={activeBanRequest?.text ?? ""}
+				title={activeBanRequest?.title}
+				prompt={activeBanRequest?.prompt}
+				forbiddenOnly={activeBanRequest?.forbiddenOnly ?? false}
+				onClose={closeBanWord}
 			/>
 		</div>
 	) : (

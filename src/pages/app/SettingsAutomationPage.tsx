@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-    Ban, Crosshair, Eye, EyeOff, Image as ImageIcon, MessageSquare, Radar, Save,
-    ShieldAlert, ShieldCheck, SlidersHorizontal, Tag, Trash2, Users, UserX, Zap,
+    AtSign, Ban, Crosshair, Eye, EyeOff, Image as ImageIcon, MessageSquare, Radar, Save,
+    ShieldAlert, ShieldCheck, SlidersHorizontal, Tag, TextCursorInput, Trash2, Users, UserX, Zap,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { BackToSettings } from "../../components/BackToSettings";
@@ -27,7 +27,9 @@ import {
     getOpenerEntries,
     INTEREST_VIEW_AUTOBLOCK_STORAGE_KEY,
     INTEREST_VIEW_SCAN_EVENT,
+    isBanOnSelectEnabled,
     markKeywordsReviewed,
+    setBanOnSelectEnabled,
     setForbiddenKeywordEntries as saveForbiddenEntries,
     setOpenerEntries as saveOpenerEntries,
 } from "../../utils/autoblock";
@@ -54,6 +56,7 @@ export function SettingsAutomationPage() {
     const [forbiddenEntries, setForbiddenEntries] = useState<KeywordEntry[]>(() => getForbiddenKeywordEntries());
     const [openerEntries, setOpenerEntries] = useState<KeywordEntry[]>(() => getOpenerEntries());
     const [keywordsToReview, setKeywordsToReview] = useState<string[]>(() => getKeywordsToReview());
+    const [banOnSelect, setBanOnSelect] = useState(() => isBanOnSelectEnabled());
     const [minAge, setMinAge] = useState(() => window.localStorage.getItem("fg-block-min-age") ?? "18");
     const [maxAge, setMaxAge] = useState(() => window.localStorage.getItem("fg-block-max-age") ?? "99");
     const [blockNoAge, setBlockNoAge] = useState(() => window.localStorage.getItem("fg-block-no-age") === "true");
@@ -79,6 +82,8 @@ export function SettingsAutomationPage() {
     const [blockSeenMinutes, setBlockSeenMinutes] = useState(() => window.localStorage.getItem("fg-block-seen-time") || "5");
 
     const [blockRightNow, setBlockRightNow] = useState(() => window.localStorage.getItem("fg-block-right-now") === "true");
+
+    const [blockTwitter, setBlockTwitter] = useState(() => window.localStorage.getItem("fg-block-twitter") === "true");
 
     const [blockFacelessNoMedia, setBlockFacelessNoMedia] = useState(() => window.localStorage.getItem("fg-block-faceless-no-media") === "true");
     const [blockFacelessDelay, setBlockFacelessDelay] = useState(() => window.localStorage.getItem("fg-block-faceless-delay") || "5");
@@ -196,6 +201,7 @@ export function SettingsAutomationPage() {
                 window.localStorage.getItem(INTEREST_VIEW_AUTOBLOCK_STORAGE_KEY) === "true",
             );
             setWhitelist(getAutoBlockWhitelist());
+            setBanOnSelect(isBanOnSelectEnabled());
             setForbiddenEntries(getForbiddenKeywordEntries());
             setOpenerEntries(getOpenerEntries());
             setKeywordsToReview(getKeywordsToReview());
@@ -301,6 +307,16 @@ export function SettingsAutomationPage() {
         );
     };
 
+    // Saves (and tells open chats and profiles) immediately, like the rest of
+    // the keyword section — there is nothing here to batch behind Save.
+    const handleToggleBanOnSelect = (val: boolean) => {
+        setBanOnSelect(val);
+        setBanOnSelectEnabled(val);
+        toast.success(val ? "Selecting text now opens the ban box" : "Text selection turned back off", {
+            id: "ban-on-select-toggle",
+        });
+    };
+
     const handleToggleInboxScanner = (val: boolean) => {
         setInboxScannerEnabled(val);
         window.localStorage.setItem("fg-inbox-scanner-enabled", String(val));
@@ -338,6 +354,7 @@ export function SettingsAutomationPage() {
         window.localStorage.setItem("fg-block-seen-enabled", String(blockSeenEnabled));
         window.localStorage.setItem("fg-block-seen-time", blockSeenMinutes);
         window.localStorage.setItem("fg-block-right-now", String(blockRightNow));
+        window.localStorage.setItem("fg-block-twitter", String(blockTwitter));
         window.localStorage.setItem("fg-block-faceless-no-media", String(blockFacelessNoMedia));
         window.localStorage.setItem("fg-block-faceless-delay", blockFacelessDelay);
 
@@ -355,13 +372,14 @@ export function SettingsAutomationPage() {
 
     // --- SECTION SUMMARIES ---
     const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
-    const keywordsSummary = `${plural(forbiddenEntries.length, "keyword")} · ${plural(openerEntries.length, "opening message")}${keywordsToReview.length > 0 ? ` · ${keywordsToReview.length} to review` : ""}`;
+    const keywordsSummary = `${plural(forbiddenEntries.length, "keyword")} · ${plural(openerEntries.length, "opening message")}${keywordsToReview.length > 0 ? ` · ${keywordsToReview.length} to review` : ""}${banOnSelect ? " · select to ban" : ""}`;
     const messageRulesOn = [blockFirstMedia, skipBlockAfterTwo, blockSeenEnabled, blockFacelessNoMedia].filter(Boolean).length;
     const profileFiltersSummary = [
         `Age ${minAge}–${maxAge}`,
         maxDistance === "" || Number(maxDistance) >= 500 ? "no distance limit" : `${maxDistance} km`,
         blockedLookingFor.length > 0 ? plural(blockedLookingFor.length, "tag") : null,
         blockRightNow ? "Right Now" : null,
+        blockTwitter ? "X / Twitter" : null,
     ].filter(Boolean).join(" · ");
     const scannersSummary = `Scanner ${inboxScannerEnabled ? "on" : "off"} · Blocking back ${counterBlockEnabled ? "on" : "off"}`;
 
@@ -494,6 +512,29 @@ export function SettingsAutomationPage() {
                                         </label>
                                     </div>
                                     <p className="text-[11px] text-[var(--text-muted)]">Everything in this section saves as soon as you change it.</p>
+                                </div>
+
+                                {/* Select text to ban it */}
+                                <div className="flex items-start gap-3 p-4">
+                                    <div className="shrink-0 rounded-2xl bg-violet-500/15 p-2.5 text-violet-400">
+                                        <TextCursorInput className="h-5 w-5" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={banOnSelect}
+                                                onChange={(e) => handleToggleBanOnSelect(e.target.checked)}
+                                                className="h-4 w-4 accent-[var(--accent)] shrink-0"
+                                            />
+                                            <span className="text-xs text-[var(--text-muted)] leading-relaxed">
+                                                <strong className="text-[var(--text)]">Select Text to Ban It.</strong> Highlight part of a message, a bio or a Right Now post and the Ban keyword box opens on what you highlighted, ready to trim.
+                                            </span>
+                                        </label>
+                                        <p className="mt-2 ml-6 text-[10px] text-[var(--text-muted)] leading-relaxed">
+                                            Text can't normally be selected anywhere in the app — this turns selection back on for those three places only, so dragging still scrolls everywhere else.
+                                        </p>
+                                    </div>
                                 </div>
 
                                 {/* Forbidden keywords */}
@@ -760,6 +801,29 @@ export function SettingsAutomationPage() {
                                                 <strong className="text-[var(--text)]">Block Profiles with "Right Now" Status.</strong> Automatically blocks profiles that currently have an active "Right now" status or post.
                                             </span>
                                         </label>
+                                    </div>
+                                </div>
+
+                                {/* X / Twitter Auto-Block */}
+                                <div className="flex items-start gap-3 p-4">
+                                    <div className="shrink-0 rounded-2xl bg-sky-500/15 p-2.5 text-sky-400">
+                                        <AtSign className="h-5 w-5" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={blockTwitter}
+                                                onChange={(e) => setBlockTwitter(e.target.checked)}
+                                                className="h-4 w-4 accent-[var(--accent)] shrink-0"
+                                            />
+                                            <span className="text-xs text-[var(--text-muted)] leading-relaxed">
+                                                <strong className="text-[var(--text)]">Block Profiles Linking an X / Twitter Account.</strong> An X handle on a profile is almost always an advert for NSFW or paid content (OnlyFans and the like). Instagram and Facebook links are left alone.
+                                            </span>
+                                        </label>
+                                        <p className="mt-2 ml-6 text-[10px] text-[var(--text-muted)] leading-relaxed">
+                                            The social links only arrive with the full profile, so this is applied by the inbox and views scanners and by live chats — not by the plain inbox list.
+                                        </p>
                                     </div>
                                 </div>
 
