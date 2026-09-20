@@ -57,6 +57,43 @@ describe("resolveBlockAttribution", () => {
 		).toBe("blocked_by_me");
 	});
 
+	// The reported sequence: blocked 18:10, unblocked 18:12, and "You were
+	// blocked" landing in that same minute. After the unblock the block list
+	// truthfully says this account does not block them, which on its own is
+	// indistinguishable from having been blocked.
+	test("this account's own unblock, still settling, is not their block", () => {
+		expect(
+			resolveBlockAttribution({
+				knownBlockState: null,
+				selfMarked: false,
+				blockedByMeLookup: false,
+				selfActedRecently: true,
+			}),
+		).toBeNull();
+	});
+
+	test("the grace window never hides this device's own block either", () => {
+		expect(
+			resolveBlockAttribution({
+				knownBlockState: null,
+				selfMarked: true,
+				blockedByMeLookup: null,
+				selfActedRecently: true,
+			}),
+		).toBe("blocked_by_me");
+	});
+
+	test("outside the window an answered lookup still attributes normally", () => {
+		expect(
+			resolveBlockAttribution({
+				knownBlockState: null,
+				selfMarked: false,
+				blockedByMeLookup: false,
+				selfActedRecently: false,
+			}),
+		).toBe("blocked_by_other");
+	});
+
 	test("an answered lookup decides a genuinely new block either way", () => {
 		expect(
 			resolveBlockAttribution({
@@ -102,13 +139,39 @@ describe("isFalseBlockedByOtherMarker", () => {
 		).toBe(false);
 	});
 
-	test("blocked, unblocked, then blocked by them — real, the unblock let them back", () => {
+	test("blocked, unblocked, then blocked by them much later — real", () => {
 		expect(
 			isFalseBlockedByOtherMarker({
 				blockedBySelf: BLOCK,
 				unblockedBySelf: BLOCK + 60_000,
-				blockedByOther: BLOCK + 120_000,
+				blockedByOther: BLOCK + 60_000 + 10 * 60_000,
 			}),
+		).toBe(false);
+	});
+
+	// The second reported thread: blocked 18:10, unblocked 18:12, "You were
+	// blocked" in that same minute — the unblock still settling, not them.
+	test("a block landing while this account's unblock settles is false", () => {
+		expect(
+			isFalseBlockedByOtherMarker({
+				blockedBySelf: BLOCK,
+				unblockedBySelf: BLOCK + 120_000,
+				blockedByOther: BLOCK + 120_000 + 3_000,
+			}),
+		).toBe(true);
+	});
+
+	test("the settle window is a gap, not a free pass on the whole sequence", () => {
+		// One second past the window is taken at face value.
+		expect(
+			isFalseBlockedByOtherMarker(
+				{
+					blockedBySelf: BLOCK,
+					unblockedBySelf: BLOCK + 10_000,
+					blockedByOther: BLOCK + 10_000 + 120_001,
+				},
+				120_000,
+			),
 		).toBe(false);
 	});
 

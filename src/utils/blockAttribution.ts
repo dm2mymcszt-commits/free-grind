@@ -22,6 +22,10 @@ import type { BlockState } from "../types/chat-db";
  *    "they blocked me" — a block list request that errors, a conversation
  *    whose other_profile_id was never backfilled — so anything short of a real
  *    answer is left for a later sweep that can confirm it.
+ *  - This account's own block or unblock, moments ago, explains the chat being
+ *    unreachable on its own. An unblock is the dangerous one: the block list
+ *    then correctly says this account does not block them, which reads exactly
+ *    like being blocked.
  */
 export function resolveBlockAttribution(input: {
 	/** The durable record, if this conversation already has one. */
@@ -30,12 +34,22 @@ export function resolveBlockAttribution(input: {
 	selfMarked: boolean;
 	/** The server's block list says we block them — null when it couldn't answer. */
 	blockedByMeLookup: boolean | null;
+	/** This account blocked or unblocked this chat within the grace window. */
+	selfActedRecently?: boolean;
 }): BlockState | null {
 	if (input.knownBlockState !== null) return null;
 	if (input.selfMarked) return "blocked_by_me";
+	if (input.selfActedRecently) return null;
 	if (input.blockedByMeLookup === null) return null;
 	return input.blockedByMeLookup ? "blocked_by_me" : "blocked_by_other";
 }
+
+/**
+ * How long this account's own block/unblock is treated as still settling
+ * server-side. Shared with selfBlockActions.ts so the live guard and the
+ * repair below cannot drift apart.
+ */
+export const SELF_ACTION_SETTLE_MS = 2 * 60_000;
 
 /** The block/unblock markers a single conversation holds, by timestamp. */
 export type ConversationBlockMarkers = {
@@ -49,12 +63,20 @@ export type ConversationBlockMarkers = {
  * made — true only when this account's own block was already in force when
  * that marker was written, which is the shape the 403 bug produced.
  *
- * Two orderings are real blocks and must survive:
- *  - they blocked first and this account blocked back;
- *  - this account blocked, unblocked, and only then was blocked by them —
- *    the unblock is the only way they could reach this account again.
+ * One ordering is always a real block and must survive: they blocked first and
+ * this account blocked back.
+ *
+ * An unblock in between normally means a real block too — it is the only way
+ * they could have reached this account again. The exception is a "block" that
+ * lands while that unblock is still settling, which is the artifact the live
+ * guard now prevents: the chat stays briefly unreachable, and every check then
+ * points away from this account. Judged purely on the gap, so a block minutes
+ * later is still taken at face value.
  */
-export function isFalseBlockedByOtherMarker(markers: ConversationBlockMarkers): boolean {
+export function isFalseBlockedByOtherMarker(
+	markers: ConversationBlockMarkers,
+	settleMs: number = SELF_ACTION_SETTLE_MS,
+): boolean {
 	const { blockedByOther, blockedBySelf, unblockedBySelf } = markers;
 	if (blockedByOther == null || blockedBySelf == null) return false;
 	if (blockedByOther <= blockedBySelf) return false;
@@ -63,7 +85,7 @@ export function isFalseBlockedByOtherMarker(markers: ConversationBlockMarkers): 
 		unblockedBySelf > blockedBySelf &&
 		unblockedBySelf < blockedByOther
 	) {
-		return false;
+		return blockedByOther - unblockedBySelf <= settleMs;
 	}
 	return true;
 }

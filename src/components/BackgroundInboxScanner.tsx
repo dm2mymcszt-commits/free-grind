@@ -630,7 +630,21 @@ export function BackgroundInboxScanner() {
 
                             const elapsed = now - normalizedFirstTs;
 
-                            if (elapsed >= blockDelayMs) {
+                            // This is a "first message" rule, and the messages above are
+                            // Grindr's copy of the chat — which restarts when a
+                            // conversation is deleted, while GrindFlop keeps its own.
+                            // Without this, deleting a chat and letting someone write
+                            // again turned their reply into a fresh opener with a fresh
+                            // clock, and the photos they had already sent were invisible
+                            // to the media check above. Exactly the guard the opener rule
+                            // already uses. Checked inside the delay branch so it costs a
+                            // local read only when a block is actually about to happen,
+                            // and without `continue`, which would skip the throttle below.
+                            const hasEarlierIncoming =
+                                elapsed >= blockDelayMs &&
+                                (await readEarlierHistory(conversationId, messages, userId)).hasIncoming;
+
+                            if (elapsed >= blockDelayMs && !hasEarlierIncoming) {
                                 // Block them!
                                 const displayName = c.data?.name || profileId;
                                 console.log(`[BackgroundInboxScanner] Blocking faceless profile ${profileId} (${displayName}) - no media sent after 5 minutes`);

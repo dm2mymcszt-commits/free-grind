@@ -132,7 +132,7 @@ import { markInboxSeen, getInboxLastSeen } from "../../services/seenStore";
 import { SCROLL_RESTORATION_TIMEOUT_MS } from "../../config/ui-constants";
 import { clearAutomationSeenHistoryForSender, runAutomationRulesForSender } from "../../utils/automationRules";
 import { withPreservingBlock } from "../../services/autoBlockConversation";
-import { consumeSelfBlockAction } from "../../utils/selfBlockActions";
+import { consumeSelfBlockAction, hasRecentSelfBlockAction } from "../../utils/selfBlockActions";
 import { resolveBlockAttribution } from "../../utils/blockAttribution";
 import { isReadReceiptsHidden, checkAndAutoWhitelistActiveChat } from "../../utils/privacy";
 import { getDisplayName } from "../../services/conversationDirectory";
@@ -2625,6 +2625,7 @@ export function ChatPage() {
 						knownBlockState,
 						selfMarked,
 						blockedByMeLookup,
+						selfActedRecently: hasRecentSelfBlockAction(conversationId),
 					});
 					if (attribution) {
 						const claimed = await claimBlockStateTransition(conversationId, attribution).catch(

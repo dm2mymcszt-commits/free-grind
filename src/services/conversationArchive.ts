@@ -24,7 +24,7 @@ import * as chatDb from "./chatDb";
 import type { ArchivedReason, BlockState } from "../types/chat-db";
 import type { Message } from "../types/messages";
 import { appLog } from "../utils/logger";
-import { consumeSelfBlockAction } from "../utils/selfBlockActions";
+import { consumeSelfBlockAction, hasRecentSelfBlockAction } from "../utils/selfBlockActions";
 import { logBlockEvent } from "./statsLog";
 
 // A synthetic, locally-generated block/unblock marker (see chatDb.insertSystemMessage)
@@ -427,6 +427,20 @@ export async function toggleArchiveOnConversationDelete(
 			if (status !== "blocked") {
 				appLog.debug(
 					`[conversation-archive] ${conversationId} is still visible — a delete or an unblock, not a block; leaving it alone`,
+				);
+				return;
+			}
+
+			// A block or unblock this account made moments ago explains an
+			// unreachable chat by itself, and the lookup above cannot tell the
+			// two directions apart — it returns the same stub whichever side
+			// blocked. After an *unblock* every other check points away from us
+			// too, so this is what stops "You unblocked this person" being
+			// followed seconds later by "You were blocked". A real block by them
+			// in this window is only delayed: the inbox sweep still finds it.
+			if (hasRecentSelfBlockAction(conversationId)) {
+				appLog.debug(
+					`[conversation-archive] ${conversationId} was blocked/unblocked here moments ago — not attributing it to them`,
 				);
 				return;
 			}
