@@ -40,6 +40,17 @@ import {
     type GoogleDriveSyncDataAppliedDetail,
 } from "../../services/googleDriveSyncRuntime";
 
+/**
+ * Whole days, never a calendar date: the point is comparing how far back the
+ * saved profiles reach against the 30-day expiry, which formatRelativeTime
+ * hides by switching to a date after a week.
+ */
+function formatDaysAgo(timestamp: number, now: number = Date.now()): string {
+    const days = Math.floor((now - timestamp) / (24 * 60 * 60 * 1000));
+    if (days < 1) return "under a day ago";
+    return days === 1 ? "1 day ago" : `${days} days ago`;
+}
+
 export function SettingsAutomationPage() {
     const { t } = useTranslation();
     const queryClient = useQueryClient();
@@ -222,19 +233,21 @@ export function SettingsAutomationPage() {
     // --- VIEWS RECOVERY STATE ---
     const [viewScannerEnabled, setViewScannerEnabled] = useState(() => window.localStorage.getItem("fg-view-scanner") !== "false");
     const [viewScannerInterval, setViewScannerInterval] = useState(() => window.localStorage.getItem("fg-view-scanner-interval") || "30");
-    const [unlockedViewsCount, setUnlockedViewsCount] = useState<number | null>(null);
+    const [savedViews, setSavedViews] = useState<{
+        count: number;
+        capacity: number;
+        oldestKeptAt: number | null;
+    } | null>(null);
     const [lastViewScanTime, setLastViewScanTime] = useState(() => window.localStorage.getItem("fg-view-scanner-last-run"));
 
     // Live update the Views Recovery Stats every 5 seconds
     useEffect(() => {
         const fetchStats = () => {
-            // countStored(), not count(): the raw row count included locked
+            // summarizeStored(), not count(): the raw row count included locked
             // preview placeholders and rows past the age window that cleanup
             // hadn't collected yet, so the figure shown here never matched the
             // profiles actually recoverable in the Interest list.
-            void interestViewsStore.countStored().then(cnt => {
-                setUnlockedViewsCount(cnt);
-            });
+            void interestViewsStore.summarizeStored().then(setSavedViews);
             setLastViewScanTime(window.localStorage.getItem("fg-view-scanner-last-run"));
         };
         fetchStats();
@@ -243,7 +256,7 @@ export function SettingsAutomationPage() {
     }, []);
 
     const handleClearViewsCache = () => {
-        setUnlockedViewsCount(0);
+        setSavedViews((current) => current && { ...current, count: 0, oldestKeptAt: null });
         setIsClearViewsConfirmOpen(false);
         toast.success("Unlocked views cache has been cleared!");
 
@@ -423,8 +436,24 @@ export function SettingsAutomationPage() {
                                                 <Trash2 className="h-3.5 w-3.5" />
                                             </button>
                                         </div>
+                                        {/* The count can sit a few over the cap until the next
+                                            cleanup trims it; show the cap rather than a number
+                                            that ticks up and snaps back. */}
                                         <p className="text-lg font-bold text-[var(--accent)]">
-                                            {unlockedViewsCount !== null ? unlockedViewsCount : "..."} <span className="text-[10px] font-medium text-[var(--text-muted)] block">profiles</span>
+                                            {savedViews ? Math.min(savedViews.count, savedViews.capacity).toLocaleString() : "..."}
+                                            {savedViews && savedViews.count >= savedViews.capacity && (
+                                                <span
+                                                    className="ml-1.5 align-middle rounded bg-[var(--accent)]/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--accent)]"
+                                                    title="Each new viewer replaces the saved profile whose last view is oldest."
+                                                >
+                                                    Full
+                                                </span>
+                                            )}
+                                            <span className="text-[10px] font-medium text-[var(--text-muted)] block">
+                                                {savedViews?.oldestKeptAt != null
+                                                    ? `profiles · oldest ${formatDaysAgo(savedViews.oldestKeptAt)}`
+                                                    : "profiles"}
+                                            </span>
                                         </p>
                                     </div>
                                     <div className="rounded-lg bg-[var(--surface-1)] border border-[var(--border)] p-3">

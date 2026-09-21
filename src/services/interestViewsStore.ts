@@ -144,7 +144,7 @@ function viewAgeAnchor(row: StoredInterestView): number {
 
 /**
  * Single source of truth for "should this row still be visible/counted".
- * getAll, countStored, getByProfileId and cleanup all defer to it so the
+ * getAll, summarizeStored, getByProfileId and cleanup all defer to it so the
  * number shown in Settings can never drift from what the Interest list holds.
  */
 function isRetainableRow(row: StoredInterestView, now: number): boolean {
@@ -488,7 +488,7 @@ export const interestViewsStore = {
 	/**
 	 * Raw row count, including preview placeholders and rows past the age
 	 * window that cleanup hasn't collected yet. Almost never what a UI wants —
-	 * use countStored() for anything user-facing.
+	 * use summarizeStored() for anything user-facing.
 	 */
 	async count(): Promise<number> {
 		const db = await openDatabase();
@@ -519,17 +519,28 @@ export const interestViewsStore = {
 	/**
 	 * How many real, in-window profiles we're actually holding — the number
 	 * that matches what the Interest list can show and what the sweep has
-	 * genuinely banked.
+	 * genuinely banked — plus how far back that reaches.
 	 *
 	 * Counts against the same predicate getAll() filters by, so the two can't
 	 * disagree. It deliberately does NOT apply getAll()'s display cap: this is
 	 * "how many did we save", not "how many fit on screen", and reporting the
 	 * cap back as if it were a total is what made the old counter read a flat
 	 * 2000 once the store saturated.
+	 *
+	 * `count` can briefly exceed `capacity`: upserts land immediately, but the
+	 * trim back down to the cap waits for the rate-limited cleanup.
+	 * `oldestKeptAt` is measured past that pending trim — the age anchor of the
+	 * oldest row cleanup will keep, using the same ordering it evicts by — so it
+	 * shows how much of the MAX_VIEW_AGE_MS window the cap actually leaves.
 	 */
-	async countStored(): Promise<number> {
+	async summarizeStored(): Promise<{
+		count: number;
+		capacity: number;
+		oldestKeptAt: number | null;
+	}> {
+		const empty = { count: 0, capacity: MAX_STORED_VIEWS, oldestKeptAt: null };
 		const db = await openDatabase();
-		if (!db) return 0;
+		if (!db) return empty;
 
 		return new Promise((resolve) => {
 			try {
@@ -540,22 +551,28 @@ export const interestViewsStore = {
 				request.onsuccess = () => {
 					const rows = (request.result as StoredInterestView[]) || [];
 					const now = Date.now();
-					const total = rows.reduce(
-						(sum, row) => (isRetainableRow(row, now) ? sum + 1 : sum),
-						0,
-					);
+					const anchors: number[] = [];
+					for (const row of rows) {
+						if (isRetainableRow(row, now)) anchors.push(viewAgeAnchor(row));
+					}
+					anchors.sort((a, b) => b - a);
+					const kept = Math.min(anchors.length, MAX_STORED_VIEWS);
 					db.close();
-					resolve(total);
+					resolve({
+						count: anchors.length,
+						capacity: MAX_STORED_VIEWS,
+						oldestKeptAt: kept > 0 ? anchors[kept - 1] : null,
+					});
 				};
 				request.onerror = (event) => {
-					appLog.error("[interestStore] countStored request failed", event);
+					appLog.error("[interestStore] summarizeStored request failed", event);
 					db.close();
-					resolve(0);
+					resolve(empty);
 				};
 			} catch (err) {
-				appLog.error("[interestStore] countStored failed", err);
+				appLog.error("[interestStore] summarizeStored failed", err);
 				db.close();
-				resolve(0);
+				resolve(empty);
 			}
 		});
 	},
