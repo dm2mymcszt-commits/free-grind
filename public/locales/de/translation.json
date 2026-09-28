@@ -242,7 +242,14 @@
         "deleting_progress": "Wird gelöscht {{done}}/{{total}}…",
         "toast_deleted_many_one": "{{count}} Album entfernt",
         "toast_deleted_many_other": "{{count}} Alben entfernt",
-        "delete_partial": "{{done}} von {{total}} Alben entfernt; {{failed}} fehlgeschlagen"
+        "delete_partial": "{{done}} von {{total}} Alben entfernt; {{failed}} fehlgeschlagen",
+        "delete_hidden_only_one": "Grindr hat {{count}} Freigabe nicht beendet (HTTP {{status}}). Sie ist nur hier ausgeblendet und weiter mit dir geteilt.",
+        "delete_hidden_only_other": "Grindr hat {{count}} Freigaben nicht beendet (HTTP {{status}}). Sie sind nur hier ausgeblendet und weiter mit dir geteilt.",
+        "error_locked_one": "Grindr führt {{count}} Element in diesem Album, hat es für dein Konto aber gesperrt und nichts gesendet. Grindr begrenzt, wie viele geteilte Alben ein Konto öffnen kann, und nichts davon wurde auf diesem Gerät gespeichert.",
+        "error_locked_other": "Grindr führt {{count}} Elemente in diesem Album, hat es für dein Konto aber gesperrt und nichts gesendet. Grindr begrenzt, wie viele geteilte Alben ein Konto öffnen kann, und nichts davon wurde auf diesem Gerät gespeichert.",
+        "error_sent_nothing_one": "Grindr führt {{count}} Element in diesem Album, hat beim Öffnen aber nichts gesendet. Die Freigabe ist vielleicht gerade beendet worden, und nichts davon wurde auf diesem Gerät gespeichert.",
+        "error_sent_nothing_other": "Grindr führt {{count}} Elemente in diesem Album, hat beim Öffnen aber nichts gesendet. Die Freigabe ist vielleicht gerade beendet worden, und nichts davon wurde auf diesem Gerät gespeichert.",
+        "badge_locked_hint": "Grindr hat dieses Album für dein Konto gesperrt"
     },
     "right_now": {
         "title": "Right Now",

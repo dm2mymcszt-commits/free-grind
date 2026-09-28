@@ -204,10 +204,15 @@ export function createAlbumMethods(fetchRest: RestFetcher, t: (key: string, opti
 		// 403 is tolerated the same way openSharedAlbum does: it's the observed
 		// response for a share that's already gone, not a real failure, and the
 		// caller cleans up the local cache regardless of which status comes back.
+		// Our API notes list this route as PUT; the code sent POST, and every
+		// removal failed. POST stays first, and PUT is tried when the route or
+		// method is refused.
 		async removeAlbumShare(input: RemoveAlbumShareInput): Promise<RemoveAlbumShareResult> {
-			const response = await fetchRest(`/v1/albums/${input.albumId}/shares/remove`, {
-				method: "POST",
-			});
+			const path = `/v1/albums/${input.albumId}/shares/remove`;
+			let response = await fetchRest(path, { method: "POST" });
+			if (response.status === 404 || response.status === 405) {
+				response = await fetchRest(path, { method: "PUT" });
+			}
 			if (
 				response.status !== 403 &&
 				(response.status < 200 || response.status >= 300)

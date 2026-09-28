@@ -277,7 +277,14 @@
         "deleting_progress": "Deleting {{done}}/{{total}}…",
         "toast_deleted_many_one": "{{count}} album removed",
         "toast_deleted_many_other": "{{count}} albums removed",
-        "delete_partial": "Removed {{done}} of {{total}} albums; {{failed}} failed"
+        "delete_partial": "Removed {{done}} of {{total}} albums; {{failed}} failed",
+        "delete_hidden_only_one": "Grindr wouldn't stop {{count}} share (HTTP {{status}}), so it's only hidden here and still shared with you.",
+        "delete_hidden_only_other": "Grindr wouldn't stop {{count}} shares (HTTP {{status}}), so they're only hidden here and still shared with you.",
+        "error_locked_one": "Grindr lists {{count}} item in this album but has locked it for your account, so it sent nothing. Grindr limits how many shared albums an account can open, and nothing from this one was saved on this device.",
+        "error_locked_other": "Grindr lists {{count}} items in this album but has locked it for your account, so it sent nothing. Grindr limits how many shared albums an account can open, and nothing from this one was saved on this device.",
+        "error_sent_nothing_one": "Grindr lists {{count}} item in this album but sent none when it was opened. The share may have just ended, and nothing from it was saved on this device.",
+        "error_sent_nothing_other": "Grindr lists {{count}} items in this album but sent none when it was opened. The share may have just ended, and nothing from it was saved on this device.",
+        "badge_locked_hint": "Grindr has locked this album for your account"
     },
     "right_now": {
         "title": "Right Now",

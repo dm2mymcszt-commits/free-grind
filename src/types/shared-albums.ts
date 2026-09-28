@@ -17,6 +17,8 @@ export type SharedAlbumItem = {
 	savedCount: number;
 	isOnline?: boolean;
 	hasUnseenContent?: boolean;
+	/** The feed's albumViewable: false when Grindr has locked the album for this account. */
+	isViewable?: boolean;
 	/** Epoch ms when the share ends, if it does. */
 	expiresAt?: number | null;
 };

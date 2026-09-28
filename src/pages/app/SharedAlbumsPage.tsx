@@ -1,4 +1,4 @@
-import { Album, Check, ChevronLeft, Clock3, Film, HardDriveDownload, Layers, ListChecks, RefreshCw, Star, Trash2, Wifi, X } from "lucide-react";
+import { Album, Check, ChevronLeft, Clock3, Film, HardDriveDownload, Layers, ListChecks, Lock, RefreshCw, Star, Trash2, Wifi, X } from "lucide-react";
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -36,6 +36,7 @@ import { PullToRefreshContainer } from "./components/PullToRefreshContainer";
 import { AlbumViewerPanel } from "./shared-albums/AlbumViewerPanel";
 import { formatAlbumCounts, formatTimeLeft, formatTimeLeftShort } from "./shared-albums/albumFormat";
 import { type AlbumOwner, mediaHashFromUrl, readAlbumOwners, rememberAlbumOwners } from "./shared-albums/albumOwners";
+import { hideAlbums, readHiddenAlbumIds } from "./shared-albums/hiddenAlbums";
 import { PhotoViewer, type PhotoViewerMedia } from "../../components/PhotoViewer";
 import { PhotoActionBar } from "../../components/PhotoActionBar";
 import { useRevealOnScroll } from "../../hooks/useRevealOnScroll";
@@ -211,6 +212,11 @@ function AlbumCard({
 									{item.albumNumber}/{item.totalAlbumsShared}
 								</span>
 							) : null}
+							{item.isViewable === false && item.savedCount === 0 ? (
+								<span className={cn(badge, "w-6")} title={t("shared_albums.badge_locked_hint")}>
+									<Lock className="h-3 w-3" aria-label={t("shared_albums.badge_locked_hint")} />
+								</span>
+							) : null}
 							{timeLeft ? (
 								<span className={cn(badge, "px-2")} title={formatTimeLeft(t, item.expiresAt) ?? undefined}>
 									<Clock3 className="h-3 w-3" />
@@ -315,6 +321,7 @@ export function SharedAlbumsPage() {
 			);
 			const rememberedOwners = readAlbumOwners(userId);
 			const seenOwners: Record<string, AlbumOwner> = {};
+			const hiddenIds = readHiddenAlbumIds(userId);
 
 			const ownerDetails = (profileId: number, feedName: string | null, feedImageUrl: string | null) => {
 				const key = String(profileId);
@@ -330,7 +337,8 @@ export function SharedAlbumsPage() {
 				return { name, mediaHash, conversationId: conversation?.conversationId ?? null };
 			};
 
-			const liveItems: SharedAlbumItem[] = (feed?.sharedAlbums ?? []).map((sharedAlbum) => {
+			const feedAlbums = (feed?.sharedAlbums ?? []).filter((sharedAlbum) => !hiddenIds.has(sharedAlbum.albumId));
+			const liveItems: SharedAlbumItem[] = feedAlbums.map((sharedAlbum) => {
 				const owner = ownerDetails(sharedAlbum.ownerProfileId, sharedAlbum.profile.name, sharedAlbum.profile.profileUrl);
 				seenOwners[String(sharedAlbum.ownerProfileId)] = { name: owner.name, mediaHash: owner.mediaHash };
 				const cover = sharedAlbum.coverContent.location;
@@ -357,6 +365,7 @@ export function SharedAlbumsPage() {
 					savedCount: countsByAlbum.get(sharedAlbum.albumId)?.savedCount ?? 0,
 					isOnline: (toMs(sharedAlbum.profile.onlineUntil) ?? 0) > Date.now(),
 					hasUnseenContent: sharedAlbum.hasUnseenContent,
+					isViewable: sharedAlbum.albumViewable,
 					expiresAt: toMs(sharedAlbum.expiresAt),
 				};
 			});
@@ -384,7 +393,7 @@ export function SharedAlbumsPage() {
 			// open. Skipped under a filter, which would hide albums still shared
 			// and label them "no longer shared". When the feed failed, these are
 			// every saved album, shown on their own.
-			const liveIds = new Set(orderedLive.map((item) => item.album.albumId));
+			const listedOrHiddenIds = new Set([...orderedLive.map((item) => item.album.albumId), ...hiddenIds]);
 			const savedItems: SharedAlbumItem[] =
 				hasActiveFilter
 					? []
@@ -392,7 +401,7 @@ export function SharedAlbumsPage() {
 							const albumId = Number(stored.albumId);
 							const counts = countsByAlbum.get(albumId);
 							const profileId = stored.ownerProfileId ? Number(stored.ownerProfileId) : null;
-							if (liveIds.has(albumId) || !counts || counts.savedCount === 0 || profileId == null || profileId === userId) {
+							if (listedOrHiddenIds.has(albumId) || !counts || counts.savedCount === 0 || profileId == null || profileId === userId) {
 								return [];
 							}
 							const owner = ownerDetails(profileId, null, null);
@@ -540,27 +549,32 @@ export function SharedAlbumsPage() {
 	}, [closeViewerState]);
 
 	/**
-	 * Removes albums one after the other: stops the share when it is still
-	 * live, then drops the saved copy. Albums that fail stay listed (and stay
-	 * selected), so the user can try them again.
+	 * Removes albums one after the other: asks Grindr to stop the share when it
+	 * is still live, then drops the saved copy. When Grindr refuses (every
+	 * removal once failed this way), the album is hidden on this device instead
+	 * of staying stuck in the list, and the toast says the share goes on.
 	 */
 	const handleDeleteAlbums = useCallback(async (targets: SharedAlbumItem[]) => {
 		if (deleteProgress || targets.length === 0) return;
 		setDeleteProgress({ done: 0, total: targets.length });
 		const removed = new Set<number>();
-		let lastError: string | null = null;
+		const hiddenOnly: number[] = [];
+		let refusedStatus: number | null = null;
 		for (const [index, item] of targets.entries()) {
-			try {
-				if (!item.localOnly) {
-					await apiFunctions.removeAlbumShare({ albumId: item.album.albumId });
+			const albumId = item.album.albumId;
+			if (!item.localOnly) {
+				try {
+					await apiFunctions.removeAlbumShare({ albumId });
+				} catch (removeError) {
+					refusedStatus = removeError instanceof ApiFunctionError ? removeError.status : refusedStatus;
+					hiddenOnly.push(albumId);
 				}
-				await deleteLocalAlbum(item.album.albumId);
-				removed.add(item.album.albumId);
-			} catch (deleteError) {
-				lastError = deleteError instanceof Error ? deleteError.message : null;
 			}
+			await deleteLocalAlbum(albumId);
+			removed.add(albumId);
 			setDeleteProgress({ done: index + 1, total: targets.length });
 		}
+		hideAlbums(userId, hiddenOnly);
 
 		setItems((previous) => previous.filter((entry) => !removed.has(entry.album.albumId)));
 		if (viewer && removed.has(viewer.item.album.albumId)) closeViewer();
@@ -569,21 +583,24 @@ export function SharedAlbumsPage() {
 			const left = [...previous].filter((albumId) => !removed.has(albumId));
 			return left.length === 0 ? null : new Set(left);
 		});
-		const failed = targets.length - removed.size;
-		if (failed === 0) {
-			toast.success(
-				targets.length === 1
-					? t("shared_albums.toast_deleted")
-					: t("shared_albums.toast_deleted_many", { count: removed.size }),
-			);
-		} else if (targets.length === 1) {
-			toast.error(lastError ?? t("shared_albums.error_delete_fallback"));
+		const doneMessage =
+			targets.length === 1
+				? t("shared_albums.toast_deleted")
+				: t("shared_albums.toast_deleted_many", { count: removed.size });
+		if (hiddenOnly.length === 0) {
+			toast.success(doneMessage);
 		} else {
-			toast.error(t("shared_albums.delete_partial", { done: removed.size, total: targets.length, failed }));
+			toast(
+				`${doneMessage}. ${t("shared_albums.delete_hidden_only", {
+					count: hiddenOnly.length,
+					status: refusedStatus ?? "?",
+				})}`,
+				{ duration: 8000 },
+			);
 		}
 		setDeleteProgress(null);
 		setConfirmDeleteItems(null);
-	}, [apiFunctions, closeViewer, deleteProgress, t, viewer]);
+	}, [apiFunctions, closeViewer, deleteProgress, t, userId, viewer]);
 
 	/**
 	 * Opens the viewer at once and fills it in: the saved copy first when there
@@ -635,6 +652,21 @@ export function SharedAlbumsPage() {
 				await apiFunctions.openSharedAlbum({ albumId });
 				const details = await apiFunctions.getAlbum(albumId);
 				if (!isCurrent()) return;
+				// Grindr can answer with no items for an album the feed says has
+				// some: it locked the album for this account (albumViewable false),
+				// or the share ended between the feed and the tap. Say which,
+				// instead of calling the album empty.
+				const listedCount = item.album.contentCount.imageCount + item.album.contentCount.videoCount;
+				if (details.content.length === 0 && savedContent.length === 0 && listedCount > 0) {
+					update({
+						status: "error",
+						error:
+							item.isViewable === false
+								? t("shared_albums.error_locked", { count: listedCount })
+								: t("shared_albums.error_sent_nothing", { count: listedCount }),
+					});
+					return;
+				}
 				update({
 					status: "ready",
 					content: mergeWithSaved(details.content, savedContent),
