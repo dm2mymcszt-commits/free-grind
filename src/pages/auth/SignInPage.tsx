@@ -1,5 +1,5 @@
 import { useState, type InputHTMLAttributes, type ReactNode } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../contexts/useAuth";
 import { AuthShell } from "../../components/ui/auth-shell";
 import { Button } from "../../components/ui/button";
@@ -152,19 +152,7 @@ export function SignInPage() {
 							{t("common.cancel", { defaultValue: "Cancel" })}
 						</button>
 					</div>
-				) : (
-					<div className="flex flex-col items-center gap-3">
-						<span className="text-sm text-[var(--text-muted)]">
-							{t("auth.sign_in.no_account_label")}{" "}
-							<Link
-								to="/auth/sign-up"
-								className="font-bold underline hover:text-[var(--text)]"
-							>
-								{t("auth.sign_in.no_account_action")}
-							</Link>
-						</span>
-					</div>
-				)
+				) : undefined
 			}
 		>
 			{/* Method selector */}
