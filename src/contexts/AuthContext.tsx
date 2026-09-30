@@ -9,6 +9,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useApi } from "../hooks/useApi";
 import { useApiFunctions } from "../hooks/useApiFunctions";
 import type { AppError } from "../types/api";
+import type { SignInProvider } from "../types/auth";
 import toast from "react-hot-toast";
 import {
 	AuthContext,
@@ -69,6 +70,31 @@ function describeLoginError(
 		return invalidCredentialsMessage;
 	}
 	return appError?.prettyMessage || fallback;
+}
+
+const PROVIDER_NAMES: Record<SignInProvider, string> = {
+	google: "Google",
+	apple: "Apple",
+	facebook: "Facebook",
+};
+
+// Must match CANCELLED_MESSAGE in src-tauri/src/commands/provider_login.rs.
+const PROVIDER_SIGN_IN_CANCELLED = "Sign-in was cancelled";
+
+// Grindr answers 403 with this code when the account must verify a phone
+// number before it gets a session.
+const VERIFICATION_REQUIRED_CODE = 30;
+
+function describeProviderLoginError(appError: AppError | null, providerName: string): string {
+	if (appError?.kind === "Api" && typeof appError.message === "object") {
+		if (appError.message.code === VERIFICATION_REQUIRED_CODE) {
+			return "Grindr wants this account to verify a phone number first. Do it once in the official Grindr app, then sign in here.";
+		}
+		if (appError.message.code === INVALID_INPUT_PARAMETERS_CODE) {
+			return `Grindr didn't accept this ${providerName} sign-in. Try again, or use email and password.`;
+		}
+	}
+	return appError?.prettyMessage || `${providerName} sign-in failed`;
 }
 
 type AuthAction =
@@ -223,6 +249,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			throw error;
 		} finally {
 			dispatch({ type: "SET_LOADING", payload: false });
+		}
+	};
+
+	const loginWithProvider = async (provider: SignInProvider): Promise<boolean> => {
+		const providerName = PROVIDER_NAMES[provider];
+		try {
+			appLog.info("[Auth] loginWithProvider: attempting", { provider });
+			dispatch({ type: "SET_ERROR", payload: null });
+
+			// No SET_LOADING here: the sign-in page has to stay up, with its
+			// Cancel button, while the browser or sign-in sheet is open.
+			const result = await callMethod("login_with_provider", { provider });
+			appLog.info("[Auth] loginWithProvider: succeeded", { provider });
+			dispatch({ type: "SET_USER", payload: result.profileId });
+			void refreshSavedAccounts();
+			toast.success(`Signed in with ${providerName}`);
+			return true;
+		} catch (error) {
+			const appError = asAppError(error);
+			if (appError?.kind === "Auth" && appError.message === PROVIDER_SIGN_IN_CANCELLED) {
+				appLog.info("[Auth] loginWithProvider: cancelled", { provider });
+				return false;
+			}
+			const message = describeProviderLoginError(appError, providerName);
+			appLog.error("[Auth] loginWithProvider failed", { provider, kind: appError?.kind, message });
+			dispatch({ type: "SET_ERROR", payload: message });
+			toast.error(message);
+			throw error;
+		}
+	};
+
+	const cancelProviderLogin = async () => {
+		try {
+			await callMethod("cancel_provider_login");
+		} catch (error) {
+			appLog.warn("[Auth] cancelProviderLogin failed", asAppError(error) ?? error);
 		}
 	};
 
@@ -547,6 +609,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		...state,
 		login,
 		loginWithJwt,
+		loginWithProvider,
+		cancelProviderLogin,
 		logout,
 		checkAuth,
 		savedAccounts,

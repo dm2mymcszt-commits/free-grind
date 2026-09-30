@@ -1,4 +1,5 @@
 import { createContext } from "react";
+import type { SignInProvider } from "../types/auth";
 
 export interface AuthState {
 	userId: number | null;
@@ -23,6 +24,9 @@ export interface SavedAccountMeta {
 export interface AuthContextType extends AuthState {
 	login: (email: string, password: string) => Promise<void>;
 	loginWithJwt: (token: string) => Promise<void>;
+	/** Resolves false when the user cancelled, so callers can stay put quietly. */
+	loginWithProvider: (provider: SignInProvider) => Promise<boolean>;
+	cancelProviderLogin: () => Promise<void>;
 	logout: () => Promise<void>;
 	checkAuth: () => Promise<void>;
 	savedAccounts: SavedAccountMeta[];

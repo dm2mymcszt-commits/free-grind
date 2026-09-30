@@ -914,7 +914,7 @@
         },
         "sign_in": {
             "title": "Sign In",
-            "subtitle": "Use your Grindr credentials or a token for Google, Apple, or Facebook.",
+            "subtitle": "Use your Grindr email and password, Google, Apple, Facebook, or a token.",
             "no_account_label": "Don't have an account?",
             "no_account_action": "Sign up",
             "method_token": "Token",
@@ -923,6 +923,9 @@
             "jwt_label": "JWT Token",
             "signing_in": "Signing in...",
             "submit": "Sign In",
+            "or": "or",
+            "continue_with": "Continue with {{provider}}",
+            "provider_waiting": "Finish signing in with {{provider}} in the window that opened.",
             "add_profile_title": "Add Profile",
             "add_profile_subtitle": "Sign in with the account you want to add."
         },
@@ -1668,6 +1671,18 @@
         "save_failed": "Could not update your test date."
     },
     "data_backup": {
+        "copy_settings": {
+            "section": "Other accounts",
+            "title": "Copy settings from another account",
+            "desc": "Brings your auto-block rules and keywords, filters, privacy options, location, saved phrases and saved locations over from an account that has data on this device. Chats, blocks and viewers stay with that account.",
+            "action": "Copy here",
+            "unnamed_account": "Account {{id}}",
+            "confirm_title": "Copy settings from {{name}}?",
+            "confirm_message": "This account's auto-block, filter, privacy and location settings are replaced with {{name}}'s. Saved phrases and saved locations are added to the ones you have. Chats and the block list don't move: to bring the block list, use Import on the Blocked page. The app reloads when it's done.",
+            "confirm": "Copy settings",
+            "success": "Settings copied from {{name}}. Reloading…",
+            "failed": "Couldn't copy the settings."
+        },
         "app_database": "App database",
         "app_database_summary": "{{size}} of cached chats, albums and avatars",
         "auto_download_media": "Auto-download media",

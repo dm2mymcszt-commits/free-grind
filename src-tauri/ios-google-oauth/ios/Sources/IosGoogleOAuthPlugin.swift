@@ -10,11 +10,31 @@ private struct AuthorizeArgs: Decodable {
     let callbackScheme: String
 }
 
+private struct WebViewAuthorizeArgs: Decodable {
+    let authorizationUrl: String
+    let callbackPrefix: String
+}
+
+/// Hosts the system browser sheet may open: Google (Drive sync and Grindr
+/// sign-in) and Facebook (Grindr sign-in).
+private let browserHosts: Set<String> = [
+    "accounts.google.com",
+    "m.facebook.com",
+    "www.facebook.com",
+    "facebook.com",
+]
+
+/// Sign in with Apple returns to Grindr's own web address, which only an
+/// embedded web view can intercept, so it gets its own allowlist.
+private let webViewHosts: Set<String> = ["appleid.apple.com"]
+private let webViewCallbackPrefixes: Set<String> = ["https://web.grindr.com/apple-login"]
+
 private final class IosGoogleOAuthPlugin: Plugin,
     ASWebAuthenticationPresentationContextProviding
 {
     private weak var webView: WKWebView?
     private var session: ASWebAuthenticationSession?
+    private var webSignIn: UIViewController?
     private var sessionId: UUID?
     private var pendingInvoke: Invoke?
     private var timeoutWorkItem: DispatchWorkItem?
@@ -27,11 +47,7 @@ private final class IosGoogleOAuthPlugin: Plugin,
         let args = try invoke.parseArgs(AuthorizeArgs.self)
 
         guard let authorizationUrl = URL(string: args.authorizationUrl),
-            authorizationUrl.scheme?.lowercased() == "https",
-            authorizationUrl.host?.lowercased() == "accounts.google.com",
-            authorizationUrl.port == nil,
-            authorizationUrl.user == nil,
-            authorizationUrl.password == nil,
+            isAllowed(authorizationUrl, hosts: browserHosts),
             isValidCallbackScheme(args.callbackScheme)
         else {
             invoke.reject("The authorization request was invalid.", code: "oauth_invalid_request")
@@ -40,13 +56,11 @@ private final class IosGoogleOAuthPlugin: Plugin,
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self else {
-                invoke.reject("Google authorization could not start.", code: "oauth_failed")
+                invoke.reject("The sign-in could not start.", code: "oauth_failed")
                 return
             }
-            guard self.pendingInvoke == nil, self.session == nil else {
-                invoke.reject(
-                    "A Google authorization flow is already in progress.",
-                    code: "oauth_in_progress")
+            guard self.pendingInvoke == nil, self.session == nil, self.webSignIn == nil else {
+                invoke.reject("A sign-in is already in progress.", code: "oauth_in_progress")
                 return
             }
 
@@ -65,18 +79,62 @@ private final class IosGoogleOAuthPlugin: Plugin,
             self.session = session
             self.sessionId = sessionId
             self.pendingInvoke = invoke
-
-            let timeout = DispatchWorkItem { [weak self] in
-                self?.rejectPending(
-                    code: "oauth_timeout", cancelSession: true, expectedSessionId: sessionId)
-            }
-            self.timeoutWorkItem = timeout
-            DispatchQueue.main.asyncAfter(deadline: .now() + 300, execute: timeout)
+            self.startTimeout(sessionId: sessionId)
 
             if !session.start() {
                 self.rejectPending(
                     code: "oauth_failed", cancelSession: false, expectedSessionId: sessionId)
             }
+        }
+    }
+
+    /// Opens the sign-in page in a sheet with its own web view and resolves
+    /// with the first address that starts with `callbackPrefix`, without
+    /// loading it.
+    @objc func authorizeInWebView(_ invoke: Invoke) throws {
+        let args = try invoke.parseArgs(WebViewAuthorizeArgs.self)
+
+        guard let authorizationUrl = URL(string: args.authorizationUrl),
+            isAllowed(authorizationUrl, hosts: webViewHosts),
+            webViewCallbackPrefixes.contains(args.callbackPrefix)
+        else {
+            invoke.reject("The authorization request was invalid.", code: "oauth_invalid_request")
+            return
+        }
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else {
+                invoke.reject("The sign-in could not start.", code: "oauth_failed")
+                return
+            }
+            guard self.pendingInvoke == nil, self.session == nil, self.webSignIn == nil else {
+                invoke.reject("A sign-in is already in progress.", code: "oauth_in_progress")
+                return
+            }
+            guard let presenter = self.topViewController() else {
+                invoke.reject("The sign-in could not start.", code: "oauth_failed")
+                return
+            }
+
+            let sessionId = UUID()
+            let controller = WebSignInViewController(
+                startUrl: authorizationUrl,
+                callbackPrefix: args.callbackPrefix
+            ) { [weak self] callbackUrl in
+                DispatchQueue.main.async {
+                    self?.completeWebSignIn(callbackUrl: callbackUrl, sessionId: sessionId)
+                }
+            }
+            let navigation = UINavigationController(rootViewController: controller)
+            navigation.modalPresentationStyle = .pageSheet
+            // Only Cancel closes it, so the pending call always gets an answer.
+            navigation.isModalInPresentation = true
+
+            self.webSignIn = navigation
+            self.sessionId = sessionId
+            self.pendingInvoke = invoke
+            self.startTimeout(sessionId: sessionId)
+            presenter.present(navigation, animated: true)
         }
     }
 
@@ -88,7 +146,7 @@ private final class IosGoogleOAuthPlugin: Plugin,
             }
 
             let pending = self.takePending()
-            pending.invoke?.reject("Google authorization was cancelled.", code: "oauth_cancelled")
+            pending.invoke?.reject("The sign-in was cancelled.", code: "oauth_cancelled")
             pending.session?.cancel()
             invoke.resolve()
         }
@@ -115,6 +173,23 @@ private final class IosGoogleOAuthPlugin: Plugin,
         return ASPresentationAnchor()
     }
 
+    private func topViewController() -> UIViewController? {
+        var top = manager.viewController ?? webView?.window?.rootViewController
+        while let presented = top?.presentedViewController {
+            top = presented
+        }
+        return top
+    }
+
+    private func startTimeout(sessionId: UUID) {
+        let timeout = DispatchWorkItem { [weak self] in
+            self?.rejectPending(
+                code: "oauth_timeout", cancelSession: true, expectedSessionId: sessionId)
+        }
+        timeoutWorkItem = timeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + 300, execute: timeout)
+    }
+
     private func complete(callbackUrl: URL?, error: Error?, sessionId: UUID) {
         guard pendingInvoke != nil, self.sessionId == sessionId else { return }
 
@@ -134,6 +209,17 @@ private final class IosGoogleOAuthPlugin: Plugin,
         pending.invoke?.resolve(["callbackUrl": callbackUrl.absoluteString])
     }
 
+    private func completeWebSignIn(callbackUrl: URL?, sessionId: UUID) {
+        guard pendingInvoke != nil, self.sessionId == sessionId else { return }
+        guard let callbackUrl = callbackUrl else {
+            rejectPending(
+                code: "oauth_cancelled", cancelSession: false, expectedSessionId: sessionId)
+            return
+        }
+        let pending = takePending()
+        pending.invoke?.resolve(["callbackUrl": callbackUrl.absoluteString])
+    }
+
     private func rejectPending(
         code: String, cancelSession: Bool, expectedSessionId: UUID? = nil
     ) {
@@ -146,11 +232,11 @@ private final class IosGoogleOAuthPlugin: Plugin,
         let message: String
         switch code {
         case "oauth_cancelled":
-            message = "Google authorization was cancelled."
+            message = "The sign-in was cancelled."
         case "oauth_timeout":
-            message = "Google authorization timed out."
+            message = "The sign-in timed out."
         default:
-            message = "Google authorization failed."
+            message = "The sign-in failed."
         }
         invoke.reject(message, code: code)
         if cancelSession {
@@ -158,15 +244,33 @@ private final class IosGoogleOAuthPlugin: Plugin,
         }
     }
 
+    /// Clears the pending sign-in and closes the web sheet if one is open.
     private func takePending() -> (invoke: Invoke?, session: ASWebAuthenticationSession?) {
         timeoutWorkItem?.cancel()
         timeoutWorkItem = nil
         let invoke = pendingInvoke
         let session = session
+        if let webSignIn = webSignIn {
+            webSignIn.presentingViewController?.dismiss(animated: true)
+        }
         pendingInvoke = nil
         self.session = nil
+        webSignIn = nil
         sessionId = nil
         return (invoke, session)
+    }
+
+    private func isAllowed(_ url: URL, hosts: Set<String>) -> Bool {
+        guard url.scheme?.lowercased() == "https",
+            let host = url.host?.lowercased(),
+            hosts.contains(host),
+            url.port == nil,
+            url.user == nil,
+            url.password == nil
+        else {
+            return false
+        }
+        return true
     }
 
     private func isValidCallbackScheme(_ scheme: String) -> Bool {
@@ -178,6 +282,71 @@ private final class IosGoogleOAuthPlugin: Plugin,
         }
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "+.-"))
         return scheme.unicodeScalars.allSatisfy { allowed.contains($0) }
+    }
+}
+
+/// A sheet with a web view and a Cancel button. Reports the callback address
+/// the first time the page tries to go there, or nil when cancelled.
+private final class WebSignInViewController: UIViewController, WKNavigationDelegate {
+    private let startUrl: URL
+    private let callbackPrefix: String
+    private let onFinish: (URL?) -> Void
+    private var finished = false
+    private var signInWebView: WKWebView?
+
+    init(startUrl: URL, callbackPrefix: String, onFinish: @escaping (URL?) -> Void) {
+        self.startUrl = startUrl
+        self.callbackPrefix = callbackPrefix
+        self.onFinish = onFinish
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        return nil
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .systemBackground
+        title = "Sign in with Apple"
+        navigationItem.leftBarButtonItem = UIBarButtonItem(
+            barButtonSystemItem: .cancel, target: self, action: #selector(cancelTapped))
+
+        let configuration = WKWebViewConfiguration()
+        // Nothing from this sign-in is kept once the sheet closes.
+        configuration.websiteDataStore = .nonPersistent()
+        let webView = WKWebView(frame: view.bounds, configuration: configuration)
+        webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        webView.navigationDelegate = self
+        view.addSubview(webView)
+        signInWebView = webView
+        webView.load(URLRequest(url: startUrl))
+    }
+
+    @objc private func cancelTapped() {
+        finish(nil)
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationAction: WKNavigationAction,
+        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+    ) {
+        if let url = navigationAction.request.url,
+            url.absoluteString.hasPrefix(callbackPrefix)
+        {
+            decisionHandler(.cancel)
+            finish(url)
+            return
+        }
+        decisionHandler(.allow)
+    }
+
+    private func finish(_ url: URL?) {
+        guard !finished else { return }
+        finished = true
+        signInWebView?.stopLoading()
+        onFinish(url)
     }
 }
 

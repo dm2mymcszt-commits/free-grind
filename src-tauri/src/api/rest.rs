@@ -45,6 +45,13 @@ fn may_send_grindr_auth(url: &str) -> bool {
         || host.ends_with(".grindr.com")
 }
 
+/// Sign-in and refresh routes. They must never trigger the proactive or
+/// on-401 refresh themselves: a refresh goes through them, so doing that
+/// would recurse while the refresh lock is held.
+fn is_session_path(path: &str) -> bool {
+    path == "/v8/sessions" || path == "/v8/sessions/thirdparty" || path.starts_with("/public/")
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct RawResponse {
     pub status: u16,
@@ -96,7 +103,7 @@ impl GrindrClient {
         TReq: Serialize + ?Sized,
         TResp: DeserializeOwned,
     {
-        let is_auth_path = path == "/v8/sessions" || path.starts_with("/public/");
+        let is_auth_path = is_session_path(path);
         let url = if path.starts_with("http") {
             path.to_owned()
         } else {
@@ -202,7 +209,7 @@ impl GrindrClient {
         body: Option<Vec<u8>>,
         content_type: Option<&str>,
     ) -> Result<RawResponse, AppError> {
-        let is_auth_path = path == "/v8/sessions" || path.starts_with("/public/");
+        let is_auth_path = is_session_path(path);
         let url = if path.starts_with("http") {
             path.to_owned()
         } else {

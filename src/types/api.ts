@@ -66,6 +66,18 @@ export const methodSchemas = {
 		}),
 		response: z.undefined(),
 	},
+	login_with_provider: {
+		request: z.object({
+			provider: z.enum(["google", "apple", "facebook"]),
+		}),
+		response: z.object({
+			profileId: z.coerce.number().int().nonnegative(),
+		}),
+	},
+	cancel_provider_login: {
+		request: z.undefined(),
+		response: z.undefined(),
+	},
 } as const satisfies Record<
 	string,
 	{ request: z.ZodType; response: z.ZodType }

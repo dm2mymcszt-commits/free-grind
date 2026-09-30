@@ -19,6 +19,12 @@ pub struct Session {
     pub auth_token: String,
     pub device_id: String,
     pub advertising_id: String,
+    /// Set for Google / Apple / Facebook sign-ins, whose sessions refresh
+    /// through `/v8/sessions/thirdparty` with this id instead of an email.
+    /// Sessions are stored as msgpack arrays, so this must stay the last
+    /// field and defaulted: sessions saved before it existed still decode.
+    #[serde(default)]
+    pub third_party_user_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,6 +80,62 @@ pub struct LoginResult {
 struct PushTokenRequest {
     vendor_provided_identifier: String,
     token: String,
+}
+
+const THIRD_PARTY_SESSIONS_PATH: &str = "/v8/sessions/thirdparty";
+
+/// Grindr's `thirdPartyVendor` numbers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThirdPartyVendor {
+    Facebook = 1,
+    Google = 2,
+    Apple = 5,
+}
+
+impl ThirdPartyVendor {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Facebook => "Facebook",
+            Self::Google => "Google",
+            Self::Apple => "Apple",
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ThirdPartyLoginRequest {
+    third_party_vendor: u8,
+    third_party_token: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ThirdPartyRefreshRequest {
+    third_party_user_id: String,
+    auth_token: String,
+}
+
+/// `authenticationResponse` is present when a Grindr account is linked to
+/// the provider identity; without it (`registered: false`) there is nothing
+/// to sign in to.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ThirdPartyAuthResponse {
+    #[serde(default)]
+    authentication_response: Option<ThirdPartySessionResponse>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ThirdPartySessionResponse {
+    profile_id: String,
+    session_id: String,
+    auth_token: String,
+    /// Stable provider id such as `google1116...`, used to refresh.
+    third_party_user_id: String,
+    #[serde(default)]
+    third_party_user_id_to_show: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -774,6 +836,7 @@ impl GrindrClient {
             expires_at: claims.exp,
             device_id,
             advertising_id,
+            third_party_user_id: None,
         };
 
         #[cfg(debug_assertions)]
@@ -864,6 +927,7 @@ impl GrindrClient {
             expires_at: claims.exp,
             device_id: new_device_id.clone(),
             advertising_id: new_advertising_id.clone(),
+            third_party_user_id: None,
         });
 
         // Try to exchange the JWT for a full session (sessionId + authToken) so that
@@ -922,6 +986,7 @@ impl GrindrClient {
                     expires_at: claims.exp,
                     device_id: new_device_id,
                     advertising_id: new_advertising_id,
+                    third_party_user_id: None,
                 };
                 if let Err(_error) = AuthStorage::set_session(&session) {
                     #[cfg(debug_assertions)]
@@ -949,6 +1014,33 @@ impl GrindrClient {
             .as_ref()
             .ok_or_else(|| AppError::Auth("Not logged in".to_owned()))?;
 
+        if let Some(third_party_user_id) = session.third_party_user_id.clone() {
+            let body = ThirdPartyRefreshRequest {
+                third_party_user_id,
+                auth_token: session.auth_token.clone(),
+            };
+            let device_id = session.device_id.clone();
+            let advertising_id = session.advertising_id.clone();
+            let display_name = session.email.clone();
+            drop(current);
+
+            let response: ThirdPartyAuthResponse = self
+                .request_json(Method::POST, THIRD_PARTY_SESSIONS_PATH, Some(&body))
+                .await?;
+            let authentication = response.authentication_response.ok_or_else(|| {
+                AppError::Auth("Grindr did not renew this sign-in; sign in again".to_owned())
+            })?;
+            let session = self.store_third_party_session(
+                authentication,
+                device_id,
+                advertising_id,
+                display_name,
+            )?;
+            let profile_id = session.profile_id.clone();
+            *self.session.write().await = Some(session);
+            return Ok(LoginResult { profile_id });
+        }
+
         // For JWT-only sessions (no authToken), use the current session_id as the authToken.
         // Grindr validates via the Authorization header; this mirrors how the initial
         // JWT exchange is attempted in login_with_jwt.
@@ -969,6 +1061,97 @@ impl GrindrClient {
         *self.session.write().await = Some(session);
 
         Ok(LoginResult { profile_id })
+    }
+
+    /// Signs in with a token from Google, Apple or Facebook. The token is
+    /// what Grindr's own apps send: a Google access token, a Facebook user
+    /// access token, or a single-use Sign in with Apple authorization code.
+    pub async fn login_third_party(
+        &self,
+        vendor: ThirdPartyVendor,
+        token: &str,
+    ) -> Result<LoginResult, AppError> {
+        #[cfg(debug_assertions)]
+        eprintln!("[HTTP-AUTH] third-party login attempt; vendor={vendor:?}");
+
+        let new_device_id = format!("{:016x}", rand::random::<u64>());
+        let new_advertising_id = uuid::Uuid::new_v4().to_string();
+        {
+            let mut device = self.device.write().await;
+            device.device_id = new_device_id.clone();
+            device.advertising_id = new_advertising_id.clone();
+        }
+
+        let body = ThirdPartyLoginRequest {
+            third_party_vendor: vendor as u8,
+            third_party_token: token.to_owned(),
+        };
+        let response: ThirdPartyAuthResponse = self
+            .request_json(Method::POST, THIRD_PARTY_SESSIONS_PATH, Some(&body))
+            .await?;
+        let Some(authentication) = response.authentication_response else {
+            // `registered: false`: the provider account is real but no Grindr
+            // account is linked to it. Creating one needs the official app.
+            return Err(AppError::Auth(format!(
+                "No Grindr account is linked to this {} account. Create one in the official Grindr app, then sign in here.",
+                vendor.label()
+            )));
+        };
+
+        let session =
+            self.store_third_party_session(authentication, new_device_id, new_advertising_id, String::new())?;
+        let profile_id = session.profile_id.clone();
+        #[cfg(debug_assertions)]
+        eprintln!("[HTTP-AUTH] third-party login succeeded; profile_id={profile_id}");
+        *self.session.write().await = Some(session);
+
+        Ok(LoginResult { profile_id })
+    }
+
+    /// Builds the session from a `/v8/sessions/thirdparty` answer and saves it
+    /// like an email sign-in, so it restores on launch and shows in the
+    /// switcher. `email` holds the provider's display id (usually the email),
+    /// falling back to what the previous session showed.
+    fn store_third_party_session(
+        &self,
+        authentication: ThirdPartySessionResponse,
+        device_id: String,
+        advertising_id: String,
+        previous_display_name: String,
+    ) -> Result<Session, AppError> {
+        let claims = decode_session_jwt(&authentication.session_id)?;
+        let display_name = authentication
+            .third_party_user_id_to_show
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or(previous_display_name);
+
+        let session = Session {
+            email: display_name,
+            profile_id: authentication.profile_id,
+            session_id: authentication.session_id,
+            auth_token: authentication.auth_token,
+            expires_at: claims.exp,
+            device_id,
+            advertising_id,
+            third_party_user_id: Some(authentication.third_party_user_id),
+        };
+
+        if let Err(_error) = AuthStorage::set_session(&session) {
+            #[cfg(debug_assertions)]
+            eprintln!(
+                "[HTTP-AUTH] Failed to persist third-party session (continuing in-memory only): {}",
+                _error
+            );
+        }
+        if let Err(_error) = AuthStorage::save_account(&session) {
+            #[cfg(debug_assertions)]
+            eprintln!(
+                "[HTTP-AUTH] Failed to register third-party account in switcher (login still succeeded): {}",
+                _error
+            );
+        }
+
+        Ok(session)
     }
 
     /// Makes a previously saved account the active session, without
@@ -1158,4 +1341,76 @@ pub async fn sync_push_token(
     #[cfg(debug_assertions)]
     eprintln!("[HTTP-PUSH] Tauri command sync_push_token invoked");
     state.client()?.sync_push_token(&token).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The shape sessions had before `third_party_user_id`, in the same order.
+    #[derive(Serialize)]
+    struct SessionBeforeThirdParty {
+        email: String,
+        expires_at: u64,
+        profile_id: String,
+        session_id: String,
+        auth_token: String,
+        device_id: String,
+        advertising_id: String,
+    }
+
+    #[test]
+    fn sessions_saved_before_third_party_sign_in_still_load() {
+        let old = SessionBeforeThirdParty {
+            email: "me@example.com".to_owned(),
+            expires_at: 1_800_000_000,
+            profile_id: "901160348".to_owned(),
+            session_id: "jwt".to_owned(),
+            auth_token: "token".to_owned(),
+            device_id: "0123456789abcdef".to_owned(),
+            advertising_id: "ad".to_owned(),
+        };
+        let bytes = rmp_serde::encode::to_vec(&old).unwrap();
+        let session: Session = rmp_serde::decode::from_slice(&bytes).unwrap();
+        assert_eq!(session.profile_id, "901160348");
+        assert_eq!(session.auth_token, "token");
+        assert_eq!(session.third_party_user_id, None);
+    }
+
+    #[test]
+    fn third_party_sessions_keep_their_provider_id() {
+        let session = Session {
+            email: "me@example.com".to_owned(),
+            expires_at: 1_800_000_000,
+            profile_id: "1".to_owned(),
+            session_id: "jwt".to_owned(),
+            auth_token: "token".to_owned(),
+            device_id: "0123456789abcdef".to_owned(),
+            advertising_id: "ad".to_owned(),
+            third_party_user_id: Some("google111659523269679641630".to_owned()),
+        };
+        let bytes = rmp_serde::encode::to_vec(&session).unwrap();
+        let decoded: Session = rmp_serde::decode::from_slice(&bytes).unwrap();
+        assert_eq!(
+            decoded.third_party_user_id.as_deref(),
+            Some("google111659523269679641630")
+        );
+    }
+
+    #[test]
+    fn reads_grindr_third_party_answers() {
+        let linked: ThirdPartyAuthResponse = serde_json::from_str(
+            r#"{"registered":true,"profileId":"1","authenticationResponse":{"profileId":"1","sessionId":"jwt","xmppToken":"x","authToken":"a","thirdPartyUserId":"google1","thirdPartyUserIdToShow":"me@example.com"}}"#,
+        )
+        .unwrap();
+        let authentication = linked.authentication_response.unwrap();
+        assert_eq!(authentication.third_party_user_id, "google1");
+        assert_eq!(authentication.third_party_user_id_to_show.as_deref(), Some("me@example.com"));
+
+        let unlinked: ThirdPartyAuthResponse = serde_json::from_str(
+            r#"{"registered":false,"profileId":null,"thirdPartyUserInfo":{"id":"google1"}}"#,
+        )
+        .unwrap();
+        assert!(unlinked.authentication_response.is_none());
+    }
 }

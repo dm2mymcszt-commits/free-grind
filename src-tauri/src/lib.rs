@@ -18,6 +18,14 @@ pub fn run() {
     // tokio-tungstenite when using rustls TLS backend).
     let _ = rustls::crypto::ring::default_provider().install_default();
 
+    // A browser finishing a Google or Facebook sign-in launches a copy of the
+    // app just to hand the result to the one that asked. It must leave
+    // before the instance lock or any window.
+    #[cfg(target_os = "windows")]
+    if commands::provider_login::windows_handoff::forward_callback_from_args() {
+        return;
+    }
+
     #[cfg(target_os = "windows")]
     {
         windows_instance::WindowsInstance::init();
@@ -177,6 +185,8 @@ pub fn run() {
                 api::auth::list_saved_accounts,
                 api::auth::switch_account,
                 api::auth::remove_saved_account,
+                commands::provider_login::login_with_provider,
+                commands::provider_login::cancel_provider_login,
                 api::rest::request,
                 api::websocket::ws_connect,
                 api::websocket::ws_send,
@@ -267,6 +277,8 @@ pub fn run() {
                 api::auth::list_saved_accounts,
                 api::auth::switch_account,
                 api::auth::remove_saved_account,
+                commands::provider_login::login_with_provider,
+                commands::provider_login::cancel_provider_login,
                 api::rest::request,
                 api::websocket::ws_connect,
                 api::websocket::ws_send,

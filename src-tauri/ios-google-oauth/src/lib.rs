@@ -37,6 +37,13 @@ struct AuthorizeRequest<'a> {
     callback_scheme: &'a str,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WebViewAuthorizeRequest<'a> {
+    authorization_url: &'a str,
+    callback_prefix: &'a str,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct AuthorizeResponse {
@@ -68,6 +75,28 @@ impl<R: Runtime> IosGoogleOAuth<R> {
                 AuthorizeRequest {
                     authorization_url,
                     callback_scheme,
+                },
+            )
+            .await
+            .map_err(map_invoke_error)?;
+        Ok(response.callback_url)
+    }
+
+    /// Opens `authorization_url` in an in-app web view sheet and returns the
+    /// first address starting with `callback_prefix` the page tries to load.
+    /// For providers that return to a web address, like Sign in with Apple.
+    pub async fn authorize_in_web_view(
+        &self,
+        authorization_url: &str,
+        callback_prefix: &str,
+    ) -> Result<String, AuthorizationError> {
+        let response = self
+            .0
+            .run_mobile_plugin_async::<AuthorizeResponse>(
+                "authorizeInWebView",
+                WebViewAuthorizeRequest {
+                    authorization_url,
+                    callback_prefix,
                 },
             )
             .await

@@ -1,4 +1,18 @@
 {
+    "data_backup": {
+        "copy_settings": {
+            "section": "Autres comptes",
+            "title": "Copier les réglages d'un autre compte",
+            "desc": "Récupère vos règles et mots-clés de blocage automatique, filtres, options de confidentialité, position, phrases et lieux enregistrés depuis un compte qui a des données sur cet appareil. Les discussions, les blocages et les visiteurs restent sur ce compte.",
+            "action": "Copier ici",
+            "unnamed_account": "Compte {{id}}",
+            "confirm_title": "Copier les réglages de {{name}} ?",
+            "confirm_message": "Les réglages de blocage automatique, de filtres, de confidentialité et de position de ce compte sont remplacés par ceux de {{name}}. Les phrases et lieux enregistrés s'ajoutent aux vôtres. Les discussions et la liste de blocage ne sont pas copiées : pour la liste de blocage, utilisez Importer sur la page Bloqués. L'app se recharge à la fin.",
+            "confirm": "Copier les réglages",
+            "success": "Réglages copiés depuis {{name}}. Rechargement…",
+            "failed": "Impossible de copier les réglages."
+        }
+    },
     "settings": {
         "title": "Paramètres",
         "subtitle": "Choisissez ce que vous souhaitez gérer.",
@@ -508,12 +522,15 @@
         },
         "sign_in": {
             "title": "Connexion",
-            "subtitle": "Utilisez vos identifiants Grindr ou un token pour Google, Apple ou Facebook.",
+            "subtitle": "Utilisez votre e-mail et mot de passe Grindr, Google, Apple, Facebook ou un token.",
             "method_token": "Token",
             "method_password": "Email et mot de passe",
             "token_help": "Comment obtenir votre token d'authentification",
             "jwt_label": "Token JWT",
             "submit": "Se connecter",
+            "or": "ou",
+            "continue_with": "Continuer avec {{provider}}",
+            "provider_waiting": "Terminez la connexion avec {{provider}} dans la fenêtre qui s'est ouverte.",
             "signing_in": "Connexion en cours...",
             "no_account_label": "Pas de compte?",
             "no_account_action": "Inscrivez-vous"
