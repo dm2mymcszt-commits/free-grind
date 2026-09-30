@@ -12,6 +12,7 @@ import {
 import toast from "react-hot-toast";
 import { useTranslation } from "react-i18next";
 import { BackToSettings } from "../../components/BackToSettings";
+import { CopyAccountSettingsCard } from "../../components/settings/CopyAccountSettingsCard";
 import { GoogleDriveSyncCard } from "../../components/settings/GoogleDriveSyncCard";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { ToggleRow } from "../../components/ui/toggle-row";
@@ -540,6 +541,8 @@ export function SettingsDataPage() {
 						</div>
 					</div>
 				</div>
+
+				<CopyAccountSettingsCard />
 
 				<GoogleDriveSyncCard profileId={settingsReady ? userId : null} />
 

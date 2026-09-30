@@ -20,7 +20,8 @@
  */
 
 import Database from "@tauri-apps/plugin-sql";
-import { BaseDirectory, exists, rename } from "@tauri-apps/plugin-fs";
+import { appDataDir } from "@tauri-apps/api/path";
+import { BaseDirectory, exists, readDir, rename } from "@tauri-apps/plugin-fs";
 import type { ConversationEntry, Message } from "../types/messages";
 import type {
 	AlbumMediaUpsertInput,
@@ -46,6 +47,10 @@ import {
 	findSameBlockEvent,
 	type StoredBlockEventTime,
 } from "../utils/blockEventIdentity";
+import {
+	isCopyableAccountSetting,
+	profileIdFromAccountDbFilename,
+} from "../utils/accountSettingsCopyRules";
 import { appLog } from "../utils/logger";
 import {
 	isFalseBlockedByOtherMarker,
@@ -3484,6 +3489,145 @@ export async function deleteSavedLocationRow(id: string): Promise<StoredSavedLoc
 	});
 
 	return getAllSavedLocations();
+}
+
+// ---------------------------------------------------------------------------
+// Copying settings from another account on this device
+// ---------------------------------------------------------------------------
+
+export interface AccountSettingsSnapshot {
+	/** Raw JSON-encoded values, copied as stored. */
+	settings: { key: string; value: string }[];
+	phrases: string[];
+	locations: StoredSavedLocation[];
+}
+
+function accountDbFilename(profileId: number): string {
+	return `chat-${profileId}.sqlite3`;
+}
+
+/** True when this account already has its own database file on this device. */
+export async function accountDbExists(profileId: number): Promise<boolean> {
+	try {
+		return await exists(accountDbFilename(profileId), { baseDir: BaseDirectory.AppData });
+	} catch (error) {
+		appLog.warn("[chat-db] account db existence check failed", { profileId, error });
+		return false;
+	}
+}
+
+/**
+ * Profile ids of the account databases found in the app's data folder. Empty
+ * when the folder can't be listed; callers also check the accounts they
+ * already know about, so a platform that refuses the listing loses nothing.
+ */
+export async function listAccountDbProfileIds(): Promise<number[]> {
+	try {
+		const entries = await readDir(await appDataDir());
+		const ids = new Set<number>();
+		for (const entry of entries) {
+			if (!entry.isFile) continue;
+			const profileId = profileIdFromAccountDbFilename(entry.name);
+			if (profileId != null) ids.add(profileId);
+		}
+		return [...ids];
+	} catch (error) {
+		appLog.warn("[chat-db] could not list account databases", error);
+		return [];
+	}
+}
+
+/**
+ * Reads the copyable settings, saved phrases and saved locations from
+ * another account's database without making it the active one. It opens a
+ * separate connection and closes only that one.
+ */
+export async function readAccountSettingsSnapshot(
+	sourceProfileId: number,
+): Promise<AccountSettingsSnapshot> {
+	if (sourceProfileId === activeChatDbProfileId) {
+		throw new Error("Choose an account other than the one you're signed in with.");
+	}
+	if (!(await accountDbExists(sourceProfileId))) {
+		throw new Error("That account has no data on this device.");
+	}
+
+	const source = await Database.load(`sqlite:${accountDbFilename(sourceProfileId)}`);
+	try {
+		await source.execute(`PRAGMA busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`).catch(() => {});
+		const settingRows = await source.select<{ key: string; value: string }[]>(
+			"SELECT key, value FROM settings",
+		);
+		const phraseRows = await source.select<{ phrase: string }[]>(
+			"SELECT phrase FROM saved_phrases ORDER BY created_at ASC",
+		);
+		const locationRows = await source.select<SavedLocationRow[]>(
+			"SELECT id, name, geohash, lat, lon, created_at FROM saved_locations ORDER BY created_at ASC",
+		);
+		return {
+			settings: settingRows.filter((row) => isCopyableAccountSetting(row.key)),
+			phrases: phraseRows.map((row) => row.phrase),
+			locations: locationRows.map(({ id, name, geohash, lat, lon }) => ({
+				id,
+				name,
+				geohash,
+				lat,
+				lon,
+			})),
+		};
+	} finally {
+		// Pass the path: close() with no argument closes every sql pool,
+		// including the active account's (see setActiveChatDbUser).
+		await source.close(source.path).catch((error) => {
+			appLog.warn("[chat-db] failed to close the source account db", error);
+		});
+	}
+}
+
+/**
+ * Writes a snapshot into the active account. Settings replace this account's
+ * own values; phrases and locations are added to what it already has.
+ */
+export async function applyAccountSettingsSnapshot(
+	snapshot: AccountSettingsSnapshot,
+): Promise<{ settings: number; phrases: number; locations: number }> {
+	const db = await getDb();
+	const settings = snapshot.settings.filter((row) => isCopyableAccountSetting(row.key));
+	const now = Date.now();
+
+	await executeWithLockRetry(db, "copy-account-settings", async () => {
+		for (const row of settings) {
+			await db.execute(
+				`
+				INSERT INTO settings (key, value) VALUES ($1, $2)
+				ON CONFLICT(key) DO UPDATE SET value = excluded.value
+				`,
+				[row.key, row.value],
+			);
+		}
+		for (const [index, phrase] of snapshot.phrases.entries()) {
+			await db.execute(
+				"INSERT INTO saved_phrases (phrase, created_at) VALUES ($1, $2) ON CONFLICT(phrase) DO NOTHING",
+				[phrase, now + index],
+			);
+		}
+		for (const [index, location] of snapshot.locations.entries()) {
+			await db.execute(
+				`
+				INSERT INTO saved_locations (id, name, geohash, lat, lon, created_at)
+				VALUES ($1, $2, $3, $4, $5, $6)
+				ON CONFLICT(id) DO NOTHING
+				`,
+				[location.id, location.name, location.geohash, location.lat, location.lon, now + index],
+			);
+		}
+	});
+
+	return {
+		settings: settings.length,
+		phrases: snapshot.phrases.length,
+		locations: snapshot.locations.length,
+	};
 }
 
 // ---------------------------------------------------------------------------
