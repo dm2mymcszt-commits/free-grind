@@ -2,15 +2,15 @@
     "data_backup": {
         "copy_settings": {
             "section": "Autres comptes",
-            "title": "Copier les réglages d'un autre compte",
-            "desc": "Récupère vos règles et mots-clés de blocage automatique, filtres, options de confidentialité, position, phrases et lieux enregistrés depuis un compte qui a des données sur cet appareil. Les discussions, les blocages et les visiteurs restent sur ce compte.",
-            "action": "Copier ici",
+            "title": "Transférer depuis un autre compte",
+            "desc": "Récupère depuis un compte qui a des données sur cet appareil : vos réglages, règles et mots-clés de blocage automatique, filtres, confidentialité, position, phrases et lieux enregistrés, l'historique des Stats, et la mémoire de toutes les personnes avec qui ce compte a parlé ou qu'il a bloquées, affichée dans les discussions, la boîte de réception et les profils. Les anciennes discussions et les visiteurs restent sur ce compte ; la liste de blocage s'importe sur la page Bloqués.",
+            "action": "Transférer ici",
             "unnamed_account": "Compte {{id}}",
-            "confirm_title": "Copier les réglages de {{name}} ?",
-            "confirm_message": "Les réglages de blocage automatique, de filtres, de confidentialité et de position de ce compte sont remplacés par ceux de {{name}}. Les phrases et lieux enregistrés s'ajoutent aux vôtres. Les discussions et la liste de blocage ne sont pas copiées : pour la liste de blocage, utilisez Importer sur la page Bloqués. L'app se recharge à la fin.",
-            "confirm": "Copier les réglages",
-            "success": "Réglages copiés depuis {{name}}. Rechargement…",
-            "failed": "Impossible de copier les réglages."
+            "confirm_title": "Transférer depuis {{name}} ?",
+            "confirm_message": "Les réglages de ce compte sont remplacés par ceux de {{name}}, et son historique des Stats et la mémoire des anciens contacts sont ajoutés. Les phrases et lieux enregistrés s'ajoutent aux vôtres. Les anciennes discussions et la liste de blocage ne sont pas transférées : pour la liste de blocage, utilisez Importer sur la page Bloqués. L'app se recharge à la fin.",
+            "confirm": "Transférer",
+            "success": "Transféré depuis {{name}} : {{count}} personnes mémorisées. Rechargement…",
+            "failed": "Impossible de transférer les données."
         }
     },
     "settings": {

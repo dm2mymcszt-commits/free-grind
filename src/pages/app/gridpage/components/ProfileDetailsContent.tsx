@@ -53,6 +53,7 @@ import type { ChatContactIndexRecord } from "../../../../types/chat-contact-inde
 import { formatRelativeTime } from "../../../../utils/relativeTime";
 import { usePreferences } from "../../../../contexts/PreferencesContext";
 import { formatTravelDateRange } from "../utils";
+import { PastContactNote } from "../../../../components/PastContactNote";
 
 type LabelMap = Record<number, string>;
 
@@ -541,6 +542,7 @@ export function ProfileDetailsContent({
 						</span>
 					</div>
 				)}
+				<PastContactNote profileId={activeProfile.profileId} variant="banner" className="mt-2" />
 				{isDesktopLike && messageProfileId && onMessageProfile ? (
 					<div className="mt-3 flex items-center justify-center gap-4 py-1">
 						<button

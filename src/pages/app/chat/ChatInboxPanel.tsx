@@ -38,6 +38,7 @@ import { useMultiSelect } from "../../../contexts/MultiSelectContext";
 import { useInboxSyncStatus } from "../../../hooks/useInboxSyncStatus";
 import { FEED_HEADER_OFFSET, FEED_MASK_GRADIENT_STOP } from "../../../config/design-config";
 import { hideConversation, unhideConversation } from "../../../services/conversationHide";
+import { PastContactNote } from "../../../components/PastContactNote";
 
 /** Footer bar below the chat list's scroll area (not inside it) — reads as
  * part of the list (same border/background as a conversation row) rather
@@ -560,6 +561,7 @@ function ChatConversationRow({
 										<EyeOff className="h-3.5 w-3.5 shrink-0 text-purple-400" />
 									</span>
 								)}
+								<PastContactNote profileId={otherProfileId} variant="icon" />
 							</div>
 							<span className="shrink-0 text-xs text-[var(--text-muted)]">
 								{formatConversationTime(conversation.data.lastActivityTimestamp)}

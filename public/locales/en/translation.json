@@ -1673,15 +1673,15 @@
     "data_backup": {
         "copy_settings": {
             "section": "Other accounts",
-            "title": "Copy settings from another account",
-            "desc": "Brings your auto-block rules and keywords, filters, privacy options, location, saved phrases and saved locations over from an account that has data on this device. Chats, blocks and viewers stay with that account.",
-            "action": "Copy here",
+            "title": "Move from another account",
+            "desc": "Brings over from an account that has data on this device: your settings, auto-block rules and keywords, filters, privacy, location, saved phrases and places, the Stats history, and a memory of everyone that account talked to or blocked, shown in chats, the inbox and profiles. Old chats and viewers stay with that account; the block list is imported on the Blocked page.",
+            "action": "Move here",
             "unnamed_account": "Account {{id}}",
-            "confirm_title": "Copy settings from {{name}}?",
-            "confirm_message": "This account's auto-block, filter, privacy and location settings are replaced with {{name}}'s. Saved phrases and saved locations are added to the ones you have. Chats and the block list don't move: to bring the block list, use Import on the Blocked page. The app reloads when it's done.",
-            "confirm": "Copy settings",
-            "success": "Settings copied from {{name}}. Reloading…",
-            "failed": "Couldn't copy the settings."
+            "confirm_title": "Move from {{name}}?",
+            "confirm_message": "This account's settings are replaced with {{name}}'s, and its Stats history and memory of past contacts are added. Saved phrases and places are added to yours. Old chats and the block list don't move: to bring the block list, use Import on the Blocked page. The app reloads when it's done.",
+            "confirm": "Move",
+            "success": "Moved from {{name}}: {{count}} people remembered. Reloading…",
+            "failed": "Couldn't move the data."
         },
         "app_database": "App database",
         "app_database_summary": "{{size}} of cached chats, albums and avatars",

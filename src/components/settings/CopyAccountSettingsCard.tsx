@@ -7,18 +7,25 @@ import { useAuth } from "../../contexts/useAuth";
 import {
 	accountDbExists,
 	applyAccountSettingsSnapshot,
+	insertMovedHistoryRows,
 	listAccountDbProfileIds,
+	readAccountHistorySnapshot,
 	readAccountSettingsSnapshot,
+	replacePastContacts,
 } from "../../services/chatDb";
 import { getSavedAccountProfile } from "../../services/savedAccountProfiles";
 import { appLog } from "../../utils/logger";
+import { buildPastContacts } from "../../utils/pastContactRules";
 
 type SourceAccount = { profileId: number; label: string };
 
 /**
- * Copies another account's settings into the signed-in one, for moving to a
- * new Grindr account on the same device. Lists every other account that
- * still has data here, including ones already removed from the switcher.
+ * Moves what another account on this device knew into the signed-in one,
+ * for starting over with a new Grindr account: its settings, its Stats
+ * history, and a per-person memory of who wrote, who got an answer and who
+ * was blocked (see utils/pastContactRules.ts). Lists every other account
+ * that still has data here, even one signed out or removed from the
+ * switcher. Running it again replaces the memory from that account.
  */
 export function CopyAccountSettingsCard() {
 	const { t } = useTranslation();
@@ -67,12 +74,27 @@ export function CopyAccountSettingsCard() {
 	const copyFrom = async (source: SourceAccount) => {
 		setIsCopying(true);
 		try {
-			const snapshot = await readAccountSettingsSnapshot(source.profileId);
-			await applyAccountSettingsSnapshot(snapshot);
+			// Read everything before writing anything, so a source that can't
+			// be read leaves this account untouched.
+			const settings = await readAccountSettingsSnapshot(source.profileId);
+			const history = await readAccountHistorySnapshot(source.profileId);
+			const contacts = buildPastContacts({
+				sourceProfileId: String(source.profileId),
+				messages: history.messages,
+				loggedBlocks: history.loggedBlocks,
+				displayNames: history.displayNames,
+			});
+
+			await applyAccountSettingsSnapshot(settings);
+			await replacePastContacts(String(source.profileId), contacts);
+			for (const { table, rows } of history.historyRows) {
+				await insertMovedHistoryRows(table, rows);
+			}
 			toast.success(
 				t("data_backup.copy_settings.success", {
-					defaultValue: "Settings copied from {{name}}. Reloading…",
+					defaultValue: "Moved from {{name}}: {{count}} people remembered. Reloading…",
 					name: source.label,
+					count: contacts.length,
 				}),
 			);
 			// Every copied setting is cached in memory or React state and only
@@ -84,7 +106,7 @@ export function CopyAccountSettingsCard() {
 				error instanceof Error && error.message
 					? error.message
 					: t("data_backup.copy_settings.failed", {
-							defaultValue: "Couldn't copy the settings.",
+							defaultValue: "Couldn't move the data.",
 						}),
 			);
 			setIsCopying(false);
@@ -105,13 +127,13 @@ export function CopyAccountSettingsCard() {
 					<div className="min-w-0 flex-1">
 						<p className="text-sm font-semibold leading-snug">
 							{t("data_backup.copy_settings.title", {
-								defaultValue: "Copy settings from another account",
+								defaultValue: "Move from another account",
 							})}
 						</p>
 						<p className="mt-0.5 text-xs leading-snug text-[var(--text-muted)]">
 							{t("data_backup.copy_settings.desc", {
 								defaultValue:
-									"Brings your auto-block rules and keywords, filters, privacy options, location, saved phrases and saved locations over from an account that has data on this device. Chats, blocks and viewers stay with that account.",
+									"Brings over from an account that has data on this device: your settings, auto-block rules and keywords, filters, privacy, location, saved phrases and places, the Stats history, and a memory of everyone that account talked to or blocked, shown in chats, the inbox and profiles. Old chats and viewers stay with that account; the block list is imported on the Blocked page.",
 							})}
 						</p>
 					</div>
@@ -130,7 +152,7 @@ export function CopyAccountSettingsCard() {
 							) : (
 								<Copy className="h-3.5 w-3.5" />
 							)}
-							{t("data_backup.copy_settings.action", { defaultValue: "Copy here" })}
+							{t("data_backup.copy_settings.action", { defaultValue: "Move here" })}
 						</button>
 					</div>
 				))}
@@ -139,15 +161,15 @@ export function CopyAccountSettingsCard() {
 			<ConfirmDialog
 				isOpen={confirmSource != null}
 				title={t("data_backup.copy_settings.confirm_title", {
-					defaultValue: "Copy settings from {{name}}?",
+					defaultValue: "Move from {{name}}?",
 					name: confirmSource?.label ?? "",
 				})}
 				message={t("data_backup.copy_settings.confirm_message", {
 					defaultValue:
-						"This account's auto-block, filter, privacy and location settings are replaced with {{name}}'s. Saved phrases and saved locations are added to the ones you have. Chats and the block list don't move: to bring the block list, use Import on the Blocked page. The app reloads when it's done.",
+						"This account's settings are replaced with {{name}}'s, and its Stats history and memory of past contacts are added. Saved phrases and places are added to yours. Old chats and the block list don't move: to bring the block list, use Import on the Blocked page. The app reloads when it's done.",
 					name: confirmSource?.label ?? "",
 				})}
-				confirmLabel={t("data_backup.copy_settings.confirm", { defaultValue: "Copy settings" })}
+				confirmLabel={t("data_backup.copy_settings.confirm", { defaultValue: "Move" })}
 				cancelLabel={t("common.cancel", { defaultValue: "Cancel" })}
 				isProcessing={isCopying}
 				onConfirm={() => (confirmSource ? copyFrom(confirmSource) : undefined)}

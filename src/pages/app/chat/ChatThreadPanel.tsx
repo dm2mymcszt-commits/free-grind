@@ -139,6 +139,7 @@ import {
 
 	SAVED_PHRASES_UPDATED_EVENT,
 } from "../../../services/savedPhrases";
+import { PastContactNote } from "../../../components/PastContactNote";
 
 type ChatThreadPanelProps = {
 	navigate: NavigateFunction;
@@ -1840,6 +1841,19 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 					</>
 				);
 			})()}
+
+			{/* Whether this person already met an earlier account: the point is
+			    to know before answering, including in a chat started from
+			    their profile that has no messages yet. */}
+			<PastContactNote
+				profileId={
+					selectedConversation
+						? getOtherParticipant(selectedConversation, userId)?.profileId ?? null
+						: targetProfileId
+				}
+				variant="banner"
+				className={isDesktop ? "mb-2 shrink-0" : "mx-[var(--app-px)] my-2 shrink-0"}
+			/>
 
 			{selectedConversation ? (
 				isLoadingThread &&

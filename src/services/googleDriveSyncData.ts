@@ -76,6 +76,9 @@ const CHAT_ENTITY_SPECS: readonly ChatEntitySpec[] = [
 	{ section: "core", entityType: "stats-profile-edit", table: "stats_profile_edit_log", primaryKey: "id", pageSize: 2_000 },
 	{ section: "core", entityType: "stats-profile-open", table: "stats_profile_open_log", primaryKey: "id", pageSize: 2_000 },
 	{ section: "core", entityType: "stats-view-distance", table: "stats_view_distance_log", primaryKey: "id", pageSize: 2_000 },
+	// What an earlier account knew about each person, written once when moving
+	// to this account, so the other device shows the same history.
+	{ section: "core", entityType: "past-contact", table: "past_contacts", primaryKey: "profile_id", pageSize: 2_000 },
 	{
 		section: "core",
 		entityType: "album",

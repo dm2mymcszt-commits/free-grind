@@ -11,6 +11,7 @@ import {
 	type GoogleDriveSyncStatus,
 } from "./googleDriveSync";
 import { createGoogleDriveSyncControllerAdapter } from "./googleDriveSyncController";
+import { reloadPastContacts } from "./pastContacts";
 import { SAVED_PHRASES_UPDATED_EVENT } from "./savedPhrases";
 import { loadSeenCache } from "./seenStore";
 import { loadStatsSettingsCache } from "./statsLog";
@@ -159,6 +160,7 @@ const defaultRemoteApplyDependencies: GoogleDriveRemoteApplyRefreshDependencies 
 		loadPrivacyCache,
 		loadSeenCache,
 		loadStatsSettingsCache,
+		reloadPastContacts,
 	],
 	dispatchApplied: dispatchRemoteApply,
 	reportCacheError: (error, loaderIndex) => {

@@ -51,6 +51,11 @@ import {
 	isCopyableAccountSetting,
 	profileIdFromAccountDbFilename,
 } from "../utils/accountSettingsCopyRules";
+import type {
+	PastContact,
+	PastContactLoggedBlock,
+	PastContactMessage,
+} from "../utils/pastContactRules";
 import { appLog } from "../utils/logger";
 import {
 	isFalseBlockedByOtherMarker,
@@ -499,6 +504,24 @@ async function getDb(): Promise<Database> {
 				await db.execute(
 					"CREATE INDEX IF NOT EXISTS idx_stats_view_distance_log_view ON stats_view_distance_log(view_timestamp)",
 				);
+				// What an earlier account on this device knew about each person
+				// (see utils/pastContactRules.ts), filled when moving to this one.
+				await db.execute(`
+					CREATE TABLE IF NOT EXISTS past_contacts (
+						profile_id TEXT PRIMARY KEY,
+						source_profile_id TEXT NOT NULL,
+						display_name TEXT,
+						their_messages INTEGER NOT NULL DEFAULT 0,
+						my_messages INTEGER NOT NULL DEFAULT 0,
+						first_message_at INTEGER,
+						last_message_at INTEGER,
+						last_text TEXT,
+						blocked_by_me_at INTEGER,
+						block_reason TEXT,
+						blocked_me_at INTEGER,
+						updated_at INTEGER NOT NULL
+					)
+				`);
 			});
 
 			return db;
@@ -2747,6 +2770,15 @@ const FULL_EXPORT_TABLES: {
 			"source", "device_id", "device_name", "created_at",
 		],
 	},
+	{
+		name: "past_contacts",
+		primaryKey: "profile_id",
+		columns: [
+			"profile_id", "source_profile_id", "display_name", "their_messages",
+			"my_messages", "first_message_at", "last_message_at", "last_text",
+			"blocked_by_me_at", "block_reason", "blocked_me_at", "updated_at",
+		],
+	},
 ];
 
 export type StatsLogTable =
@@ -3545,16 +3577,7 @@ export async function listAccountDbProfileIds(): Promise<number[]> {
 export async function readAccountSettingsSnapshot(
 	sourceProfileId: number,
 ): Promise<AccountSettingsSnapshot> {
-	if (sourceProfileId === activeChatDbProfileId) {
-		throw new Error("Choose an account other than the one you're signed in with.");
-	}
-	if (!(await accountDbExists(sourceProfileId))) {
-		throw new Error("That account has no data on this device.");
-	}
-
-	const source = await Database.load(`sqlite:${accountDbFilename(sourceProfileId)}`);
-	try {
-		await source.execute(`PRAGMA busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`).catch(() => {});
+	return withAccountDb(sourceProfileId, async (source) => {
 		const settingRows = await source.select<{ key: string; value: string }[]>(
 			"SELECT key, value FROM settings",
 		);
@@ -3575,12 +3598,255 @@ export async function readAccountSettingsSnapshot(
 				lon,
 			})),
 		};
+	});
+}
+
+/**
+ * Opens another account's database on a connection of its own, runs `read`
+ * on it and closes only that connection.
+ */
+async function withAccountDb<T>(
+	sourceProfileId: number,
+	read: (source: Database) => Promise<T>,
+): Promise<T> {
+	if (sourceProfileId === activeChatDbProfileId) {
+		throw new Error("Choose an account other than the one you're signed in with.");
+	}
+	if (!(await accountDbExists(sourceProfileId))) {
+		throw new Error("That account has no data on this device.");
+	}
+
+	const source = await Database.load(`sqlite:${accountDbFilename(sourceProfileId)}`);
+	try {
+		await source.execute(`PRAGMA busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`).catch(() => {});
+		return await read(source);
 	} finally {
 		// Pass the path: close() with no argument closes every sql pool,
 		// including the active account's (see setActiveChatDbUser).
 		await source.close(source.path).catch((error) => {
 			appLog.warn("[chat-db] failed to close the source account db", error);
 		});
+	}
+}
+
+/** History tables copied as they are when moving to a new account. */
+const MOVED_HISTORY_TABLES = [
+	"block_events",
+	"stats_block_log",
+	"stats_location_log",
+	"stats_coverage_log",
+	"stats_profile_edit_log",
+	"stats_profile_open_log",
+	"stats_view_distance_log",
+] as const;
+
+export type MovedHistoryTable = (typeof MOVED_HISTORY_TABLES)[number];
+
+export interface AccountHistorySnapshot {
+	messages: PastContactMessage[];
+	loggedBlocks: PastContactLoggedBlock[];
+	displayNames: Map<string, string>;
+	historyRows: { table: MovedHistoryTable; rows: PortableTableRow[] }[];
+}
+
+function messageBodyText(bodyJson: string | null): string {
+	if (!bodyJson) return "";
+	try {
+		const body = JSON.parse(bodyJson) as unknown;
+		return body && typeof body === "object" && typeof (body as { text?: unknown }).text === "string"
+			? (body as { text: string }).text
+			: "";
+	} catch {
+		return "";
+	}
+}
+
+/** Reads what the per-person history and the moved history tables need. */
+export async function readAccountHistorySnapshot(
+	sourceProfileId: number,
+): Promise<AccountHistorySnapshot> {
+	return withAccountDb(sourceProfileId, async (source) => {
+		const messageRows = await source.select<
+			{
+				conversation_id: string;
+				sender_id: number | string;
+				type: string;
+				timestamp: number;
+				body_json: string | null;
+			}[]
+		>("SELECT conversation_id, sender_id, type, timestamp, body_json FROM messages");
+		const loggedRows = await source.select<
+			{ profile_id: string | number; event_type: string; timestamp: number; reason_label: string | null }[]
+		>("SELECT profile_id, event_type, timestamp, reason_label FROM stats_block_log");
+		const nameRows = await source.select<{ profile_id: string | number | null; name: string | null }[]>(
+			`SELECT other_profile_id AS profile_id, name FROM conversations
+			 UNION ALL SELECT profile_id, display_name AS name FROM block_events`,
+		);
+
+		const historyRows: AccountHistorySnapshot["historyRows"] = [];
+		for (const table of MOVED_HISTORY_TABLES) {
+			historyRows.push({
+				table,
+				rows: await source.select<PortableTableRow[]>(`SELECT * FROM ${table}`),
+			});
+		}
+
+		const displayNames = new Map<string, string>();
+		for (const row of nameRows) {
+			const name = row.name?.trim();
+			if (row.profile_id != null && name) displayNames.set(String(row.profile_id), name);
+		}
+
+		return {
+			messages: messageRows.map((row) => ({
+				conversationId: row.conversation_id,
+				senderId: String(row.sender_id),
+				type: row.type,
+				timestamp: Number(row.timestamp) || 0,
+				text: messageBodyText(row.body_json),
+			})),
+			loggedBlocks: loggedRows.map((row) => ({
+				profileId: String(row.profile_id),
+				blocked: row.event_type === "block",
+				timestamp: Number(row.timestamp) || 0,
+				reason: row.reason_label,
+			})),
+			displayNames,
+			historyRows,
+		};
+	});
+}
+
+/**
+ * Stores the per-person history from one old account, replacing what an
+ * earlier move from that same account wrote.
+ */
+export async function replacePastContacts(
+	sourceProfileId: string,
+	contacts: readonly PastContact[],
+): Promise<void> {
+	const db = await getDb();
+	const now = Date.now();
+	const columns = requirePortableTable("past_contacts").columns;
+	const rows = contacts.map((contact) => [
+		contact.profileId,
+		contact.sourceProfileId,
+		contact.displayName,
+		contact.theirMessages,
+		contact.myMessages,
+		contact.firstMessageAt,
+		contact.lastMessageAt,
+		contact.lastText,
+		contact.blockedByMeAt,
+		contact.blockReason,
+		contact.blockedMeAt,
+		now,
+	]);
+	const updates = columns
+		.filter((column) => column !== "profile_id")
+		.map((column) => `${column} = excluded.${column}`)
+		.join(", ");
+	await executeWithLockRetry(db, "replace-past-contacts", async () => {
+		await db.execute("DELETE FROM past_contacts WHERE source_profile_id = $1", [sourceProfileId]);
+		await insertRowsInBatches(
+			db,
+			"past_contacts",
+			columns,
+			rows,
+			`ON CONFLICT(profile_id) DO UPDATE SET ${updates}`,
+		);
+	});
+}
+
+type PastContactRow = {
+	profile_id: string;
+	source_profile_id: string;
+	display_name: string | null;
+	their_messages: number;
+	my_messages: number;
+	first_message_at: number | null;
+	last_message_at: number | null;
+	last_text: string | null;
+	blocked_by_me_at: number | null;
+	block_reason: string | null;
+	blocked_me_at: number | null;
+};
+
+export async function getAllPastContacts(): Promise<PastContact[]> {
+	const db = await getDb();
+	const rows = await db.select<PastContactRow[]>(
+		`SELECT profile_id, source_profile_id, display_name, their_messages, my_messages,
+			first_message_at, last_message_at, last_text, blocked_by_me_at, block_reason, blocked_me_at
+		 FROM past_contacts`,
+	);
+	return rows.map((row) => ({
+		profileId: row.profile_id,
+		sourceProfileId: row.source_profile_id,
+		displayName: row.display_name,
+		theirMessages: Number(row.their_messages) || 0,
+		myMessages: Number(row.my_messages) || 0,
+		firstMessageAt: row.first_message_at,
+		lastMessageAt: row.last_message_at,
+		lastText: row.last_text,
+		blockedByMeAt: row.blocked_by_me_at,
+		blockReason: row.block_reason,
+		blockedMeAt: row.blocked_me_at,
+	}));
+}
+
+/**
+ * Adds history rows from another account, leaving any row this account
+ * already has alone. Only known columns are written.
+ */
+export async function insertMovedHistoryRows(
+	name: MovedHistoryTable,
+	rows: readonly PortableTableRow[],
+): Promise<void> {
+	if (rows.length === 0) return;
+	const table = requirePortableTable(name);
+	const db = await getDb();
+	const values = rows
+		.filter((row) => row[table.primaryKey] != null)
+		.map((row) => table.columns.map((column) => row[column] ?? null));
+	await executeWithLockRetry(db, `move-${table.name}`, async () => {
+		await insertRowsInBatches(
+			db,
+			table.name,
+			table.columns,
+			values,
+			`ON CONFLICT(${table.primaryKey}) DO NOTHING`,
+		);
+	});
+}
+
+/**
+ * Many rows per statement: one call per row costs a round trip to the
+ * native side each, which is tens of seconds for ten thousand rows. Kept
+ * well under SQLite's bound-parameter limit. `table` and `columns` must come
+ * from the portable-table registry, never from input.
+ */
+async function insertRowsInBatches(
+	db: Database,
+	table: string,
+	columns: readonly string[],
+	rows: readonly unknown[][],
+	conflictClause: string,
+): Promise<void> {
+	const rowsPerStatement = Math.max(1, Math.floor(900 / columns.length));
+	for (let start = 0; start < rows.length; start += rowsPerStatement) {
+		const batch = rows.slice(start, start + rowsPerStatement);
+		const values: unknown[] = [];
+		const tuples = batch.map((row) => {
+			const placeholders = row.map((value) => {
+				values.push(value);
+				return `$${values.length}`;
+			});
+			return `(${placeholders.join(", ")})`;
+		});
+		await db.execute(
+			`INSERT INTO ${table} (${columns.join(", ")}) VALUES ${tuples.join(", ")} ${conflictClause}`,
+			values,
+		);
 	}
 }
 
