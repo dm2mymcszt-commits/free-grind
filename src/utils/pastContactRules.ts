@@ -20,6 +20,15 @@ export type PastContact = {
 	blockedByMeAt: number | null;
 	blockReason: string | null;
 	blockedMeAt: number | null;
+	/** The old conversation as far as this device kept it, oldest first. */
+	messages: PastMessage[];
+};
+
+/** One message of the old conversation, reduced to what can still be shown. */
+export type PastMessage = {
+	at: number;
+	mine: boolean;
+	text: string;
 };
 
 export type PastContactMessage = {
@@ -41,6 +50,29 @@ export type PastContactLoggedBlock = {
 
 const PROFILE_ID = /^[1-9]\d{0,19}$/;
 const LAST_TEXT_MAX = 140;
+/** Newest messages kept per person; the old chats here run to 14 at most. */
+export const MAX_PAST_MESSAGES = 50;
+
+// Photo and album links in old messages expire, so they are named instead.
+const PLACEHOLDERS: Record<string, string> = {
+	Image: "Photo",
+	ExpiringImage: "Expiring photo",
+	ProfilePhotoReply: "Reply to a profile photo",
+	Album: "Shared an album",
+	ExpiringAlbum: "Shared an album",
+	ExpiringAlbumV2: "Shared an album",
+	Video: "Video",
+	Audio: "Voice message",
+	Location: "Location",
+	Gaymoji: "Gaymoji",
+	Giphy: "GIF",
+};
+
+function messageTextOrPlaceholder(message: PastContactMessage): string {
+	const text = message.text.trim();
+	if (text) return text;
+	return PLACEHOLDERS[message.type] ?? message.type;
+}
 
 const MY_BLOCK_TYPES: Record<string, boolean> = {
 	SystemBlockedBySelf: true,
@@ -75,6 +107,7 @@ type Draft = PastContact & {
 	theirBlockAt: number;
 	theirBlockState: boolean | null;
 	lastTextAt: number;
+	kept: PastMessage[];
 };
 
 function emptyDraft(profileId: string, sourceProfileId: string): Draft {
@@ -97,6 +130,8 @@ function emptyDraft(profileId: string, sourceProfileId: string): Draft {
 		theirBlockAt: -1,
 		theirBlockState: null,
 		lastTextAt: -1,
+		kept: [],
+		messages: [],
 	};
 }
 
@@ -160,6 +195,11 @@ export function buildPastContacts(input: {
 		} else {
 			continue;
 		}
+		draft.kept.push({
+			at,
+			mine: message.senderId === sourceProfileId,
+			text: messageTextOrPlaceholder(message),
+		});
 		draft.firstMessageAt = draft.firstMessageAt == null ? at : Math.min(draft.firstMessageAt, at);
 		draft.lastMessageAt = draft.lastMessageAt == null ? at : Math.max(draft.lastMessageAt, at);
 	}
@@ -189,6 +229,7 @@ export function buildPastContacts(input: {
 			blockReason:
 				blockedByMeAt != null && draft.reasonAt >= draft.myUnblockAt ? draft.blockReason : null,
 			blockedMeAt,
+			messages: draft.kept.sort((a, b) => a.at - b.at).slice(-MAX_PAST_MESSAGES),
 		});
 	}
 	return contacts;

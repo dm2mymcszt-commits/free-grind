@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+	MAX_PAST_MESSAGES,
 	buildPastContacts,
 	describePastContact,
 	otherProfileInConversation,
@@ -49,6 +50,32 @@ describe("buildPastContacts", () => {
 			lastText: "how are you",
 			blockedByMeAt: null,
 		});
+	});
+
+	test("keeps the old conversation in order, naming photos instead of linking them", () => {
+		const [contact] = buildPastContacts({
+			sourceProfileId: OLD,
+			messages: [
+				text(OLD, "5", 300, "sure"),
+				{ ...text("5", "5", 100, ""), type: "Image" },
+				text("5", "5", 200, "hey"),
+				marker("5", "SystemBlockedBySelf", 400),
+			],
+			loggedBlocks: [],
+		});
+		expect(contact.messages).toEqual([
+			{ at: 100, mine: false, text: "Photo" },
+			{ at: 200, mine: false, text: "hey" },
+			{ at: 300, mine: true, text: "sure" },
+		]);
+	});
+
+	test("keeps only the newest messages of a long conversation", () => {
+		const many = Array.from({ length: MAX_PAST_MESSAGES + 5 }, (_, index) => text("5", "5", index, `m${index}`));
+		const [contact] = buildPastContacts({ sourceProfileId: OLD, messages: many, loggedBlocks: [] });
+		expect(contact.messages).toHaveLength(MAX_PAST_MESSAGES);
+		expect(contact.messages[0].text).toBe("m5");
+		expect(contact.theirMessages).toBe(MAX_PAST_MESSAGES + 5);
 	});
 
 	test("system markers are blocks, not messages", () => {
@@ -131,6 +158,7 @@ describe("describePastContact", () => {
 		blockedByMeAt: null,
 		blockReason: null,
 		blockedMeAt: null,
+		messages: [],
 	};
 
 	test("someone who wrote and never got an answer", () => {

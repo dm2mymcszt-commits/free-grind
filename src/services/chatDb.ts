@@ -55,6 +55,7 @@ import type {
 	PastContact,
 	PastContactLoggedBlock,
 	PastContactMessage,
+	PastMessage,
 } from "../utils/pastContactRules";
 import { appLog } from "../utils/logger";
 import {
@@ -519,9 +520,15 @@ async function getDb(): Promise<Database> {
 						blocked_by_me_at INTEGER,
 						block_reason TEXT,
 						blocked_me_at INTEGER,
+						messages_json TEXT,
 						updated_at INTEGER NOT NULL
 					)
 				`);
+				try {
+					await db.execute("ALTER TABLE past_contacts ADD COLUMN messages_json TEXT");
+				} catch {
+					// already there
+				}
 			});
 
 			return db;
@@ -2776,7 +2783,7 @@ const FULL_EXPORT_TABLES: {
 		columns: [
 			"profile_id", "source_profile_id", "display_name", "their_messages",
 			"my_messages", "first_message_at", "last_message_at", "last_text",
-			"blocked_by_me_at", "block_reason", "blocked_me_at", "updated_at",
+			"blocked_by_me_at", "block_reason", "blocked_me_at", "messages_json", "updated_at",
 		],
 	},
 ];
@@ -3740,6 +3747,7 @@ export async function replacePastContacts(
 		contact.blockedByMeAt,
 		contact.blockReason,
 		contact.blockedMeAt,
+		contact.messages.length > 0 ? JSON.stringify(contact.messages) : null,
 		now,
 	]);
 	const updates = columns
@@ -3770,13 +3778,34 @@ type PastContactRow = {
 	blocked_by_me_at: number | null;
 	block_reason: string | null;
 	blocked_me_at: number | null;
+	messages_json: string | null;
 };
+
+/** Reads stored old messages, dropping anything that isn't one. */
+function parsePastMessages(json: string | null): PastMessage[] {
+	if (!json) return [];
+	try {
+		const parsed = JSON.parse(json) as unknown;
+		if (!Array.isArray(parsed)) return [];
+		return parsed.filter(
+			(item): item is PastMessage =>
+				Boolean(item) &&
+				typeof item === "object" &&
+				typeof (item as PastMessage).at === "number" &&
+				typeof (item as PastMessage).mine === "boolean" &&
+				typeof (item as PastMessage).text === "string",
+		);
+	} catch {
+		return [];
+	}
+}
 
 export async function getAllPastContacts(): Promise<PastContact[]> {
 	const db = await getDb();
 	const rows = await db.select<PastContactRow[]>(
 		`SELECT profile_id, source_profile_id, display_name, their_messages, my_messages,
-			first_message_at, last_message_at, last_text, blocked_by_me_at, block_reason, blocked_me_at
+			first_message_at, last_message_at, last_text, blocked_by_me_at, block_reason, blocked_me_at,
+			messages_json
 		 FROM past_contacts`,
 	);
 	return rows.map((row) => ({
@@ -3791,6 +3820,7 @@ export async function getAllPastContacts(): Promise<PastContact[]> {
 		blockedByMeAt: row.blocked_by_me_at,
 		blockReason: row.block_reason,
 		blockedMeAt: row.blocked_me_at,
+		messages: parsePastMessages(row.messages_json),
 	}));
 }
 
