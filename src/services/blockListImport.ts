@@ -12,6 +12,7 @@ import { findConversationByProfileId } from "./chatDb";
 import { applySelfBlockAction, markConversationDeleteHandled } from "./conversationArchive";
 import { ApiFunctionError } from "./apiHelpers";
 import { createBackupWriter, type BackupDestination } from "./backupFile";
+import { getLocalBlockList } from "./blockListSnapshot";
 import type { createApiFunctions } from "./apiFunctions";
 import { markSelfBlockAction } from "../utils/selfBlockActions";
 import { appLog } from "../utils/logger";
@@ -538,12 +539,29 @@ export function blockListFileName(now = new Date()): string {
 	return `grindflop-block-list-${now.toISOString().slice(0, 10)}.json`;
 }
 
+/** Where an export's list came from: Grindr, or the copy on this device when Grindr didn't answer. */
+export type BlockListExportSource =
+	| { kind: "grindr" }
+	| { kind: "device"; savedAt: number | null; complete: boolean; grindrError: unknown };
+
 export async function exportBlockList(
 	api: ApiFunctions,
-): Promise<{ count: number; destination: BackupDestination | null }> {
-	// Asked fresh rather than read from the query cache, which can be minutes old.
-	const file = buildBlockListFile(await api.getBlockedProfileIds());
-	if (file.count === 0) return { count: 0, destination: null };
+): Promise<{ count: number; destination: BackupDestination | null; source: BlockListExportSource }> {
+	let profileIds: string[];
+	let source: BlockListExportSource;
+	try {
+		// Asked fresh rather than read from the query cache, which can be minutes old.
+		profileIds = await api.getBlockedProfileIds();
+		source = { kind: "grindr" };
+	} catch (error) {
+		const local = await getLocalBlockList();
+		if (local.profileIds.length === 0) throw error;
+		appLog.warn("[block-list-export] Grindr didn't answer, exporting the copy on this device", error);
+		profileIds = local.profileIds;
+		source = { kind: "device", savedAt: local.savedAt, complete: local.complete, grindrError: error };
+	}
+	const file = buildBlockListFile(profileIds);
+	if (file.count === 0) return { count: 0, destination: null, source };
 	const destination = await createBackupWriter(blockListFileName());
 	try {
 		await destination.writer.write(JSON.stringify(file, null, 1));
@@ -552,5 +570,5 @@ export async function exportBlockList(
 		await destination.writer.abort().catch(() => {});
 		throw error;
 	}
-	return { count: file.count, destination };
+	return { count: file.count, destination, source };
 }

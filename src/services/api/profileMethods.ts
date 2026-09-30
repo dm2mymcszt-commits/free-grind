@@ -18,10 +18,20 @@ import { travelPlansResponseSchema, type TravelPlan, type TravelPlanPayload } fr
 import { ApiFunctionError, assertSuccess, parseJsonSafe } from "../apiHelpers";
 import { isRecordProfileViewsEnabled } from "../../utils/privacy";
 import { appLog } from "../../utils/logger";
+import {
+	blockListOwner,
+	rememberAllUnblocked,
+	rememberBlockChange,
+	rememberFullBlockList,
+} from "../blockListSnapshot";
 
 export function createProfileMethods(fetchRest: RestFetcher, t: (key: string, options?: any) => string) {
 	return {
 		async getBlockedProfileIds(): Promise<string[]> {
+			// Taken before the request, so an answer arriving after an account
+			// switch can't be saved as the other account's list.
+			const owner = blockListOwner();
+			const requestedAt = Date.now();
 			const response = await fetchRest("/v3.1/me/blocks");
 			await assertSuccess(response, t("profile_details.block_failed"));
 			const payload = await parseJsonSafe(response);
@@ -36,10 +46,11 @@ export function createProfileMethods(fetchRest: RestFetcher, t: (key: string, op
 
 			const blocking = (payload as { blocking?: unknown }).blocking;
 			if (!Array.isArray(blocking)) {
+				// Not saved: an odd answer mustn't wipe the copy on this device.
 				return [];
 			}
 
-			return blocking
+			const profileIds = blocking
 				.map((entry) => {
 					if (typeof entry !== "object" || entry === null) {
 						return null;
@@ -51,29 +62,38 @@ export function createProfileMethods(fetchRest: RestFetcher, t: (key: string, op
 					return null;
 				})
 				.filter((profileId): profileId is string => profileId !== null);
+			rememberFullBlockList(owner, profileIds, requestedAt);
+			return profileIds;
 		},
 
 		async blockProfile(profileId: string): Promise<{ ok: true }> {
+			const owner = blockListOwner();
 			const response = await fetchRest(
 				`/v3/me/blocks/${encodeURIComponent(profileId)}`,
 				{ method: "POST" },
 			);
 			await assertSuccess(response, t("profile_details.block_failed"));
+			rememberBlockChange(owner, profileId, true);
 			return { ok: true };
 		},
 
 		async unblockProfile(profileId: string): Promise<{ ok: true }> {
+			const owner = blockListOwner();
 			const response = await fetchRest(
 				`/v3/me/blocks/${encodeURIComponent(profileId)}`,
 				{ method: "DELETE" },
 			);
 			await assertSuccess(response, t("profile_details.unblock_failed"));
+			rememberBlockChange(owner, profileId, false);
 			return { ok: true };
 		},
 
 		async unblockAllProfiles(): Promise<{ ok: true }> {
+			const owner = blockListOwner();
+			const requestedAt = Date.now();
 			const response = await fetchRest("/v3/me/blocks", { method: "DELETE" });
 			await assertSuccess(response, t("settings_blocked.unblock_all_failed", { defaultValue: "Failed to unblock all profiles." }));
+			rememberAllUnblocked(owner, requestedAt);
 			return { ok: true };
 		},
 

@@ -161,7 +161,7 @@ export function BlockListTransferCard() {
 	const handleExport = async () => {
 		setIsExporting(true);
 		try {
-			const { count, destination } = await exportBlockList(api);
+			const { count, destination, source } = await exportBlockList(api);
 			if (!destination) {
 				toast(t("settings_blocked.export_nothing", { defaultValue: "You haven't blocked anyone yet." }));
 				return;
@@ -178,14 +178,36 @@ export function BlockListTransferCard() {
 								name: destination.fileName,
 							})
 						: destination.fileName;
-			toast.success(
-				t("settings_blocked.export_success", {
-					defaultValue: "Saved {{count}} blocked profiles to {{where}}",
-					count: count.toLocaleString(),
-					where,
-				}),
-				{ duration: 6000 },
-			);
+			if (source.kind === "grindr") {
+				toast.success(
+					t("settings_blocked.export_success", {
+						defaultValue: "Saved {{count}} blocked profiles to {{where}}",
+						count: count.toLocaleString(),
+						where,
+					}),
+					{ duration: 6000 },
+				);
+				return;
+			}
+			const saved = t("settings_blocked.export_success_device", {
+				defaultValue: "Grindr didn't answer, so the copy saved on this device was used. Saved {{count}} blocked profiles to {{where}}.",
+				count: count.toLocaleString(),
+				where,
+			});
+			const age =
+				source.savedAt == null
+					? null
+					: t("settings_blocked.export_device_age", {
+							defaultValue: "The copy was last updated {{time}}.",
+							time: new Date(source.savedAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }),
+						});
+			const partial = source.complete
+				? null
+				: t("settings_blocked.export_device_partial", {
+						defaultValue:
+							"It may be missing people: it only has blocks this app has seen since Stats was turned on. Export again once Grindr is back for the full list.",
+					});
+			toast.success([saved, age, partial].filter(Boolean).join(" "), { duration: 12000 });
 		} catch (error) {
 			toast.error(
 				error instanceof Error && error.message
