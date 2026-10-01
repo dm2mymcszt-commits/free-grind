@@ -3616,7 +3616,9 @@ async function withAccountDb<T>(
 	sourceProfileId: number,
 	read: (source: Database) => Promise<T>,
 ): Promise<T> {
-	if (sourceProfileId === activeChatDbProfileId) {
+	// Compared as text: reading the active account through a second
+	// connection would end with closing the connection the app is using.
+	if (String(sourceProfileId) === String(activeChatDbProfileId)) {
 		throw new Error("Choose an account other than the one you're signed in with.");
 	}
 	if (!(await accountDbExists(sourceProfileId))) {

@@ -109,7 +109,12 @@ function authReducer(state: AuthState, action: AuthAction): AuthState {
 		case "SET_USER":
 			return {
 				...state,
-				userId: action.payload,
+				// The sign-in commands answer with the profile id as a string
+				// (only auth_state sends a number) and nothing parses it on the
+				// way in. Left as a string, every `=== userId` check against a
+				// numeric id fails until the next launch: Drive sync refuses
+				// the id, and the signed-in account is listed as another one.
+				userId: Number(action.payload),
 				error: null,
 				settingsReady: false,
 			};
