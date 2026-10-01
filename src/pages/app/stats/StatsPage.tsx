@@ -402,6 +402,13 @@ export default function StatsPage() {
 											defaultValue: "Stats logs have nothing recorded yet",
 										})}
 							</span>
+							{context.sources.movedFromOldAccount ? (
+								<span>
+									{t("stats.moved_from_old_account", {
+										defaultValue: "Includes data moved from your old account",
+									})}
+								</span>
+							) : null}
 							{driveConnected ? (
 								<span className="inline-flex items-center gap-1">
 									<Cloud className="h-3 w-3" />

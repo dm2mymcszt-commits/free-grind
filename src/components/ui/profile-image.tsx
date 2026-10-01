@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { User } from "lucide-react";
 import { cn } from "../../utils/cn";
 
@@ -21,13 +22,19 @@ export function ProfileImage({
 	iconClassName,
 	loading = "lazy",
 }: ProfileImageProps) {
-	if (src) {
+	// A deleted or banned profile's picture no longer loads; remembering the
+	// address that failed shows the placeholder instead of a broken image,
+	// and a later, different picture still gets its chance.
+	const [failedSrc, setFailedSrc] = useState<string | null>(null);
+
+	if (src && src !== failedSrc) {
 		return (
 			<img
 				src={src}
 				alt={alt}
 				loading={loading}
 				decoding="async"
+				onError={() => setFailedSrc(src)}
 				className={cn("h-full w-full object-cover", className)}
 			/>
 		);

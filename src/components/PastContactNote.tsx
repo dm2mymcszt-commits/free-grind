@@ -15,11 +15,17 @@ function formatPastTime(timestamp: number): string {
 function formatPastDate(timestamp: number): string {
 	const date = new Date(timestamp);
 	const sameYear = date.getFullYear() === new Date().getFullYear();
-	return date.toLocaleDateString(undefined, {
-		day: "numeric",
-		month: "short",
-		...(sameYear ? {} : { year: "numeric" }),
-	});
+	return (
+		date
+			.toLocaleDateString(undefined, {
+				day: "numeric",
+				month: "short",
+				...(sameYear ? {} : { year: "numeric" }),
+			})
+			// Some languages abbreviate with a full stop ("20 sept."), and the
+			// sentences these dates go into end with their own.
+			.replace(/\.$/, "")
+	);
 }
 
 type Tone = "blocked" | "unanswered" | "talked";

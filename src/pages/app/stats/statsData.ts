@@ -71,6 +71,8 @@ export type StatsContext = {
 		firstMessageAt: number | null;
 		conversations: number;
 		statsRows: number;
+		/** Some of the messages or viewers were moved from an earlier account. */
+		movedFromOldAccount: boolean;
 	};
 };
 
@@ -110,7 +112,7 @@ async function loadViewerRows(): Promise<ViewerRow[]> {
 }
 
 export async function loadStatsContext(me: number): Promise<StatsContext> {
-	const [viewers, contacts, coverage, trackingRows, locations, sourceRows] =
+	const [viewers, contacts, coverage, trackingRows, locations, sourceRows, chatTimes, movedRows] =
 		await Promise.all([
 			loadViewerRows(),
 			select<{
@@ -165,6 +167,19 @@ export async function loadStatsContext(me: number): Promise<StatsContext> {
 					+ (SELECT COUNT(*) FROM stats_profile_open_log) + (SELECT COUNT(*) FROM stats_view_distance_log)
 					AS stats_rows`,
 			),
+			// First message each way for every chat that has messages, so a
+			// chat with no conversations row (deleted here, or moved from an
+			// earlier account) still counts as a chat with that person.
+			select<{ conversation_id: string; first_in: number | null; first_out: number | null }>(
+				`SELECT conversation_id,
+					MIN(CASE WHEN sender_id != $1 THEN timestamp END) AS first_in,
+					MIN(CASE WHEN sender_id = $1 THEN timestamp END) AS first_out
+				 FROM stats_messages WHERE sender_id != 0 GROUP BY conversation_id`,
+				[me],
+			),
+			select<{ moved: number }>(
+				`SELECT (EXISTS(SELECT 1 FROM past_messages) OR EXISTS(SELECT 1 FROM past_views)) AS moved`,
+			).catch(() => []),
 		]);
 
 	const views = flattenViews(viewers);
@@ -191,6 +206,23 @@ export async function loadStatsContext(me: number): Promise<StatsContext> {
 			contactsByProfile.set(contact.profileId, contact);
 		}
 	}
+	for (const row of chatTimes) {
+		if (contactsByConversation.has(row.conversation_id)) continue;
+		const profileId = deriveOtherProfileIdFromConversationId(row.conversation_id, me);
+		if (!profileId) continue;
+		const contact: ChatContact = {
+			conversationId: row.conversation_id,
+			profileId,
+			name: null,
+			imageHash: null,
+			favorite: false,
+			blockState: null,
+			firstIn: row.first_in,
+			firstOut: row.first_out,
+		};
+		contactsByConversation.set(contact.conversationId, contact);
+		if (!contactsByProfile.has(profileId)) contactsByProfile.set(profileId, contact);
+	}
 	const source = sourceRows[0];
 	return {
 		me,
@@ -208,6 +240,7 @@ export async function loadStatsContext(me: number): Promise<StatsContext> {
 			firstMessageAt: source?.first_message_at ?? null,
 			conversations: source?.conversations ?? 0,
 			statsRows: source?.stats_rows ?? 0,
+			movedFromOldAccount: Boolean(movedRows[0]?.moved),
 		},
 	};
 }

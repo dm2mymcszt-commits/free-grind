@@ -249,6 +249,7 @@ describe("Stats queries run against the real schema", () => {
 			firstMessageAt: at(15, 20, 0),
 			conversations: 2,
 			statsRows: 7,
+			movedFromOldAccount: false,
 		});
 	});
 
@@ -387,6 +388,13 @@ describe("Stats queries run against the real schema", () => {
 		expect(after.sources.firstMessageAt).toBe(at(1, 10));
 		expect(after.views).toHaveLength(before.views.length + 1);
 		expect(after.viewers.some((row) => row.profileId === "9")).toBe(true);
+		expect(after.sources.movedFromOldAccount).toBe(true);
+		// A chat with no conversations row still counts as a chat with them.
+		expect(after.contactsByProfile.get("9")).toMatchObject({
+			conversationId: "9:100",
+			firstIn: at(1, 10),
+			firstOut: at(1, 11),
+		});
 		// The re-homed conversation reads like any other: one in, one out.
 		const summaries = await loadConversationSummaries(ME, resolvePeriod("all", NOW));
 		expect(summaries.some((row) => row.conversationId === "9:100")).toBe(true);
