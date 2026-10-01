@@ -7,25 +7,38 @@ import { useAuth } from "../../contexts/useAuth";
 import {
 	accountDbExists,
 	applyAccountSettingsSnapshot,
+	hasMovedFromAccount,
 	insertMovedHistoryRows,
 	listAccountDbProfileIds,
 	readAccountHistorySnapshot,
 	readAccountSettingsSnapshot,
+	rehomeBlockEventConversations,
 	replacePastContacts,
+	replacePastMessages,
+	replacePastViews,
 } from "../../services/chatDb";
+import { readInterestViewRowsForAccount } from "../../services/interestViewsStore";
 import { getSavedAccountProfile } from "../../services/savedAccountProfiles";
 import { appLog } from "../../utils/logger";
+import { rehomeConversationId, rehomeMessageRow } from "../../utils/movedHistoryRules";
 import { buildPastContacts } from "../../utils/pastContactRules";
 
-type SourceAccount = { profileId: number; label: string };
+type SourceAccount = {
+	profileId: number;
+	label: string;
+	/** A move from it was already done; another run only refreshes history. */
+	alreadyMoved: boolean;
+};
 
 /**
  * Moves what another account on this device knew into the signed-in one,
  * for starting over with a new Grindr account: its settings, its Stats
  * history, and a per-person memory of who wrote, who got an answer and who
- * was blocked (see utils/pastContactRules.ts). Lists every other account
- * that still has data here, even one signed out or removed from the
- * switcher. Running it again replaces the memory from that account.
+ * was blocked (see utils/pastContactRules.ts). Its messages and viewers come
+ * too, re-homed for Stats only (see utils/movedHistoryRules.ts). Lists every
+ * other account that still has data here, even one signed out or removed
+ * from the switcher. Running it again refreshes the history and leaves the
+ * settings as the user has them now.
  */
 export function CopyAccountSettingsCard() {
 	const { t } = useTranslation();
@@ -46,7 +59,7 @@ export function CopyAccountSettingsCard() {
 				const id = Number(account.profileId);
 				if (Number.isSafeInteger(id) && id > 0) ids.add(id);
 			}
-			ids.delete(userId);
+			ids.delete(Number(userId));
 			const found: SourceAccount[] = [];
 			for (const profileId of ids) {
 				if (!(await accountDbExists(profileId))) continue;
@@ -58,7 +71,11 @@ export function CopyAccountSettingsCard() {
 						defaultValue: "Account {{id}}",
 						id: profileId,
 					});
-				found.push({ profileId, label });
+				found.push({
+					profileId,
+					label,
+					alreadyMoved: await hasMovedFromAccount(String(profileId)).catch(() => false),
+				});
 			}
 			if (!cancelled) setSources(found);
 		})();
@@ -72,23 +89,55 @@ export function CopyAccountSettingsCard() {
 	}
 
 	const copyFrom = async (source: SourceAccount) => {
+		if (userId == null) return;
 		setIsCopying(true);
 		try {
 			// Read everything before writing anything, so a source that can't
 			// be read leaves this account untouched.
+			const oldOwner = String(source.profileId);
+			const newOwner = String(userId);
 			const settings = await readAccountSettingsSnapshot(source.profileId);
 			const history = await readAccountHistorySnapshot(source.profileId);
+			// Null when that account's viewer store can't be read; the rest of
+			// the move doesn't depend on it.
+			const viewers = await readInterestViewRowsForAccount(source.profileId).catch(() => null);
 			const contacts = buildPastContacts({
-				sourceProfileId: String(source.profileId),
+				sourceProfileId: oldOwner,
 				messages: history.messages,
 				loggedBlocks: history.loggedBlocks,
 				displayNames: history.displayNames,
 			});
+			const statsMessages = history.messageRows.flatMap((row) => {
+				const rehomed = rehomeMessageRow(row, oldOwner, newOwner);
+				return rehomed ? [rehomed] : [];
+			});
 
-			await applyAccountSettingsSnapshot(settings);
-			await replacePastContacts(String(source.profileId), contacts);
+			// Settings only the first time: by a second run the user may have
+			// changed them on this account.
+			if (!source.alreadyMoved) {
+				await applyAccountSettingsSnapshot(settings);
+			}
+			await replacePastContacts(oldOwner, contacts);
+			await replacePastMessages(oldOwner, statsMessages);
+			if (viewers) {
+				await replacePastViews(oldOwner, viewers);
+			}
 			for (const { table, rows } of history.historyRows) {
 				await insertMovedHistoryRows(table, rows);
+				if (table === "block_events") {
+					await rehomeBlockEventConversations(
+						rows.flatMap((row) => {
+							const conversationId = rehomeConversationId(
+								String(row.conversation_id ?? ""),
+								oldOwner,
+								newOwner,
+							);
+							return conversationId && row.id != null
+								? [{ id: String(row.id), conversationId }]
+								: [];
+						}),
+					);
+				}
 			}
 			toast.success(
 				t("data_backup.copy_settings.success", {
@@ -133,7 +182,7 @@ export function CopyAccountSettingsCard() {
 						<p className="mt-0.5 text-xs leading-snug text-[var(--text-muted)]">
 							{t("data_backup.copy_settings.desc", {
 								defaultValue:
-									"Brings over from an account that has data on this device: your settings, auto-block rules and keywords, filters, privacy, location, saved phrases and places, the Stats history, and a memory of everyone that account talked to or blocked, shown in chats, the inbox and profiles. Old chats and viewers stay with that account; the block list is imported on the Blocked page.",
+									"Brings over from an account that has data on this device: your settings, auto-block rules and keywords, filters, privacy, location, saved phrases and places, a memory of everyone that account talked to or blocked (shown in chats, the inbox and profiles), and its messages, viewers and logs so Stats counts both accounts together. Old chats don't appear in your inbox; the block list is imported on the Blocked page.",
 							})}
 						</p>
 					</div>
@@ -152,7 +201,9 @@ export function CopyAccountSettingsCard() {
 							) : (
 								<Copy className="h-3.5 w-3.5" />
 							)}
-							{t("data_backup.copy_settings.action", { defaultValue: "Move here" })}
+							{source.alreadyMoved
+							? t("data_backup.copy_settings.action_again", { defaultValue: "Update" })
+							: t("data_backup.copy_settings.action", { defaultValue: "Move here" })}
 						</button>
 					</div>
 				))}
@@ -164,11 +215,18 @@ export function CopyAccountSettingsCard() {
 					defaultValue: "Move from {{name}}?",
 					name: confirmSource?.label ?? "",
 				})}
-				message={t("data_backup.copy_settings.confirm_message", {
+				message={
+					confirmSource?.alreadyMoved
+						? t("data_backup.copy_settings.confirm_message_again", {
+								defaultValue: "Brings {{name}}'s history over again: the memory of past contacts, and its messages, viewers and logs for Stats. Your settings on this account stay as they are. The app reloads when it's done.",
+								name: confirmSource.label,
+							})
+						: t("data_backup.copy_settings.confirm_message", {
 					defaultValue:
-						"This account's settings are replaced with {{name}}'s, and its Stats history and memory of past contacts are added. Saved phrases and places are added to yours. Old chats and the block list don't move: to bring the block list, use Import on the Blocked page. The app reloads when it's done.",
+						"This account's settings are replaced with {{name}}'s. Its memory of past contacts is added, and its messages, viewers and logs are counted in Stats. Saved phrases and places are added to yours. Old chats don't appear in the inbox, and the block list doesn't move: use Import on the Blocked page. The app reloads when it's done.",
 					name: confirmSource?.label ?? "",
-				})}
+				})
+				}
 				confirmLabel={t("data_backup.copy_settings.confirm", { defaultValue: "Move" })}
 				cancelLabel={t("common.cancel", { defaultValue: "Cancel" })}
 				isProcessing={isCopying}

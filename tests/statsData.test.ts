@@ -46,6 +46,17 @@ CREATE TABLE messages (
 	reply_to_message_id TEXT, reply_preview_json TEXT, reactions_json TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
 );
 CREATE INDEX idx_messages_conversation_ts ON messages(conversation_id, timestamp);
+CREATE TABLE past_messages (
+	message_id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, sender_id INTEGER NOT NULL, timestamp INTEGER NOT NULL,
+	type TEXT, chat1_type TEXT, body_json TEXT, unsent INTEGER NOT NULL DEFAULT 0, local_history INTEGER NOT NULL DEFAULT 0,
+	reply_to_message_id TEXT, reply_preview_json TEXT, reactions_json TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+	source_profile_id TEXT NOT NULL
+);
+CREATE TABLE past_views (profile_id TEXT PRIMARY KEY, source_profile_id TEXT NOT NULL, row_json TEXT NOT NULL, updated_at INTEGER NOT NULL);
+CREATE VIEW stats_messages AS
+	SELECT message_id, conversation_id, sender_id, timestamp, type, chat1_type, body_json, unsent, local_history, reply_to_message_id, reply_preview_json, reactions_json, created_at, updated_at FROM messages
+	UNION ALL
+	SELECT message_id, conversation_id, sender_id, timestamp, type, chat1_type, body_json, unsent, local_history, reply_to_message_id, reply_preview_json, reactions_json, created_at, updated_at FROM past_messages;
 CREATE TABLE albums (
 	album_id TEXT PRIMARY KEY, owner_profile_id TEXT, album_name TEXT, conversation_id TEXT, shared_via_message_id TEXT,
 	created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, preview_cover_base64 TEXT, preview_cover_mime_type TEXT
@@ -350,5 +361,34 @@ describe("Stats queries run against the real schema", () => {
 				meters: 850,
 			},
 		]);
+	});
+
+	// Last on purpose: it adds rows, and the tests above count exact totals.
+	test("history moved from an earlier account is counted with this account's", async () => {
+		const before = await loadStatsContext(ME);
+		db.query(
+			`INSERT INTO past_messages (message_id, conversation_id, sender_id, timestamp, type, body_json, created_at, updated_at, source_profile_id)
+			 VALUES ('old1', '9:100', 9, ?1, 'Text', '{"text":"hi"}', 0, 0, '50'),
+			        ('old2', '9:100', 100, ?2, 'Text', '{"text":"hello"}', 0, 0, '50')`,
+		).run(at(1, 10), at(1, 11));
+		db.query("INSERT INTO past_views VALUES ('9', '50', ?1, 0)").run(
+			JSON.stringify({
+				profileId: "9",
+				displayName: "Old viewer",
+				imageHash: null,
+				timestamp: at(1, 9),
+				viewCount: 1,
+				viewTimestamps: [at(1, 9)],
+			}),
+		);
+
+		const after = await loadStatsContext(ME);
+		expect(after.sources.messages).toBe(before.sources.messages + 2);
+		expect(after.sources.firstMessageAt).toBe(at(1, 10));
+		expect(after.views).toHaveLength(before.views.length + 1);
+		expect(after.viewers.some((row) => row.profileId === "9")).toBe(true);
+		// The re-homed conversation reads like any other: one in, one out.
+		const summaries = await loadConversationSummaries(ME, resolvePeriod("all", NOW));
+		expect(summaries.some((row) => row.conversationId === "9:100")).toBe(true);
 	});
 });

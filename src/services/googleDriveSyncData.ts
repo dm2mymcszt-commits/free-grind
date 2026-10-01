@@ -79,6 +79,8 @@ const CHAT_ENTITY_SPECS: readonly ChatEntitySpec[] = [
 	// What an earlier account knew about each person, written once when moving
 	// to this account, so the other device shows the same history.
 	{ section: "core", entityType: "past-contact", table: "past_contacts", primaryKey: "profile_id", pageSize: 2_000 },
+	{ section: "core", entityType: "past-message", table: "past_messages", primaryKey: "message_id", pageSize: 1_000 },
+	{ section: "core", entityType: "past-view", table: "past_views", primaryKey: "profile_id", pageSize: 500 },
 	{
 		section: "core",
 		entityType: "album",

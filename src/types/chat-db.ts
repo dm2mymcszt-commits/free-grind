@@ -186,5 +186,7 @@ export type FullDbExport = {
 		stats_profile_open_log: Record<string, unknown>[];
 		stats_view_distance_log: Record<string, unknown>[];
 		past_contacts: Record<string, unknown>[];
+		past_messages: Record<string, unknown>[];
+		past_views: Record<string, unknown>[];
 	};
 };

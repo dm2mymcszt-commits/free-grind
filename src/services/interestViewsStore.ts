@@ -923,6 +923,18 @@ export const interestViewsStore = {
 };
 
 export type { StoredInterestView };
+
+/**
+ * Another account's stored viewers on this device, for moving its history.
+ * Null when they can't be read; an account that never stored any reads as
+ * empty.
+ */
+export function readInterestViewRowsForAccount(
+	profileId: number | string,
+): Promise<StoredInterestView[] | null> {
+	const dbName = dbNameForUser(profileId);
+	return dbName ? readAllRows(dbName) : Promise.resolve(null);
+}
 // ---------------------------------------------------------------------------
 // Backup export/import
 //

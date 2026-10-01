@@ -137,6 +137,8 @@ const TABLE_SPECS: TableSpec[] = [
 	{ section: "core", table: "stats_profile_open_log", source: "chatDb", pageSize: 2000, sinceColumn: "created_at" },
 	{ section: "core", table: "stats_view_distance_log", source: "chatDb", pageSize: 2000, sinceColumn: "created_at" },
 	{ section: "core", table: "past_contacts", source: "chatDb", pageSize: 2000, sinceColumn: "updated_at" },
+	{ section: "core", table: "past_messages", source: "chatDb", pageSize: 2000, sinceColumn: "updated_at" },
+	{ section: "core", table: "past_views", source: "chatDb", pageSize: 500, sinceColumn: "updated_at" },
 	{
 		section: "core",
 		table: "albums",

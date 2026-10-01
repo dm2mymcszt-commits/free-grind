@@ -529,6 +529,46 @@ async function getDb(): Promise<Database> {
 				} catch {
 					// already there
 				}
+				// An earlier account's messages and viewers, re-homed to this
+				// account (see utils/movedHistoryRules.ts) and read only by Stats.
+				// Kept out of `messages` on purpose: chat code adopts messages
+				// without a conversation row as a real conversation.
+				await db.execute(`
+					CREATE TABLE IF NOT EXISTS past_messages (
+						message_id TEXT PRIMARY KEY,
+						conversation_id TEXT NOT NULL,
+						sender_id INTEGER NOT NULL,
+						timestamp INTEGER NOT NULL,
+						type TEXT,
+						chat1_type TEXT,
+						body_json TEXT,
+						unsent INTEGER NOT NULL DEFAULT 0,
+						local_history INTEGER NOT NULL DEFAULT 0,
+						reply_to_message_id TEXT,
+						reply_preview_json TEXT,
+						reactions_json TEXT,
+						created_at INTEGER NOT NULL,
+						updated_at INTEGER NOT NULL,
+						source_profile_id TEXT NOT NULL
+					)
+				`);
+				await db.execute(
+					"CREATE INDEX IF NOT EXISTS idx_past_messages_conversation_ts ON past_messages(conversation_id, timestamp)",
+				);
+				await db.execute(`
+					CREATE TABLE IF NOT EXISTS past_views (
+						profile_id TEXT PRIMARY KEY,
+						source_profile_id TEXT NOT NULL,
+						row_json TEXT NOT NULL,
+						updated_at INTEGER NOT NULL
+					)
+				`);
+				await db.execute(`
+					CREATE VIEW IF NOT EXISTS stats_messages AS
+					SELECT message_id, conversation_id, sender_id, timestamp, type, chat1_type, body_json, unsent, local_history, reply_to_message_id, reply_preview_json, reactions_json, created_at, updated_at FROM messages
+					UNION ALL
+					SELECT message_id, conversation_id, sender_id, timestamp, type, chat1_type, body_json, unsent, local_history, reply_to_message_id, reply_preview_json, reactions_json, created_at, updated_at FROM past_messages
+				`);
 			});
 
 			return db;
@@ -2786,6 +2826,20 @@ const FULL_EXPORT_TABLES: {
 			"blocked_by_me_at", "block_reason", "blocked_me_at", "messages_json", "updated_at",
 		],
 	},
+	{
+		name: "past_messages",
+		primaryKey: "message_id",
+		columns: [
+			"message_id", "conversation_id", "sender_id", "timestamp", "type", "chat1_type",
+			"body_json", "unsent", "local_history", "reply_to_message_id", "reply_preview_json",
+			"reactions_json", "created_at", "updated_at", "source_profile_id",
+		],
+	},
+	{
+		name: "past_views",
+		primaryKey: "profile_id",
+		columns: ["profile_id", "source_profile_id", "row_json", "updated_at"],
+	},
 ];
 
 export type StatsLogTable =
@@ -3652,6 +3706,8 @@ const MOVED_HISTORY_TABLES = [
 export type MovedHistoryTable = (typeof MOVED_HISTORY_TABLES)[number];
 
 export interface AccountHistorySnapshot {
+	/** Full message rows, for the Stats copy. */
+	messageRows: PortableTableRow[];
 	messages: PastContactMessage[];
 	loggedBlocks: PastContactLoggedBlock[];
 	displayNames: Map<string, string>;
@@ -3676,14 +3732,14 @@ export async function readAccountHistorySnapshot(
 ): Promise<AccountHistorySnapshot> {
 	return withAccountDb(sourceProfileId, async (source) => {
 		const messageRows = await source.select<
-			{
+			(PortableTableRow & {
 				conversation_id: string;
 				sender_id: number | string;
 				type: string;
 				timestamp: number;
 				body_json: string | null;
-			}[]
-		>("SELECT conversation_id, sender_id, type, timestamp, body_json FROM messages");
+			})[]
+		>("SELECT * FROM messages");
 		const loggedRows = await source.select<
 			{ profile_id: string | number; event_type: string; timestamp: number; reason_label: string | null }[]
 		>("SELECT profile_id, event_type, timestamp, reason_label FROM stats_block_log");
@@ -3707,6 +3763,7 @@ export async function readAccountHistorySnapshot(
 		}
 
 		return {
+			messageRows,
 			messages: messageRows.map((row) => ({
 				conversationId: row.conversation_id,
 				senderId: String(row.sender_id),
@@ -3848,6 +3905,82 @@ export async function insertMovedHistoryRows(
 			values,
 			`ON CONFLICT(${table.primaryKey}) DO NOTHING`,
 		);
+	});
+}
+
+/** True once a move from this account has already been done into the active one. */
+export async function hasMovedFromAccount(sourceProfileId: string): Promise<boolean> {
+	const db = await getDb();
+	const rows = await db.select<{ found: number }[]>(
+		"SELECT 1 AS found FROM past_contacts WHERE source_profile_id = $1 LIMIT 1",
+		[sourceProfileId],
+	);
+	return rows.length > 0;
+}
+
+/**
+ * Stores an old account's messages for Stats, already re-homed by
+ * `rehomeMessageRow`, replacing an earlier copy from that account.
+ */
+export async function replacePastMessages(
+	sourceProfileId: string,
+	rows: readonly PortableTableRow[],
+): Promise<void> {
+	const table = requirePortableTable("past_messages");
+	const db = await getDb();
+	const values = rows.map((row) =>
+		table.columns.map((column) =>
+			column === "source_profile_id" ? sourceProfileId : (row[column] ?? null),
+		),
+	);
+	await executeWithLockRetry(db, "replace-past-messages", async () => {
+		await db.execute("DELETE FROM past_messages WHERE source_profile_id = $1", [sourceProfileId]);
+		await insertRowsInBatches(
+			db,
+			table.name,
+			table.columns,
+			values,
+			"ON CONFLICT(message_id) DO NOTHING",
+		);
+	});
+}
+
+/** Stores an old account's viewer rows for Stats, one JSON row per viewer. */
+export async function replacePastViews(
+	sourceProfileId: string,
+	rows: readonly { profileId: string }[],
+): Promise<void> {
+	const table = requirePortableTable("past_views");
+	const db = await getDb();
+	const now = Date.now();
+	const values = rows
+		.filter((row) => typeof row?.profileId === "string" && row.profileId.length > 0)
+		.map((row) => [row.profileId, sourceProfileId, JSON.stringify(row), now]);
+	await executeWithLockRetry(db, "replace-past-views", async () => {
+		await db.execute("DELETE FROM past_views WHERE source_profile_id = $1", [sourceProfileId]);
+		await insertRowsInBatches(
+			db,
+			table.name,
+			table.columns,
+			values,
+			"ON CONFLICT(profile_id) DO UPDATE SET row_json = excluded.row_json, updated_at = excluded.updated_at",
+		);
+	});
+}
+
+/** Points copied block history at the conversation ids this account uses. */
+export async function rehomeBlockEventConversations(
+	updates: readonly { id: string; conversationId: string }[],
+): Promise<void> {
+	if (updates.length === 0) return;
+	const db = await getDb();
+	await executeWithLockRetry(db, "rehome-block-events", async () => {
+		for (const update of updates) {
+			await db.execute("UPDATE block_events SET conversation_id = $1 WHERE id = $2", [
+				update.conversationId,
+				update.id,
+			]);
+		}
 	});
 }
 

@@ -87,10 +87,32 @@ export function personName(
 	};
 }
 
+/**
+ * This account's stored viewers plus those moved from an earlier account
+ * (`past_views`). The moved ones stay out of the live viewer store so the
+ * Interest list never shows them as visitors of this account.
+ */
+async function loadViewerRows(): Promise<ViewerRow[]> {
+	const [current, past] = await Promise.all([
+		interestViewsStore.getAll(),
+		select<{ row_json: string }>("SELECT row_json FROM past_views").catch(() => []),
+	]);
+	const moved: ViewerRow[] = [];
+	for (const row of past) {
+		try {
+			const parsed = JSON.parse(row.row_json) as ViewerRow;
+			if (parsed && typeof parsed.profileId === "string") moved.push(parsed);
+		} catch {
+			// One unreadable row is not worth losing the page over.
+		}
+	}
+	return [...current, ...moved];
+}
+
 export async function loadStatsContext(me: number): Promise<StatsContext> {
 	const [viewers, contacts, coverage, trackingRows, locations, sourceRows] =
 		await Promise.all([
-			interestViewsStore.getAll(),
+			loadViewerRows(),
 			select<{
 				conversation_id: string;
 				other_profile_id: string;
@@ -104,9 +126,9 @@ export async function loadStatsContext(me: number): Promise<StatsContext> {
 				`SELECT c.conversation_id, c.other_profile_id, c.name, c.favorite, c.block_state,
 				CASE WHEN json_valid(c.participants_json)
 					THEN json_extract(c.participants_json, '$[0].primaryMediaHash') END AS avatar_hash,
-				(SELECT MIN(m.timestamp) FROM messages m
+				(SELECT MIN(m.timestamp) FROM stats_messages m
 					WHERE m.conversation_id = c.conversation_id AND m.sender_id NOT IN (0, $1)) AS first_in,
-				(SELECT MIN(m.timestamp) FROM messages m
+				(SELECT MIN(m.timestamp) FROM stats_messages m
 					WHERE m.conversation_id = c.conversation_id AND m.sender_id = $1) AS first_out
 			 FROM conversations c
 			 WHERE c.other_profile_id IS NOT NULL`,
@@ -135,8 +157,8 @@ export async function loadStatsContext(me: number): Promise<StatsContext> {
 				stats_rows: number;
 			}>(
 				`SELECT
-				(SELECT COUNT(*) FROM messages WHERE sender_id != 0) AS messages,
-				(SELECT MIN(timestamp) FROM messages WHERE sender_id != 0) AS first_message_at,
+				(SELECT COUNT(*) FROM stats_messages WHERE sender_id != 0) AS messages,
+				(SELECT MIN(timestamp) FROM stats_messages WHERE sender_id != 0) AS first_message_at,
 				(SELECT COUNT(*) FROM conversations) AS conversations,
 				(SELECT COUNT(*) FROM stats_block_log) + (SELECT COUNT(*) FROM stats_location_log)
 					+ (SELECT COUNT(*) FROM stats_coverage_log) + (SELECT COUNT(*) FROM stats_profile_edit_log)
@@ -206,7 +228,7 @@ export async function loadChatCounts(
 			SELECT conversation_id, MIN(timestamp) AS first_ts,
 				SUM(CASE WHEN sender_id = $1 THEN 1 ELSE 0 END) AS mine,
 				SUM(CASE WHEN sender_id != $1 THEN 1 ELSE 0 END) AS theirs
-			FROM messages WHERE sender_id != 0 GROUP BY conversation_id
+			FROM stats_messages WHERE sender_id != 0 GROUP BY conversation_id
 		)
 		SELECT COUNT(*) AS started, SUM(CASE WHEN mine > 0 AND theirs > 0 THEN 1 ELSE 0 END) AS real
 		FROM s WHERE first_ts >= $2 AND first_ts < $3`,
@@ -225,7 +247,7 @@ export function loadMessagesPerDay(
 		`SELECT ${LOCAL_DAY} AS day,
 			SUM(CASE WHEN sender_id != $1 THEN 1 ELSE 0 END) AS received,
 			SUM(CASE WHEN sender_id = $1 THEN 1 ELSE 0 END) AS sent
-		 FROM messages
+		 FROM stats_messages
 		 WHERE sender_id != 0 AND timestamp >= $2 AND timestamp < $3
 		 GROUP BY day`,
 		[me, lower(period), period.end],
@@ -248,7 +270,7 @@ export function loadMessagesByWeekHour(
 			CAST(strftime('%H', timestamp / 1000, 'unixepoch', 'localtime') AS INTEGER) AS hour,
 			SUM(CASE WHEN sender_id != $1 THEN 1 ELSE 0 END) AS received,
 			SUM(CASE WHEN sender_id = $1 THEN 1 ELSE 0 END) AS sent
-		 FROM messages
+		 FROM stats_messages
 		 WHERE sender_id != 0 AND timestamp >= $2 AND timestamp < $3
 		 GROUP BY weekday, hour`,
 		[me, lower(period), period.end],
@@ -284,7 +306,7 @@ export async function loadConversationSummaries(
 				CASE WHEN json_valid(body_json) THEN json_extract(body_json, '$.text') END AS text,
 				ROW_NUMBER() OVER (PARTITION BY conversation_id ORDER BY timestamp ASC, message_id ASC) AS rn_first,
 				ROW_NUMBER() OVER (PARTITION BY conversation_id ORDER BY timestamp DESC, message_id DESC) AS rn_last
-			FROM messages
+			FROM stats_messages
 			WHERE sender_id != 0
 		),
 		summary AS (
@@ -346,7 +368,7 @@ export async function loadReplyGaps(
 			SELECT conversation_id, sender_id, timestamp,
 				LAG(sender_id) OVER (PARTITION BY conversation_id ORDER BY timestamp, message_id) AS prev_sender,
 				LAG(timestamp) OVER (PARTITION BY conversation_id ORDER BY timestamp, message_id) AS prev_ts
-			FROM messages
+			FROM stats_messages
 			WHERE sender_id != 0
 		)
 		SELECT conversation_id, CASE WHEN sender_id = $1 THEN 1 ELSE 0 END AS mine,
@@ -379,7 +401,7 @@ export function loadMessageTypes(
 	return select<TypeCount>(
 		`SELECT type, CASE WHEN sender_id = $1 THEN 1 ELSE 0 END AS mine,
 			COUNT(*) AS count, SUM(CASE WHEN unsent = 1 THEN 1 ELSE 0 END) AS unsent
-		 FROM messages
+		 FROM stats_messages
 		 WHERE sender_id != 0 AND timestamp >= $2 AND timestamp < $3
 		 GROUP BY type, mine`,
 		[me, lower(period), period.end],
@@ -396,7 +418,7 @@ export async function loadReactions(
 				AND CAST(json_extract(r.value, '$.profileId') AS INTEGER) != $1 THEN 1 ELSE 0 END) AS received,
 			SUM(CASE WHEN m.sender_id != $1
 				AND CAST(json_extract(r.value, '$.profileId') AS INTEGER) = $1 THEN 1 ELSE 0 END) AS given
-		 FROM messages m,
+		 FROM stats_messages m,
 			json_each(CASE WHEN json_valid(m.reactions_json) THEN m.reactions_json ELSE '[]' END) r
 		 WHERE m.sender_id != 0 AND m.timestamp >= $2 AND m.timestamp < $3`,
 		[me, lower(period), period.end],
@@ -421,12 +443,12 @@ export async function loadSavedPhraseUse(
 		sent AS (
 			SELECT m.conversation_id, m.timestamp,
 				lower(trim(CASE WHEN json_valid(m.body_json) THEN json_extract(m.body_json, '$.text') END)) AS normalized
-			FROM messages m
+			FROM stats_messages m
 			WHERE m.sender_id = $1 AND m.timestamp >= $2 AND m.timestamp < $3
 		)
 		SELECT p.phrase, COUNT(s.timestamp) AS sent,
 			SUM(CASE WHEN EXISTS (
-				SELECT 1 FROM messages r
+				SELECT 1 FROM stats_messages r
 				WHERE r.conversation_id = s.conversation_id AND r.sender_id NOT IN (0, $1)
 					AND r.timestamp > s.timestamp AND r.timestamp <= s.timestamp + 86400000
 			) THEN 1 ELSE 0 END) AS answered
@@ -454,7 +476,7 @@ export async function loadMostMessages(
 		last_ts: number;
 	}>(
 		`SELECT conversation_id, COUNT(*) AS count, MAX(timestamp) AS last_ts
-		 FROM messages
+		 FROM stats_messages
 		 WHERE sender_id != 0 AND timestamp >= $1 AND timestamp < $2
 		 GROUP BY conversation_id
 		 ORDER BY count DESC, last_ts DESC
@@ -474,7 +496,7 @@ export async function loadAlbumsReceived(
 	period: StatsPeriod,
 ): Promise<number[]> {
 	const rows = await select<{ timestamp: number }>(
-		`SELECT timestamp FROM messages
+		`SELECT timestamp FROM stats_messages
 		 WHERE type IN ('Album', 'ExpiringAlbum') AND sender_id NOT IN (0, $1)
 			AND timestamp >= $2 AND timestamp < $3`,
 		[me, lower(period), period.end],
@@ -522,7 +544,7 @@ export type RecordRows = {
 export async function loadMessageRecords(me: number): Promise<RecordRows> {
 	const [busiest, fastest, album] = await Promise.all([
 		select<{ day: string; count: number }>(
-			`SELECT ${LOCAL_DAY} AS day, COUNT(*) AS count FROM messages
+			`SELECT ${LOCAL_DAY} AS day, COUNT(*) AS count FROM stats_messages
 			 WHERE sender_id != 0 GROUP BY day ORDER BY count DESC LIMIT 1`,
 		),
 		select<{ conversation_id: string; gap: number; timestamp: number }>(
@@ -530,7 +552,7 @@ export async function loadMessageRecords(me: number): Promise<RecordRows> {
 				SELECT conversation_id, sender_id, timestamp,
 					LAG(sender_id) OVER (PARTITION BY conversation_id ORDER BY timestamp, message_id) AS prev_sender,
 					LAG(timestamp) OVER (PARTITION BY conversation_id ORDER BY timestamp, message_id) AS prev_ts
-				FROM messages WHERE sender_id != 0
+				FROM stats_messages WHERE sender_id != 0
 			)
 			SELECT conversation_id, timestamp - prev_ts AS gap, timestamp FROM ordered
 			WHERE prev_sender = $1 AND sender_id != $1 AND timestamp - prev_ts > 0
@@ -597,7 +619,7 @@ export async function loadBlockData(me: number): Promise<BlockData> {
 			conversation_id: string;
 		}>(
 			`SELECT m.timestamp, c.other_profile_id AS profile_id, m.conversation_id
-			 FROM messages m LEFT JOIN conversations c ON c.conversation_id = m.conversation_id
+			 FROM stats_messages m LEFT JOIN conversations c ON c.conversation_id = m.conversation_id
 			 WHERE m.type = 'SystemBlockedBySelf'`,
 		),
 		select<{
@@ -610,9 +632,9 @@ export async function loadBlockData(me: number): Promise<BlockData> {
 			first_out_ts: number | null;
 		}>(
 			`SELECT be.profile_id, be.conversation_id, be.timestamp, be.display_name, be.avatar_media_hash,
-				(SELECT MIN(m.timestamp) FROM messages m
+				(SELECT MIN(m.timestamp) FROM stats_messages m
 					WHERE m.conversation_id = be.conversation_id AND m.sender_id != 0) AS first_ts,
-				(SELECT MIN(m.timestamp) FROM messages m
+				(SELECT MIN(m.timestamp) FROM stats_messages m
 					WHERE m.conversation_id = be.conversation_id AND m.sender_id = $1) AS first_out_ts
 			 FROM block_events be
 			 WHERE be.event_type = 'blocked'
