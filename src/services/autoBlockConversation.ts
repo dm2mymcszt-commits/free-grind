@@ -20,6 +20,7 @@ import { getChatContactIndexForProfiles } from "./chatContactIndex";
 import * as chatDb from "./chatDb";
 import { captureMessageMediaForArchival } from "./mediaStore";
 import {
+	announceSelfBlock,
 	applySelfBlockAction,
 	markConversationDeleteHandled,
 } from "./conversationArchive";
@@ -247,7 +248,14 @@ export function preserveAndAutoBlockConversation(
 		markConversationDeleteHandled(conversationId);
 		await options.blockProfile();
 		logAutoBlock(options.profileId, options.stats);
-		await applySelfBlockAction(options.profileId, "block");
+		try {
+			await applySelfBlockAction(options.profileId, "block");
+		} finally {
+			// After the archive step, not before: the blocked-list cache changing
+			// re-runs reconcileBlockStateWithBlockedList, which would otherwise
+			// race applySelfBlockAction for the same block_state transition.
+			announceSelfBlock(options.profileId);
+		}
 	})();
 
 	inFlightBlocks.set(conversationId, operation);
@@ -319,9 +327,13 @@ export async function preserveAndAutoBlockProfile(
 		// album or attachment that blocking could destroy.
 		await options.blockProfile();
 		logAutoBlock(profileId, options.stats);
-		await applySelfBlockAction(profileId, "block", {
-			materializeMissingConversation: options.materializeMissingConversation,
-		});
+		try {
+			await applySelfBlockAction(profileId, "block", {
+				materializeMissingConversation: options.materializeMissingConversation,
+			});
+		} finally {
+			announceSelfBlock(profileId);
+		}
 		return;
 	}
 

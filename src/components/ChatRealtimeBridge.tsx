@@ -42,7 +42,9 @@ import {
 	deriveOtherProfileIdFromConversationId,
 	CHAT_SYSTEM_MESSAGE_EVENT,
 	CHAT_ARCHIVE_STATE_EVENT,
+	SELF_BLOCK_EVENT,
 	type ChatArchiveStateChangeDetail,
+	type SelfBlockDetail,
 } from "../services/conversationArchive";
 import * as chatDb from "../services/chatDb";
 import { messageSchema, type ConversationEntry, type Message } from "../types/messages";
@@ -356,6 +358,27 @@ export function ChatRealtimeBridge() {
 		window.addEventListener(CHAT_ARCHIVE_STATE_EVENT, handleArchiveStateChange);
 		return () => {
 			window.removeEventListener(CHAT_ARCHIVE_STATE_EVENT, handleArchiveStateChange);
+		};
+	}, [queryClient]);
+
+	// An auto-block or counter-block goes straight to the block endpoint, so
+	// unlike the manual block mutation nothing adds it to the cached blocked
+	// list — and for up to its 10-minute staleTime the Interest list showed the
+	// person without a blocked badge and still opened their (now empty) profile.
+	useEffect(() => {
+		const handleSelfBlock = (event: Event) => {
+			const profileId = (event as CustomEvent<SelfBlockDetail>).detail?.profileId;
+			if (!profileId) return;
+			// A list that hasn't loaded yet is left alone rather than seeded with
+			// this one id: the fetch still to come already includes the block.
+			queryClient.setQueryData<string[]>(["blocked-profile-ids"], (old) => {
+				if (!old || old.includes(profileId)) return old;
+				return [...old, profileId];
+			});
+		};
+		window.addEventListener(SELF_BLOCK_EVENT, handleSelfBlock);
+		return () => {
+			window.removeEventListener(SELF_BLOCK_EVENT, handleSelfBlock);
 		};
 	}, [queryClient]);
 

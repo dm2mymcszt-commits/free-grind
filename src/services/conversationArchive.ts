@@ -35,6 +35,22 @@ export const CHAT_SYSTEM_MESSAGE_EVENT = "fg:chat-system-message";
 // sync without needing a bespoke update at every call site.
 export const CHAT_ARCHIVE_STATE_EVENT = "fg:chat-archive-state";
 
+// This account blocked someone outside the block mutation (useBlockProfile
+// updates the "blocked-profile-ids" cache itself) — an auto-block or a
+// counter-block. Dispatched so that cache learns about it right away instead
+// of at its next refetch, up to 10 minutes later; until then nothing that
+// reads it (the Interest list's blocked badge, the profile page) knows.
+export const SELF_BLOCK_EVENT = "fg:self-block";
+
+export type SelfBlockDetail = { profileId: string };
+
+export function announceSelfBlock(profileId: string) {
+	if (typeof window === "undefined") return;
+	window.dispatchEvent(
+		new CustomEvent<SelfBlockDetail>(SELF_BLOCK_EVENT, { detail: { profileId: String(profileId) } }),
+	);
+}
+
 export type ChatArchiveStateChangeDetail =
 	| { conversationId: string; archived: true; reason: ArchivedReason }
 	| { conversationId: string; archived: false };
@@ -900,6 +916,7 @@ export async function reconcileCounterBlocks(
 				reason: { kind: "counter_block", label: "They blocked you" },
 			});
 			counterBlocked.push(profileId);
+			announceSelfBlock(profileId);
 			appLog.info(
 				`[counter-block] blocked ${profileId} back for ${conversationId}`,
 			);
