@@ -39,6 +39,7 @@ describe("classifyBlockReason", () => {
 		["Explicit photo", "explicit_media", null],
 		["Explicit video", "explicit_media", null],
 		["Explicit profile photo", "explicit_media", null],
+		["Explicit profile photo: bare buttocks, 77% sure", "explicit_media", "bare buttocks, 77% sure"],
 	];
 
 	for (const [label, kind, detail] of cases) {

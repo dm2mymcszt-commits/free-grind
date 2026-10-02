@@ -5,7 +5,9 @@ import {
 	decideExplicitBlock,
 	describeExplicitScores,
 	EXPLICIT_BLOCK_SCORE,
+	EXPLICIT_PROFILE_PHOTO_REASON,
 	EXPLICIT_UNSURE_SCORE,
+	explicitNotice,
 	FACE_MIN_SHARE,
 	faceVerdict,
 	NO_CONTENT_SCORES,
@@ -88,6 +90,14 @@ describe("verdictFromScores", () => {
 		]);
 		expect(scores.explicitLabel).toBe("MALE_GENITALIA_EXPOSED");
 		expect(describeExplicitScores(scores)).toBe("genitals 70%");
+	});
+
+	test("the notice says what was seen and how sure", () => {
+		const scores = scoreDetections([{ label: "BUTTOCKS_EXPOSED", score: 0.771 }]);
+		expect(explicitNotice(EXPLICIT_PROFILE_PHOTO_REASON, scores)).toBe(
+			"Explicit profile photo: bare buttocks, 77% sure",
+		);
+		expect(explicitNotice("Explicit photo", scoreDetections([]))).toBe("Explicit photo");
 	});
 
 	test("a score that is not a number is ignored", () => {

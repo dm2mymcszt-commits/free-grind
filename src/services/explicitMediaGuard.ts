@@ -27,6 +27,7 @@ import {
 	decideExplicitBlock,
 	describeExplicitScores,
 	explicitBlockReason,
+	explicitNotice,
 	type ExplicitBlockDecision,
 } from "../utils/explicitContentRules";
 import { appLog } from "../utils/logger";
@@ -233,8 +234,9 @@ async function handleExplicitVerdict(
 			mayDeferOnIncompleteCapture: false,
 			stats: { source: "inbox_scan", reason: explicitStatsReason(check) },
 		});
-		void notifyAutoBlock(displayName || profileId, reason);
-		logDetectorDecision({ profileId, name: displayName, outcome: "blocked", detail: reason });
+		const notice = explicitNotice(reason, scoresOf(check));
+		void notifyAutoBlock(displayName || profileId, notice);
+		logDetectorDecision({ profileId, name: displayName, outcome: "blocked", detail: notice });
 		window.dispatchEvent(new Event("fg-refresh-inbox"));
 	} catch (error) {
 		// Let a later report of the same verdict try again.

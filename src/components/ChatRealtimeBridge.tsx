@@ -86,7 +86,7 @@ import {
 	withPreservingBlock,
 } from "../services/autoBlockConversation";
 import { logBlockEvent, type StatsBlockReason } from "../services/statsLog";
-import { isExplicitBlockEnabled, isExplicitProfileBlockEnabled } from "../services/contentCheck";
+import { isExplicitBlockEnabled, isExplicitProfileBlockEnabled, scoresOf } from "../services/contentCheck";
 import {
 	checkLiveMessageMedia,
 	decideLiveExplicitBlock,
@@ -96,7 +96,7 @@ import {
 } from "../services/explicitMediaGuard";
 import { findExplicitProfilePhoto } from "../services/profilePhotoCheck";
 import { logDetectorDecision } from "../services/detectorLog";
-import { EXPLICIT_PROFILE_PHOTO_REASON, explicitBlockReason } from "../utils/explicitContentRules";
+import { EXPLICIT_PROFILE_PHOTO_REASON, explicitBlockReason, explicitNotice } from "../utils/explicitContentRules";
 
 let cachedIsAndroid: boolean | null = null;
 
@@ -860,6 +860,8 @@ export function ChatRealtimeBridge() {
 							let blockReason = "";
 							// Set by a rule that knows more than its sentence; the others are read from the sentence.
 							let blockStatsReason: StatsBlockReason | null = null;
+							// What the notification says, when that is more than the reason.
+							let blockNotice = "";
 							let detectedDisplayName = knownDisplayName;
 							let detectedPhotoHash: string | null = null;
 							// Whether the profile was read while deciding. A rule decided from
@@ -941,6 +943,7 @@ export function ChatRealtimeBridge() {
 								) {
 									blockReason = explicitBlockReason(explicitCheck.kind);
 									blockStatsReason = explicitStatsReason(explicitCheck);
+									blockNotice = explicitNotice(blockReason, scoresOf(explicitCheck));
 								}
 							}
 
@@ -960,6 +963,7 @@ export function ChatRealtimeBridge() {
 								) {
 									blockReason = EXPLICIT_PROFILE_PHOTO_REASON;
 									blockStatsReason = explicitStatsReason(explicitProfilePhoto, EXPLICIT_PROFILE_PHOTO_REASON);
+									blockNotice = explicitNotice(blockReason, scoresOf(explicitProfilePhoto));
 								}
 							}
 
@@ -1000,13 +1004,13 @@ export function ChatRealtimeBridge() {
 										blockProfile: () => apiFunctions.blockProfile(pidStr),
 										stats: { source: "live_chat", reason: blockStatsReason ?? { label: blockReason } },
 									});
-									void notifyAutoBlock(detectedDisplayName || pidStr, blockReason);
+									void notifyAutoBlock(detectedDisplayName || pidStr, blockNotice || blockReason);
 									if (blockStatsReason?.kind === "explicit_media") {
 										logDetectorDecision({
 											profileId: pidStr,
 											name: detectedDisplayName,
 											outcome: "blocked",
-											detail: blockReason,
+											detail: blockNotice || blockReason,
 										});
 									}
 									releaseLiveMessage(m.messageId);

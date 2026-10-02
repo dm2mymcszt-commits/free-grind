@@ -20,12 +20,13 @@ import { getExplicitFilterSince, isExplicitBlockEnabled } from "../services/cont
 import { fetchAndStoreMedia } from "../services/mediaStore";
 import { findExplicitProfilePhoto, profileFaceVerdictFor } from "../services/profilePhotoCheck";
 import { explicitStatsReason } from "../services/explicitMediaGuard";
-import { isExplicitProfileBlockEnabled, verdictOf } from "../services/contentCheck";
+import { isExplicitProfileBlockEnabled, scoresOf, verdictOf } from "../services/contentCheck";
 import { sentMediaFaceFor } from "../services/sentMediaFace";
 import { logDetectorDecision } from "../services/detectorLog";
 import {
     decideExplicitBlock,
     EXPLICIT_PROFILE_PHOTO_REASON,
+    explicitNotice,
     sentMediaSaves,
     type SentMediaFace,
 } from "../utils/explicitContentRules";
@@ -140,6 +141,7 @@ export function BackgroundInboxScanner() {
             displayName,
             reason,
             statsReason,
+            notice,
             messageSnapshot,
         }: {
             conversation: ConversationEntry;
@@ -148,6 +150,8 @@ export function BackgroundInboxScanner() {
             reason: string;
             /** For a rule that knows more than its sentence says. */
             statsReason?: StatsBlockReason;
+            /** What the notification says, when that is more than the reason. */
+            notice?: string;
             messageSnapshot?: MessagesResponse;
         }): Promise<boolean> => {
             try {
@@ -164,7 +168,7 @@ export function BackgroundInboxScanner() {
                     blockProfile: () => api.blockProfile(profileId),
                     stats: { source: "inbox_scan", reason: statsReason ?? { label: reason } },
                 });
-                void notifyAutoBlock(displayName, reason);
+                void notifyAutoBlock(displayName, notice ?? reason);
                 window.dispatchEvent(new Event("fg-refresh-inbox"));
                 return true;
             } catch (error) {
@@ -821,19 +825,21 @@ export function BackgroundInboxScanner() {
                             if (explicitProfilePhoto && decision.block) {
                                 const displayName = c.data?.name || profileId;
                                 console.log(`[BackgroundInboxScanner] Blocking ${profileId} (${displayName}) for: ${EXPLICIT_PROFILE_PHOTO_REASON}`);
+                                const notice = explicitNotice(EXPLICIT_PROFILE_PHOTO_REASON, scoresOf(explicitProfilePhoto));
                                 const blocked = await blockConversation({
                                     conversation: c,
                                     profileId,
                                     displayName,
                                     reason: EXPLICIT_PROFILE_PHOTO_REASON,
                                     statsReason: explicitStatsReason(explicitProfilePhoto, EXPLICIT_PROFILE_PHOTO_REASON),
+                                    notice,
                                 });
                                 if (blocked) {
                                     logDetectorDecision({
                                         profileId,
                                         name: displayName,
                                         outcome: "blocked",
-                                        detail: EXPLICIT_PROFILE_PHOTO_REASON,
+                                        detail: notice,
                                     });
                                 }
                                 await new Promise((resolve) => setTimeout(resolve, 1000));

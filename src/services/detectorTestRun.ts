@@ -212,3 +212,62 @@ export async function runDetectorTestCollection(
 	onProgress({ stage: "Done", done: 1, total: 1, photos });
 	return { dir, profiles: seenProfiles.size + viewers.length, photos, failed };
 }
+
+// ---------------------------------------------------------------------------
+// One collection at a time, kept here rather than in the Settings page: it
+// runs for minutes, and leaving the page must neither stop it nor lose where
+// it put the photos.
+// ---------------------------------------------------------------------------
+
+export type DetectorTestState = {
+	running: DetectorTestProgress | null;
+	/** How the last collection ended, for display. */
+	result: string | null;
+};
+
+let state: DetectorTestState = { running: null, result: null };
+let stopRequested = false;
+const stateListeners = new Set<() => void>();
+
+function setState(next: DetectorTestState): void {
+	state = next;
+	for (const listener of stateListeners) listener();
+}
+
+export function getDetectorTestState(): DetectorTestState {
+	return state;
+}
+
+export function subscribeToDetectorTest(listener: () => void): () => void {
+	stateListeners.add(listener);
+	return () => {
+		stateListeners.delete(listener);
+	};
+}
+
+export function stopDetectorTestCollection(): void {
+	stopRequested = true;
+}
+
+export async function startDetectorTestCollection(api: DetectorTestApi, userId: number): Promise<void> {
+	if (state.running) return;
+	stopRequested = false;
+	setState({ running: { stage: "Starting", done: 0, total: 0, photos: 0 }, result: null });
+	try {
+		const result = await runDetectorTestCollection(
+			api,
+			userId,
+			(running) => setState({ running, result: null }),
+			() => stopRequested,
+		);
+		setState({
+			running: null,
+			result: `${result.photos} photos from ${result.profiles} profiles saved${result.failed > 0 ? ` (${result.failed} could not be read)` : ""}: ${result.dir}`,
+		});
+	} catch (error) {
+		setState({
+			running: null,
+			result: `Collecting failed: ${error instanceof Error ? error.message : String(error)}`,
+		});
+	}
+}

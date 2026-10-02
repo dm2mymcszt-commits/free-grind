@@ -287,3 +287,14 @@ export function explicitBlockReason(kind: "image" | "video"): string {
 
 /** The same, for an explicit photo on someone's profile rather than one they sent. */
 export const EXPLICIT_PROFILE_PHOTO_REASON = "Explicit profile photo";
+
+/**
+ * The reason with what was actually seen: "Explicit profile photo: bare
+ * buttocks, 77% sure". For the notification and the decisions list, where
+ * "explicit" alone does not say what the detector went on.
+ */
+export function explicitNotice(reason: string, scores: ContentScores): string {
+	if (!scores.explicitLabel) return reason;
+	const words = LABEL_WORDS[scores.explicitLabel] ?? scores.explicitLabel.toLowerCase();
+	return `${reason}: ${words}, ${Math.round(scores.explicitScore * 100)}% sure`;
+}

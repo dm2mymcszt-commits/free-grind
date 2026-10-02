@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
     AtSign, Ban, Crosshair, Eye, EyeOff, Image as ImageIcon, MessageSquare, Radar, Save,
@@ -50,7 +50,12 @@ import {
     getDetectorLog,
     type DetectorLogEntry,
 } from "../../services/detectorLog";
-import { runDetectorTestCollection, type DetectorTestProgress } from "../../services/detectorTestRun";
+import {
+    getDetectorTestState,
+    startDetectorTestCollection,
+    stopDetectorTestCollection,
+    subscribeToDetectorTest,
+} from "../../services/detectorTestRun";
 import {
     clampNoFacePhotoDelayMinutes,
     getNoFacePhotoDelayMinutes,
@@ -133,9 +138,12 @@ export function SettingsAutomationPage() {
     }, []);
 
     // Temporary: the photo collection used to tune the detector's thresholds.
-    const [collecting, setCollecting] = useState<DetectorTestProgress | null>(null);
-    const [collectionResult, setCollectionResult] = useState<string | null>(null);
-    const stopCollectingRef = useRef(false);
+    // It runs for minutes and carries on if this page is left, so its state
+    // lives with the collector and is only mirrored here.
+    const [collection, setCollection] = useState(() => getDetectorTestState());
+    useEffect(() => subscribeToDetectorTest(() => setCollection(getDetectorTestState())), []);
+    const collecting = collection.running;
+    const collectionResult = collection.result;
 
     const [blockFacelessNoMedia, setBlockFacelessNoMedia] = useState(() => window.localStorage.getItem("fg-block-faceless-no-media") === "true");
     const [blockFacelessDelay, setBlockFacelessDelay] = useState(() => window.localStorage.getItem("fg-block-faceless-delay") || "5");
@@ -442,26 +450,9 @@ export function SettingsAutomationPage() {
         if (val) window.dispatchEvent(new Event("fg-trigger-inbox-scan"));
     };
 
-    const handleCollectTestPhotos = async () => {
-        if (collecting || userId == null) return;
-        stopCollectingRef.current = false;
-        setCollectionResult(null);
-        setCollecting({ stage: "Starting", done: 0, total: 0, photos: 0 });
-        try {
-            const result = await runDetectorTestCollection(
-                apiFunctions,
-                userId,
-                setCollecting,
-                () => stopCollectingRef.current,
-            );
-            setCollectionResult(
-                `${result.photos} photos from ${result.profiles} profiles saved${result.failed > 0 ? ` (${result.failed} could not be read)` : ""}: ${result.dir}`,
-            );
-        } catch (error) {
-            setCollectionResult(`Collecting failed: ${error instanceof Error ? error.message : String(error)}`);
-        } finally {
-            setCollecting(null);
-        }
+    const handleCollectTestPhotos = () => {
+        if (userId == null) return;
+        void startDetectorTestCollection(apiFunctions, userId);
     };
 
     // --- SAVE HANDLERS ---
@@ -679,12 +670,12 @@ export function SettingsAutomationPage() {
                             <div className="grid gap-2 px-4 py-3">
                                 <div className="flex items-center justify-between gap-3">
                                     <p className="min-w-0 text-xs text-[var(--text-muted)]">
-                                        <strong className="text-[var(--text)]">Collect test photos (temporary).</strong> Saves the profile photos of the people in your inbox and of your recent viewers to a folder on this device, with what the detector found in each, so the settings can be tuned on real photos. Blocks nobody and changes nothing. Takes a few minutes.
+                                        <strong className="text-[var(--text)]">Collect test photos (temporary).</strong> Saves the profile photos of the people in your inbox and of your recent viewers to a folder on this device, with what the detector found in each, so the settings can be tuned on real photos. Blocks nobody and changes nothing. Takes a few minutes, and carries on if you leave this page; keep the app open.
                                     </p>
                                     {collecting ? (
                                         <button
                                             type="button"
-                                            onClick={() => { stopCollectingRef.current = true; }}
+                                            onClick={stopDetectorTestCollection}
                                             className="shrink-0 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-[var(--text)] transition hover:border-[var(--accent)]"
                                         >
                                             Stop
@@ -692,7 +683,7 @@ export function SettingsAutomationPage() {
                                     ) : (
                                         <button
                                             type="button"
-                                            onClick={() => void handleCollectTestPhotos()}
+                                            onClick={handleCollectTestPhotos}
                                             className="shrink-0 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-[var(--text)] transition hover:border-[var(--accent)]"
                                         >
                                             Collect
@@ -730,7 +721,13 @@ export function SettingsAutomationPage() {
                                                 <span className="text-[var(--text-muted)]">
                                                     {new Date(entry.at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                                                 </span>{" "}
-                                                <strong className="text-[var(--text)]">{entry.name || entry.profileId}</strong>{" "}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => navigate(`/profile/${entry.profileId}`, { state: { returnTo: "/settings/automation" } })}
+                                                    className="font-bold text-[var(--text)] underline decoration-[var(--border)] underline-offset-2 transition hover:decoration-[var(--accent)]"
+                                                >
+                                                    {entry.name || entry.profileId}
+                                                </button>{" "}
                                                 <span className={entry.outcome === "blocked" ? "text-red-400" : "text-[var(--text-muted)]"}>
                                                     {entry.detail}
                                                 </span>
