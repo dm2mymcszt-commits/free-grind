@@ -177,9 +177,15 @@ describe("faceVerdict", () => {
 		expect(faceVerdict(face(0.57, 0.011))).toBe("face");
 	});
 
-	test("a person far off in a street or on a beach is no face", () => {
-		expect(faceVerdict(face(0.63, 0.005))).toBe("no_face");
+	test("someone standing a few metres off still shows their face: the user's call on real examples", () => {
+		expect(faceVerdict(face(0.63, 0.0047))).toBe("face");
+		expect(faceVerdict(face(0.69, 0.0053))).toBe("face");
+		expect(faceVerdict(face(0.61, 0.0085))).toBe("face");
+	});
+
+	test("a speck of a face the detector is not sure of is no face", () => {
 		expect(faceVerdict(face(0.23, 0.004))).toBe("no_face");
+		expect(faceVerdict(face(0.63, 0.0015))).toBe("no_face");
 	});
 
 	test("the back or side of a head, and an emoji over a face, are no face", () => {
@@ -194,7 +200,7 @@ describe("faceVerdict", () => {
 	});
 
 	test("a sure face of in-between size is unsure", () => {
-		expect(faceVerdict(face(0.7, 0.008))).toBe("unsure");
+		expect(faceVerdict(face(0.7, 0.003))).toBe("unsure");
 	});
 });
 

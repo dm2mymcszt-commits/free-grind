@@ -55,7 +55,7 @@ export type ProfilePhotoApi = {
 };
 
 /** Every photo on a profile, main one first. */
-export function photoHashesOf(profile: ProfileForPhotos): string[] {
+function photoHashesOf(profile: ProfileForPhotos): string[] {
 	const hashes = [
 		profile.profileImageMediaHash?.trim() ?? "",
 		...(profile.medias ?? []).map((media) => media.mediaHash?.trim() ?? ""),

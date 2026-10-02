@@ -73,13 +73,19 @@ export const FACE_VISIBLE_SCORE = 0.45;
  * which is why that range is "unsure" and blocks nobody.
  */
 export const FACE_ABSENT_SCORE = 0.3;
-/** The share of the photo a face has to take up to count as shown. */
-export const FACE_MIN_SHARE = 0.01;
+/**
+ * The share of the photo a face has to take up to count as shown. Shown the
+ * smallest sure faces in the collection (0.5% and 0.8% of the photo, people
+ * standing a few metres off), the user counted all of them as showing a
+ * face, so this sits just under the smallest of them.
+ */
+export const FACE_MIN_SHARE = 0.004;
 /**
  * Under this share the person is too far away to be recognised, which the
  * user counts as not showing a face. Between the two shares is "unsure".
+ * Nothing in the collection was this small and still a sure face.
  */
-export const FACE_FAR_SHARE = 0.006;
+export const FACE_FAR_SHARE = 0.002;
 /**
  * How close to the photo's edge a face box may sit before it counts as cut
  * off. The detector's most common false face is a chin at the top of a torso
