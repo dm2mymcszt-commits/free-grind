@@ -37,6 +37,7 @@ import type {
 	StoredAlbumMediaSummary,
 	StoredAvatar,
 	StoredBlockEvent,
+	StoredContentCheck,
 	StoredConversation,
 	StoredMediaFile,
 	StoredMessage,
@@ -297,6 +298,29 @@ async function getDb(): Promise<Database> {
 				`);
 				await db.execute(
 					"CREATE INDEX IF NOT EXISTS idx_media_files_message ON media_files(message_id)",
+				);
+
+				// What the on-device detector found in a received photo or video
+				// (services/contentCheck.ts). The scores are kept rather than a
+				// verdict, so a threshold can change without looking at every
+				// photo again. Local to this device: nothing here is backed up
+				// or synced, since it can always be worked out again.
+				await db.execute(`
+					CREATE TABLE IF NOT EXISTS content_checks (
+						media_key TEXT PRIMARY KEY,
+						message_id TEXT,
+						conversation_id TEXT,
+						kind TEXT NOT NULL,
+						explicit_label TEXT,
+						explicit_score REAL NOT NULL DEFAULT 0,
+						cover_only_score REAL NOT NULL DEFAULT 0,
+						face_score REAL NOT NULL DEFAULT 0,
+						model TEXT NOT NULL,
+						checked_at INTEGER NOT NULL
+					)
+				`);
+				await db.execute(
+					"CREATE INDEX IF NOT EXISTS idx_content_checks_message ON content_checks(message_id)",
 				);
 
 				await db.execute(`
@@ -1518,6 +1542,9 @@ export async function deleteConversationCascade(
 		await db.execute("DELETE FROM media_files WHERE conversation_id = $1", [
 			conversationId,
 		]);
+		await db.execute("DELETE FROM content_checks WHERE conversation_id = $1", [
+			conversationId,
+		]);
 		await db.execute(
 			"DELETE FROM album_media WHERE album_id IN (SELECT album_id FROM albums WHERE conversation_id = $1)",
 			[conversationId],
@@ -1565,6 +1592,9 @@ export async function deleteAllArchivedConversations(): Promise<number> {
 		);
 		await db.execute(
 			"DELETE FROM media_files WHERE conversation_id IN (SELECT conversation_id FROM conversations WHERE archived = 1)",
+		);
+		await db.execute(
+			"DELETE FROM content_checks WHERE conversation_id IN (SELECT conversation_id FROM conversations WHERE archived = 1)",
 		);
 		await db.execute(
 			"DELETE FROM album_media WHERE album_id IN (SELECT album_id FROM albums WHERE conversation_id IN (SELECT conversation_id FROM conversations WHERE archived = 1))",
@@ -1737,6 +1767,10 @@ export async function reassignConversationId(
 	await executeWithLockRetry(db, "reassign-conversation-id", async () => {
 		await db.execute(
 			"UPDATE media_files SET conversation_id = $2 WHERE conversation_id = $1",
+			[oldConversationId, newConversationId],
+		);
+		await db.execute(
+			"UPDATE content_checks SET conversation_id = $2 WHERE conversation_id = $1",
 			[oldConversationId, newConversationId],
 		);
 		// albums.album_id is its own primary key (conversation_id is just a
@@ -2067,6 +2101,7 @@ export async function deleteMediaFilesForMessage(messageId: string): Promise<voi
 
 	await executeWithLockRetry(db, "delete-message-media", async () => {
 		await db.execute("DELETE FROM media_files WHERE message_id = $1", [messageId]);
+		await db.execute("DELETE FROM content_checks WHERE message_id = $1", [messageId]);
 	});
 }
 
@@ -2225,6 +2260,117 @@ export async function getMediaFilesForConversation(
 		[conversationId],
 	);
 	return rows.map(rowToStoredMediaFile);
+}
+
+// ---------------------------------------------------------------------------
+// Content checks
+// ---------------------------------------------------------------------------
+
+type ContentCheckRow = {
+	media_key: string;
+	message_id: string | null;
+	conversation_id: string | null;
+	kind: string;
+	explicit_label: string | null;
+	explicit_score: number;
+	cover_only_score: number;
+	face_score: number;
+	model: string;
+	checked_at: number;
+};
+
+function rowToStoredContentCheck(row: ContentCheckRow): StoredContentCheck {
+	return {
+		mediaKey: row.media_key,
+		messageId: row.message_id,
+		conversationId: row.conversation_id,
+		kind: row.kind === "video" ? "video" : "image",
+		explicitLabel: row.explicit_label,
+		explicitScore: Number(row.explicit_score) || 0,
+		coverOnlyScore: Number(row.cover_only_score) || 0,
+		faceScore: Number(row.face_score) || 0,
+		model: row.model,
+		checkedAt: row.checked_at,
+	};
+}
+
+export async function upsertContentCheck(check: StoredContentCheck): Promise<void> {
+	const db = await getDb();
+
+	await executeWithLockRetry(db, "upsert-content-check", async () => {
+		await db.execute(
+			`
+			INSERT INTO content_checks (
+				media_key, message_id, conversation_id, kind, explicit_label,
+				explicit_score, cover_only_score, face_score, model, checked_at
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			ON CONFLICT(media_key) DO UPDATE SET
+				message_id = COALESCE(excluded.message_id, content_checks.message_id),
+				conversation_id = COALESCE(excluded.conversation_id, content_checks.conversation_id),
+				kind = excluded.kind,
+				explicit_label = excluded.explicit_label,
+				explicit_score = excluded.explicit_score,
+				cover_only_score = excluded.cover_only_score,
+				face_score = excluded.face_score,
+				model = excluded.model,
+				checked_at = excluded.checked_at
+			`,
+			[
+				check.mediaKey,
+				check.messageId,
+				check.conversationId,
+				check.kind,
+				check.explicitLabel,
+				check.explicitScore,
+				check.coverOnlyScore,
+				check.faceScore,
+				check.model,
+				check.checkedAt,
+			],
+		);
+	});
+}
+
+export async function getContentCheck(mediaKey: string): Promise<StoredContentCheck | null> {
+	const db = await getDb();
+	const rows = await db.select<ContentCheckRow[]>(
+		"SELECT * FROM content_checks WHERE media_key = $1",
+		[mediaKey],
+	);
+	return rows[0] ? rowToStoredContentCheck(rows[0]) : null;
+}
+
+export async function getContentChecksForMessages(
+	messageIds: readonly string[],
+): Promise<StoredContentCheck[]> {
+	const unique = [...new Set(messageIds)];
+	if (unique.length === 0) return [];
+	const db = await getDb();
+	const checks: StoredContentCheck[] = [];
+	for (let start = 0; start < unique.length; start += 400) {
+		const chunk = unique.slice(start, start + 400);
+		const placeholders = chunk.map((_, index) => `$${index + 1}`).join(", ");
+		const rows = await db.select<ContentCheckRow[]>(
+			`SELECT * FROM content_checks WHERE message_id IN (${placeholders})`,
+			chunk,
+		);
+		checks.push(...rows.map(rowToStoredContentCheck));
+	}
+	return checks;
+}
+
+/** Who sent a stored message and when: what a block needs before it can name anyone. */
+export async function getMessageSenderAndTime(
+	messageId: string,
+): Promise<{ senderId: string; timestamp: number } | null> {
+	const db = await getDb();
+	const rows = await db.select<Array<{ sender_id: string | number | null; timestamp: number | null }>>(
+		"SELECT sender_id, timestamp FROM messages WHERE message_id = $1",
+		[messageId],
+	);
+	const row = rows[0];
+	if (!row || row.sender_id == null || row.timestamp == null) return null;
+	return { senderId: String(row.sender_id), timestamp: Number(row.timestamp) };
 }
 
 // ---------------------------------------------------------------------------

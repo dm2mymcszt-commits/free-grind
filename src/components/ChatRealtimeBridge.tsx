@@ -86,6 +86,15 @@ import {
 	withPreservingBlock,
 } from "../services/autoBlockConversation";
 import { logBlockEvent, type StatsBlockReason } from "../services/statsLog";
+import { isExplicitBlockEnabled } from "../services/contentCheck";
+import {
+	checkLiveMessageMedia,
+	decideLiveExplicitBlock,
+	explicitStatsReason,
+	releaseLiveMessage,
+	startExplicitMediaGuard,
+} from "../services/explicitMediaGuard";
+import { explicitBlockReason } from "../utils/explicitContentRules";
 
 let cachedIsAndroid: boolean | null = null;
 
@@ -480,6 +489,16 @@ export function ChatRealtimeBridge() {
 		};
 	}, [apiFunctions, queryClient]);
 
+	// Blocks whoever sent an explicit photo that was found outside the live
+	// message path below: a thread being opened, the scanner catching up.
+	// Waits for settingsReady so it cannot read the previous account's chatDb.
+	useEffect(() => {
+		if (userId == null || !settingsReady) {
+			return;
+		}
+		return startExplicitMediaGuard(apiFunctions, userId);
+	}, [apiFunctions, userId, settingsReady]);
+
 	// Boot the realtime manager whenever the user is authenticated.
 	// getToken is called fresh on every (re)connect so an expired token
 	// never blocks reconnection.
@@ -836,10 +855,16 @@ export function ChatRealtimeBridge() {
 								(await checkAndAutoWhitelistActiveChat(pidStr, m.conversationId, undefined, undefined, userIdRef.current));
 							const isBlockEnabled = window.localStorage.getItem("fg-block-chat") !== "false";
 
+							let blockReason = "";
+							// Set by a rule that knows more than its sentence; the others are read from the sentence.
+							let blockStatsReason: StatsBlockReason | null = null;
+							let detectedDisplayName = knownDisplayName;
+							let detectedPhotoHash: string | null = null;
+							// Whether the profile was read while deciding. A rule decided from
+							// the message alone has not, and has to read it before blocking.
+							let profileRead = false;
+
 							if (isBlockEnabled && !isWhitelisted) {
-								let blockReason = "";
-								let detectedDisplayName = knownDisplayName;
-								let detectedPhotoHash: string | null = null;
 								const matchedMessage = messageText ? getMatchedForbiddenWord(messageText, "message") : null;
 								// Openers are only judged when this really is the first thing this
 								// person has said. chatDb is the record of what they sent before —
@@ -865,6 +890,7 @@ export function ChatRealtimeBridge() {
 									try {
 										const profile = await apiFunctions.getProfileDetail(pidStr).catch(() => null) as any;
 										if (profile) {
+											profileRead = true;
 											const name = profile.name || profile.displayName || "";
 											detectedDisplayName = name || detectedDisplayName;
 											detectedPhotoHash = profile.profileImageMediaHash ?? null;
@@ -894,52 +920,72 @@ export function ChatRealtimeBridge() {
 										}
 									} catch {}
 								}
+							}
 
-								if (blockReason) {
-									appLog.info(`[ChatRealtimeBridge] Instant auto-blocking ${pidStr} due to: ${blockReason}`);
-									// A keyword or opener match is decided without the profile,
-									// but this is the last moment it can be read: after the block
-									// the archived chat would keep no name and no photo. The other
-									// reasons already fetched it above.
-									if (matchedMessage || matchedOpener) {
-										const profileForArchive = (await apiFunctions
-											.getProfileDetail(pidStr)
-											.catch(() => null)) as {
-											name?: string | null;
-											displayName?: string | null;
-											profileImageMediaHash?: string | null;
-										} | null;
-										if (profileForArchive) {
-											detectedDisplayName =
-												profileForArchive.name || profileForArchive.displayName || detectedDisplayName;
-											detectedPhotoHash = profileForArchive.profileImageMediaHash ?? null;
-										}
-									}
-									try {
-										await preserveAndAutoBlockConversation({
-											conversation: conversationEntryFromRealtimeMessage(
-												m,
-												pidStr,
-												detectedDisplayName,
-												detectedPhotoHash,
-											),
-											profileId: pidStr,
-											displayName: detectedDisplayName,
-											fetchMessages: () =>
-												apiFunctions.listMessages({ conversationId: m.conversationId }),
-											additionalMessages: [m],
-											userId: userIdRef.current,
-											getAlbum: (albumId) => apiFunctions.getAlbum(albumId),
-											blockProfile: () => apiFunctions.blockProfile(pidStr),
-											stats: { source: "live_chat", reason: { label: blockReason } },
-										});
-										void notifyAutoBlock(detectedDisplayName || pidStr, blockReason);
-										continue;
-									} catch (error) {
-										appLog.warn("[ChatRealtimeBridge] preserving auto-blocked conversation failed", error);
-									}
+							// An explicit photo or video. Has its own switch rather than the
+							// chat auto-block one above, and is waited for here — before the
+							// message is counted as unread or announced — so a block means the
+							// photo never reached a notification or the inbox. A check that
+							// fails or runs out of time blocks nobody: the message goes
+							// through with its photo covered.
+							if (!blockReason && isExplicitBlockEnabled()) {
+								const explicitCheck = await checkLiveMessageMedia(m);
+								if (
+									explicitCheck &&
+									decideLiveExplicitBlock(m, explicitCheck, userIdRef.current, isWhitelisted).block
+								) {
+									blockReason = explicitBlockReason(explicitCheck.kind);
+									blockStatsReason = explicitStatsReason(explicitCheck);
 								}
 							}
+
+							if (blockReason) {
+								appLog.info(`[ChatRealtimeBridge] Instant auto-blocking ${pidStr} due to: ${blockReason}`);
+								// A match decided without the profile still needs it, and this
+								// is the last moment it can be read: after the block the archived
+								// chat would keep no name and no photo.
+								if (!profileRead) {
+									const profileForArchive = (await apiFunctions
+										.getProfileDetail(pidStr)
+										.catch(() => null)) as {
+										name?: string | null;
+										displayName?: string | null;
+										profileImageMediaHash?: string | null;
+									} | null;
+									if (profileForArchive) {
+										detectedDisplayName =
+											profileForArchive.name || profileForArchive.displayName || detectedDisplayName;
+										detectedPhotoHash = profileForArchive.profileImageMediaHash ?? null;
+									}
+								}
+								try {
+									await preserveAndAutoBlockConversation({
+										conversation: conversationEntryFromRealtimeMessage(
+											m,
+											pidStr,
+											detectedDisplayName,
+											detectedPhotoHash,
+										),
+										profileId: pidStr,
+										displayName: detectedDisplayName,
+										fetchMessages: () =>
+											apiFunctions.listMessages({ conversationId: m.conversationId }),
+										additionalMessages: [m],
+										userId: userIdRef.current,
+										getAlbum: (albumId) => apiFunctions.getAlbum(albumId),
+										blockProfile: () => apiFunctions.blockProfile(pidStr),
+										stats: { source: "live_chat", reason: blockStatsReason ?? { label: blockReason } },
+									});
+									void notifyAutoBlock(detectedDisplayName || pidStr, blockReason);
+									releaseLiveMessage(m.messageId);
+									continue;
+								} catch (error) {
+									appLog.warn("[ChatRealtimeBridge] preserving auto-blocked conversation failed", error);
+								}
+							}
+							// Not blocked here, so whatever reports this photo's verdict next
+							// (the thread opening, the scanner) may act on it.
+							releaseLiveMessage(m.messageId);
 
 							const { blocked: blockedByNewChat } = await runAutomationRulesForSender(
 								String(m.senderId),
@@ -1006,6 +1052,7 @@ export function ChatRealtimeBridge() {
 								viewOnce: target.viewOnce,
 								isOwnMessage:
 									userIdRef.current != null && Number(msg.senderId) === Number(userIdRef.current),
+								sender: { senderId: msg.senderId, timestamp: msg.timestamp },
 							});
 						}
 						captureAlbumsForMessages(msgs, cid, (id) => apiFunctions.getAlbum(id));

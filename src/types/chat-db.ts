@@ -32,6 +32,23 @@ export type StoredConversation = {
 	updatedAt: number;
 };
 
+/**
+ * What the on-device detector found in one received photo or video. Scores
+ * run from 0 to 1; the verdict is read from them (utils/explicitContentRules).
+ */
+export type StoredContentCheck = {
+	mediaKey: string;
+	messageId: string | null;
+	conversationId: string | null;
+	kind: "image" | "video";
+	explicitLabel: string | null;
+	explicitScore: number;
+	coverOnlyScore: number;
+	faceScore: number;
+	model: string;
+	checkedAt: number;
+};
+
 export type StoredMessage = Message & {
 	localHistory: boolean;
 };

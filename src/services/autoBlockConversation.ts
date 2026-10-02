@@ -73,6 +73,16 @@ type PreserveAndAutoBlockOptions = {
 const inFlightBlocks = new Map<string, Promise<void>>();
 
 /**
+ * Whether a block of this conversation is already under way. The capture
+ * step downloads the conversation's photos, which can turn up a reason of
+ * its own (an explicit one); whoever notices that asks here first instead of
+ * starting a second block for a different reason.
+ */
+export function isAutoBlockInFlight(conversationId: string): boolean {
+	return inFlightBlocks.has(conversationId);
+}
+
+/**
  * Thrown when content shared in the conversation could not be secured
  * locally *and* the server hasn't declared it gone — i.e. a retry could
  * still succeed. Every caller treats a rejection as "leave this

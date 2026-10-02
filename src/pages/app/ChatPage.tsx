@@ -104,6 +104,7 @@ import {
 } from "./chat/chatUtils";
 import { loadChatFiltersDraft, saveChatFiltersDraft } from "./chat/chat-filters-storage";
 import { fetchAndStoreMedia, getCachedMediaUri, hydrateMediaByMessageId, isSignedUrlExpired } from "../../services/mediaStore";
+import { getContentCoverForMessage, isExplicitFilterEnabled } from "../../services/contentCheck";
 import { saveMediaBytesToDevice, saveMediaToDevice } from "../../services/saveMedia";
 import {
 	deletionNeedsConfirmation,
@@ -196,6 +197,7 @@ function captureMediaForMessages(
 				messageId: message.messageId,
 				viewOnce: target.viewOnce,
 				isOwnMessage: userId != null && message.senderId === userId,
+				sender: { senderId: message.senderId, timestamp: message.timestamp },
 			});
 		} else if (isMediaMessage(message)) {
 			// No live URL on this message anymore (expired, archived
@@ -6584,8 +6586,22 @@ export function ChatPage() {
 
 	const openFullScreenImage = useCallback((imageUrl: string, meta?: { takenOnGrindr: boolean; createdAtLabel: string | null; timestamp: number }, mediaType: "image" | "video" = "image") => {
 		const list: ThreadMediaItem[] = [];
+		const explicitFilterOn = isExplicitFilterEnabled();
 		for (const msg of threadMessages) {
 			const imgUrl = getMessageImageUrl(msg);
+			// The viewer swipes through this list, so with the explicit-photo
+			// filter on it must not hold a received photo that is still covered
+			// in the thread. The one being opened is there by the user's choice.
+			if (
+				explicitFilterOn &&
+				msg.type !== "Giphy" &&
+				Number(msg.senderId) !== Number(userId) &&
+				getContentCoverForMessage(msg.messageId) != null &&
+				imgUrl !== imageUrl &&
+				getMessageVideoUrl(msg) !== imageUrl
+			) {
+				continue;
+			}
 			if (imgUrl) {
 				const createdAt = getMessageImageCreatedAt(msg);
 				list.push({
@@ -6611,7 +6627,7 @@ export function ChatPage() {
 			setFullScreenMediaList(list);
 			setFullScreenMediaIndex(idx);
 		}
-	}, [threadMessages]);
+	}, [threadMessages, userId]);
 
 	const closeFullScreenImage = useCallback(() => {
 		if (fullScreenMediaList.length === 0) {

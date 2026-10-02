@@ -1,4 +1,4 @@
-import { Album, Ban, Check, CircleCheck, Copy, Download, Eye, Hourglass, Lock, MessageCircleQuestion, MessageSquarePlus, Mic, MoreVertical, Play, Repeat2, Reply, ShieldCheck, Trash2, Undo2 } from "lucide-react";
+import { Album, Ban, Check, CircleCheck, Copy, Download, Eye, EyeOff, Hourglass, Lock, MessageCircleQuestion, MessageSquarePlus, Mic, MoreVertical, Play, Repeat2, Reply, ShieldCheck, Trash2, Undo2 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { MapLocationPreview } from "../gridpage/components/MapLocationPreview";
 import { AudioMessagePlayer } from "./AudioMessagePlayer";
@@ -18,6 +18,9 @@ import { ProfileImage } from "../../../components/ui/profile-image";
 import freegrindLogo from "../../../images/freegrind-logo.webp";
 import { usePreferences } from "../../../contexts/PreferencesContext";
 import { useLocalMediaCache } from "../../../hooks/useLocalMediaCache";
+import { useContentChecks } from "../../../hooks/useContentChecks";
+import { getContentCoverForMessage, requestChecksForMessages } from "../../../services/contentCheck";
+import type { ContentCover } from "../../../utils/explicitContentRules";
 import { banSelectableProps, useBanOnSelectEnabled } from "../../../hooks/useBanOnSelect";
 import {
     getCachedMediaUri,
@@ -108,6 +111,34 @@ type ChatThreadMessagesProps = {
 	 */
 	onUnavailableMediaChange?: (messageIds: string[]) => void;
 };
+
+/**
+ * Stands in for a received photo or video the explicit-photo filter has not
+ * cleared. The picture itself is not drawn at all while this shows, blurred
+ * or otherwise; two taps bring it back, so one stray tap never does.
+ */
+function ContentCoverCard({ cover, kind, armed }: { cover: ContentCover; kind: "image" | "video"; armed: boolean }) {
+	const { t } = useTranslation();
+	const title =
+		cover === "explicit"
+			? kind === "video"
+				? t("chat.content_cover.explicit_video", { defaultValue: "Explicit video hidden" })
+				: t("chat.content_cover.explicit_photo", { defaultValue: "Explicit photo hidden" })
+			: cover === "unsure"
+				? t("chat.content_cover.unsure", { defaultValue: "Possibly explicit" })
+				: t("chat.content_cover.unchecked", { defaultValue: "Not checked yet" });
+	return (
+		<div className="flex h-44 w-full min-w-[12rem] flex-col items-center justify-center gap-1.5 bg-[var(--surface-2)] px-4 text-center text-[var(--text-muted)]">
+			<EyeOff className="h-5 w-5" />
+			<p className="text-xs font-semibold text-[var(--text)]">{title}</p>
+			<p className="text-[11px]">
+				{armed
+					? t("chat.content_cover.tap_again", { defaultValue: "Tap again to show" })
+					: t("chat.content_cover.tap_to_show", { defaultValue: "Tap to show anyway" })}
+			</p>
+		</div>
+	);
+}
 
 /**
  * The photo or video link a message shows: the saved copy once it is in
@@ -358,6 +389,12 @@ export function ChatThreadMessages({
 	const [revealedMediaMessageIds, setRevealedMediaMessageIds] = useState<Set<string>>(
 		() => new Set(),
 	);
+	// The explicit-photo filter: received photos and videos stay covered until
+	// a check clears them. These are the ones uncovered by hand, and the one
+	// whose cover has had its first of two taps.
+	const explicitFilterOn = useContentChecks();
+	const [uncoveredMessageIds, setUncoveredMessageIds] = useState<Set<string>>(() => new Set());
+	const [armedCoverMessageId, setArmedCoverMessageId] = useState<string | null>(null);
 	const [hoveredMediaMessageId, setHoveredMediaMessageId] = useState<string | null>(null);
 	const [contextMenuState, setContextMenuState] = useState<{ messageId: string; x: number; y: number } | null>(null);
 	// Media whose file would not load: never saved on this device, and its link
@@ -490,7 +527,52 @@ export function ChatThreadMessages({
 	useEffect(() => {
 		setRevealedMediaMessageIds(new Set());
 		setHoveredMediaMessageId(null);
+		setUncoveredMessageIds(new Set());
+		setArmedCoverMessageId(null);
 	}, [selectedConversation.data.conversationId]);
+
+	// Asks for a check of every received photo and video in the thread that
+	// has none yet. Cheap to repeat: anything already checked or already asked
+	// about is skipped.
+	useEffect(() => {
+		if (!explicitFilterOn || userId == null) return;
+		const conversationId = selectedConversation.data.conversationId;
+		void requestChecksForMessages(
+			threadMessages
+				.filter(
+					(message) =>
+						Number(message.senderId) !== Number(userId) &&
+						message.type !== "Giphy" &&
+						message.type !== "Audio" &&
+						message.chat1Type?.toLowerCase() !== "audio" &&
+						isMediaMessage(message),
+				)
+				.map((message) => ({
+					messageId: message.messageId,
+					conversationId,
+					mediaKey: getMediaCaptureTarget(message)?.mediaKey ?? null,
+					sender: { senderId: message.senderId, timestamp: message.timestamp },
+				})),
+		);
+	}, [explicitFilterOn, threadMessages, userId, selectedConversation.data.conversationId]);
+
+	useEffect(() => {
+		if (!armedCoverMessageId) return;
+		const timer = setTimeout(() => setArmedCoverMessageId(null), 4000);
+		return () => clearTimeout(timer);
+	}, [armedCoverMessageId]);
+
+	const tapContentCover = useCallback(
+		(messageId: string) => {
+			if (armedCoverMessageId !== messageId) {
+				setArmedCoverMessageId(messageId);
+				return;
+			}
+			setArmedCoverMessageId(null);
+			setUncoveredMessageIds((previous) => new Set(previous).add(messageId));
+		},
+		[armedCoverMessageId],
+	);
 
 	const revealMediaMessage = useCallback((messageId: string) => {
 		setRevealedMediaMessageIds((previous) => {
@@ -1204,6 +1286,25 @@ export function ChatThreadMessages({
                     const mediaBlurClassName = shouldBlurIncomingMedia
                         ? "blur-md transition"
                         : "";
+                    // Only a check that came back clear uncovers a received photo.
+                    const contentCover =
+                        explicitFilterOn &&
+                        !mine &&
+                        message.type !== "Giphy" &&
+                        (Boolean(imageUrl) || Boolean(videoUrl)) &&
+                        !uncoveredMessageIds.has(message.messageId)
+                            ? getContentCoverForMessage(message.messageId)
+                            : null;
+                    // The small picture in a quote of one of their photos follows
+                    // the photo it quotes.
+                    const replyThumbCovered =
+                        explicitFilterOn &&
+                        Boolean(replyToMsgId) &&
+                        replySenderId != null &&
+                        Number(replySenderId) !== Number(userId) &&
+                        (replyToMsg?.type ?? replyToMsgRef?.type) !== "Giphy" &&
+                        !uncoveredMessageIds.has(String(replyToMsgId)) &&
+                        getContentCoverForMessage(String(replyToMsgId)) != null;
                     const senderParticipant =
                         selectedConversation.data.participants.find(
                             (participant) =>
@@ -1433,7 +1534,11 @@ export function ChatThreadMessages({
                                                 <p className="mb-0.5 font-semibold opacity-60 truncate">{replyLabel}</p>
                                                 <p className="line-clamp-2 break-words opacity-80">{replyText ?? (message.type === "AlbumContentReply" || replyToMsgRef?.type === "AlbumContentReply" ? t("chat.thread.album_image") : replyToMsgRef?.type === "AlbumContentReaction" ? t("chat.thread.reacted_to_image") : replyIsAudio ? t("chat.thread.audio_label") : (replyToMsg?.type ?? replyToMsgRef?.type) === "Location" ? t("chat.preview.sent_location") : (replyToMsg?.type ?? replyToMsgRef?.type) === "Video" || (replyToMsg?.type ?? replyToMsgRef?.type) === "NonExpiringVideo" ? t("chat.thread.shared_video") : (replyToMsg?.type ?? replyToMsgRef?.type) === "Giphy" ? t("chat.thread.shared_gif") : t("chat.thread.shared_image"))}</p>
                                             </div>
-                                            {replyThumbUrl ? (
+                                            {replyThumbUrl && replyThumbCovered ? (
+                                                <div className="flex w-14 shrink-0 items-center justify-center self-stretch bg-black/10">
+                                                    <EyeOff className="h-4 w-4 opacity-60" />
+                                                </div>
+                                            ) : replyThumbUrl ? (
                                                 <div className="relative w-14 shrink-0 self-stretch overflow-hidden">
                                                     <img
                                                         src={replyThumbUrl}
@@ -1460,6 +1565,15 @@ export function ChatThreadMessages({
                                             tabIndex={0}
                                             onClick={(event) => {
                                                 event.stopPropagation();
+                                                if (contentCover) {
+                                                    if (messageLongPressTriggeredRef.current) {
+                                                        messageLongPressTriggeredRef.current = false;
+                                                        return;
+                                                    }
+                                                    tapContentCover(message.messageId);
+                                                    lastTapRef.current = null;
+                                                    return;
+                                                }
                                                 if (isDesktop) {
                                                     openFullScreenImage(imageUrl, {
                                                         takenOnGrindr: messageTakenOnGrindr,
@@ -1491,12 +1605,20 @@ export function ChatThreadMessages({
                                             onMouseLeave={() => handleMediaMouseLeave(message.messageId)}
                                         >
                                             <div className="relative">
+                                            {contentCover ? (
+                                                <ContentCoverCard
+                                                    cover={contentCover}
+                                                    kind="image"
+                                                    armed={armedCoverMessageId === message.messageId}
+                                                />
+                                            ) : (
                                             <img
                                                 src={imageUrl}
                                                 alt={t("chat.thread.shared_alt")}
                                                 onError={() => markMediaUnloadable(`${message.messageId}|${imageUrl}`)}
                                                 className={`${message.type === "Giphy" && hasReply ? "max-h-96 w-full object-cover" : isImageOnlyBubble ? "max-h-80 w-full object-cover" : "max-h-64 w-full object-cover"} ${mediaBlurClassName}`}
                                             />
+                                            )}
                                             {localOnly && (
                                                 <span className="absolute left-2 top-2 z-10 rounded-full bg-black/75 px-2 py-0.5 text-[10px] font-semibold text-white">
                                                     {t("chat.thread.from_local_history")}
@@ -1723,6 +1845,15 @@ export function ChatThreadMessages({
                                                     onMouseLeave={() => handleMediaMouseLeave(message.messageId)}
                                                     onClick={(event) => {
                                                         event.stopPropagation();
+                                                        if (contentCover) {
+                                                            if (messageLongPressTriggeredRef.current) {
+                                                                messageLongPressTriggeredRef.current = false;
+                                                                return;
+                                                            }
+                                                            tapContentCover(message.messageId);
+                                                            lastTapRef.current = null;
+                                                            return;
+                                                        }
                                                         if (shouldBlurIncomingMedia && !isDesktop) {
                                                             revealMediaMessage(message.messageId);
                                                             lastTapRef.current = null;
@@ -1747,6 +1878,13 @@ export function ChatThreadMessages({
                                                             {t("chat.thread.from_local_history")}
                                                         </span>
                                                     )}
+                                                    {contentCover ? (
+                                                        <ContentCoverCard
+                                                            cover={contentCover}
+                                                            kind="video"
+                                                            armed={armedCoverMessageId === message.messageId}
+                                                        />
+                                                    ) : (
                                                     <video
                                                         preload="metadata"
                                                         muted
@@ -1755,6 +1893,7 @@ export function ChatThreadMessages({
                                                         onLoadedMetadata={(e) => { (e.currentTarget as HTMLVideoElement).currentTime = 0.001; }}
                                                         className={`w-full object-cover ${isVideoOnlyBubble ? "max-h-80" : "max-h-64"} ${mediaBlurClassName}`}
                                                     />
+                                                    )}
                                                     {isLimitedVideo && (
                                                         videoMaxViews === 1 ? (
                                                             <div className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-white ring-1 ring-white/25">
@@ -1768,7 +1907,7 @@ export function ChatThreadMessages({
                                                             </div>
                                                         )
                                                     )}
-                                                    {!shouldBlurIncomingMedia && (
+                                                    {!shouldBlurIncomingMedia && !contentCover && (
                                                         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
                                                             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-black/75 transition group-hover/media:bg-black/90">
                                                                 <Play className="h-5 w-5 fill-white text-white" />

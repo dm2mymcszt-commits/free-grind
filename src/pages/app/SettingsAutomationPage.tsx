@@ -36,6 +36,14 @@ import {
 import { parseKeywordList, type KeywordEntry } from "../../utils/keywordList";
 import { useAuth } from "../../contexts/useAuth";
 import {
+    isExplicitBlockEnabled,
+    isExplicitFilterEnabled,
+    setExplicitBlockEnabled,
+    setExplicitFilterEnabled,
+    testDetector,
+} from "../../services/contentCheck";
+import { isTauriRuntime } from "../../services/tauriWebSocket";
+import {
     GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
     type GoogleDriveSyncDataAppliedDetail,
 } from "../../services/googleDriveSyncRuntime";
@@ -96,8 +104,14 @@ export function SettingsAutomationPage() {
 
     const [blockTwitter, setBlockTwitter] = useState(() => window.localStorage.getItem("fg-block-twitter") === "true");
 
+    // Explicit photo filter. Saved the moment it is switched, not with the rules below.
+    const [explicitFilter, setExplicitFilter] = useState(() => isExplicitFilterEnabled());
+    const [explicitBlock, setExplicitBlock] = useState(() => isExplicitBlockEnabled());
+    const [detectorStatus, setDetectorStatus] = useState<string | null>(null);
+
     const [blockFacelessNoMedia, setBlockFacelessNoMedia] = useState(() => window.localStorage.getItem("fg-block-faceless-no-media") === "true");
     const [blockFacelessDelay, setBlockFacelessDelay] = useState(() => window.localStorage.getItem("fg-block-faceless-delay") || "5");
+    const [blockFacelessPhotos, setBlockFacelessPhotos] = useState(() => window.localStorage.getItem("fg-block-faceless-photos") === "true");
     const [whitelist, setWhitelist] = useState<{ profileId: string; displayName: string; primaryMediaHash?: string | null }[]>([]);
     useEffect(() => {
         setWhitelist(getAutoBlockWhitelist());
@@ -345,6 +359,45 @@ export function SettingsAutomationPage() {
         toast.success(val ? "Views Recovery Enabled" : "Views Recovery Disabled", { id: "view-scanner-toggle" });
     };
 
+    const runDetectorTest = async () => {
+        setDetectorStatus("Testing…");
+        const result = await testDetector();
+        setDetectorStatus(
+            result.ok
+                ? `Detector works on this device (${result.elapsedMs} ms per photo).`
+                : `Detector is not working on this device: ${result.error}`,
+        );
+        return result.ok;
+    };
+
+    const handleToggleExplicitFilter = async (val: boolean) => {
+        if (!val) {
+            setExplicitFilterEnabled(false);
+            setExplicitFilter(false);
+            setExplicitBlock(false);
+            setDetectorStatus(null);
+            toast.success("Explicit photo filter off", { id: "explicit-filter-toggle" });
+            return;
+        }
+        // Switching it on with a detector that does not run would cover every
+        // photo for good and never block anyone, so prove it first.
+        if (!(await runDetectorTest())) {
+            toast.error("The photo detector did not start, so the filter stays off.", { id: "explicit-filter-toggle" });
+            return;
+        }
+        setExplicitFilterEnabled(true);
+        setExplicitFilter(true);
+        setExplicitBlock(isExplicitBlockEnabled());
+        window.dispatchEvent(new Event("fg-trigger-inbox-scan"));
+        toast.success("Explicit photo filter on", { id: "explicit-filter-toggle" });
+    };
+
+    const handleToggleExplicitBlock = (val: boolean) => {
+        setExplicitBlockEnabled(val);
+        setExplicitBlock(val);
+        if (val) window.dispatchEvent(new Event("fg-trigger-inbox-scan"));
+    };
+
     // --- SAVE HANDLERS ---
     const handleSaveViewScanner = () => {
         window.localStorage.setItem("fg-view-scanner-interval", viewScannerInterval);
@@ -370,6 +423,7 @@ export function SettingsAutomationPage() {
         window.localStorage.setItem("fg-block-twitter", String(blockTwitter));
         window.localStorage.setItem("fg-block-faceless-no-media", String(blockFacelessNoMedia));
         window.localStorage.setItem("fg-block-faceless-delay", blockFacelessDelay);
+        window.localStorage.setItem("fg-block-faceless-photos", String(blockFacelessPhotos));
 
         // Trigger immediate background scan with new rules
         window.dispatchEvent(new Event("fg-trigger-inbox-scan"));
@@ -485,6 +539,53 @@ export function SettingsAutomationPage() {
                                     className="btn-accent inline-flex w-full min-h-11 items-center justify-center gap-2 px-4 py-2.5 font-semibold mt-2"
                                 >
                                     <Save className="h-4 w-4" /> Save Recovery Settings
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* EXPLICIT PHOTOS */}
+                <div>
+                    <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+                        Explicit photos
+                    </p>
+                    <div className="surface-card divide-y divide-[var(--border)] overflow-hidden">
+                        <ToggleRow
+                            icon={<EyeOff className="h-5 w-5" />}
+                            iconClass="bg-rose-500/15 text-rose-400"
+                            label="Hide photos until they are checked"
+                            description="Every photo and video you receive is checked on this device before it is shown. Explicit ones, ones the detector is unsure about and ones it could not check stay covered. Nothing is uploaded anywhere."
+                            checked={explicitFilter}
+                            onChange={(val) => void handleToggleExplicitFilter(val)}
+                        />
+
+                        {explicitFilter && (
+                            <ToggleRow
+                                icon={<Ban className="h-5 w-5" />}
+                                iconClass="bg-red-500/15 text-red-400"
+                                label="Block whoever sends an explicit photo"
+                                description="Blocks the sender as soon as a photo or video shows genitals, anus or bare buttocks, before you are notified. Shirtless photos are left alone. People on your whitelist are not blocked; their photo just stays covered. Only applies to photos received from now on."
+                                checked={explicitBlock}
+                                onChange={handleToggleExplicitBlock}
+                            />
+                        )}
+
+                        {!isTauriRuntime() ? (
+                            <p className="px-4 py-3 text-xs text-[var(--text-muted)]">
+                                The photo detector only runs inside the app, not in a browser.
+                            </p>
+                        ) : (
+                            <div className="flex items-center justify-between gap-3 px-4 py-3">
+                                <p className="min-w-0 text-xs text-[var(--text-muted)]">
+                                    {detectorStatus ?? "Each device runs its own detector and has its own switch."}
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={() => void runDetectorTest()}
+                                    className="shrink-0 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-[var(--text)] transition hover:border-[var(--accent)]"
+                                >
+                                    Test detector
                                 </button>
                             </div>
                         )}
@@ -782,6 +883,19 @@ export function SettingsAutomationPage() {
                                                 <strong className="text-[var(--text)]">Block Faceless Profiles with No Media.</strong> Automatically blocks profiles with no profile picture if they haven't sent any media (photos, videos, albums) after the set time from their first message.
                                             </span>
                                         </label>
+                                        {blockFacelessNoMedia && (
+                                            <label className="mt-3 ml-6 flex items-start gap-2 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={blockFacelessPhotos}
+                                                    onChange={(e) => setBlockFacelessPhotos(e.target.checked)}
+                                                    className="mt-0.5 h-3.5 w-3.5 accent-[var(--accent)] shrink-0"
+                                                />
+                                                <span className="text-xs text-[var(--text-muted)] leading-relaxed">
+                                                    <strong className="text-[var(--text)]">Also when none of their photos shows a face.</strong> Their profile photos are checked on this device. Sunglasses, far-away or turned-away faces can be missed, so someone is only counted when every photo was checked and no face was found in any.
+                                                </span>
+                                            </label>
+                                        )}
                                         {blockFacelessNoMedia && (
                                             <div className="flex items-center gap-2 mt-3 ml-6">
                                                 <span className="text-xs text-[var(--text-muted)]">Block after:</span>

@@ -76,6 +76,7 @@ const REASON_LABELS: Record<string, string> = {
 	first_media: "Photo as first message",
 	left_on_seen: "Left on seen",
 	faceless: "No face photo",
+	explicit_media: "Explicit photo",
 	rule: "Automation rule",
 	counter_block: "They blocked you",
 	other: "Other",

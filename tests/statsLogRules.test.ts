@@ -36,6 +36,8 @@ describe("classifyBlockReason", () => {
 		["First message was media (Bot evasion)", "first_media", null],
 		["Left on seen for 12min", "left_on_seen", "12"],
 		["Faceless profile: No media sent 5min after first message", "faceless", null],
+		["Explicit photo", "explicit_media", null],
+		["Explicit video", "explicit_media", null],
 	];
 
 	for (const [label, kind, detail] of cases) {

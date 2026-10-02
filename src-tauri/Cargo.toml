@@ -55,6 +55,9 @@ rustls = { version = "0.23", features = ["ring"] }
 ring = "0.17"
 base64 = "0.22"
 zeroize = "1"
+# On-device photo detector (commands/vision.rs): pure Rust, so it builds the same on every platform.
+tract-onnx = "0.21"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
 
 # Platform-specific dependencies
 [target.'cfg(target_os = "windows")'.dependencies]
@@ -85,3 +88,18 @@ apple-native-keyring-store = { version = "0.2.3", features = ["protected", "keyc
 [target.'cfg(target_os = "linux")'.dependencies]
 linux-keyutils-keyring-store = "0.2.1"
 webkit2gtk = "2"
+
+# The photo detector is unusably slow unoptimised, so the crates that do its
+# arithmetic are optimised in dev builds too.
+[profile.dev.package.tract-core]
+opt-level = 3
+[profile.dev.package.tract-linalg]
+opt-level = 3
+[profile.dev.package.tract-data]
+opt-level = 3
+[profile.dev.package.ndarray]
+opt-level = 3
+[profile.dev.package.image]
+opt-level = 3
+[profile.dev.package.zune-jpeg]
+opt-level = 3

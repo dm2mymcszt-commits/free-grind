@@ -11,11 +11,14 @@ import {
     getMatchedForbiddenWord,
     getMatchedFirstMessageWord
 } from "../utils/autoblock";
-import { getOtherParticipant } from "../pages/app/chat/chatUtils";
+import { getMediaCaptureTarget, getOtherParticipant } from "../pages/app/chat/chatUtils";
 import { isProfileAutoblockWhitelisted, checkAndAutoWhitelistActiveChat, getSentMessagesThreshold } from "../utils/privacy";
 import type { ConversationEntry, MessagesResponse } from "../types/messages";
 import { preserveAndAutoBlockConversation } from "../services/autoBlockConversation";
 import * as chatDb from "../services/chatDb";
+import { getExplicitFilterSince, isExplicitBlockEnabled } from "../services/contentCheck";
+import { fetchAndStoreMedia } from "../services/mediaStore";
+import { profilePhotosShowFace } from "../services/profileFaceCheck";
 import {
     earliestTimestamp,
     NO_EARLIER_HISTORY,
@@ -47,6 +50,27 @@ async function readEarlierHistory(
     return summarizeEarlierHistory(earlier, userId);
 }
 
+/** Whether the newest message in a conversation, as the inbox shows it, is a photo, video or album. */
+function previewIsMedia(conversation: ConversationEntry): boolean {
+    const type = conversation.data?.preview?.type?.toLowerCase() || "";
+    const chat1Type = conversation.data?.preview?.chat1Type?.toLowerCase() || "";
+    return (
+        type === "image" ||
+        type === "expiringimage" ||
+        type === "video" ||
+        type === "nonexpiringvideo" ||
+        type === "privatevideo" ||
+        chat1Type === "image" ||
+        chat1Type === "expiring_image" ||
+        chat1Type === "video" ||
+        chat1Type === "private_video" ||
+        chat1Type === "expiring_video"
+    );
+}
+
+/** Below this, a message time is in seconds rather than milliseconds. */
+const SECONDS_THRESHOLD = 100_000_000_000;
+
 /**
  * How long to gather "settings changed" events before sweeping. The keyword
  * editor saves on every tag added, removed or switched, and each save used to
@@ -64,6 +88,8 @@ export function BackgroundInboxScanner() {
     const pendingMediaBlocksRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
     // Seen/Read auto-block: maps conversationId -> timestamp when "seen but not replied" was first detected
     const seenStartTimesRef = useRef<Map<string, number>>(new Map());
+    // Explicit-photo catch-up: conversationId -> the last activity its photos were checked up to
+    const explicitCheckedRef = useRef<Map<string, number>>(new Map());
 
     useEffect(() => {
         if (!api || userId == null) return;
@@ -116,7 +142,8 @@ export function BackgroundInboxScanner() {
             const isBotEvasionEnabled = window.localStorage.getItem("fg-block-first-media") === "true";
             const isSeenBlockEnabled = window.localStorage.getItem("fg-block-seen-enabled") === "true";
             const isFacelessBlockEnabled = window.localStorage.getItem("fg-block-faceless-no-media") === "true";
-            if (!isScannerEnabled && !isBotEvasionEnabled && !isSeenBlockEnabled && !isFacelessBlockEnabled) {
+            const isExplicitCatchUpEnabled = isExplicitBlockEnabled();
+            if (!isScannerEnabled && !isBotEvasionEnabled && !isSeenBlockEnabled && !isFacelessBlockEnabled && !isExplicitCatchUpEnabled) {
                 // Check again in 30 seconds
                 if (!isCancelled) {
                     timeoutRef.current = setTimeout(scanInbox, 30000);
@@ -571,9 +598,23 @@ export function BackgroundInboxScanner() {
                             } catch {}
                         }
 
-                        // Check if the profile is faceless
-                        if (otherParticipant.primaryMediaHash && otherParticipant.primaryMediaHash.trim().length > 0) {
-                            continue;
+                        // Check if the profile is faceless: no photo at all, or, when
+                        // that option is on, photos none of which shows a face.
+                        const primaryHash = otherParticipant.primaryMediaHash?.trim() ?? "";
+                        let facelessReason = "Faceless profile: No media sent 5min after first message";
+                        if (primaryHash.length > 0) {
+                            if (window.localStorage.getItem("fg-block-faceless-photos") !== "true") {
+                                continue;
+                            }
+                            // Only a definite "no face in any photo" goes on. A photo that
+                            // could not be checked is not evidence of anything. The answer
+                            // is remembered, so people who show a face cost nothing on
+                            // later passes.
+                            const showsFace = await profilePhotosShowFace(api, profileId, primaryHash);
+                            if (showsFace !== false) {
+                                continue;
+                            }
+                            facelessReason = "Faceless profile: No face in profile photos";
                         }
 
                         try {
@@ -647,18 +688,76 @@ export function BackgroundInboxScanner() {
                             if (elapsed >= blockDelayMs && !hasEarlierIncoming) {
                                 // Block them!
                                 const displayName = c.data?.name || profileId;
-                                console.log(`[BackgroundInboxScanner] Blocking faceless profile ${profileId} (${displayName}) - no media sent after 5 minutes`);
+                                console.log(`[BackgroundInboxScanner] Blocking faceless profile ${profileId} (${displayName}) - ${facelessReason}`);
                                 await blockConversation({
                                     conversation: c,
                                     profileId,
                                     displayName,
-                                    reason: "Faceless profile: No media sent 5min after first message",
+                                    reason: facelessReason,
                                     messageSnapshot: msgRes,
                                 });
                             }
 
                         } catch (err) {
                             console.warn(`[BackgroundInboxScanner] Faceless check failed for ${conversationId}:`, err);
+                        }
+
+                        // Throttle between API calls
+                        await new Promise((resolve) => setTimeout(resolve, 1000));
+                    }
+                }
+
+                // --- EXPLICIT PHOTO CATCH-UP PASS ---
+                // A photo that arrives while the app is open is checked as it
+                // arrives. This is for the ones that arrived while it was closed:
+                // unread chats get their photos downloaded, which checks them, and
+                // an explicit one is blocked by the explicit-media guard before the
+                // chat is ever opened. Nothing here decides a block itself.
+                if (isExplicitCatchUpEnabled) {
+                    const since = getExplicitFilterSince();
+                    for (const c of conversations) {
+                        if (isCancelled) break;
+                        const conversationId = c.data?.conversationId;
+                        const profileId = getOtherParticipant(c, userId)?.profileId?.toString();
+                        if (!conversationId || !profileId || since == null) continue;
+
+                        const unreadCount = c.data?.unreadCount ?? 0;
+                        // A chat with nothing unread has been opened, and opening a
+                        // chat checks its photos.
+                        if (unreadCount === 0) continue;
+                        const lastActivity = c.data?.lastActivityTimestamp ?? 0;
+                        if (explicitCheckedRef.current.get(conversationId) === lastActivity) continue;
+                        if (isProfileAutoblockWhitelisted(profileId)) continue;
+                        // One unread message that is not a photo has no photo to check.
+                        if (unreadCount === 1 && !previewIsMedia(c)) {
+                            explicitCheckedRef.current.set(conversationId, lastActivity);
+                            continue;
+                        }
+
+                        try {
+                            const msgRes = await api.listMessages({ conversationId });
+                            for (const msg of msgRes.messages || []) {
+                                if (isCancelled) break;
+                                if (Number(msg.senderId) === Number(userId)) continue;
+                                const sentAt = msg.timestamp < SECONDS_THRESHOLD ? msg.timestamp * 1000 : msg.timestamp;
+                                if (sentAt < since) continue;
+                                const target = getMediaCaptureTarget(msg);
+                                if (!target || target.kind === "audio") continue;
+                                await fetchAndStoreMedia({
+                                    mediaKey: target.mediaKey,
+                                    kind: target.kind,
+                                    url: target.url,
+                                    conversationId,
+                                    messageId: msg.messageId,
+                                    viewOnce: target.viewOnce,
+                                    isOwnMessage: false,
+                                    cacheInMemory: false,
+                                    sender: { senderId: msg.senderId, timestamp: msg.timestamp },
+                                });
+                            }
+                            explicitCheckedRef.current.set(conversationId, lastActivity);
+                        } catch (err) {
+                            console.warn(`[BackgroundInboxScanner] Explicit photo check failed for ${conversationId}:`, err);
                         }
 
                         // Throttle between API calls
@@ -674,7 +773,7 @@ export function BackgroundInboxScanner() {
 
             if (!isCancelled) {
                 // Run scanner more frequently when seen-blocker or faceless blocker is active for responsive blocking
-                const interval = (isSeenBlockEnabled || isFacelessBlockEnabled) ? 30000 : 60000;
+                const interval = (isSeenBlockEnabled || isFacelessBlockEnabled || isExplicitCatchUpEnabled) ? 30000 : 60000;
                 timeoutRef.current = setTimeout(scanInbox, interval);
             }
         };

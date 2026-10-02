@@ -22,6 +22,7 @@ export type StatsBlockReasonKind =
 	| "first_media"
 	| "left_on_seen"
 	| "faceless"
+	| "explicit_media"
 	| "rule"
 	| "counter_block"
 	| "other";
@@ -88,6 +89,7 @@ export function classifyBlockReason(label: string | null | undefined): Classifie
 		return { kind: "left_on_seen", detail: match[1] };
 	}
 	if (/^faceless/i.test(text)) return { kind: "faceless", detail: null };
+	if (/^explicit (photo|video)$/i.test(text)) return { kind: "explicit_media", detail: null };
 	return { kind: "other", detail: null };
 }
 

@@ -1,12 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, CircleCheck, Download, Images, LayoutGrid, Loader2, Play, Trash2, X } from "lucide-react";
+import { Check, CircleCheck, Download, EyeOff, Images, LayoutGrid, Loader2, Play, Trash2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
 import { ProfileImage } from "../../../components/ui/profile-image";
 import { BottomSheet, SheetClose } from "../../../components/ui/bottom-sheet";
 import { PhotoViewer, type PhotoViewerMedia } from "../../../components/PhotoViewer";
 import { useApiFunctions } from "../../../hooks/useApiFunctions";
+import { useContentChecks } from "../../../hooks/useContentChecks";
+import {
+	checkMediaBytes,
+	getCachedCheckForMediaKey,
+	getCachedCheckForMessage,
+	verdictOf,
+} from "../../../services/contentCheck";
 import { saveMediaBytesBatch } from "../../../services/saveMedia";
 import { fetchAndEncode, toDataUri } from "../../../services/mediaStore";
 import { captureAlbum, getLocalAlbum } from "../../../services/albumStore";
@@ -81,7 +88,12 @@ export function ChatMediaSheet({
 	const [tab, setTab] = useState<Tab>("media");
 	const [albums, setAlbums] = useState<SharedAlbum[]>([]);
 	const [albumsLoading, setAlbumsLoading] = useState(true);
-	const [media, setMedia] = useState<LocalMediaItem[]>([]);
+	// Everything saved from this chat. What is shown is `media` below.
+	const [allMedia, setAllMedia] = useState<LocalMediaItem[]>([]);
+	const explicitFilterOn = useContentChecks();
+	// Who sent each saved message, to tell this account's own photos apart.
+	// Null until read: until then nothing is known to be this account's own.
+	const [senderByMessageId, setSenderByMessageId] = useState<ReadonlyMap<string, string> | null>(null);
 	const [mediaLoading, setMediaLoading] = useState(true);
 	const [failedCovers, setFailedCovers] = useState<Set<number>>(new Set());
 	const [viewerIndex, setViewerIndex] = useState<number | null>(null);
@@ -127,6 +139,56 @@ export function ChatMediaSheet({
 		if (longPressTimerRef.current != null) window.clearTimeout(longPressTimerRef.current);
 	}, []);
 
+	useEffect(() => {
+		if (!explicitFilterOn) return;
+		let cancelled = false;
+		const messageIds = allMedia.flatMap((item) => (item.messageId ? [item.messageId] : []));
+		void chatDb
+			.getMessageSenderIds(messageIds)
+			.then((senders) => {
+				if (!cancelled) setSenderByMessageId(senders);
+			})
+			.catch(() => {});
+		return () => {
+			cancelled = true;
+		};
+	}, [allMedia, explicitFilterOn]);
+
+	const isOwnMedia = (item: LocalMediaItem): boolean => {
+		const senderId = item.messageId ? senderByMessageId?.get(item.messageId) : undefined;
+		return userId != null && senderId != null && Number(senderId) === Number(userId);
+	};
+
+	// With the explicit-photo filter on, a received photo is only listed once
+	// a check has cleared it. The rest are left out altogether rather than
+	// covered: the viewer swipes through this list, and "Save all" exports it.
+	const isClearedMedia = (item: LocalMediaItem): boolean =>
+		verdictOf(getCachedCheckForMessage(item.messageId) ?? getCachedCheckForMediaKey(item.mediaKey)) === "clear";
+	const media = explicitFilterOn
+		? allMedia.filter((item) => isOwnMedia(item) || isClearedMedia(item))
+		: allMedia;
+	const hiddenMediaCount = allMedia.length - media.length;
+
+	// Anything received and not yet checked gets checked from the copy already
+	// loaded here.
+	useEffect(() => {
+		if (!explicitFilterOn || senderByMessageId == null) return;
+		for (const item of allMedia) {
+			if (isOwnMedia(item)) continue;
+			if (getCachedCheckForMessage(item.messageId) ?? getCachedCheckForMediaKey(item.mediaKey)) continue;
+			void checkMediaBytes({
+				mediaKey: item.mediaKey,
+				messageId: item.messageId,
+				conversationId,
+				kind: item.kind,
+				base64: item.base64,
+				mimeType: item.mimeType,
+			});
+		}
+		// isOwnMedia reads senderByMessageId and userId, both listed.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [allMedia, explicitFilterOn, senderByMessageId, userId, conversationId]);
+
 	const pickedMedia = () => media.filter((item) => selected?.has(item.mediaKey));
 
 	const handleSaveSelected = async () => {
@@ -170,7 +232,7 @@ export function ChatMediaSheet({
 			);
 			if (deleted.length > 0) {
 				const gone = new Set(deleted);
-				setMedia((previous) => previous.filter((item) => !item.messageId || !gone.has(item.messageId)));
+				setAllMedia((previous) => previous.filter((item) => !item.messageId || !gone.has(item.messageId)));
 				setSelected(null);
 			}
 		} finally {
@@ -337,7 +399,7 @@ export function ChatMediaSheet({
 			try {
 				const files = await chatDb.getMediaFilesForConversation(conversationId);
 				if (cancelled) return;
-				setMedia(
+				setAllMedia(
 					files.map((f) => ({
 						mediaKey: f.mediaKey,
 						messageId: f.messageId,
@@ -409,7 +471,7 @@ export function ChatMediaSheet({
 					});
 
 					if (!cancelled) {
-						setMedia((previous) => {
+						setAllMedia((previous) => {
 							if (previous.some((m) => m.mediaKey === mediaKey)) {
 								return previous;
 							}
@@ -619,9 +681,26 @@ export function ChatMediaSheet({
 						<div className="flex flex-1 flex-col items-center justify-center gap-3 text-[var(--text-muted)]">
 							<Images className="h-10 w-10 opacity-30" />
 							<p className="text-sm font-medium">{t("chat.media_sheet.media_empty_title")}</p>
-							<p className="text-xs opacity-60">{t("chat.media_sheet.media_empty_desc")}</p>
+							<p className="text-xs opacity-60">
+								{hiddenMediaCount > 0
+									? t("chat.media_sheet.hidden_by_filter", {
+											defaultValue: "{{count}} not shown: explicit, or not checked yet.",
+											count: hiddenMediaCount,
+										})
+									: t("chat.media_sheet.media_empty_desc")}
+							</p>
 						</div>
 					) : (
+						<>
+						{hiddenMediaCount > 0 ? (
+							<p className="mb-3 flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+								<EyeOff className="h-3.5 w-3.5 shrink-0" />
+								{t("chat.media_sheet.hidden_by_filter", {
+									defaultValue: "{{count}} not shown: explicit, or not checked yet.",
+									count: hiddenMediaCount,
+								})}
+							</p>
+						) : null}
 						<div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
 							{media.map((item, idx) => {
 								const isPicked = selected?.has(item.mediaKey) ?? false;
@@ -689,6 +768,7 @@ export function ChatMediaSheet({
 								);
 							})}
 						</div>
+						</>
 					)}
 				</div>
 			</div>

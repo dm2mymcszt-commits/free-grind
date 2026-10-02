@@ -140,6 +140,7 @@ import {
 	SAVED_PHRASES_UPDATED_EVENT,
 } from "../../../services/savedPhrases";
 import { PastContactNote } from "../../../components/PastContactNote";
+import { getContentCoverForMessage, isExplicitFilterEnabled } from "../../../services/contentCheck";
 
 type ChatThreadPanelProps = {
 	navigate: NavigateFunction;
@@ -2100,6 +2101,16 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 							const isAudioReply = rtm.type === "Audio" || rtm.chat1Type?.toLowerCase() === "audio";
 							const isImageReply = rtm.type === "Image" || rtm.type === "ExpiringImage" || rtm.chat1Type?.toLowerCase() === "image" || rtm.chat1Type?.toLowerCase() === "expiring_image";
 							const thumbUrl = (() => {
+								// A received photo the explicit-photo filter has not
+								// cleared is not shown here either.
+								if (
+									isImageReply &&
+									isExplicitFilterEnabled() &&
+									Number(rtm.senderId) !== Number(userId) &&
+									getContentCoverForMessage(rtm.messageId) != null
+								) {
+									return null;
+								}
 								if (isImageReply) {
 									const fromUtil = getMessageImageUrl(rtm);
 									if (fromUtil) return fromUtil;

@@ -24,6 +24,12 @@ import { isAutoDownloadMediaEnabled } from "../utils/mediaSettings";
 import { limitChatDbBlobRead } from "../utils/chatDbBlobLimiter";
 import { BoundedStringCache, cacheBudget, isConstrainedDevice } from "../utils/boundedCache";
 import { mapWithConcurrency } from "../utils/concurrency";
+import {
+	checkMediaBytes,
+	isExplicitFilterEnabled,
+	verdictOf,
+	type MediaSender,
+} from "./contentCheck";
 
 /**
  * How many large downloads run at once. Each sits in memory several times over
@@ -175,10 +181,24 @@ export type FetchAndStoreMediaParams = {
 	// nobody is looking at, and holding all of that is what ran iOS out of
 	// memory. Defaults to true.
 	cacheInMemory?: boolean;
+	// Who sent the message and when, for callers that have the message in
+	// hand. The explicit-photo filter needs both before it may block anyone,
+	// and a message that just arrived is not in chatDb yet to be looked up.
+	sender?: MediaSender | null;
 };
 
+/**
+ * Whether this is the actual media somebody sent, as opposed to this
+ * account's own or a thumbnail quoted alongside a message. Received photos
+ * and videos are what the explicit-photo filter checks and what
+ * auto-download mirrors.
+ */
+function isReceivedPrimaryMedia(params: FetchAndStoreMediaParams): boolean {
+	return !params.isOwnMessage && !params.skipAutoDownload;
+}
+
 async function downloadAndStore(params: FetchAndStoreMediaParams): Promise<void> {
-	const { mediaKey, kind, url, conversationId, messageId, viewOnce, isOwnMessage, skipAutoDownload } = params;
+	const { mediaKey, kind, url, conversationId, messageId, viewOnce } = params;
 	const fetched = await fetchAndEncode(url);
 
 	if (!fetched) {
@@ -219,9 +239,33 @@ async function downloadAndStore(params: FetchAndStoreMediaParams): Promise<void>
 		emptyMessageMediaLookups.delete(messageId);
 	}
 
-	if (!isOwnMessage && !skipAutoDownload && (kind === "image" || kind === "video")) {
-		void maybeAutoDownloadToDevice(fetched.base64, fetched.mimeType, kind, conversationId);
+	if (!isReceivedPrimaryMedia(params) || kind === "audio") {
+		return;
 	}
+
+	// Checked here, with the bytes already in hand, so every path that
+	// downloads a received photo — a live message, an opened thread, the
+	// scanner, the capture before a block — ends with a verdict on it.
+	// Awaited: a caller that waits for the download is waiting for the
+	// verdict too.
+	if (isExplicitFilterEnabled()) {
+		const check = await checkMediaBytes({
+			mediaKey,
+			messageId,
+			conversationId,
+			kind,
+			base64: fetched.base64,
+			mimeType: fetched.mimeType,
+			sender: params.sender,
+		});
+		// Only a photo that was checked and found clear is copied out to the
+		// device's gallery; an explicit or unchecked one stays inside the app.
+		if (verdictOf(check) !== "clear") {
+			return;
+		}
+	}
+
+	void maybeAutoDownloadToDevice(fetched.base64, fetched.mimeType, kind, conversationId);
 }
 
 /**
@@ -278,6 +322,24 @@ export async function fetchAndStoreMedia(
 				const cached = await limitChatDbBlobRead(() => chatDb.getMediaFile(mediaKey));
 				if (cached?.fetchStatus === "ok") {
 					setCachedMediaUri(mediaKey, toDataUri(cached.mimeType, cached.dataBase64));
+					// Stored before the filter was switched on, or the same photo
+					// arriving again in a new message: it still needs a verdict
+					// tied to this message.
+					if (
+						isExplicitFilterEnabled() &&
+						isReceivedPrimaryMedia(params) &&
+						params.kind !== "audio"
+					) {
+						await checkMediaBytes({
+							mediaKey,
+							messageId: params.messageId,
+							conversationId: params.conversationId,
+							kind: params.kind,
+							base64: cached.dataBase64,
+							mimeType: cached.mimeType,
+							sender: params.sender,
+						});
+					}
 					return;
 				}
 				storedStatus = cached?.fetchStatus ?? null;
