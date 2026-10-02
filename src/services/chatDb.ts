@@ -322,6 +322,13 @@ async function getDb(): Promise<Database> {
 				await db.execute(
 					"CREATE INDEX IF NOT EXISTS idx_content_checks_message ON content_checks(message_id)",
 				);
+				// Added later: how much of the photo the face takes up, so "too far
+				// away to recognise" can be told from "no face".
+				try {
+					await db.execute("ALTER TABLE content_checks ADD COLUMN face_share REAL");
+				} catch {
+					// already migrated
+				}
 
 				await db.execute(`
 					CREATE TABLE IF NOT EXISTS albums (
@@ -2275,6 +2282,7 @@ type ContentCheckRow = {
 	explicit_score: number;
 	cover_only_score: number;
 	face_score: number;
+	face_share: number | null;
 	model: string;
 	checked_at: number;
 };
@@ -2289,6 +2297,7 @@ function rowToStoredContentCheck(row: ContentCheckRow): StoredContentCheck {
 		explicitScore: Number(row.explicit_score) || 0,
 		coverOnlyScore: Number(row.cover_only_score) || 0,
 		faceScore: Number(row.face_score) || 0,
+		faceShare: row.face_share == null ? null : Number(row.face_share),
 		model: row.model,
 		checkedAt: row.checked_at,
 	};
@@ -2302,8 +2311,8 @@ export async function upsertContentCheck(check: StoredContentCheck): Promise<voi
 			`
 			INSERT INTO content_checks (
 				media_key, message_id, conversation_id, kind, explicit_label,
-				explicit_score, cover_only_score, face_score, model, checked_at
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+				explicit_score, cover_only_score, face_score, model, checked_at, face_share
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 			ON CONFLICT(media_key) DO UPDATE SET
 				message_id = COALESCE(excluded.message_id, content_checks.message_id),
 				conversation_id = COALESCE(excluded.conversation_id, content_checks.conversation_id),
@@ -2312,6 +2321,7 @@ export async function upsertContentCheck(check: StoredContentCheck): Promise<voi
 				explicit_score = excluded.explicit_score,
 				cover_only_score = excluded.cover_only_score,
 				face_score = excluded.face_score,
+				face_share = excluded.face_share,
 				model = excluded.model,
 				checked_at = excluded.checked_at
 			`,
@@ -2326,6 +2336,7 @@ export async function upsertContentCheck(check: StoredContentCheck): Promise<voi
 				check.faceScore,
 				check.model,
 				check.checkedAt,
+				check.faceShare,
 			],
 		);
 	});

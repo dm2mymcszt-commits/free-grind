@@ -357,6 +357,57 @@ pub async fn detect_image_content(
     .map_err(|e| format!("detector task failed: {e}"))?
 }
 
+/// Letters, digits, dot, dash and underscore only, and not a dot-file: a name
+/// that cannot leave the folder it is written into.
+fn is_safe_file_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 120
+        && !name.starts_with('.')
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+}
+
+/// TEMPORARY, for tuning the detector's thresholds: writes one file of a test
+/// collection (a photo, or the list of what the detector found in each) into
+/// `<app data>/detector-test/<run>/` and returns that folder. Nothing reads
+/// these back; they exist to be looked at from outside the app, and the
+/// command goes away with the collector once the thresholds are settled.
+#[tauri::command]
+pub async fn detector_test_write(
+    app: tauri::AppHandle,
+    run: String,
+    name: String,
+    data_base64: Option<String>,
+    text: Option<String>,
+) -> Result<String, String> {
+    use tauri::Manager;
+
+    if !is_safe_file_name(&run) || !is_safe_file_name(&name) {
+        return Err("unsafe file name".into());
+    }
+    let bytes = match (data_base64, text) {
+        (Some(data), _) => base64::engine::general_purpose::STANDARD
+            .decode(data.trim())
+            .map_err(|e| format!("invalid data: {e}"))?,
+        (None, Some(text)) => text.into_bytes(),
+        (None, None) => return Err("nothing to write".into()),
+    };
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("no app data folder: {e}"))?
+        .join("detector-test")
+        .join(&run);
+    tauri::async_runtime::spawn_blocking(move || {
+        std::fs::create_dir_all(&dir).map_err(|e| format!("could not create {dir:?}: {e}"))?;
+        std::fs::write(dir.join(&name), bytes).map_err(|e| format!("could not write {name}: {e}"))?;
+        Ok(dir.to_string_lossy().into_owned())
+    })
+    .await
+    .map_err(|e| format!("write task failed: {e}"))?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -474,6 +525,41 @@ mod tests {
         let center_y = found.y + found.height / 2.0;
         assert!((0.58..0.92).contains(&center_x), "{found:?}");
         assert!((0.06..0.32).contains(&center_y), "{found:?}");
+    }
+
+    /// Not a test: prints what the detector finds in a photo on disk, whole
+    /// and tiled, for tuning the thresholds against a real case.
+    ///
+    /// FG_PROBE_IMAGE=path cargo test --lib probe_a_photo -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn probe_a_photo_from_disk() {
+        let path = std::env::var("FG_PROBE_IMAGE").expect("set FG_PROBE_IMAGE to a photo");
+        let bytes = std::fs::read(&path).expect("the photo can be read");
+        for tiled in [false, true] {
+            let result = detect(&bytes, tiled).expect("the detector runs");
+            println!(
+                "{path} ({}x{}) tiled={tiled} in {} ms",
+                result.image_width, result.image_height, result.elapsed_ms
+            );
+            for found in &result.detections {
+                println!(
+                    "  {:<26} {:.3}  x={:.2} y={:.2} w={:.2} h={:.2}",
+                    found.label, found.score, found.x, found.y, found.width, found.height
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_collection_file_names_cannot_leave_their_folder() {
+        assert!(is_safe_file_name("p123_0_abcdef.jpg"));
+        assert!(is_safe_file_name("results.json"));
+        assert!(!is_safe_file_name("../results.json"));
+        assert!(!is_safe_file_name("a/b.jpg"));
+        assert!(!is_safe_file_name("a\\b.jpg"));
+        assert!(!is_safe_file_name(".hidden"));
+        assert!(!is_safe_file_name(""));
     }
 
     #[test]

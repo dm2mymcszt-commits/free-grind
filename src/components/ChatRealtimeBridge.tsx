@@ -86,7 +86,7 @@ import {
 	withPreservingBlock,
 } from "../services/autoBlockConversation";
 import { logBlockEvent, type StatsBlockReason } from "../services/statsLog";
-import { isExplicitBlockEnabled } from "../services/contentCheck";
+import { isExplicitBlockEnabled, isExplicitProfileBlockEnabled } from "../services/contentCheck";
 import {
 	checkLiveMessageMedia,
 	decideLiveExplicitBlock,
@@ -94,7 +94,9 @@ import {
 	releaseLiveMessage,
 	startExplicitMediaGuard,
 } from "../services/explicitMediaGuard";
-import { explicitBlockReason } from "../utils/explicitContentRules";
+import { findExplicitProfilePhoto } from "../services/profilePhotoCheck";
+import { logDetectorDecision } from "../services/detectorLog";
+import { EXPLICIT_PROFILE_PHOTO_REASON, explicitBlockReason } from "../utils/explicitContentRules";
 
 let cachedIsAndroid: boolean | null = null;
 
@@ -863,6 +865,8 @@ export function ChatRealtimeBridge() {
 							// Whether the profile was read while deciding. A rule decided from
 							// the message alone has not, and has to read it before blocking.
 							let profileRead = false;
+							// eslint-disable-next-line @typescript-eslint/no-explicit-any
+							let senderProfile: any = null;
 
 							if (isBlockEnabled && !isWhitelisted) {
 								const matchedMessage = messageText ? getMatchedForbiddenWord(messageText, "message") : null;
@@ -891,6 +895,7 @@ export function ChatRealtimeBridge() {
 										const profile = await apiFunctions.getProfileDetail(pidStr).catch(() => null) as any;
 										if (profile) {
 											profileRead = true;
+											senderProfile = profile;
 											const name = profile.name || profile.displayName || "";
 											detectedDisplayName = name || detectedDisplayName;
 											detectedPhotoHash = profile.profileImageMediaHash ?? null;
@@ -939,6 +944,25 @@ export function ChatRealtimeBridge() {
 								}
 							}
 
+							// The same for their profile photos: someone can open with
+							// nothing but "hey" while the explicit thing is the photo on
+							// their profile. Read once per person and remembered, so a run
+							// of messages does not keep fetching the profile.
+							if (!blockReason && isExplicitProfileBlockEnabled() && !isWhitelisted) {
+								const explicitProfilePhoto = await findExplicitProfilePhoto(
+									apiFunctions,
+									pidStr,
+									senderProfile,
+								);
+								if (
+									explicitProfilePhoto &&
+									decideLiveExplicitBlock(m, explicitProfilePhoto, userIdRef.current, isWhitelisted, true).block
+								) {
+									blockReason = EXPLICIT_PROFILE_PHOTO_REASON;
+									blockStatsReason = explicitStatsReason(explicitProfilePhoto, EXPLICIT_PROFILE_PHOTO_REASON);
+								}
+							}
+
 							if (blockReason) {
 								appLog.info(`[ChatRealtimeBridge] Instant auto-blocking ${pidStr} due to: ${blockReason}`);
 								// A match decided without the profile still needs it, and this
@@ -977,6 +1001,14 @@ export function ChatRealtimeBridge() {
 										stats: { source: "live_chat", reason: blockStatsReason ?? { label: blockReason } },
 									});
 									void notifyAutoBlock(detectedDisplayName || pidStr, blockReason);
+									if (blockStatsReason?.kind === "explicit_media") {
+										logDetectorDecision({
+											profileId: pidStr,
+											name: detectedDisplayName,
+											outcome: "blocked",
+											detail: blockReason,
+										});
+									}
 									releaseLiveMessage(m.messageId);
 									continue;
 								} catch (error) {

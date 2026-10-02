@@ -18,7 +18,27 @@ import { preserveAndAutoBlockConversation } from "../services/autoBlockConversat
 import * as chatDb from "../services/chatDb";
 import { getExplicitFilterSince, isExplicitBlockEnabled } from "../services/contentCheck";
 import { fetchAndStoreMedia } from "../services/mediaStore";
-import { profilePhotosShowFace } from "../services/profileFaceCheck";
+import { findExplicitProfilePhoto, profileFaceVerdictFor } from "../services/profilePhotoCheck";
+import { explicitStatsReason } from "../services/explicitMediaGuard";
+import { isExplicitProfileBlockEnabled, verdictOf } from "../services/contentCheck";
+import { sentMediaFaceFor } from "../services/sentMediaFace";
+import { logDetectorDecision } from "../services/detectorLog";
+import {
+    decideExplicitBlock,
+    EXPLICIT_PROFILE_PHOTO_REASON,
+    sentMediaSaves,
+    type SentMediaFace,
+} from "../utils/explicitContentRules";
+import {
+    getNeedFaceSince,
+    getNoFacePhotoDelayMinutes,
+    getNoFacePhotoSince,
+    getNoPhotoDelayMinutes,
+    isNeedFaceEnabled,
+    isNoFacePhotoRuleEnabled,
+    isNoPhotoRuleEnabled,
+} from "../utils/facelessSettings";
+import type { StatsBlockReason } from "../services/statsLog";
 import {
     earliestTimestamp,
     NO_EARLIER_HISTORY,
@@ -68,6 +88,24 @@ function previewIsMedia(conversation: ConversationEntry): boolean {
     );
 }
 
+/** Whether a message is a photo, video or album, going by its type alone. */
+function isMediaTypeMessage(message: { type?: string | null; chat1Type?: string | null }): boolean {
+    const type = message.type?.toLowerCase() || "";
+    const chat1Type = message.chat1Type?.toLowerCase() || "";
+    return (
+        type === "image" ||
+        type === "expiringimage" ||
+        type === "video" ||
+        type === "nonexpiringvideo" ||
+        type.includes("album") ||
+        chat1Type === "image" ||
+        chat1Type === "expiring_image" ||
+        chat1Type === "video" ||
+        chat1Type === "private_video" ||
+        chat1Type === "expiring_video"
+    );
+}
+
 /** Below this, a message time is in seconds rather than milliseconds. */
 const SECONDS_THRESHOLD = 100_000_000_000;
 
@@ -101,12 +139,15 @@ export function BackgroundInboxScanner() {
             profileId,
             displayName,
             reason,
+            statsReason,
             messageSnapshot,
         }: {
             conversation: ConversationEntry;
             profileId: string;
             displayName: string;
             reason: string;
+            /** For a rule that knows more than its sentence says. */
+            statsReason?: StatsBlockReason;
             messageSnapshot?: MessagesResponse;
         }): Promise<boolean> => {
             try {
@@ -121,7 +162,7 @@ export function BackgroundInboxScanner() {
                     userId,
                     getAlbum: (albumId) => api.getAlbum(albumId),
                     blockProfile: () => api.blockProfile(profileId),
-                    stats: { source: "inbox_scan", reason: { label: reason } },
+                    stats: { source: "inbox_scan", reason: statsReason ?? { label: reason } },
                 });
                 void notifyAutoBlock(displayName, reason);
                 window.dispatchEvent(new Event("fg-refresh-inbox"));
@@ -141,8 +182,10 @@ export function BackgroundInboxScanner() {
             const isScannerEnabled = window.localStorage.getItem("fg-inbox-scanner-enabled") === "true";
             const isBotEvasionEnabled = window.localStorage.getItem("fg-block-first-media") === "true";
             const isSeenBlockEnabled = window.localStorage.getItem("fg-block-seen-enabled") === "true";
-            const isFacelessBlockEnabled = window.localStorage.getItem("fg-block-faceless-no-media") === "true";
-            const isExplicitCatchUpEnabled = isExplicitBlockEnabled();
+            const isFacelessBlockEnabled = isNoPhotoRuleEnabled() || isNoFacePhotoRuleEnabled();
+            const isExplicitMediaCatchUpEnabled = isExplicitBlockEnabled();
+            const isExplicitProfileCatchUpEnabled = isExplicitProfileBlockEnabled();
+            const isExplicitCatchUpEnabled = isExplicitMediaCatchUpEnabled || isExplicitProfileCatchUpEnabled;
             if (!isScannerEnabled && !isBotEvasionEnabled && !isSeenBlockEnabled && !isFacelessBlockEnabled && !isExplicitCatchUpEnabled) {
                 // Check again in 30 seconds
                 if (!isCancelled) {
@@ -560,11 +603,20 @@ export function BackgroundInboxScanner() {
                     }
                 }
 
-                // --- FACELESS NO-MEDIA AUTO-BLOCK PASS ---
-                const isFacelessBlockEnabled = window.localStorage.getItem("fg-block-faceless-no-media") === "true";
+                // --- FACELESS AUTO-BLOCK PASS ---
+                // Two rules with one outcome. Someone with no profile picture is
+                // blocked a few minutes after their first message; someone whose
+                // pictures show no face gets a longer wait of its own, because
+                // that is where the detector is most likely to be wrong. Either
+                // way, what they send in the meantime can save them.
                 if (isFacelessBlockEnabled) {
-                    const blockDelayMinutes = parseInt(window.localStorage.getItem("fg-block-faceless-delay") || "5", 10);
-                    const blockDelayMs = blockDelayMinutes * 60 * 1000;
+                    const noPhotoRule = isNoPhotoRuleEnabled();
+                    const noFacePhotoRule = isNoFacePhotoRuleEnabled();
+                    const noPhotoDelayMs = getNoPhotoDelayMinutes() * 60 * 1000;
+                    const noFacePhotoDelayMs = getNoFacePhotoDelayMinutes() * 60 * 1000;
+                    const needFaceEnabled = isNeedFaceEnabled();
+                    const needFaceSince = getNeedFaceSince();
+                    const noFacePhotoSince = getNoFacePhotoSince();
                     const now = Date.now();
 
                     for (const c of conversations) {
@@ -581,121 +633,140 @@ export function BackgroundInboxScanner() {
                             continue;
                         }
 
-                        // Skip active chats protection if enabled and we sent 2+ messages
-                        if (window.localStorage.getItem("fg-autoblock-skip-after-two") === "true") {
-                            try {
-                                const msgRes = await api.listMessages({ conversationId });
-                                const msgs = msgRes.messages || [];
-                                let outgoingCount = 0;
-                                for (const msg of msgs) {
-                                    if (userId != null && Number(msg.senderId) === Number(userId)) {
-                                        outgoingCount++;
-                                    }
-                                }
-                                if (outgoingCount >= 2) {
-                                    continue;
-                                }
-                            } catch {}
-                        }
-
-                        // Check if the profile is faceless: no photo at all, or, when
-                        // that option is on, photos none of which shows a face.
+                        // Which rule this person falls under, if either is on.
                         const primaryHash = otherParticipant.primaryMediaHash?.trim() ?? "";
-                        let facelessReason = "Faceless profile: No media sent 5min after first message";
-                        if (primaryHash.length > 0) {
-                            if (window.localStorage.getItem("fg-block-faceless-photos") !== "true") {
-                                continue;
-                            }
-                            // Only a definite "no face in any photo" goes on. A photo that
-                            // could not be checked is not evidence of anything. The answer
-                            // is remembered, so people who show a face cost nothing on
-                            // later passes.
-                            const showsFace = await profilePhotosShowFace(api, profileId, primaryHash);
-                            if (showsFace !== false) {
-                                continue;
-                            }
-                            facelessReason = "Faceless profile: No face in profile photos";
+                        const hasPhoto = primaryHash.length > 0;
+                        if (hasPhoto ? !noFacePhotoRule : !noPhotoRule) {
+                            continue;
                         }
+                        const blockDelayMs = hasPhoto ? noFacePhotoDelayMs : noPhotoDelayMs;
+                        const displayName = c.data?.name || profileId;
 
                         try {
                             const msgRes = await api.listMessages({ conversationId });
                             const messages = msgRes.messages || [];
 
                             let firstIncomingMsgTimestamp = 0;
-                            let hasSentAnyMedia = false;
-
+                            let outgoingCount = 0;
+                            const incoming: typeof messages = [];
                             for (const msg of messages) {
-                                const msgIsMine = userId != null && Number(msg.senderId) === Number(userId);
-                                if (!msgIsMine) {
-                                    // Incoming message from them!
-                                    if (firstIncomingMsgTimestamp === 0) {
-                                        firstIncomingMsgTimestamp = msg.timestamp || Date.now();
-                                    }
+                                if (userId != null && Number(msg.senderId) === Number(userId)) {
+                                    outgoingCount++;
+                                    continue;
+                                }
+                                if (firstIncomingMsgTimestamp === 0) {
+                                    firstIncomingMsgTimestamp = msg.timestamp || Date.now();
+                                }
+                                incoming.push(msg);
+                            }
+                            const firstIncomingAt = firstIncomingMsgTimestamp < SECONDS_THRESHOLD
+                                ? firstIncomingMsgTimestamp * 1000
+                                : firstIncomingMsgTimestamp;
 
-                                    // Check if this message is media
-                                    const typeLower = msg.type?.toLowerCase() || "";
-                                    const chat1Lower = msg.chat1Type?.toLowerCase() || "";
-                                    const isMedia =
-                                        typeLower === "image" ||
-                                        typeLower === "expiringimage" ||
-                                        typeLower === "video" ||
-                                        typeLower === "nonexpiringvideo" ||
-                                        typeLower.includes("album") ||
-                                        chat1Lower === "image" ||
-                                        chat1Lower === "expiring_image" ||
-                                        chat1Lower === "video" ||
-                                        chat1Lower === "private_video" ||
-                                        chat1Lower === "expiring_video";
+                            // Worked out step by step, cheapest first, and stopping at
+                            // the first thing that spares them. No `continue` in here:
+                            // it would skip the throttle below.
+                            let blockReason = "";
 
-                                    if (isMedia) {
-                                        hasSentAnyMedia = true;
+                            // Skip active chats protection if enabled and we sent 2+ messages
+                            const isActiveChat =
+                                window.localStorage.getItem("fg-autoblock-skip-after-two") === "true" &&
+                                outgoingCount >= 2;
+                            // Nothing from them yet, or their wait is not over.
+                            const waitIsOver =
+                                firstIncomingMsgTimestamp !== 0 && now - firstIncomingAt >= blockDelayMs;
+                            // The no-face-photo rule only covers chats that began after
+                            // it was switched on, so switching it on never goes back
+                            // through the inbox.
+                            const ruleCoversThisChat =
+                                !hasPhoto || (noFacePhotoSince != null && firstIncomingAt >= noFacePhotoSince);
+
+                            if (!isActiveChat && waitIsOver && ruleCoversThisChat) {
+                                // "Only a face saves them" likewise only for chats that
+                                // began after it was switched on; older ones keep the old
+                                // rule, where any media saves.
+                                const needFace =
+                                    needFaceEnabled && needFaceSince != null && firstIncomingAt >= needFaceSince;
+                                const mediaKinds: SentMediaFace[] = [];
+                                for (const msg of incoming) {
+                                    // Without the face option the first piece of media
+                                    // settles it, and nothing needs downloading to know.
+                                    const isMedia = isMediaTypeMessage(msg);
+                                    if (!isMedia) continue;
+                                    if (!needFace) {
+                                        mediaKinds.push("unknown");
                                         break;
+                                    }
+                                    const face = await sentMediaFaceFor(msg, conversationId);
+                                    if (face) mediaKinds.push(face);
+                                    if (face && face !== "no_face") break;
+                                }
+                                const savedByMedia = sentMediaSaves(mediaKinds, needFace);
+
+                                // This is a "first message" rule, and the messages above are
+                                // Grindr's copy of the chat — which restarts when a
+                                // conversation is deleted, while GrindFlop keeps its own.
+                                // Without this, deleting a chat and letting someone write
+                                // again turned their reply into a fresh opener with a fresh
+                                // clock, and the photos they had already sent were invisible
+                                // to the media check above. Exactly the guard the opener rule
+                                // already uses.
+                                const hasEarlierIncoming =
+                                    !savedByMedia &&
+                                    (await readEarlierHistory(conversationId, messages, userId)).hasIncoming;
+
+                                if (savedByMedia) {
+                                    if (needFace && !mediaKinds.includes("face")) {
+                                        logDetectorDecision({
+                                            profileId,
+                                            name: displayName,
+                                            outcome: "left_alone",
+                                            detail: "Could not tell whether what they sent shows a face, so they were not blocked.",
+                                        });
+                                    }
+                                } else if (!hasEarlierIncoming) {
+                                    if (!hasPhoto) {
+                                        blockReason = mediaKinds.length > 0
+                                            ? "Faceless profile: No face in the photos they sent"
+                                            : "Faceless profile: No media sent 5min after first message";
+                                    } else {
+                                        // Only a definite "no face in any photo" goes on. A
+                                        // photo that could not be checked, or a face the
+                                        // detector is unsure about, is not evidence of
+                                        // anything. The answer is remembered, so this costs
+                                        // nothing on later passes.
+                                        const profileFace = await profileFaceVerdictFor(api, profileId, primaryHash);
+                                        if (profileFace === "no_face") {
+                                            blockReason = "Faceless profile: No face in profile photos";
+                                        } else if (profileFace === "unsure") {
+                                            logDetectorDecision({
+                                                profileId,
+                                                name: displayName,
+                                                outcome: "left_alone",
+                                                detail: "Could not tell whether their profile photos show a face, so they were not blocked.",
+                                            });
+                                        }
                                     }
                                 }
                             }
 
-                            // If they have never sent any incoming message, skip
-                            if (firstIncomingMsgTimestamp === 0) {
-                                continue;
-                            }
-
-                            // If they have sent any media, skip
-                            if (hasSentAnyMedia) {
-                                continue;
-                            }
-
-                            // Calculate elapsed time
-                            const normalizedFirstTs = firstIncomingMsgTimestamp < 100_000_000_000
-                                ? firstIncomingMsgTimestamp * 1000
-                                : firstIncomingMsgTimestamp;
-
-                            const elapsed = now - normalizedFirstTs;
-
-                            // This is a "first message" rule, and the messages above are
-                            // Grindr's copy of the chat — which restarts when a
-                            // conversation is deleted, while GrindFlop keeps its own.
-                            // Without this, deleting a chat and letting someone write
-                            // again turned their reply into a fresh opener with a fresh
-                            // clock, and the photos they had already sent were invisible
-                            // to the media check above. Exactly the guard the opener rule
-                            // already uses. Checked inside the delay branch so it costs a
-                            // local read only when a block is actually about to happen,
-                            // and without `continue`, which would skip the throttle below.
-                            const hasEarlierIncoming =
-                                elapsed >= blockDelayMs &&
-                                (await readEarlierHistory(conversationId, messages, userId)).hasIncoming;
-
-                            if (elapsed >= blockDelayMs && !hasEarlierIncoming) {
-                                // Block them!
-                                const displayName = c.data?.name || profileId;
-                                console.log(`[BackgroundInboxScanner] Blocking faceless profile ${profileId} (${displayName}) - ${facelessReason}`);
-                                await blockConversation({
+                            if (blockReason) {
+                                console.log(`[BackgroundInboxScanner] Blocking faceless profile ${profileId} (${displayName}) - ${blockReason}`);
+                                const blocked = await blockConversation({
                                     conversation: c,
                                     profileId,
                                     displayName,
-                                    reason: facelessReason,
+                                    reason: blockReason,
                                     messageSnapshot: msgRes,
                                 });
+                                if (blocked) {
+                                    logDetectorDecision({
+                                        profileId,
+                                        name: displayName,
+                                        outcome: "blocked",
+                                        detail: blockReason,
+                                    });
+                                }
                             }
 
                         } catch (err) {
@@ -709,10 +780,10 @@ export function BackgroundInboxScanner() {
 
                 // --- EXPLICIT PHOTO CATCH-UP PASS ---
                 // A photo that arrives while the app is open is checked as it
-                // arrives. This is for the ones that arrived while it was closed:
-                // unread chats get their photos downloaded, which checks them, and
-                // an explicit one is blocked by the explicit-media guard before the
-                // chat is ever opened. Nothing here decides a block itself.
+                // arrives. This is for what arrived while it was closed. Profile
+                // photos are checked and blocked on here. Photos sent in unread
+                // chats are downloaded, which checks them, and an explicit one is
+                // blocked by the explicit-media guard before the chat is opened.
                 if (isExplicitCatchUpEnabled) {
                     const since = getExplicitFilterSince();
                     for (const c of conversations) {
@@ -721,13 +792,64 @@ export function BackgroundInboxScanner() {
                         const profileId = getOtherParticipant(c, userId)?.profileId?.toString();
                         if (!conversationId || !profileId || since == null) continue;
 
-                        const unreadCount = c.data?.unreadCount ?? 0;
-                        // A chat with nothing unread has been opened, and opening a
-                        // chat checks its photos.
-                        if (unreadCount === 0) continue;
-                        const lastActivity = c.data?.lastActivityTimestamp ?? 0;
-                        if (explicitCheckedRef.current.get(conversationId) === lastActivity) continue;
                         if (isProfileAutoblockWhitelisted(profileId)) continue;
+                        const unreadCount = c.data?.unreadCount ?? 0;
+                        const lastActivity = c.data?.lastActivityTimestamp ?? 0;
+
+                        // Their profile photos, for anyone whose message is the latest
+                        // in the chat, read or not: someone can open with nothing but
+                        // "hey" while the explicit thing is the photo on their profile.
+                        // Remembered per person, so later passes cost nothing.
+                        const lastSenderId = c.data?.preview?.senderId;
+                        if (
+                            isExplicitProfileCatchUpEnabled &&
+                            lastSenderId != null &&
+                            Number(lastSenderId) !== Number(userId)
+                        ) {
+                            const startedAt = Date.now();
+                            const explicitProfilePhoto = await findExplicitProfilePhoto(api, profileId);
+                            const decision = decideExplicitBlock({
+                                blockingEnabled: true,
+                                verdict: verdictOf(explicitProfilePhoto),
+                                senderId: profileId,
+                                userId,
+                                messageTimestamp: lastActivity,
+                                filterEnabledAt: since,
+                                whitelisted: false,
+                                conversationArchived: false,
+                            });
+                            if (explicitProfilePhoto && decision.block) {
+                                const displayName = c.data?.name || profileId;
+                                console.log(`[BackgroundInboxScanner] Blocking ${profileId} (${displayName}) for: ${EXPLICIT_PROFILE_PHOTO_REASON}`);
+                                const blocked = await blockConversation({
+                                    conversation: c,
+                                    profileId,
+                                    displayName,
+                                    reason: EXPLICIT_PROFILE_PHOTO_REASON,
+                                    statsReason: explicitStatsReason(explicitProfilePhoto, EXPLICIT_PROFILE_PHOTO_REASON),
+                                });
+                                if (blocked) {
+                                    logDetectorDecision({
+                                        profileId,
+                                        name: displayName,
+                                        outcome: "blocked",
+                                        detail: EXPLICIT_PROFILE_PHOTO_REASON,
+                                    });
+                                }
+                                await new Promise((resolve) => setTimeout(resolve, 1000));
+                                continue;
+                            }
+                            // Throttle only when the profile was actually read just now.
+                            if (Date.now() - startedAt > 50) {
+                                await new Promise((resolve) => setTimeout(resolve, 1000));
+                            }
+                        }
+
+                        if (!isExplicitMediaCatchUpEnabled) continue;
+                        // A chat with nothing unread has been opened, and opening a
+                        // chat checks the photos sent in it.
+                        if (unreadCount === 0) continue;
+                        if (explicitCheckedRef.current.get(conversationId) === lastActivity) continue;
                         // One unread message that is not a photo has no photo to check.
                         if (unreadCount === 1 && !previewIsMedia(c)) {
                             explicitCheckedRef.current.set(conversationId, lastActivity);

@@ -44,14 +44,15 @@ import {
 	verdictOf,
 	type ExplicitVerdictEvent,
 } from "./contentCheck";
+import { logDetectorDecision } from "./detectorLog";
 import { fetchAndStoreMedia } from "./mediaStore";
 import type { StatsBlockReason } from "./statsLog";
 
 /** What the Stats log records for an explicit-photo block. */
-export function explicitStatsReason(check: StoredContentCheck): StatsBlockReason {
+export function explicitStatsReason(check: StoredContentCheck, label?: string): StatsBlockReason {
 	return {
 		kind: "explicit_media",
-		label: explicitBlockReason(check.kind),
+		label: label ?? explicitBlockReason(check.kind),
 		detail: describeExplicitScores(scoresOf(check)),
 	};
 }
@@ -112,6 +113,14 @@ export async function checkLiveMessageMedia(message: Message): Promise<StoredCon
 		// Nothing to act on yet. Released, so a verdict that lands later is
 		// handled below instead of being dropped.
 		liveClaims.delete(message.messageId);
+		logDetectorDecision({
+			profileId: String(message.senderId),
+			name: "",
+			outcome: "left_alone",
+			detail: finished
+				? "A photo they sent could not be checked. It stays covered and they were not blocked."
+				: "A photo they sent took too long to check. It stays covered and they were not blocked.",
+		});
 	}
 	return check;
 }
@@ -126,9 +135,10 @@ export function decideLiveExplicitBlock(
 	check: StoredContentCheck | null,
 	userId: number | null,
 	whitelisted: boolean,
+	blockingEnabled: boolean = isExplicitBlockEnabled(),
 ): ExplicitBlockDecision {
 	return decideExplicitBlock({
-		blockingEnabled: isExplicitBlockEnabled(),
+		blockingEnabled,
 		verdict: verdictOf(check),
 		senderId: message.senderId,
 		userId,
@@ -224,6 +234,7 @@ async function handleExplicitVerdict(
 			stats: { source: "inbox_scan", reason: explicitStatsReason(check) },
 		});
 		void notifyAutoBlock(displayName || profileId, reason);
+		logDetectorDecision({ profileId, name: displayName, outcome: "blocked", detail: reason });
 		window.dispatchEvent(new Event("fg-refresh-inbox"));
 	} catch (error) {
 		// Let a later report of the same verdict try again.

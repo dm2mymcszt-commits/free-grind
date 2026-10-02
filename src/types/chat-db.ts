@@ -45,6 +45,8 @@ export type StoredContentCheck = {
 	explicitScore: number;
 	coverOnlyScore: number;
 	faceScore: number;
+	/** Share of the photo the strongest face takes up; null on checks made before it was kept. */
+	faceShare: number | null;
 	model: string;
 	checkedAt: number;
 };

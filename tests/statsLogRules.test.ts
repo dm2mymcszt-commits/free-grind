@@ -38,6 +38,7 @@ describe("classifyBlockReason", () => {
 		["Faceless profile: No media sent 5min after first message", "faceless", null],
 		["Explicit photo", "explicit_media", null],
 		["Explicit video", "explicit_media", null],
+		["Explicit profile photo", "explicit_media", null],
 	];
 
 	for (const [label, kind, detail] of cases) {

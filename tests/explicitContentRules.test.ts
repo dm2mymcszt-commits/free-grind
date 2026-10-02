@@ -6,11 +6,12 @@ import {
 	describeExplicitScores,
 	EXPLICIT_BLOCK_SCORE,
 	EXPLICIT_UNSURE_SCORE,
-	FACE_SCORE,
+	FACE_MIN_SHARE,
+	faceVerdict,
 	NO_CONTENT_SCORES,
-	profileShowsFace,
+	profileFaceVerdict,
 	scoreDetections,
-	showsFace,
+	sentMediaSaves,
 	verdictFromScores,
 } from "../src/utils/explicitContentRules";
 
@@ -31,6 +32,21 @@ describe("verdictFromScores", () => {
 		expect(verdictOf([{ label: "MALE_GENITALIA_EXPOSED", score: 0.83 }])).toBe("explicit");
 		expect(verdictOf([{ label: "ANUS_EXPOSED", score: EXPLICIT_BLOCK_SCORE }])).toBe("explicit");
 		expect(verdictOf([{ label: "BUTTOCKS_EXPOSED", score: 0.6 }])).toBe("explicit");
+	});
+
+	test("the first real case blocks: a bare-buttocks photo with the back of a head", () => {
+		expect(
+			verdictOf([
+				{ label: "BUTTOCKS_EXPOSED", score: 0.771 },
+				{ label: "FACE_MALE", score: 0.329 },
+				{ label: "MALE_BREAST_EXPOSED", score: 0.245 },
+			]),
+		).toBe("explicit");
+	});
+
+	test("a detection the detector is only half sure of covers, and does not block", () => {
+		expect(verdictOf([{ label: "BUTTOCKS_EXPOSED", score: 0.5 }])).toBe("unsure");
+		expect(verdictOf([{ label: "MALE_GENITALIA_EXPOSED", score: 0.59 }])).toBe("unsure");
 	});
 
 	test("a weak explicit detection is unsure, never clear", () => {
@@ -87,7 +103,7 @@ describe("combineContentScores", () => {
 			scoreDetections([]),
 		]);
 		expect(verdictFromScores(combined)).toBe("explicit");
-		expect(showsFace(combined)).toBe(true);
+		expect(combined.faceScore).toBe(0.8);
 	});
 
 	test("no frames is no evidence of anything", () => {
@@ -95,23 +111,88 @@ describe("combineContentScores", () => {
 	});
 });
 
-describe("profileShowsFace", () => {
+function face(score: number, width = 0.3, height = 0.3) {
+	return scoreDetections([{ label: "FACE_MALE", score, width, height }]);
+}
+
+describe("faceVerdict", () => {
+	test("a confident, close face is a face", () => {
+		expect(faceVerdict(face(0.9))).toBe("face");
+	});
+
+	test("nothing found is no face", () => {
+		expect(faceVerdict(scoreDetections([]))).toBe("no_face");
+		expect(faceVerdict(face(0.1))).toBe("no_face");
+	});
+
+	test("a face too small to recognise is no face, however sure the detector is", () => {
+		const side = Math.sqrt(FACE_MIN_SHARE) * 0.9;
+		expect(faceVerdict(face(0.9, side, side))).toBe("no_face");
+	});
+
+	test("in between is unsure: the back of a head scored 0.33", () => {
+		expect(faceVerdict(face(0.33))).toBe("unsure");
+	});
+
+	test("the strongest face decides, with its own size", () => {
+		const scores = scoreDetections([
+			{ label: "FACE_MALE", score: 0.5, width: 0.01, height: 0.01 },
+			{ label: "FACE_FEMALE", score: 0.8, width: 0.4, height: 0.4 },
+		]);
+		expect(scores.faceScore).toBe(0.8);
+		expect(scores.faceShare).toBeCloseTo(0.16);
+		expect(faceVerdict(scores)).toBe("face");
+	});
+
+	test("a check made before sizes were kept is never a definite face or a far-away one", () => {
+		const old = { ...NO_CONTENT_SCORES, faceScore: 0.9, faceShare: null };
+		expect(faceVerdict(old)).toBe("unsure");
+		expect(faceVerdict({ ...old, faceScore: 0.05 })).toBe("no_face");
+	});
+});
+
+describe("profileFaceVerdict", () => {
 	test("one photo with a face is enough", () => {
-		expect(profileShowsFace([0, 0.05, FACE_SCORE])).toBe(true);
-		expect(profileShowsFace([null, 0.9])).toBe(true);
+		expect(profileFaceVerdict(["no_face", "no_face", "face"])).toBe("face");
+		expect(profileFaceVerdict([null, "face"])).toBe("face");
 	});
 
-	test("no face only when every photo was checked", () => {
-		expect(profileShowsFace([0, 0.1, 0.05])).toBe(false);
+	test("no face only when every photo is a definite no", () => {
+		expect(profileFaceVerdict(["no_face", "no_face"])).toBe("no_face");
 	});
 
-	test("a photo that could not be checked leaves it unknown", () => {
-		expect(profileShowsFace([0, null])).toBeNull();
-		expect(profileShowsFace([null])).toBeNull();
+	test("a photo that could not be checked, or is unsure, leaves the profile unsure", () => {
+		expect(profileFaceVerdict(["no_face", null])).toBe("unsure");
+		expect(profileFaceVerdict(["no_face", "unsure"])).toBe("unsure");
+		expect(profileFaceVerdict([null])).toBe("unsure");
 	});
 
 	test("no photos at all is not this rule's business", () => {
-		expect(profileShowsFace([])).toBeNull();
+		expect(profileFaceVerdict([])).toBe("unsure");
+	});
+});
+
+describe("sentMediaSaves", () => {
+	test("sending nothing saves nobody", () => {
+		expect(sentMediaSaves([], false)).toBe(false);
+		expect(sentMediaSaves([], true)).toBe(false);
+	});
+
+	test("without the face option, any media saves, as before", () => {
+		expect(sentMediaSaves(["no_face"], false)).toBe(true);
+	});
+
+	test("with it, a photo of a face saves", () => {
+		expect(sentMediaSaves(["no_face", "face"], true)).toBe(true);
+	});
+
+	test("with it, photos that all show no face do not save", () => {
+		expect(sentMediaSaves(["no_face", "no_face"], true)).toBe(false);
+	});
+
+	test("anything that could not be judged saves: an album, a failed check, an unsure face", () => {
+		expect(sentMediaSaves(["no_face", "unknown"], true)).toBe(true);
+		expect(sentMediaSaves(["unsure"], true)).toBe(true);
 	});
 });
 

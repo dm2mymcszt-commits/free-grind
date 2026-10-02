@@ -42,6 +42,7 @@ import { appLog } from "../utils/logger";
 
 const FILTER_STORAGE_KEY = "fg-explicit-filter";
 const BLOCK_STORAGE_KEY = "fg-explicit-block";
+const PROFILE_BLOCK_STORAGE_KEY = "fg-explicit-block-profile";
 const FILTER_SINCE_STORAGE_KEY = "fg-explicit-filter-since";
 export const EXPLICIT_FILTER_UPDATED_EVENT = "fg-explicit-filter-updated";
 
@@ -57,6 +58,14 @@ export function isExplicitFilterEnabled(): boolean {
 /** Whether an explicit photo also blocks its sender. On unless switched off. */
 export function isExplicitBlockEnabled(): boolean {
 	return isExplicitFilterEnabled() && window.localStorage.getItem(BLOCK_STORAGE_KEY) !== "false";
+}
+
+/**
+ * Whether an explicit photo on somebody's profile blocks them when they
+ * message. A switch of its own, on unless switched off.
+ */
+export function isExplicitProfileBlockEnabled(): boolean {
+	return isExplicitFilterEnabled() && window.localStorage.getItem(PROFILE_BLOCK_STORAGE_KEY) !== "false";
 }
 
 /**
@@ -76,6 +85,12 @@ export function setExplicitFilterEnabled(enabled: boolean): void {
 	if (enabled && !wasEnabled) {
 		window.localStorage.setItem(FILTER_SINCE_STORAGE_KEY, String(Date.now()));
 	}
+	window.dispatchEvent(new Event(EXPLICIT_FILTER_UPDATED_EVENT));
+}
+
+export function setExplicitProfileBlockEnabled(enabled: boolean): void {
+	if (typeof window === "undefined") return;
+	window.localStorage.setItem(PROFILE_BLOCK_STORAGE_KEY, String(enabled));
 	window.dispatchEvent(new Event(EXPLICIT_FILTER_UPDATED_EVENT));
 }
 
@@ -129,6 +144,7 @@ export function scoresOf(check: StoredContentCheck): ContentScores {
 		explicitScore: check.explicitScore,
 		coverOnlyScore: check.coverOnlyScore,
 		faceScore: check.faceScore,
+		faceShare: check.faceShare,
 	};
 }
 
@@ -161,7 +177,7 @@ export function subscribeToContentChecks(listener: () => void): () => void {
 // The detector
 // ---------------------------------------------------------------------------
 
-type DetectionResult = {
+export type DetectionResult = {
 	detections: ContentDetection[];
 	imageWidth: number;
 	imageHeight: number;
@@ -181,6 +197,14 @@ function enqueue<T>(run: () => Promise<T>): Promise<T> {
 async function detectImage(base64: string, tiled = false): Promise<ContentScores> {
 	const result = await invoke<DetectionResult>("detect_image_content", { imageBase64: base64, tiled });
 	return scoreDetections(result.detections);
+}
+
+/**
+ * Everything the detector found in one still image, unreduced. For the
+ * temporary test collector, which records the raw numbers for tuning.
+ */
+export function detectRaw(base64: string, tiled: boolean): Promise<DetectionResult> {
+	return enqueue(() => invoke<DetectionResult>("detect_image_content", { imageBase64: base64, tiled }));
 }
 
 /**
@@ -406,6 +430,7 @@ export async function checkMediaBytes(input: CheckMediaInput): Promise<StoredCon
 				explicitScore: scores.explicitScore,
 				coverOnlyScore: scores.coverOnlyScore,
 				faceScore: scores.faceScore,
+				faceShare: scores.faceShare,
 				model: MODEL,
 				checkedAt: Date.now(),
 			};

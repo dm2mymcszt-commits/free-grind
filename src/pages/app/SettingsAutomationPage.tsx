@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
     AtSign, Ban, Crosshair, Eye, EyeOff, Image as ImageIcon, MessageSquare, Radar, Save,
@@ -38,10 +38,26 @@ import { useAuth } from "../../contexts/useAuth";
 import {
     isExplicitBlockEnabled,
     isExplicitFilterEnabled,
+    isExplicitProfileBlockEnabled,
     setExplicitBlockEnabled,
     setExplicitFilterEnabled,
+    setExplicitProfileBlockEnabled,
     testDetector,
 } from "../../services/contentCheck";
+import {
+    clearDetectorLog,
+    DETECTOR_LOG_UPDATED_EVENT,
+    getDetectorLog,
+    type DetectorLogEntry,
+} from "../../services/detectorLog";
+import { runDetectorTestCollection, type DetectorTestProgress } from "../../services/detectorTestRun";
+import {
+    clampNoFacePhotoDelayMinutes,
+    getNoFacePhotoDelayMinutes,
+    isNeedFaceEnabled,
+    isNoFacePhotoRuleEnabled,
+    saveFacelessSettings,
+} from "../../utils/facelessSettings";
 import { isTauriRuntime } from "../../services/tauriWebSocket";
 import {
     GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
@@ -107,11 +123,31 @@ export function SettingsAutomationPage() {
     // Explicit photo filter. Saved the moment it is switched, not with the rules below.
     const [explicitFilter, setExplicitFilter] = useState(() => isExplicitFilterEnabled());
     const [explicitBlock, setExplicitBlock] = useState(() => isExplicitBlockEnabled());
+    const [explicitProfileBlock, setExplicitProfileBlock] = useState(() => isExplicitProfileBlockEnabled());
     const [detectorStatus, setDetectorStatus] = useState<string | null>(null);
+    const [detectorLog, setDetectorLog] = useState<DetectorLogEntry[]>(() => getDetectorLog());
+    useEffect(() => {
+        const refresh = () => setDetectorLog(getDetectorLog());
+        window.addEventListener(DETECTOR_LOG_UPDATED_EVENT, refresh);
+        return () => window.removeEventListener(DETECTOR_LOG_UPDATED_EVENT, refresh);
+    }, []);
+
+    // Temporary: the photo collection used to tune the detector's thresholds.
+    const [collecting, setCollecting] = useState<DetectorTestProgress | null>(null);
+    const [collectionResult, setCollectionResult] = useState<string | null>(null);
+    const stopCollectingRef = useRef(false);
 
     const [blockFacelessNoMedia, setBlockFacelessNoMedia] = useState(() => window.localStorage.getItem("fg-block-faceless-no-media") === "true");
     const [blockFacelessDelay, setBlockFacelessDelay] = useState(() => window.localStorage.getItem("fg-block-faceless-delay") || "5");
-    const [blockFacelessPhotos, setBlockFacelessPhotos] = useState(() => window.localStorage.getItem("fg-block-faceless-photos") === "true");
+    const [blockFacelessPhotos, setBlockFacelessPhotos] = useState(() => isNoFacePhotoRuleEnabled());
+    const [facelessNeedFace, setFacelessNeedFace] = useState(() => isNeedFaceEnabled());
+    // The wait for the no-face-photo rule, typed in whole minutes or hours.
+    const [noFacePhotoWait, setNoFacePhotoWait] = useState(() => {
+        const minutes = getNoFacePhotoDelayMinutes();
+        return minutes >= 60 && minutes % 60 === 0
+            ? { amount: String(minutes / 60), unit: "hours" as const }
+            : { amount: String(minutes), unit: "minutes" as const };
+    });
     const [whitelist, setWhitelist] = useState<{ profileId: string; displayName: string; primaryMediaHash?: string | null }[]>([]);
     useEffect(() => {
         setWhitelist(getAutoBlockWhitelist());
@@ -375,6 +411,7 @@ export function SettingsAutomationPage() {
             setExplicitFilterEnabled(false);
             setExplicitFilter(false);
             setExplicitBlock(false);
+            setExplicitProfileBlock(false);
             setDetectorStatus(null);
             toast.success("Explicit photo filter off", { id: "explicit-filter-toggle" });
             return;
@@ -388,6 +425,7 @@ export function SettingsAutomationPage() {
         setExplicitFilterEnabled(true);
         setExplicitFilter(true);
         setExplicitBlock(isExplicitBlockEnabled());
+        setExplicitProfileBlock(isExplicitProfileBlockEnabled());
         window.dispatchEvent(new Event("fg-trigger-inbox-scan"));
         toast.success("Explicit photo filter on", { id: "explicit-filter-toggle" });
     };
@@ -396,6 +434,34 @@ export function SettingsAutomationPage() {
         setExplicitBlockEnabled(val);
         setExplicitBlock(val);
         if (val) window.dispatchEvent(new Event("fg-trigger-inbox-scan"));
+    };
+
+    const handleToggleExplicitProfileBlock = (val: boolean) => {
+        setExplicitProfileBlockEnabled(val);
+        setExplicitProfileBlock(val);
+        if (val) window.dispatchEvent(new Event("fg-trigger-inbox-scan"));
+    };
+
+    const handleCollectTestPhotos = async () => {
+        if (collecting || userId == null) return;
+        stopCollectingRef.current = false;
+        setCollectionResult(null);
+        setCollecting({ stage: "Starting", done: 0, total: 0, photos: 0 });
+        try {
+            const result = await runDetectorTestCollection(
+                apiFunctions,
+                userId,
+                setCollecting,
+                () => stopCollectingRef.current,
+            );
+            setCollectionResult(
+                `${result.photos} photos from ${result.profiles} profiles saved${result.failed > 0 ? ` (${result.failed} could not be read)` : ""}: ${result.dir}`,
+            );
+        } catch (error) {
+            setCollectionResult(`Collecting failed: ${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+            setCollecting(null);
+        }
     };
 
     // --- SAVE HANDLERS ---
@@ -421,9 +487,16 @@ export function SettingsAutomationPage() {
         window.localStorage.setItem("fg-block-seen-time", blockSeenMinutes);
         window.localStorage.setItem("fg-block-right-now", String(blockRightNow));
         window.localStorage.setItem("fg-block-twitter", String(blockTwitter));
-        window.localStorage.setItem("fg-block-faceless-no-media", String(blockFacelessNoMedia));
-        window.localStorage.setItem("fg-block-faceless-delay", blockFacelessDelay);
-        window.localStorage.setItem("fg-block-faceless-photos", String(blockFacelessPhotos));
+        const noFacePhotoMinutes = clampNoFacePhotoDelayMinutes(
+            Number(noFacePhotoWait.amount) * (noFacePhotoWait.unit === "hours" ? 60 : 1),
+        );
+        saveFacelessSettings({
+            noPhotoRule: blockFacelessNoMedia,
+            noPhotoDelayMinutes: blockFacelessDelay,
+            needFace: facelessNeedFace,
+            noFacePhotoRule: blockFacelessPhotos,
+            noFacePhotoDelayMinutes: noFacePhotoMinutes,
+        });
 
         // Trigger immediate background scan with new rules
         window.dispatchEvent(new Event("fg-trigger-inbox-scan"));
@@ -440,7 +513,7 @@ export function SettingsAutomationPage() {
     // --- SECTION SUMMARIES ---
     const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
     const keywordsSummary = `${plural(forbiddenEntries.length, "keyword")} · ${plural(openerEntries.length, "opening message")}${keywordsToReview.length > 0 ? ` · ${keywordsToReview.length} to review` : ""}${banOnSelect ? " · select to ban" : ""}`;
-    const messageRulesOn = [blockFirstMedia, skipBlockAfterTwo, blockSeenEnabled, blockFacelessNoMedia].filter(Boolean).length;
+    const messageRulesOn = [blockFirstMedia, skipBlockAfterTwo, blockSeenEnabled, blockFacelessNoMedia || blockFacelessPhotos].filter(Boolean).length;
     const profileFiltersSummary = [
         `Age ${minAge}–${maxAge}`,
         maxDistance === "" || Number(maxDistance) >= 500 ? "no distance limit" : `${maxDistance} km`,
@@ -565,9 +638,20 @@ export function SettingsAutomationPage() {
                                 icon={<Ban className="h-5 w-5" />}
                                 iconClass="bg-red-500/15 text-red-400"
                                 label="Block whoever sends an explicit photo"
-                                description="Blocks the sender as soon as a photo or video shows genitals, anus or bare buttocks, before you are notified. Shirtless photos are left alone. People on your whitelist are not blocked; their photo just stays covered. Only applies to photos received from now on."
+                                description="Blocks someone as soon as a photo or video they send shows genitals, anus or bare buttocks, before you are notified. Shirtless photos are left alone. Only blocks when the detector is sure; a photo it is unsure about stays covered and nobody is blocked. People on your whitelist are never blocked by this. Only applies to messages received from now on."
                                 checked={explicitBlock}
                                 onChange={handleToggleExplicitBlock}
+                            />
+                        )}
+
+                        {explicitFilter && (
+                            <ToggleRow
+                                icon={<UserX className="h-5 w-5" />}
+                                iconClass="bg-red-500/15 text-red-400"
+                                label="Block people with an explicit profile photo"
+                                description="When someone messages you, their profile photos are checked too, and an explicit one blocks them the same way, even if all they sent was a hello. Same rules: only when the detector is sure, never your whitelist, only for messages received from now on."
+                                checked={explicitProfileBlock}
+                                onChange={handleToggleExplicitProfileBlock}
                             />
                         )}
 
@@ -589,7 +673,81 @@ export function SettingsAutomationPage() {
                                 </button>
                             </div>
                         )}
+
+                        {/* TEMPORARY: collects real photos for tuning the detector. Goes away once the thresholds are set. */}
+                        {isTauriRuntime() && (
+                            <div className="grid gap-2 px-4 py-3">
+                                <div className="flex items-center justify-between gap-3">
+                                    <p className="min-w-0 text-xs text-[var(--text-muted)]">
+                                        <strong className="text-[var(--text)]">Collect test photos (temporary).</strong> Saves the profile photos of the people in your inbox and of your recent viewers to a folder on this device, with what the detector found in each, so the settings can be tuned on real photos. Blocks nobody and changes nothing. Takes a few minutes.
+                                    </p>
+                                    {collecting ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => { stopCollectingRef.current = true; }}
+                                            className="shrink-0 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-[var(--text)] transition hover:border-[var(--accent)]"
+                                        >
+                                            Stop
+                                        </button>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={() => void handleCollectTestPhotos()}
+                                            className="shrink-0 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-[var(--text)] transition hover:border-[var(--accent)]"
+                                        >
+                                            Collect
+                                        </button>
+                                    )}
+                                </div>
+                                {collecting && (
+                                    <p className="text-xs text-[var(--text-muted)]">
+                                        {collecting.stage}{collecting.total > 0 ? ` ${collecting.done} / ${collecting.total}` : ""} · {collecting.photos} photos so far
+                                    </p>
+                                )}
+                                {collectionResult && (
+                                    <p className="select-text break-all text-xs text-[var(--text-muted)]">{collectionResult}</p>
+                                )}
+                            </div>
+                        )}
                     </div>
+
+                    {detectorLog.length > 0 && (
+                        <div className="mt-3">
+                            <CollapsibleSection
+                                id="automation-detector-log"
+                                title="What the detector decided"
+                                summary={`${detectorLog.length} recent`}
+                                icon={<ShieldCheck className="h-5 w-5" />}
+                                iconClass="bg-slate-500/15 text-slate-400"
+                            >
+                                <div className="grid gap-2 p-4">
+                                    <p className="text-xs text-[var(--text-muted)]">
+                                        Blocks made on what the detector saw, and the times it could not tell and left someone alone.
+                                    </p>
+                                    <ul className="grid gap-1.5">
+                                        {detectorLog.slice(0, 40).map((entry) => (
+                                            <li key={`${entry.at}-${entry.profileId}`} className="text-xs leading-relaxed">
+                                                <span className="text-[var(--text-muted)]">
+                                                    {new Date(entry.at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                                </span>{" "}
+                                                <strong className="text-[var(--text)]">{entry.name || entry.profileId}</strong>{" "}
+                                                <span className={entry.outcome === "blocked" ? "text-red-400" : "text-[var(--text-muted)]"}>
+                                                    {entry.detail}
+                                                </span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                    <button
+                                        type="button"
+                                        onClick={clearDetectorLog}
+                                        className="justify-self-start rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-[var(--text)] transition hover:border-[var(--accent)]"
+                                    >
+                                        Clear list
+                                    </button>
+                                </div>
+                            </CollapsibleSection>
+                        </div>
+                    )}
                 </div>
 
                 {/* AUTO BLOCK */}
@@ -866,7 +1024,7 @@ export function SettingsAutomationPage() {
                                     </div>
                                 </div>
 
-                                {/* Faceless No Media Block */}
+                                {/* Faceless profiles */}
                                 <div className="flex items-start gap-3 p-4">
                                     <div className="shrink-0 rounded-2xl bg-purple-500/15 p-2.5 text-purple-400">
                                         <Users className="h-5 w-5" />
@@ -883,19 +1041,6 @@ export function SettingsAutomationPage() {
                                                 <strong className="text-[var(--text)]">Block Faceless Profiles with No Media.</strong> Automatically blocks profiles with no profile picture if they haven't sent any media (photos, videos, albums) after the set time from their first message.
                                             </span>
                                         </label>
-                                        {blockFacelessNoMedia && (
-                                            <label className="mt-3 ml-6 flex items-start gap-2 cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={blockFacelessPhotos}
-                                                    onChange={(e) => setBlockFacelessPhotos(e.target.checked)}
-                                                    className="mt-0.5 h-3.5 w-3.5 accent-[var(--accent)] shrink-0"
-                                                />
-                                                <span className="text-xs text-[var(--text-muted)] leading-relaxed">
-                                                    <strong className="text-[var(--text)]">Also when none of their photos shows a face.</strong> Their profile photos are checked on this device. Sunglasses, far-away or turned-away faces can be missed, so someone is only counted when every photo was checked and no face was found in any.
-                                                </span>
-                                            </label>
-                                        )}
                                         {blockFacelessNoMedia && (
                                             <div className="flex items-center gap-2 mt-3 ml-6">
                                                 <span className="text-xs text-[var(--text-muted)]">Block after:</span>
@@ -914,6 +1059,52 @@ export function SettingsAutomationPage() {
                                                     <option value="60">1 hour</option>
                                                 </select>
                                             </div>
+                                        )}
+
+                                        <label className="mt-4 flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={blockFacelessPhotos}
+                                                onChange={(e) => setBlockFacelessPhotos(e.target.checked)}
+                                                className="h-4 w-4 accent-[var(--accent)] shrink-0"
+                                            />
+                                            <span className="text-xs text-[var(--text-muted)] leading-relaxed">
+                                                <strong className="text-[var(--text)]">Block profiles whose photos show no face.</strong> For people who have a profile picture, but none where their face can be seen: too far away, hidden behind a phone, body only. Same outcome with a longer wait of its own. Only when every one of their photos was checked on this device and none shows a face; if the detector is unsure, they are left alone. Only for chats that start after you switch this on.
+                                            </span>
+                                        </label>
+                                        {blockFacelessPhotos && (
+                                            <div className="flex items-center gap-2 mt-3 ml-6">
+                                                <span className="text-xs text-[var(--text-muted)]">Block after:</span>
+                                                <input
+                                                    type="number"
+                                                    min="1"
+                                                    value={noFacePhotoWait.amount}
+                                                    onChange={(e) => setNoFacePhotoWait((wait) => ({ ...wait, amount: e.target.value }))}
+                                                    className="w-16 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-2 py-1 text-center text-xs font-bold text-[var(--text)] outline-none transition focus:border-[var(--accent)]"
+                                                />
+                                                <select
+                                                    value={noFacePhotoWait.unit}
+                                                    onChange={(e) => setNoFacePhotoWait((wait) => ({ ...wait, unit: e.target.value === "hours" ? "hours" : "minutes" }))}
+                                                    className="bg-[var(--surface-1)] border border-[var(--border)] rounded px-2 py-0.5 text-xs text-[var(--text)] focus:outline-none focus:border-[var(--accent)]"
+                                                >
+                                                    <option value="minutes">minutes</option>
+                                                    <option value="hours">hours</option>
+                                                </select>
+                                            </div>
+                                        )}
+
+                                        {(blockFacelessNoMedia || blockFacelessPhotos) && (
+                                            <label className="mt-4 flex items-center gap-2 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={facelessNeedFace}
+                                                    onChange={(e) => setFacelessNeedFace(e.target.checked)}
+                                                    className="h-4 w-4 accent-[var(--accent)] shrink-0"
+                                                />
+                                                <span className="text-xs text-[var(--text-muted)] leading-relaxed">
+                                                    <strong className="text-[var(--text)]">Only a photo or video of their face saves them.</strong> Applies to both rules above. Without this, any media they send is enough. With it, photos that show no face do not count, in whatever order they come. A shared album, or anything that could not be checked, still counts in their favour. Only for chats that start after you switch this on.
+                                                </span>
+                                            </label>
                                         )}
                                     </div>
                                 </div>
