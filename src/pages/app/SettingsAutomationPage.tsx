@@ -64,6 +64,7 @@ import {
     saveFacelessSettings,
 } from "../../utils/facelessSettings";
 import { isTauriRuntime } from "../../services/tauriWebSocket";
+import * as chatDb from "../../services/chatDb";
 import {
     GOOGLE_DRIVE_SYNC_DATA_APPLIED_EVENT,
     type GoogleDriveSyncDataAppliedDetail,
@@ -450,6 +451,18 @@ export function SettingsAutomationPage() {
         if (val) window.dispatchEvent(new Event("fg-trigger-inbox-scan"));
     };
 
+    // Opens the chat with them, which for someone blocked is the archived
+    // copy with their name, photo and messages; their profile would only be
+    // the placeholder a block leaves. The profile when no chat was kept.
+    const openDetectorLogEntry = async (profileId: string) => {
+        const stored = await chatDb.findConversationByProfileId(profileId).catch(() => null);
+        if (stored) {
+            navigate(`/chat/${encodeURIComponent(stored.conversationId)}`);
+        } else {
+            navigate(`/profile/${profileId}`, { state: { returnTo: "/settings/automation" } });
+        }
+    };
+
     const handleCollectTestPhotos = () => {
         if (userId == null) return;
         void startDetectorTestCollection(apiFunctions, userId);
@@ -723,7 +736,7 @@ export function SettingsAutomationPage() {
                                                 </span>{" "}
                                                 <button
                                                     type="button"
-                                                    onClick={() => navigate(`/profile/${entry.profileId}`, { state: { returnTo: "/settings/automation" } })}
+                                                    onClick={() => void openDetectorLogEntry(entry.profileId)}
                                                     className="font-bold text-[var(--text)] underline decoration-[var(--border)] underline-offset-2 transition hover:decoration-[var(--accent)]"
                                                 >
                                                     {entry.name || entry.profileId}

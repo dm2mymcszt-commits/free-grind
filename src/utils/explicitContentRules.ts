@@ -13,6 +13,8 @@ export type ContentDetection = {
 	label: string;
 	score: number;
 	/** The box around it, as fractions of the photo's width and height. */
+	x?: number;
+	y?: number;
 	width?: number;
 	height?: number;
 };
@@ -29,10 +31,11 @@ const EXPLICIT_LABELS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Never blocks, but keeps a photo covered. The detector tells a bare male
- * chest from a bare female one, and gets it wrong on some bodies; blocking on
- * that would break the "shirtless is fine" rule, while showing it as checked
- * and fine would be wrong the other way.
+ * Recorded, and deliberately not acted on. The detector reads a bare male
+ * chest as a bare female one about one time in six (43 of 246 real profile
+ * photos), so covering on it hid a sixth of all shirtless photos, which the
+ * user explicitly wants shown. On an app of men it is a misreading nearly
+ * every time. The score is still kept with each check.
  */
 const COVER_ONLY_LABELS: ReadonlySet<string> = new Set(["FEMALE_BREAST_EXPOSED"]);
 
@@ -52,22 +55,51 @@ export const EXPLICIT_BLOCK_SCORE = 0.6;
  * unseen.
  */
 export const EXPLICIT_UNSURE_SCORE = 0.15;
-const COVER_ONLY_SCORE = 0.35;
 /**
- * How sure the detector has to be before a photo counts as showing a face.
- * Provisional, to be set from real photos: so far a face under a cosmetic
- * mask scored 0.57 up close and 0.21 at a modest size, and the back of a head
- * scored 0.33.
+ * The face thresholds, set on 2026-10-02 from 246 real profile photos (the
+ * main photo of recent viewers), each judged by eye against what the
+ * detector said. With these, of 30 photos that clearly show a face 25 came
+ * out "face", 4 "unsure" and 1 "no face" (a cap and sunglasses the detector
+ * saw nothing in); of 90 that clearly do not, 87 came out "no face" and 2
+ * "face" (one hidden behind a phone, which it cannot tell from a face).
+ *
+ * At or above this, with a face big enough, the photo shows a face.
  */
 export const FACE_VISIBLE_SCORE = 0.45;
-/** Below this the detector found no face worth the name. */
-export const FACE_ABSENT_SCORE = 0.2;
 /**
- * The smallest share of the photo a face may take up and still count: under
- * this the person is too far away to be recognised, which the user counts as
- * not showing a face.
+ * Below this there is no face to speak of. Everything seen between 0.2 and
+ * 0.3 was a face too far away to recognise, the side or back of a head, or
+ * an emoji drawn over one. Real faces did turn up between 0.3 and 0.45,
+ * which is why that range is "unsure" and blocks nobody.
  */
-export const FACE_MIN_SHARE = 0.003;
+export const FACE_ABSENT_SCORE = 0.3;
+/** The share of the photo a face has to take up to count as shown. */
+export const FACE_MIN_SHARE = 0.01;
+/**
+ * Under this share the person is too far away to be recognised, which the
+ * user counts as not showing a face. Between the two shares is "unsure".
+ */
+export const FACE_FAR_SHARE = 0.006;
+/**
+ * How close to the photo's edge a face box may sit before it counts as cut
+ * off. The detector's most common false face is a chin at the top of a torso
+ * photo, and every one of those had a box running off the top edge.
+ */
+const EDGE_MARGIN = 0.01;
+
+/** Whether a detection's box runs off the photo. False when the box is not known. */
+function isCutByEdge(detection: ContentDetection): boolean {
+	const { x, y, width, height } = detection;
+	if (
+		typeof x !== "number" ||
+		typeof y !== "number" ||
+		typeof width !== "number" ||
+		typeof height !== "number"
+	) {
+		return false;
+	}
+	return x <= EDGE_MARGIN / 2 || y <= EDGE_MARGIN || x + width >= 1 - EDGE_MARGIN / 2 || y + height >= 1 - EDGE_MARGIN;
+}
 
 /** What the detector found, reduced to the numbers a verdict is read from. */
 export type ContentScores = {
@@ -99,7 +131,12 @@ export function scoreDetections(detections: readonly ContentDetection[]): Conten
 			scores.explicitLabel = detection.label;
 		} else if (COVER_ONLY_LABELS.has(detection.label)) {
 			scores.coverOnlyScore = Math.max(scores.coverOnlyScore, detection.score);
-		} else if (FACE_LABELS.has(detection.label) && detection.score > scores.faceScore) {
+		} else if (
+			FACE_LABELS.has(detection.label) &&
+			detection.score > scores.faceScore &&
+			// A face running off the photo is a chin or half a head, not a face shown.
+			!isCutByEdge(detection)
+		) {
 			scores.faceScore = detection.score;
 			scores.faceShare =
 				typeof detection.width === "number" && typeof detection.height === "number"
@@ -140,7 +177,6 @@ export type ContentVerdict = "explicit" | "unsure" | "clear";
 export function verdictFromScores(scores: ContentScores): ContentVerdict {
 	if (scores.explicitScore >= EXPLICIT_BLOCK_SCORE) return "explicit";
 	if (scores.explicitScore >= EXPLICIT_UNSURE_SCORE) return "unsure";
-	if (scores.coverOnlyScore >= COVER_ONLY_SCORE) return "unsure";
 	return "clear";
 }
 
@@ -148,15 +184,22 @@ export function verdictFromScores(scores: ContentScores): ContentVerdict {
  * Whether a photo shows a face, in three values on purpose:
  *
  * - "face": the detector is sure, and the face is big enough to recognise.
- * - "no_face": it found none, or one so small the person is far away.
+ * - "no_face": it found none (a face cut off by the photo's edge does not
+ *   count), or one so small the person is far away.
  * - "unsure": something in between. Nothing may block on this.
  */
 export type FaceVerdict = "face" | "no_face" | "unsure";
 
 export function faceVerdict(scores: ContentScores): FaceVerdict {
 	if (scores.faceScore < FACE_ABSENT_SCORE) return "no_face";
-	if (scores.faceShare != null && scores.faceShare < FACE_MIN_SHARE) return "no_face";
-	if (scores.faceScore >= FACE_VISIBLE_SCORE && scores.faceShare != null) return "face";
+	if (scores.faceShare != null && scores.faceShare < FACE_FAR_SHARE) return "no_face";
+	if (
+		scores.faceScore >= FACE_VISIBLE_SCORE &&
+		scores.faceShare != null &&
+		scores.faceShare >= FACE_MIN_SHARE
+	) {
+		return "face";
+	}
 	return "unsure";
 }
 

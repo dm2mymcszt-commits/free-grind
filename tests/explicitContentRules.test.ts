@@ -8,7 +8,7 @@ import {
 	EXPLICIT_PROFILE_PHOTO_REASON,
 	EXPLICIT_UNSURE_SCORE,
 	explicitNotice,
-	FACE_MIN_SHARE,
+	FACE_FAR_SHARE,
 	faceVerdict,
 	NO_CONTENT_SCORES,
 	profileFaceVerdict,
@@ -77,9 +77,9 @@ describe("verdictFromScores", () => {
 		).toBe("clear");
 	});
 
-	test("a bare female chest covers the photo but does not block", () => {
-		expect(verdictOf([{ label: "FEMALE_BREAST_EXPOSED", score: 0.9 }])).toBe("unsure");
-		expect(verdictOf([{ label: "FEMALE_BREAST_EXPOSED", score: 0.2 }])).toBe("clear");
+	test("a chest the detector reads as a bare female one is still just a shirtless photo", () => {
+		// It made that reading on 43 of 246 real profile photos of men.
+		expect(verdictOf([{ label: "FEMALE_BREAST_EXPOSED", score: 0.9 }])).toBe("clear");
 	});
 
 	test("the strongest explicit detection decides, whatever else is there", () => {
@@ -121,8 +121,10 @@ describe("combineContentScores", () => {
 	});
 });
 
-function face(score: number, width = 0.3, height = 0.3) {
-	return scoreDetections([{ label: "FACE_MALE", score, width, height }]);
+/** A face box of a given score and share of the photo, placed clear of the edges unless told otherwise. */
+function face(score: number, share = 0.09, y = 0.3) {
+	const side = Math.sqrt(share);
+	return scoreDetections([{ label: "FACE_MALE", score, x: 0.2, y, width: side, height: side }]);
 }
 
 describe("faceVerdict", () => {
@@ -135,19 +137,14 @@ describe("faceVerdict", () => {
 		expect(faceVerdict(face(0.1))).toBe("no_face");
 	});
 
-	test("a face too small to recognise is no face, however sure the detector is", () => {
-		const side = Math.sqrt(FACE_MIN_SHARE) * 0.9;
-		expect(faceVerdict(face(0.9, side, side))).toBe("no_face");
-	});
-
-	test("in between is unsure: the back of a head scored 0.33", () => {
-		expect(faceVerdict(face(0.33))).toBe("unsure");
+	test("a face too far away to recognise is no face, however sure the detector is", () => {
+		expect(faceVerdict(face(0.9, FACE_FAR_SHARE * 0.8))).toBe("no_face");
 	});
 
 	test("the strongest face decides, with its own size", () => {
 		const scores = scoreDetections([
-			{ label: "FACE_MALE", score: 0.5, width: 0.01, height: 0.01 },
-			{ label: "FACE_FEMALE", score: 0.8, width: 0.4, height: 0.4 },
+			{ label: "FACE_MALE", score: 0.5, x: 0.5, y: 0.5, width: 0.01, height: 0.01 },
+			{ label: "FACE_FEMALE", score: 0.8, x: 0.2, y: 0.2, width: 0.4, height: 0.4 },
 		]);
 		expect(scores.faceScore).toBe(0.8);
 		expect(scores.faceShare).toBeCloseTo(0.16);
@@ -158,6 +155,46 @@ describe("faceVerdict", () => {
 		const old = { ...NO_CONTENT_SCORES, faceScore: 0.9, faceShare: null };
 		expect(faceVerdict(old)).toBe("unsure");
 		expect(faceVerdict({ ...old, faceScore: 0.05 })).toBe("no_face");
+	});
+
+	// The cases below are real photos from the 2026-10-02 collection, by what
+	// the detector reported for each.
+	test("a chin at the top of a torso photo is not a face: its box runs off the photo", () => {
+		expect(faceVerdict(face(0.64, 0.086, 0))).toBe("no_face");
+		expect(faceVerdict(face(0.56, 0.032, 0.004))).toBe("no_face");
+	});
+
+	test("a face next to a cut-off chin still counts", () => {
+		const scores = scoreDetections([
+			{ label: "FACE_MALE", score: 0.7, x: 0.3, y: 0, width: 0.3, height: 0.1 },
+			{ label: "FACE_MALE", score: 0.55, x: 0.4, y: 0.4, width: 0.2, height: 0.2 },
+		]);
+		expect(scores.faceScore).toBe(0.55);
+		expect(faceVerdict(scores)).toBe("face");
+	});
+
+	test("a full-length mirror selfie with a small but clear face is a face", () => {
+		expect(faceVerdict(face(0.57, 0.011))).toBe("face");
+	});
+
+	test("a person far off in a street or on a beach is no face", () => {
+		expect(faceVerdict(face(0.63, 0.005))).toBe("no_face");
+		expect(faceVerdict(face(0.23, 0.004))).toBe("no_face");
+	});
+
+	test("the back or side of a head, and an emoji over a face, are no face", () => {
+		expect(faceVerdict(face(0.2, 0.091))).toBe("no_face");
+		expect(faceVerdict(face(0.22, 0.042))).toBe("no_face");
+	});
+
+	test("real faces the detector was only half sure of are unsure, never no face", () => {
+		// A close face under a cap, and one looking away: 0.32 and 0.41.
+		expect(faceVerdict(face(0.32, 0.115))).toBe("unsure");
+		expect(faceVerdict(face(0.41, 0.129))).toBe("unsure");
+	});
+
+	test("a sure face of in-between size is unsure", () => {
+		expect(faceVerdict(face(0.7, 0.008))).toBe("unsure");
 	});
 });
 

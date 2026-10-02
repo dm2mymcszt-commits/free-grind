@@ -37,7 +37,7 @@ import { getProfileImageUrl, validateMediaHash } from "../utils/media";
 import { classifyProfileAccess } from "../utils/profileAccessStatus";
 
 /** Bumped whenever what is recorded for a profile photo changes; older rows are checked again. */
-const MODEL = "nudenet-320n-profile-2";
+const MODEL = "nudenet-320n-profile-3";
 
 /** More photos than this and the rest are not looked at. */
 const MAX_PHOTOS = 8;
