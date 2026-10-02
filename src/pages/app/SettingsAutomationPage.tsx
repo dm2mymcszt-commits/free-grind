@@ -51,6 +51,12 @@ import {
     type DetectorLogEntry,
 } from "../../services/detectorLog";
 import {
+    getDetectorTestState,
+    startDetectorTestCollection,
+    stopDetectorTestCollection,
+    subscribeToDetectorTest,
+} from "../../services/detectorTestRun";
+import {
     clampNoFacePhotoDelayMinutes,
     getNoFacePhotoDelayMinutes,
     isNeedFaceEnabled,
@@ -131,6 +137,14 @@ export function SettingsAutomationPage() {
         window.addEventListener(DETECTOR_LOG_UPDATED_EVENT, refresh);
         return () => window.removeEventListener(DETECTOR_LOG_UPDATED_EVENT, refresh);
     }, []);
+
+    // Temporary: the photo collection used to tune the detector's thresholds.
+    // It runs for minutes and carries on if this page is left, so its state
+    // lives with the collector and is only mirrored here.
+    const [collection, setCollection] = useState(() => getDetectorTestState());
+    useEffect(() => subscribeToDetectorTest(() => setCollection(getDetectorTestState())), []);
+    const collecting = collection.running;
+    const collectionResult = collection.result;
 
     const [blockFacelessNoMedia, setBlockFacelessNoMedia] = useState(() => window.localStorage.getItem("fg-block-faceless-no-media") === "true");
     const [blockFacelessDelay, setBlockFacelessDelay] = useState(() => window.localStorage.getItem("fg-block-faceless-delay") || "5");
@@ -449,6 +463,11 @@ export function SettingsAutomationPage() {
         }
     };
 
+    const handleCollectTestPhotos = () => {
+        if (userId == null) return;
+        void startDetectorTestCollection(apiFunctions, userId);
+    };
+
     // --- SAVE HANDLERS ---
     const handleSaveViewScanner = () => {
         window.localStorage.setItem("fg-view-scanner-interval", viewScannerInterval);
@@ -656,6 +675,42 @@ export function SettingsAutomationPage() {
                                 >
                                     Test detector
                                 </button>
+                            </div>
+                        )}
+
+                        {/* TEMPORARY: collects real photos for tuning the detector. Goes away once the thresholds are set. */}
+                        {isTauriRuntime() && (
+                            <div className="grid gap-2 px-4 py-3">
+                                <div className="flex items-center justify-between gap-3">
+                                    <p className="min-w-0 text-xs text-[var(--text-muted)]">
+                                        <strong className="text-[var(--text)]">Collect test photos (temporary).</strong> Saves the profile photos of the people in your inbox and of your recent viewers to a folder on this device, with what the detector found in each, so the settings can be tuned on real photos. Blocks nobody and changes nothing. Takes a few minutes, and carries on if you leave this page; keep the app open.
+                                    </p>
+                                    {collecting ? (
+                                        <button
+                                            type="button"
+                                            onClick={stopDetectorTestCollection}
+                                            className="shrink-0 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-[var(--text)] transition hover:border-[var(--accent)]"
+                                        >
+                                            Stop
+                                        </button>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={handleCollectTestPhotos}
+                                            className="shrink-0 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-[var(--text)] transition hover:border-[var(--accent)]"
+                                        >
+                                            Collect
+                                        </button>
+                                    )}
+                                </div>
+                                {collecting && (
+                                    <p className="text-xs text-[var(--text-muted)]">
+                                        {collecting.stage}{collecting.total > 0 ? ` ${collecting.done} / ${collecting.total}` : ""} · {collecting.photos} photos so far
+                                    </p>
+                                )}
+                                {collectionResult && (
+                                    <p className="select-text break-all text-xs text-[var(--text-muted)]">{collectionResult}</p>
+                                )}
                             </div>
                         )}
                     </div>

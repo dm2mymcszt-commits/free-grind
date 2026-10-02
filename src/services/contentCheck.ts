@@ -177,7 +177,7 @@ export function subscribeToContentChecks(listener: () => void): () => void {
 // The detector
 // ---------------------------------------------------------------------------
 
-type DetectionResult = {
+export type DetectionResult = {
 	detections: ContentDetection[];
 	imageWidth: number;
 	imageHeight: number;
@@ -197,6 +197,14 @@ function enqueue<T>(run: () => Promise<T>): Promise<T> {
 async function detectImage(base64: string, tiled = false): Promise<ContentScores> {
 	const result = await invoke<DetectionResult>("detect_image_content", { imageBase64: base64, tiled });
 	return scoreDetections(result.detections);
+}
+
+/**
+ * Everything the detector found in one still image, unreduced. For the
+ * temporary test collector, which records the raw numbers for tuning.
+ */
+export function detectRaw(base64: string, tiled: boolean): Promise<DetectionResult> {
+	return enqueue(() => invoke<DetectionResult>("detect_image_content", { imageBase64: base64, tiled }));
 }
 
 /**
