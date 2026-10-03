@@ -971,6 +971,9 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 	// placeholder like "Someone" would block everyone without a name.
 	const banName = activeProfile?.displayName?.trim() ?? "";
 	const banBio = activeProfile?.aboutMe?.trim() ?? "";
+	// With the location finder off and nothing to ban, the menu would open as
+	// an empty box, so the "more" button is left out instead.
+	const hasActionsMenuItems = Boolean(onTriangleProfile || banName || banBio);
 	const actionsMenuItems = (
 		<>
 			{/* Left out entirely when the location finder is switched off in Settings. */}
@@ -1124,6 +1127,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 									<Ban className="h-4 w-4" />
 								</button>
 							)}
+							{hasActionsMenuItems && (
 							<div ref={actionsMenuRef} className="relative">
 								<button
 									type="button"
@@ -1140,6 +1144,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 									</div>
 								)}
 							</div>
+							)}
 						</div>
 					)}
 				</div>
@@ -1607,6 +1612,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 													<Ban className="h-4 w-4" />
 												</button>
 											)}
+											{hasActionsMenuItems && (
 											<div ref={actionsMenuRef} className="relative">
 												<button type="button" onClick={() => setIsActionsMenuOpen((v) => !v)}
 													className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--text)] transition-colors"
@@ -1619,6 +1625,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 													</div>
 												)}
 											</div>
+											)}
 										</div>
 									)}
 								</div>
