@@ -293,6 +293,9 @@ export function ChatPage() {
 	useEffect(() => {
 		archivedConversationsRef.current = archivedConversations;
 	}, [archivedConversations]);
+	// True once the hydration below has finished (with or without results), so
+	// a count over archived chats can be trusted to be final rather than early.
+	const [archivedConversationsHydrated, setArchivedConversationsHydrated] = useState(false);
 
 	// Conversations recovered from local history whose `conversations` row is
 	// gone (see chatDb.recoverOrphanedConversation) — distinct from
@@ -1419,6 +1422,11 @@ export function ChatPage() {
 			})
 			.catch((error) => {
 				appLog.warn("[ChatPage] failed to hydrate archived conversations", error);
+			})
+			.finally(() => {
+				if (!cancelled) {
+					setArchivedConversationsHydrated(true);
+				}
 			});
 		return () => {
 			cancelled = true;
@@ -4029,6 +4037,27 @@ export function ChatPage() {
 		}
 		return liveConversations.filter((c) => hiddenConversationIds.has(c.data.conversationId)).length;
 	}, [conversations, archivedConversations, hiddenConversationIds, archivedFilter]);
+
+	// "Only hidden" (or "mixed in") means nothing once no hidden chat is left
+	// in view — the auto-blocker archived the last one, or it was unhidden.
+	// The Hidden pill and the Hidden row in the filter sheet both disappear at
+	// zero, so the filter stayed on with no control to turn it off: an empty
+	// inbox and a "1" on Filters until Clear all. Waits for every source of
+	// the count to finish loading, so a count that is only zero because it is
+	// early cannot throw away a saved filter.
+	useEffect(() => {
+		if (hiddenFilter === "hide" || activeHiddenCount > 0) return;
+		if (isLoadingInbox || inboxError) return;
+		if (!hiddenConversationIdsLoaded || !archivedConversationsHydrated) return;
+		setHiddenFilter("hide");
+	}, [
+		hiddenFilter,
+		activeHiddenCount,
+		isLoadingInbox,
+		inboxError,
+		hiddenConversationIdsLoaded,
+		archivedConversationsHydrated,
+	]);
 
 	// Scroll memory: save position on scroll (re-attaches when list mounts/unmounts)
 	useEffect(() => {
