@@ -7,6 +7,7 @@ import {
 	type LocalProfileKnowledge,
 } from "../services/knownProfile";
 import type { ProfileCopy } from "../services/profileCopyStore";
+import type { BlockExplanation } from "../utils/blockExplanation";
 import { getThumbImageUrl, validateMediaHash } from "../utils/media";
 import type { ProfileAccessStatus } from "../utils/profileAccessStatus";
 import {
@@ -30,6 +31,8 @@ export type UnavailableProfile = {
 	conversationId: string | null;
 	/** Their whole profile as this device last read it, when it was saved. */
 	savedCopy: ProfileCopy | null;
+	/** How and why this account blocked them, when the Stats log recorded it. */
+	blockExplanation: BlockExplanation | null;
 };
 
 /**
@@ -62,7 +65,13 @@ export function useUnavailableProfile(input: {
 		}
 		let cancelled = false;
 		void lookUpLocalProfile(profileId)
-			.catch(() => ({ conversationId: null, blockState: null, candidates: [], savedCopy: null }))
+			.catch(() => ({
+				conversationId: null,
+				blockState: null,
+				candidates: [],
+				savedCopy: null,
+				blockExplanation: null,
+			}))
 			.then((knowledge) => {
 				if (!cancelled) setLocal({ ...knowledge, profileId });
 			});
@@ -129,5 +138,9 @@ export function useUnavailableProfile(input: {
 				: known.imageUrl,
 		conversationId: localForProfile?.conversationId ?? null,
 		savedCopy: localForProfile?.savedCopy ?? null,
+		// Only for a block of this account's that is in force now: the log
+		// knows nothing about their block, and nothing about a deleted profile.
+		blockExplanation:
+			state === "you_blocked" ? (localForProfile?.blockExplanation ?? null) : null,
 	};
 }

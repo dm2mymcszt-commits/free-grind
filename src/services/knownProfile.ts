@@ -7,7 +7,8 @@
 
 import type { BlockState } from "../types/chat-db";
 import type { KnownProfile } from "../utils/unavailableProfile";
-import { findConversationByProfileId } from "./chatDb";
+import { explainBlock, type BlockExplanation } from "../utils/blockExplanation";
+import { findConversationByProfileId, getLatestBlockLogEntry } from "./chatDb";
 import { interestViewsStore } from "./interestViewsStore";
 import { getProfileCopy, type ProfileCopy } from "./profileCopyStore";
 
@@ -18,13 +19,16 @@ export type LocalProfileKnowledge = {
 	candidates: KnownProfile[];
 	/** Their whole profile as last read, if it was ever saved. */
 	savedCopy: ProfileCopy | null;
+	/** How and why this account last blocked them, when the Stats log has it. */
+	blockExplanation: BlockExplanation | null;
 };
 
 export async function lookUpLocalProfile(profileId: string): Promise<LocalProfileKnowledge> {
-	const [stored, view, savedCopy] = await Promise.all([
+	const [stored, view, savedCopy, blockLogEntry] = await Promise.all([
 		findConversationByProfileId(profileId).catch(() => null),
 		interestViewsStore.getByProfileId(profileId).catch(() => null),
 		getProfileCopy(profileId).catch(() => null),
+		getLatestBlockLogEntry(profileId).catch(() => null),
 	]);
 
 	const candidates: KnownProfile[] = [];
@@ -52,6 +56,7 @@ export async function lookUpLocalProfile(profileId: string): Promise<LocalProfil
 		blockState: stored?.blockState ?? null,
 		candidates,
 		savedCopy,
+		blockExplanation: explainBlock(blockLogEntry),
 	};
 }
 

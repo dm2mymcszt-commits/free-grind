@@ -59,6 +59,7 @@ import type {
 	PastMessage,
 } from "../utils/pastContactRules";
 import { appLog } from "../utils/logger";
+import type { BlockLogEntry } from "../utils/blockExplanation";
 import {
 	isFalseBlockedByOtherMarker,
 	restoredStateAfterFalseMarker,
@@ -3035,6 +3036,43 @@ export async function insertStatsLogRows(
 
 export function insertStatsLogRow(name: StatsLogTable, row: PortableTableRow): Promise<void> {
 	return insertStatsLogRows(name, [row]);
+}
+
+/**
+ * The newest block or unblock the Stats log holds for one person, from any
+ * device — what the profile screen reads to say how and why they were blocked.
+ * Null when nothing was logged (Stats was off, or the block predates it).
+ */
+export async function getLatestBlockLogEntry(profileId: string): Promise<BlockLogEntry | null> {
+	const db = await getDb();
+	const rows = await db.select<
+		{
+			event_type: string;
+			timestamp: number;
+			method: string | null;
+			source: string | null;
+			reason_kind: string | null;
+			reason_detail: string | null;
+			reason_label: string | null;
+			rule_name: string | null;
+		}[]
+	>(
+		`SELECT event_type, timestamp, method, source, reason_kind, reason_detail, reason_label, rule_name
+		 FROM stats_block_log WHERE profile_id = $1 ORDER BY timestamp DESC LIMIT 1`,
+		[profileId],
+	);
+	const row = rows[0];
+	if (!row) return null;
+	return {
+		eventType: row.event_type,
+		timestamp: Number(row.timestamp),
+		method: row.method,
+		source: row.source,
+		reasonKind: row.reason_kind,
+		reasonDetail: row.reason_detail,
+		reasonLabel: row.reason_label,
+		ruleName: row.rule_name,
+	};
 }
 
 /** The most recent location in the log, from any device. */

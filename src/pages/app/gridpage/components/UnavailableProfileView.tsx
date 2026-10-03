@@ -14,6 +14,7 @@ import { prepareProfileCopyForDisplay } from "../../../../utils/profileCopyRules
 import type { UnavailableProfileState } from "../../../../utils/unavailableProfile";
 import { formatDateTime24 } from "../../chat/chatUtils";
 import type { ManagedOption, ProfileDetail } from "../../GridPage.types";
+import { BlockExplanationLines } from "./BlockExplanationLines";
 import { ProfileDetailsModal } from "./ProfileDetailsModal";
 
 type UnavailableProfileViewProps = {
@@ -217,6 +218,9 @@ function UnavailableProfileCard({
 
 			<p className="mt-4 max-w-full truncate text-lg font-semibold text-[var(--text)]">{name}</p>
 			<p className="mt-3 text-base font-semibold text-[var(--text)]">{description.title}</p>
+			{profile.blockExplanation && (
+				<BlockExplanationLines explanation={profile.blockExplanation} className="mt-2" />
+			)}
 			<p className="mt-1 text-sm leading-relaxed text-[var(--text-muted)]">{description.detail}</p>
 
 			<UnavailableProfileActions
@@ -350,7 +354,13 @@ export function UnavailableProfileView(props: UnavailableProfileViewProps) {
 					</div>
 					<div className="min-w-0 flex-1">
 						<p className="text-sm font-semibold text-[var(--text)]">{description.title}</p>
-						<p className="mt-0.5 text-sm leading-relaxed text-[var(--text-muted)]">
+						{profile.blockExplanation && (
+							<BlockExplanationLines
+								explanation={profile.blockExplanation}
+								className="mt-1"
+							/>
+						)}
+						<p className="mt-1 text-sm leading-relaxed text-[var(--text-muted)]">
 							{t("profile_unavailable.saved_copy", {
 								defaultValue:
 									"This is their profile as it was on {{date}}. It is no longer updated.",
