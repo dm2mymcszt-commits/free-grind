@@ -62,6 +62,9 @@ import {
 } from "../../services/googleDriveSyncRuntime";
 import { logProfileEdit, logProfileOpen } from "../../services/statsLog";
 import { isLocationFinderEnabled } from "../../utils/locationFinderSettings";
+import { classifyProfileAccess, type ProfileAccessStatus } from "../../utils/profileAccessStatus";
+import { useUnavailableProfile } from "../../hooks/useUnavailableProfile";
+import { UnavailableProfileView } from "./gridpage/components/UnavailableProfileView";
 
 const EXPLORE_LOCATION_STORAGE_KEY = "grid_explore_location_v1";
 
@@ -121,6 +124,11 @@ export function GridPage() {
 	const [activeProfile, setActiveProfile] = useState<ProfileDetail | null>(null);
 	const [isLoadingActiveProfile, setIsLoadingActiveProfile] = useState(false);
 	const [activeProfileError, setActiveProfileError] = useState<string | null>(null);
+	// What Grindr's latest answer for the open profile was — null until it has
+	// answered. Anything but "accessible" is the empty stub.
+	const [activeProfileAccess, setActiveProfileAccess] = useState<ProfileAccessStatus | null>(null);
+	const activeProfileAccessForRef = useRef<string | null>(null);
+	const [profileReloadToken, setProfileReloadToken] = useState(0);
 	const [isProfileSearchOpen, setIsProfileSearchOpen] = useState(false);
 	const [profileSearchInput, setProfileSearchInput] = useState("");
 	const profileSearchDialogRef = useRef<HTMLDialogElement | null>(null);
@@ -929,10 +937,19 @@ export function GridPage() {
 			setActiveProfile(null);
 			setActiveProfileError(null);
 			setIsLoadingActiveProfile(false);
+			activeProfileAccessForRef.current = null;
+			setActiveProfileAccess(null);
 			return;
 		}
 
 		let cancelled = false;
+
+		// A reload of the same profile (after an unblock, or "Check again")
+		// keeps the last answer on screen until the new one is in.
+		if (activeProfileAccessForRef.current !== activeProfileId) {
+			activeProfileAccessForRef.current = activeProfileId;
+			setActiveProfileAccess(null);
+		}
 
 		// This pop-up never reports the visit to Grindr.
 		logProfileOpen(activeProfileId, { viewRecorded: false, surface: "grid_popup" });
@@ -953,8 +970,17 @@ export function GridPage() {
 				const parsed = await apiFunctions.getProfileDetail(activeProfileId);
 
 				if (!cancelled) {
-					setActiveProfile(parsed);
+					// A blocked or deleted profile still answers, as an empty
+					// stub (see classifyProfileAccess). It gets its own screen
+					// rather than being shown as a profile named "4".
+					const access = classifyProfileAccess(parsed);
+					setActiveProfileAccess(access);
 					setCachedProfileDetail(activeProfileId, parsed);
+					if (access === "accessible") {
+						setActiveProfile(parsed);
+					} else if (!cachedProfile) {
+						setActiveProfile(null);
+					}
 				}
 			} catch (error) {
 				if (!cancelled) {
@@ -979,7 +1005,7 @@ export function GridPage() {
 		return () => {
 			cancelled = true;
 		};
-	}, [activeProfileId, apiFunctions]);
+	}, [activeProfileId, apiFunctions, profileReloadToken]);
 
 	const profilePhotoUrl = useMemo(() => {
 		if (!profileImageHash) {
@@ -1091,6 +1117,14 @@ export function GridPage() {
 		}
 		return cards.find((card) => card.profileId === activeProfileId) ?? null;
 	}, [activeProfileId, cards, selfCard]);
+
+	const unavailableProfile = useUnavailableProfile({
+		profileId: activeProfileId,
+		access: activeProfileAccess,
+		hint: selectedBrowseCard
+			? { name: selectedBrowseCard.displayName, imageUrl: selectedBrowseCard.primaryImageUrl }
+			: null,
+	});
 
 	const selectedProfileChatContact = useMemo(() => {
 		if (!activeProfileId) {
@@ -1230,6 +1264,8 @@ export function GridPage() {
 			try {
 				await unblockProfileMutation(targetProfileId);
 				toast.success(t("profile_details.unblock_success"));
+				// Their profile was the blocked stub until now; ask for the real one.
+				setProfileReloadToken((token) => token + 1);
 			} catch (error) {
 				toast.error(
 					error instanceof Error
@@ -1747,6 +1783,20 @@ export function GridPage() {
 				</div>
 			</div>
 
+			{unavailableProfile && activeProfileId ? (
+			<UnavailableProfileView
+				profileId={activeProfileId}
+				profile={unavailableProfile}
+				onClose={() => setActiveProfileId(null)}
+				onUnblock={handleUnblockProfile}
+				isUnblocking={isUnblockingProfile}
+				onOpenChat={(conversationId) => {
+					navigate(`/chat/${encodeURIComponent(conversationId)}`);
+				}}
+				onRetry={() => setProfileReloadToken((token) => token + 1)}
+				isRetrying={isLoadingActiveProfile}
+			/>
+			) : (
 			<ProfileDetailsModal
 				isOpen={Boolean(activeProfileId)}
 				onClose={() => setActiveProfileId(null)}
@@ -1775,6 +1825,7 @@ export function GridPage() {
 				genderOptions={genderOptions}
 				pronounOptions={pronounOptions}
 			/>
+			)}
 
 			<ConfirmDialog
 				isOpen={pendingProfileConfirm !== null}

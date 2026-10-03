@@ -22,7 +22,6 @@ import {
 	Trophy,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import toast from "react-hot-toast";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../../contexts/useAuth";
 import { usePreferences } from "../../../contexts/PreferencesContext";
@@ -225,38 +224,28 @@ export default function StatsPage() {
 		() => ({
 			lookUp: grindr.person,
 			known: grindr.knownPerson,
-			open: async (profileId) => {
+			open: async (profileId, known) => {
 				const result = await grindr.person(profileId);
-				if (result.state === "deleted") {
-					toast(
-						t("stats.person.deleted_toast", {
-							defaultValue: "This profile no longer exists.",
-						}),
-					);
-				} else if (result.state === "blocked_you") {
-					toast(
-						t("stats.person.blocked_you_toast", {
-							defaultValue:
-								"This person has blocked you, so their profile can't be opened.",
-						}),
-					);
-				} else {
-					// Open, blocked by you (the profile offers Unblock), or Grindr
-					// could not be asked: the profile page handles each of those.
-					if (result.detail) setCachedProfileDetail(profileId, result.detail);
-					navigate(`/profile/${profileId}`, {
-						state: {
-							returnTo:
-								sectionKey === "overview"
-									? "/stats"
-									: `/stats?section=${sectionKey}`,
+				// Open, blocked either way, deleted, or Grindr could not be
+				// asked: the profile page handles each of those and says which,
+				// with the name and picture this row was showing.
+				if (result.detail) setCachedProfileDetail(profileId, result.detail);
+				navigate(`/profile/${profileId}`, {
+					state: {
+						returnTo:
+							sectionKey === "overview"
+								? "/stats"
+								: `/stats?section=${sectionKey}`,
+						knownProfile: {
+							name: known?.name ?? result.name,
+							imageHash: known?.imageHash ?? result.imageHash,
 						},
-					});
-				}
+					},
+				});
 				return result;
 			},
 		}),
-		[grindr, navigate, sectionKey, t],
+		[grindr, navigate, sectionKey],
 	);
 
 	const [driveStatus, setDriveStatus] = useState<GoogleDriveSyncStatus | null>(

@@ -696,16 +696,30 @@ export function InterestPage() {
 		[searchParams, setSearchParams],
 	);
 
+	// Read on tap only, so the rows' open handler keeps one identity while
+	// the lists refresh underneath it.
+	const viewsRef = useRef(views);
+	viewsRef.current = views;
+	const tapsRef = useRef(taps);
+	tapsRef.current = taps;
+
 	const handleOpenProfile = useCallback(
 		(profileId: string) => {
-			if (isProfileBlocked(profileId)) {
-				return;
-			}
+			// Handed on so a profile Grindr won't show any more (a block, a
+			// deleted account) still opens with the name and picture seen here.
+			const item =
+				viewsRef.current.find((entry) => entry.profileId === profileId) ??
+				tapsRef.current.find((entry) => entry.profileId === profileId);
 			navigate(`/profile/${profileId}`, {
-				state: { returnTo: `${location.pathname}${location.search}` },
+				state: {
+					returnTo: `${location.pathname}${location.search}`,
+					knownProfile: item
+						? { name: item.displayName, imageHash: item.imageHash }
+						: undefined,
+				},
 			});
 		},
-		[navigate, location.pathname, location.search, isProfileBlocked],
+		[navigate, location.pathname, location.search],
 	);
 
 	const handleTouchStart = useCallback((event: TouchEvent<HTMLDivElement>) => {

@@ -3,6 +3,7 @@ import type {
 	ProfileDetail,
 } from "../GridPage.types";
 import type { CacheEntry } from "../../../types/grid-cache";
+import { classifyProfileAccess } from "../../../utils/profileAccessStatus";
 
 const PROFILE_CACHE_TTL_MS = 5 * 60 * 1000;
 const BROWSE_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -52,6 +53,15 @@ export function setCachedProfileDetail(
 	profileId: string,
 	profile: ProfileDetail,
 ) {
+	// A blocked or deleted profile still answers, as an empty stub named "4"
+	// or "3" (see classifyProfileAccess). Kept here it would be handed back
+	// as that person's profile for five minutes. The real copy goes too: it
+	// is no longer what Grindr shows, and would flash up before the next
+	// visit learns the same thing again.
+	if (classifyProfileAccess(profile) !== "accessible") {
+		profileCache.delete(profileId);
+		return;
+	}
 	setInCache(profileCache, profileId, profile, PROFILE_CACHE_TTL_MS);
 }
 

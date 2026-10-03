@@ -1292,6 +1292,18 @@
         "get_note_failed": "Failed to load note",
         "delete_note": "Delete note"
     },
+    "profile_unavailable": {
+        "you_blocked": "You blocked this person",
+        "you_blocked_detail": "Their profile stays hidden while your block is in place.",
+        "blocked_you": "This person blocked you",
+        "blocked_you_detail": "Their profile can't be opened while their block is in place.",
+        "deleted": "This profile no longer exists",
+        "deleted_detail": "Grindr no longer has a profile for this person.",
+        "blocked_unknown": "This profile can't be opened right now",
+        "blocked_unknown_detail": "There is a block between you and this person, and the app can't tell yet which side set it.",
+        "open_chat": "Open your chat",
+        "retry": "Check again"
+    },
     "profile_details": {
         "title": "Profile details",
         "profile_fallback": "Profile {{id}}",

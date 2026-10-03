@@ -5,6 +5,8 @@
 
 import type { createApiFunctions } from "../../../services/apiFunctions";
 import { classifyProfileAccess } from "../../../utils/profileAccessStatus";
+import { hasRecentSelfBlockActionOnProfile } from "../../../utils/selfBlockActions";
+import { resolveUnavailableProfile } from "../../../utils/unavailableProfile";
 import type { ProfileDetail } from "../GridPage.types";
 import { normalizeTimestamp } from "./statsCompute";
 
@@ -84,10 +86,16 @@ export function createGrindrStats(api: ApiFunctions): GrindrStats {
 				};
 			}
 			if (access === "not_found") return { state: "deleted", ...nothing };
-			// The same stub comes back whichever side did the blocking.
+			// The same stub comes back whichever side did the blocking; the
+			// profile page reads it by the same rule.
 			const mine = await blockedIds();
+			const state = resolveUnavailableProfile({
+				access,
+				blockedByMe: mine.has(profileId),
+				selfActedRecently: hasRecentSelfBlockActionOnProfile(profileId),
+			});
 			return {
-				state: mine.has(profileId) ? "you_blocked" : "blocked_you",
+				state: state === "you_blocked" || state === "blocked_you" ? state : "unreachable",
 				...nothing,
 			};
 		} catch {

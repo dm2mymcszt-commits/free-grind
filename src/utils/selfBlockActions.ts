@@ -57,6 +57,29 @@ export function hasRecentSelfBlockAction(conversationId: string): boolean {
 }
 
 /**
+ * The same grace window, kept per profile for people this account has no
+ * conversation with — there is no conversation id to hang the mark on, but
+ * their profile still comes back as the blocked stub for a moment after an
+ * unblock, and the profile page must not read that as their block.
+ */
+const lastSelfActionOnProfileAt = new Map<string, number>();
+
+export function markSelfBlockActionOnProfile(profileId: string): void {
+	lastSelfActionOnProfileAt.set(String(profileId), Date.now());
+}
+
+export function hasRecentSelfBlockActionOnProfile(profileId: string): boolean {
+	const key = String(profileId);
+	const at = lastSelfActionOnProfileAt.get(key);
+	if (at == null) return false;
+	if (Date.now() - at > SELF_ACTION_GRACE_MS) {
+		lastSelfActionOnProfileAt.delete(key);
+		return false;
+	}
+	return true;
+}
+
+/**
  * Returns true (and clears the mark) if the given conversation has a recent,
  * still-valid self-triggered action matching `expectedAction`.
  */

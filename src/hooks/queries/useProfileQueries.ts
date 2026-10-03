@@ -4,7 +4,7 @@ import { fetchSpotifyTracks } from "../../services/spotifyTrackInfo";
 import { useApiFunctions } from "../useApiFunctions";
 import type { TravelPlanPayload } from "../../types/travel";
 import { findConversationByProfileId } from "../../services/chatDb";
-import { markSelfBlockAction } from "../../utils/selfBlockActions";
+import { markSelfBlockAction, markSelfBlockActionOnProfile } from "../../utils/selfBlockActions";
 import {
 	applySelfBlockAction,
 	markConversationDeleteHandled,
@@ -27,6 +27,9 @@ import { profileSchema } from "../../pages/app/profile-editor/profileEditorUtils
 // applySelfBlockAction's local state check could see it — producing a
 // duplicate "You blocked/unblocked this person".
 function markConversationSelfAction(profileId: string, action: "block" | "unblock") {
+	// Kept per profile too, and synchronously: the profile page asks about
+	// people there is no conversation with.
+	markSelfBlockActionOnProfile(profileId);
 	void findConversationByProfileId(profileId)
 		.then((conversation) => {
 			if (conversation) {

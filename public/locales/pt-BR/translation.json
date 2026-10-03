@@ -846,6 +846,18 @@
             "filter_label": "Arquivadas"
         }
     },
+    "profile_unavailable": {
+        "you_blocked": "Você bloqueou esta pessoa",
+        "you_blocked_detail": "O perfil dela fica oculto enquanto o seu bloqueio estiver ativo.",
+        "blocked_you": "Esta pessoa bloqueou você",
+        "blocked_you_detail": "O perfil dela não pode ser aberto enquanto o bloqueio dela estiver ativo.",
+        "deleted": "Este perfil não existe mais",
+        "deleted_detail": "O Grindr não tem mais um perfil para esta pessoa.",
+        "blocked_unknown": "Este perfil não pode ser aberto no momento",
+        "blocked_unknown_detail": "Há um bloqueio entre você e esta pessoa, e o app ainda não consegue saber de que lado ele vem.",
+        "open_chat": "Abrir sua conversa",
+        "retry": "Verificar novamente"
+    },
     "profile_details": {
         "title": "Detalhes do perfil",
         "profile_fallback": "Perfil {{id}}",

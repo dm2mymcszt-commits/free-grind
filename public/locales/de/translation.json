@@ -1188,6 +1188,18 @@
         "get_note_failed": "Fehler beim Laden der Notiz",
         "delete_note": "Notiz löschen"
     },
+    "profile_unavailable": {
+        "you_blocked": "Du hast diese Person blockiert",
+        "you_blocked_detail": "Ihr Profil bleibt verborgen, solange deine Blockierung besteht.",
+        "blocked_you": "Diese Person hat dich blockiert",
+        "blocked_you_detail": "Ihr Profil kann nicht geöffnet werden, solange ihre Blockierung besteht.",
+        "deleted": "Dieses Profil existiert nicht mehr",
+        "deleted_detail": "Grindr hat für diese Person kein Profil mehr.",
+        "blocked_unknown": "Dieses Profil kann gerade nicht geöffnet werden",
+        "blocked_unknown_detail": "Zwischen dir und dieser Person besteht eine Blockierung, und die App kann noch nicht sagen, von welcher Seite sie kommt.",
+        "open_chat": "Deinen Chat öffnen",
+        "retry": "Erneut prüfen"
+    },
     "profile_details": {
         "title": "Profildetails",
         "profile_fallback": "Profil {{id}}",

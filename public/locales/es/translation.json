@@ -762,6 +762,18 @@
             "filter_label": "Archivados"
         }
     },
+    "profile_unavailable": {
+        "you_blocked": "Has bloqueado a esta persona",
+        "you_blocked_detail": "Su perfil permanece oculto mientras tu bloqueo siga activo.",
+        "blocked_you": "Esta persona te ha bloqueado",
+        "blocked_you_detail": "Su perfil no se puede abrir mientras su bloqueo siga activo.",
+        "deleted": "Este perfil ya no existe",
+        "deleted_detail": "Grindr ya no tiene un perfil de esta persona.",
+        "blocked_unknown": "Este perfil no se puede abrir ahora mismo",
+        "blocked_unknown_detail": "Hay un bloqueo entre tú y esta persona, y la app aún no puede saber de qué lado viene.",
+        "open_chat": "Abrir tu chat",
+        "retry": "Comprobar de nuevo"
+    },
     "profile_details": {
         "loading": "Cargando detalles de perfil...",
         "title": "Detalles del perfil",

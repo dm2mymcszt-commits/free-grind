@@ -37,7 +37,10 @@ import { findConversationByProfileId, insertSystemMessage } from "../../services
 import { unarchiveConversation, claimBlockStateTransition } from "../../services/conversationArchive";
 import { appLog } from "../../utils/logger";
 import { consumeSelfBlockAction } from "../../utils/selfBlockActions";
-import { classifyProfileAccess } from "../../utils/profileAccessStatus";
+import { classifyProfileAccess, type ProfileAccessStatus } from "../../utils/profileAccessStatus";
+import type { KnownProfile } from "../../utils/unavailableProfile";
+import { useUnavailableProfile } from "../../hooks/useUnavailableProfile";
+import { UnavailableProfileView } from "./gridpage/components/UnavailableProfileView";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import {
 	SKIP_BLOCK_CONFIRM_KEY,
@@ -106,6 +109,9 @@ export function GridProfilePage() {
 	const { mutateAsync: unblockProfileMutation, isPending: isUnblockingProfile } = useUnblockProfile();
 
 	const blockedProfileIds = useMemo(() => new Set(blockedProfileIdsData ?? []), [blockedProfileIdsData]);
+	// Read when a profile is opened, without reopening it each time the list changes.
+	const blockedProfileIdsRef = useRef(blockedProfileIds);
+	blockedProfileIdsRef.current = blockedProfileIds;
 
 	const genderOptions = useMemo(() => {
 		return managedGenders?.map((item) => ({
@@ -128,6 +134,12 @@ export function GridProfilePage() {
 	const [activeProfileError, setActiveProfileError] = useState<string | null>(
 		null,
 	);
+	// What Grindr's latest answer for this profile was — null until it has
+	// answered. Anything but "accessible" is the empty stub, which is shown as
+	// its own screen instead of as a profile named "4".
+	const [profileAccess, setProfileAccess] = useState<ProfileAccessStatus | null>(null);
+	const profileAccessForRef = useRef<string | null>(null);
+	const [reloadToken, setReloadToken] = useState(0);
 	const [isLocatingProfile, setIsLocatingProfile] = useState(false);
 	const [isFinderOpen, setIsFinderOpen] = useState(false);
 	const [finderStage, setFinderStage] = useState<LocationFinderStage>("confirm");
@@ -220,9 +232,19 @@ export function GridProfilePage() {
 
 	const isTappingProfile = tappingProfileId === profileId;
 
-	const locationState = (location.state as { returnTo?: unknown; profileIds?: unknown } | null) ?? {};
+	const locationState = (location.state as { returnTo?: unknown; profileIds?: unknown; knownProfile?: unknown } | null) ?? {};
 	const returnToFromState =
 		typeof locationState.returnTo === "string" ? locationState.returnTo : null;
+	// The name and picture the list that opened this profile was showing.
+	const knownProfileFromState = useMemo<KnownProfile | null>(() => {
+		const raw = locationState.knownProfile;
+		if (!raw || typeof raw !== "object") return null;
+		const { name, imageHash } = raw as { name?: unknown; imageHash?: unknown };
+		return {
+			name: typeof name === "string" ? name : null,
+			imageHash: typeof imageHash === "string" ? imageHash : null,
+		};
+	}, [locationState.knownProfile]);
 	const profileIds: string[] = Array.isArray(locationState.profileIds)
 		? (locationState.profileIds as unknown[]).filter((x): x is string => typeof x === "string")
 		: [];
@@ -256,9 +278,21 @@ export function GridProfilePage() {
 
 		let cancelled = false;
 
-		void apiFunctions.recordProfileView(profileId);
+		// A reload of the same profile (after an unblock, or "Check again")
+		// keeps the last answer on screen until the new one is in.
+		if (profileAccessForRef.current !== profileId) {
+			profileAccessForRef.current = profileId;
+			setProfileAccess(null);
+		}
+
+		// Someone this account blocks has no profile to look at, so there is
+		// no visit to tell Grindr about.
+		const isKnownBlocked = blockedProfileIdsRef.current.has(profileId);
+		if (!isKnownBlocked) {
+			void apiFunctions.recordProfileView(profileId);
+		}
 		logProfileOpen(profileId, {
-			viewRecorded: isRecordProfileViewsEnabled(),
+			viewRecorded: !isKnownBlocked && isRecordProfileViewsEnabled(),
 			surface: "profile_page",
 		});
 
@@ -267,7 +301,9 @@ export function GridProfilePage() {
 
 			if (cachedProfile) {
 				setActiveProfile(cachedProfile);
-				setIsLoadingActiveProfile(false);
+				// A copy from before this account blocked them is not shown as
+				// their profile while Grindr is asked what it shows now.
+				setIsLoadingActiveProfile(isKnownBlocked);
 			} else {
 				setIsLoadingActiveProfile(true);
 			}
@@ -278,14 +314,20 @@ export function GridProfilePage() {
 				const parsed = await apiFunctions.getProfileDetail(profileId);
 
 				if (!cancelled) {
-					setActiveProfile(parsed);
-					setCachedProfileDetail(profileId, parsed);
 					// GET /v7/profiles/:id always returns 200, even for a blocked or
 					// deleted profile — it comes back as a stub (see
 					// classifyProfileAccess). A successful fetch alone is therefore
 					// NOT evidence of being unblocked — only a real profile is.
-					if (classifyProfileAccess(parsed) === "accessible") {
+					const access = classifyProfileAccess(parsed);
+					setProfileAccess(access);
+					setCachedProfileDetail(profileId, parsed);
+					if (access === "accessible") {
+						setActiveProfile(parsed);
 						unarchiveConversationIfArchived(profileId);
+					} else if (!cachedProfile) {
+						// The stub is never shown as a profile. A copy cached from
+						// before the block stays, as the name and picture to show.
+						setActiveProfile(null);
 					}
 				}
 			} catch (error) {
@@ -311,7 +353,20 @@ export function GridProfilePage() {
 		return () => {
 			cancelled = true;
 		};
-	}, [apiFunctions, profileId]);
+	}, [apiFunctions, profileId, reloadToken]);
+
+	const unavailableProfile = useUnavailableProfile({
+		profileId,
+		access: profileAccess,
+		hint:
+			knownProfileFromState ??
+			(activeProfile && String(activeProfile.profileId) === profileId
+				? {
+						name: activeProfile.displayName,
+						imageHash: activeProfile.profileImageMediaHash,
+					}
+				: null),
+	});
 
 	const activeProfilePhotoHashes = useMemo(() => {
 		if (!activeProfile) {
@@ -380,6 +435,8 @@ export function GridProfilePage() {
 		try {
 			await unblockProfileMutation(targetProfileId);
 			toast.success(t("profile_details.unblock_success"));
+			// Their profile was the blocked stub until now; ask for the real one.
+			setReloadToken((token) => token + 1);
 		} catch (error) {
 			toast.error(
 				error instanceof Error
@@ -714,6 +771,23 @@ export function GridProfilePage() {
 
 	return (
 		<>
+			{unavailableProfile && profileId ? (
+			<UnavailableProfileView
+				variant={isDesktopLike ? "modal" : "page"}
+				profileId={profileId}
+				profile={unavailableProfile}
+				onClose={() => {
+					navigate(safeReturnTo, { replace: true });
+				}}
+				onUnblock={handleUnblockProfile}
+				isUnblocking={isUnblockingProfile}
+				onOpenChat={(conversationId) => {
+					navigate(`/chat/${encodeURIComponent(conversationId)}`);
+				}}
+				onRetry={() => setReloadToken((token) => token + 1)}
+				isRetrying={isLoadingActiveProfile}
+			/>
+			) : (
 			<ProfileDetailsModal
 				variant={isDesktopLike ? "modal" : "page"}
 				isOpen
@@ -750,6 +824,7 @@ export function GridProfilePage() {
 				genderOptions={genderOptions}
 				pronounOptions={pronounOptions}
 			/>
+			)}
 
 			<LocationFinderDialog
 				isOpen={isFinderOpen}

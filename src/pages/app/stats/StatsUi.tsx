@@ -648,7 +648,7 @@ export function PeopleList({
 
 function PersonRow({ row, rank }: { row: PersonRowItem; rank: number | null }) {
 	const { t } = useTranslation();
-	const person = usePerson(row.profileId, row.name);
+	const person = usePerson(row.profileId, row.name, row.imageHash);
 	const status = personStateLabel(t, person.lookup?.state);
 	const imageHash = row.imageHash ?? person.lookup?.imageHash ?? null;
 	return (

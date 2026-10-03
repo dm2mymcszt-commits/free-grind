@@ -1,35 +1,31 @@
 /**
  * How the Stats page names people and opens their profiles. A chat deleted
  * from this device keeps no name, so a row without one asks Grindr — once per
- * visit — while it is on screen. Opening someone checks first that Grindr
- * still has their profile, and says why not when it does not.
+ * visit — while it is on screen. Opening someone always lands on their profile
+ * page, which says so itself when Grindr no longer shows the profile.
  */
 
 import { createContext, useContext, useEffect, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
+import type { KnownProfile } from "../../../utils/unavailableProfile";
 import type { PersonLookup, PersonState } from "./statsGrindr";
 
 export type StatsPeople = {
 	lookUp: (profileId: string) => Promise<PersonLookup>;
 	known: (profileId: string) => PersonLookup | null;
-	/** Opens their profile if it can be opened; otherwise says why not. */
-	open: (profileId: string) => Promise<PersonLookup>;
+	/** Opens their profile page, handing on what the row already shows. */
+	open: (profileId: string, known?: KnownProfile) => Promise<PersonLookup>;
 };
 
 export const StatsPeopleContext = createContext<StatsPeople | null>(null);
-
-const CLOSED_STATES: ReadonlySet<PersonState> = new Set<PersonState>([
-	"deleted",
-	"blocked_you",
-]);
 
 export type PersonHandle = {
 	lookup: PersonLookup | null;
 	/** Waiting for Grindr to name someone this device has no name for. */
 	naming: boolean;
 	opening: boolean;
-	/** Missing when there is no profile to open. */
+	/** Missing when there is nobody to open. */
 	open: (() => void) | undefined;
 };
 
@@ -40,6 +36,7 @@ export type PersonHandle = {
 export function usePerson(
 	profileId: string | null,
 	localName: string | null | undefined,
+	localImageHash?: string | null,
 ): PersonHandle {
 	const people = useContext(StatsPeopleContext);
 	const needsName = !localName?.trim();
@@ -59,20 +56,21 @@ export function usePerson(
 		};
 	}, [needsName, people, profileId]);
 
-	const closed = lookup != null && CLOSED_STATES.has(lookup.state);
 	return {
 		lookup,
 		naming: needsName && profileId != null && people != null && !lookup,
 		opening,
 		open:
-			profileId && people && !closed
+			profileId && people
 				? () => {
 						if (opening) return;
 						setOpening(true);
-						void people.open(profileId).then((result) => {
-							setLookup(result);
-							setOpening(false);
-						});
+						void people
+							.open(profileId, { name: localName, imageHash: localImageHash })
+							.then((result) => {
+								setLookup(result);
+								setOpening(false);
+							});
 					}
 				: undefined,
 	};
