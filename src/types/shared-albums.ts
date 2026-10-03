@@ -32,6 +32,6 @@ export type AlbumViewer = {
 	error: string | null;
 	/** Showing the copy saved on this device because the live album would not load. */
 	isSavedCopy: boolean;
-	/** Items of the album the explicit-photo filter is holding back; they are not in `content`. */
+	/** How many items of `content` the explicit-photo filter is holding back. */
 	hiddenCount?: number;
 };

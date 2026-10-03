@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Download, EyeOff, Loader2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { AlbumMediaTile } from "../../../components/AlbumMediaTile";
+import { ShowAnywayButton } from "../../../components/ui/ShowAnywayButton";
 import toast from "react-hot-toast";
 import { BottomSheet, SheetClose } from "../../../components/ui/bottom-sheet";
 import { EmptyState } from "../../../components/ui/states";
@@ -17,6 +18,8 @@ type ChatAlbumSheetProps = {
 	onOpenFullScreen: (index: number) => void;
 	isDesktop: boolean;
 	conversationId: string | null;
+	/** Puts the items the explicit-photo filter is holding back on show, for this album. */
+	onShowHidden: () => void;
 };
 
 export function ChatAlbumSheet({
@@ -27,13 +30,15 @@ export function ChatAlbumSheet({
 	onOpenFullScreen,
 	isDesktop,
 	conversationId,
+	onShowHidden,
 }: ChatAlbumSheetProps) {
 	const { t } = useTranslation();
 	const [isSavingAll, setIsSavingAll] = useState(false);
 
 	const handleSaveAll = async () => {
 		const items = (viewer?.content ?? [])
-			.filter(Boolean)
+			// A hidden item's link is the hidden tile, not the item.
+			.filter((item) => item && !item.hidden)
 			.map((item) => ({
 				url: item?.url || item?.coverUrl || "",
 				type: (item?.contentType?.startsWith("video/") ? "video" : "image") as "image" | "video",
@@ -116,13 +121,16 @@ export function ChatAlbumSheet({
 			</div>
 
 			{viewer && (viewer.hiddenCount ?? 0) > 0 ? (
-				<p className="flex items-center gap-1.5 px-4 pb-2 text-xs text-[var(--text-muted)]">
+				<div className="flex items-center gap-2 px-4 pb-2 text-xs text-[var(--text-muted)]">
 					<EyeOff className="h-3.5 w-3.5 shrink-0" />
-					{t("shared_albums.hidden_by_filter", {
-						defaultValue: "{{count}} not shown: explicit, or not checked yet.",
-						count: viewer.hiddenCount,
-					})}
-				</p>
+					<span className="min-w-0 flex-1">
+						{t("shared_albums.hidden_by_filter", {
+							defaultValue: "{{count}} hidden: explicit, or not checked yet.",
+							count: viewer.hiddenCount,
+						})}
+					</span>
+					<ShowAnywayButton onShow={onShowHidden} />
+				</div>
 			) : null}
 
 			{/* Body */}

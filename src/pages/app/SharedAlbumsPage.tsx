@@ -282,8 +282,8 @@ export function SharedAlbumsPage() {
 	const [selectedIds, setSelectedIds] = useState<ReadonlySet<number> | null>(null);
 	const isSelecting = selectedIds !== null;
 	const [openedViewer, setViewer] = useState<AlbumViewer | null>(null);
-	// The opened album as the explicit-photo filter lets it through: the grid
-	// and the full-screen viewer both work from this.
+	// The opened album as the explicit-photo filter lets it be seen: every
+	// item in its place, the ones not cleared swapped for the hidden tile.
 	const visibleAlbum = useVisibleAlbumContent(
 		openedViewer?.item.album.albumId ?? null,
 		openedViewer?.content,
@@ -1121,6 +1121,7 @@ export function SharedAlbumsPage() {
 					fullScreenIndex={fullScreenIndex}
 					closeViewer={closeViewer}
 					openFullScreen={openFullScreen}
+					onShowHidden={visibleAlbum.showHidden}
 					onRetry={() => void openViewer(viewer.item)}
 					onDelete={() => setConfirmDeleteItems([viewer.item])}
 					onMessageProfile={handleMessageProfile}
@@ -1138,7 +1139,7 @@ export function SharedAlbumsPage() {
 					conversationId={viewer.item.conversationId}
 					renderFooter={(idx) => {
 						const item = viewer.content[idx];
-						if (!item || viewer.item.profileId === userId) return null;
+						if (!item || item.hidden || viewer.item.profileId === userId) return null;
 						return (
 							<PhotoActionBar
 								onSendText={(text) =>

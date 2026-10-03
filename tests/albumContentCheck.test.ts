@@ -43,9 +43,10 @@ globalScope.window = {
 const { setExplicitFilterEnabled, setExplicitVerdictHandler, verdictOf } = await import(
 	"../src/services/contentCheck"
 );
-const { albumItemKey, checkAlbumItem, filterAlbumContent, getAlbumCover, getAlbumItemCover } = await import(
+const { albumItemKey, checkAlbumItem, coverAlbumContent, getAlbumCover, getAlbumItemCover } = await import(
 	"../src/services/albumContentCheck"
 );
+const { HIDDEN_MEDIA_PLACEHOLDER } = await import("../src/utils/hiddenMediaPlaceholder");
 
 const EXPLICIT: Detection[] = [{ label: "MALE_GENITALIA_EXPOSED", score: 0.9 }];
 // "/9j/" is how a JPEG starts in base64, "AAAAIGZ0eXBpc29t" an MP4.
@@ -125,7 +126,7 @@ describe("album items", () => {
 	});
 });
 
-describe("filterAlbumContent", () => {
+describe("coverAlbumContent", () => {
 	beforeEach(() => {
 		store.clear();
 		setExplicitFilterEnabled(true);
@@ -134,27 +135,44 @@ describe("filterAlbumContent", () => {
 		setExplicitVerdictHandler(null);
 	});
 
-	const content = [{ contentId: 1 }, { contentId: 2 }, { contentId: 3 }];
+	const content = [1, 2, 3].map((contentId) => ({
+		contentId,
+		contentType: contentId === 3 ? "video/mp4" : "image/jpeg",
+		thumbUrl: `thumb-${contentId}`,
+		url: `url-${contentId}`,
+		coverUrl: `cover-${contentId}`,
+		processing: false,
+	}));
 
-	test("only cleared items are let through; explicit and unchecked ones are counted", async () => {
+	test("every item keeps its place; the ones not cleared become the hidden tile", async () => {
 		await checkAlbumItem(item(nextAlbum, 1));
 		detectorAnswer = EXPLICIT;
 		await checkAlbumItem(item(nextAlbum, 2));
-		const result = filterAlbumContent(nextAlbum, content, false);
-		expect(result.content).toEqual([{ contentId: 1 }]);
+		const result = coverAlbumContent(nextAlbum, content, false);
+		expect(result.content).toHaveLength(3);
 		expect(result.hiddenCount).toBe(2);
+		expect(result.content[0]).toEqual(content[0]);
+		for (const hidden of [result.content[1], result.content[2]]) {
+			expect(hidden.hidden).toBe(true);
+			expect(hidden.url).toBe(HIDDEN_MEDIA_PLACEHOLDER);
+			expect(hidden.thumbUrl).toBe(HIDDEN_MEDIA_PLACEHOLDER);
+			expect(hidden.coverUrl).toBe(HIDDEN_MEDIA_PLACEHOLDER);
+			// Never a video any more: nothing may try to play a hidden item.
+			expect(hidden.contentType?.startsWith("video/")).toBe(false);
+		}
+		expect(result.content.map((entry) => entry.contentId)).toEqual([1, 2, 3]);
 	});
 
-	test("the account's own album is shown whole", () => {
-		const result = filterAlbumContent(nextAlbum, content, true);
-		expect(result.content).toHaveLength(3);
+	test("asked to show anyway, or for the account's own album, everything is as it is", () => {
+		const result = coverAlbumContent(nextAlbum, content, true);
+		expect(result.content).toEqual(content);
 		expect(result.hiddenCount).toBe(0);
 	});
 
 	test("with the filter off everything is shown", () => {
 		setExplicitFilterEnabled(false);
-		const result = filterAlbumContent(nextAlbum, content, false);
-		expect(result.content).toHaveLength(3);
+		const result = coverAlbumContent(nextAlbum, content, false);
+		expect(result.content).toEqual(content);
 		expect(result.hiddenCount).toBe(0);
 	});
 });

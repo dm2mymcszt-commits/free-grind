@@ -17,6 +17,8 @@
  */
 
 import type { StoredContentCheck } from "../types/chat-db";
+import type { AlbumContentItem } from "../types/chat-page";
+import { HIDDEN_MEDIA_MIME, HIDDEN_MEDIA_PLACEHOLDER } from "../utils/hiddenMediaPlaceholder";
 import {
 	albumCoverFor,
 	albumFaceVerdict,
@@ -77,18 +79,33 @@ export function getAlbumItemCover(albumId: number, contentId: number): ContentCo
 }
 
 /**
- * The items of a received album that may be shown, and how many are held
- * back. Everything is shown with the filter off or for the account's own
- * album.
+ * A received album with every item the filter has not cleared swapped for
+ * the hidden tile, in place, and a count of them. Nothing is left out: an
+ * album of five with all five hidden still has five items, which is what it
+ * should say. Shown as it is with the filter off, for the account's own
+ * album, or once the user asked to see it anyway (`showAll`).
  */
-export function filterAlbumContent<T extends { contentId: number }>(
+export function coverAlbumContent(
 	albumId: number,
-	content: readonly T[],
-	isOwn: boolean,
-): { content: T[]; hiddenCount: number } {
-	if (isOwn || !isExplicitFilterEnabled()) return { content: [...content], hiddenCount: 0 };
-	const shown = content.filter((item) => getAlbumItemCover(albumId, item.contentId) == null);
-	return { content: shown, hiddenCount: content.length - shown.length };
+	content: readonly AlbumContentItem[],
+	showAll: boolean,
+): { content: AlbumContentItem[]; hiddenCount: number } {
+	if (showAll || !isExplicitFilterEnabled()) return { content: [...content], hiddenCount: 0 };
+	let hiddenCount = 0;
+	const covered = content.map((item) => {
+		if (getAlbumItemCover(albumId, item.contentId) == null) return item;
+		hiddenCount += 1;
+		return {
+			...item,
+			// A picture now, whatever it was: nothing may try to play it.
+			contentType: HIDDEN_MEDIA_MIME,
+			url: HIDDEN_MEDIA_PLACEHOLDER,
+			thumbUrl: HIDDEN_MEDIA_PLACEHOLDER,
+			coverUrl: HIDDEN_MEDIA_PLACEHOLDER,
+			hidden: true,
+		};
+	});
+	return { content: covered, hiddenCount };
 }
 
 export type AlbumItemBytes = { base64: string; mimeType: string | null };

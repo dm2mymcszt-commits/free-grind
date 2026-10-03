@@ -26,9 +26,14 @@ globalScope.window = {
 	__TAURI_INTERNALS__: { invoke: async () => { throw new Error("not in this test"); } },
 };
 
-const { isExplicitProfilePhoto, rememberExplicitProfilePhoto, subscribeToExplicitProfilePhotos } = await import(
-	"../src/services/explicitProfilePhotos"
-);
+const {
+	isExplicitProfilePhoto,
+	isExplicitProfilePhotoUrl,
+	rememberExplicitProfilePhoto,
+	showProfilePhotosAnyway,
+	showProfilePhotoUrlAnyway,
+	subscribeToExplicitProfilePhotos,
+} = await import("../src/services/explicitProfilePhotos");
 
 const REMEMBERED = "a".repeat(40);
 const NEW = "b".repeat(40);
@@ -59,6 +64,34 @@ describe("explicit profile photos", () => {
 		expect(announced).toBe(1);
 		expect(isExplicitProfilePhoto(NEW)).toBe(true);
 		expect(JSON.parse(store.get("fg-explicit-profile-photos")!)).toContain(NEW);
+	});
+
+	test("a photo is recognised from its link too", () => {
+		expect(isExplicitProfilePhotoUrl(`https://cdns.grindr.com/images/thumb/320x320/${REMEMBERED}`)).toBe(true);
+		expect(isExplicitProfilePhotoUrl(`https://cdns.grindr.com/images/profile/1024x1024/${OTHER}`)).toBe(false);
+		expect(isExplicitProfilePhotoUrl(null)).toBe(false);
+	});
+
+	test("shown anyway, it is no longer hidden, and whoever draws it is told", () => {
+		const hash = "d".repeat(40);
+		rememberExplicitProfilePhoto(hash);
+		let announced = 0;
+		const unsubscribe = subscribeToExplicitProfilePhotos(() => {
+			announced += 1;
+		});
+		showProfilePhotosAnyway([hash, OTHER]);
+		unsubscribe();
+		expect(isExplicitProfilePhoto(hash)).toBe(false);
+		expect(announced).toBe(1);
+	});
+
+	test("shown anyway from its link, it is no longer hidden", () => {
+		const hash = "e".repeat(40);
+		rememberExplicitProfilePhoto(hash);
+		const url = `https://cdns.grindr.com/images/thumb/320x320/${hash}`;
+		expect(isExplicitProfilePhotoUrl(url)).toBe(true);
+		showProfilePhotoUrlAnyway(url);
+		expect(isExplicitProfilePhotoUrl(url)).toBe(false);
 	});
 
 	test("with the filter off nothing is left out", () => {

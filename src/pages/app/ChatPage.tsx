@@ -764,9 +764,10 @@ export function ChatPage() {
 		albumName: string;
 	} | null>(null);
 	const [openedAlbum, setAlbumViewer] = useState<AlbumViewerState | null>(null);
-	// What the explicit-photo filter lets through of it. Everything below works
-	// from this, the grid and the full-screen viewer alike, so an item that is
-	// held back can be neither tapped nor swiped onto.
+	// The same album as the explicit-photo filter lets it be seen: every item
+	// in its place, the ones not cleared swapped for the hidden tile. The grid
+	// and the full-screen viewer both work from this, so a hidden item is
+	// hidden in both.
 	const visibleAlbum = useVisibleAlbumContent(
 		openedAlbum?.albumId ?? null,
 		openedAlbum?.content,
@@ -7033,6 +7034,7 @@ export function ChatPage() {
 					onOpenFullScreen={openAlbumMediaViewer}
 					isDesktop={isDesktop}
 					conversationId={selectedConversation?.data.conversationId ?? null}
+					onShowHidden={visibleAlbum.showHidden}
 				/>
 			) : null}
 
@@ -7044,7 +7046,7 @@ export function ChatPage() {
 				conversationId={selectedConversation?.data.conversationId ?? null}
 				renderFooter={(idx) => {
 					const item = albumViewer?.content[idx];
-					if (!albumViewer || !item || albumViewer.isOwn) return null;
+					if (!albumViewer || !item || albumViewer.isOwn || item.hidden) return null;
 					return (
 						<PhotoActionBar
 							onSendText={(text) =>

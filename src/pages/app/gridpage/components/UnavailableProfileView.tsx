@@ -3,6 +3,13 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { ProfileImage } from "../../../../components/ui/profile-image";
+import { ShowAnywayButton } from "../../../../components/ui/ShowAnywayButton";
+import { useExplicitProfilePhotos } from "../../../../hooks/useExplicitProfilePhotos";
+import {
+	isExplicitProfilePhotoUrl,
+	showProfilePhotoUrlAnyway,
+} from "../../../../services/explicitProfilePhotos";
+import { HIDDEN_MEDIA_PLACEHOLDER } from "../../../../utils/hiddenMediaPlaceholder";
 import {
 	createBackdropCloseHandler,
 	useModalClose,
@@ -204,18 +211,30 @@ function UnavailableProfileCard({
 		profile.name ?? t("profile_details.profile_fallback", { id: profileId });
 	const description = describeState(t, profile.state);
 	const BadgeIcon = profile.state === "deleted" ? UserX : Ban;
+	// A photo the detector called explicit is drawn as the hidden tile.
+	useExplicitProfilePhotos();
+	const photoHidden = isExplicitProfilePhotoUrl(profile.photoUrl);
 
 	const body = (
 		<div className="flex w-full max-w-sm flex-col items-center text-center">
 			<div className="relative">
 				<div className="h-28 w-28 squircle bg-[var(--surface-2)] opacity-80 grayscale-[0.4]">
-					<ProfileImage src={profile.photoUrl} alt={name} loading="eager" />
+					<ProfileImage
+						src={photoHidden ? HIDDEN_MEDIA_PLACEHOLDER : profile.photoUrl}
+						alt={name}
+						loading="eager"
+					/>
 				</div>
 				<div className="absolute -bottom-1 -right-1 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-2)] text-[var(--text-muted)] ring-2 ring-[var(--surface)]">
 					<BadgeIcon className="h-4 w-4" />
 				</div>
 			</div>
 
+			{photoHidden ? (
+				<div className="mt-3">
+					<ShowAnywayButton onShow={() => showProfilePhotoUrlAnyway(profile.photoUrl)} />
+				</div>
+			) : null}
 			<p className="mt-4 max-w-full truncate text-lg font-semibold text-[var(--text)]">{name}</p>
 			<p className="mt-3 text-base font-semibold text-[var(--text)]">{description.title}</p>
 			{profile.blockExplanation && (

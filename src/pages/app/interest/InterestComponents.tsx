@@ -2,6 +2,9 @@ import { memo, type CSSProperties } from "react";
 import { Eye, Lock, Ban, History, MoveHorizontal, CalendarDays, Clock, Trophy } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { getThumbImageUrl } from "../../../utils/media";
+import { useExplicitProfilePhotos } from "../../../hooks/useExplicitProfilePhotos";
+import { isExplicitProfilePhoto } from "../../../services/explicitProfilePhotos";
+import { HIDDEN_MEDIA_PLACEHOLDER } from "../../../utils/hiddenMediaPlaceholder";
 import { ProfileImage } from "../../../components/ui/profile-image";
 import {
 	type InterestItem,
@@ -225,7 +228,13 @@ export const InterestRow = memo(function InterestRow({
 }) {
 	const { t } = useTranslation();
 	const { ref, revealClass } = useRevealOnScroll();
-	const imageSrc = item.imageHash ? getThumbImageUrl(item.imageHash, "320x320") : null;
+	// A photo the detector called explicit is drawn as the hidden tile.
+	useExplicitProfilePhotos();
+	const imageSrc = !item.imageHash
+		? null
+		: isExplicitProfilePhoto(item.imageHash)
+			? HIDDEN_MEDIA_PLACEHOLDER
+			: getThumbImageUrl(item.imageHash, "320x320");
 
 	const isPrivate = !item.canOpenProfile;
 	// A blocked person keeps the muted look and the badge but still opens:

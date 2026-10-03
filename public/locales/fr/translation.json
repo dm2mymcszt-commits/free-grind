@@ -842,7 +842,12 @@
             "other": "La raison n'a pas été enregistrée."
         }
     },
+    "explicit_filter": {
+        "show_anyway": "Afficher quand même",
+        "tap_again": "Touchez encore pour afficher"
+    },
     "profile_details": {
+        "photos_hidden": "{{count}} masquée(s) : explicite.",
         "title": "Détails du profil",
         "profile_fallback": "Profil {{id}}",
         "last_online": "Dernière connexion {{value}}",

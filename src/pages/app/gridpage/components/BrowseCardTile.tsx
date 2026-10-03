@@ -9,8 +9,11 @@ import {
 } from "../utils";
 import { cn } from "../../../../utils/cn";
 import { ProfileImage } from "../../../../components/ui/profile-image";
+import { isExplicitProfilePhotoUrl } from "../../../../services/explicitProfilePhotos";
+import { HIDDEN_MEDIA_PLACEHOLDER } from "../../../../utils/hiddenMediaPlaceholder";
 import { usePreferences } from "../../../../contexts/PreferencesContext";
 import type { ChatContactIndexRecord } from "../../../../types/chat-contact-index";
+import { useExplicitProfilePhotos } from "../../../../hooks/useExplicitProfilePhotos";
 import { useRevealOnScroll } from "../../../../hooks/useRevealOnScroll";
 import { SelectableItem } from "../../../../components/multi-select/SelectableItem";
 
@@ -32,6 +35,8 @@ function BrowseCardTileImpl({
 	const { t } = useTranslation();
 	const { unitsPreset, showDebugInfo } = usePreferences();
 	const { ref, revealClass } = useRevealOnScroll();
+	// Redrawn when a photo is found explicit or is shown anyway.
+	useExplicitProfilePhotos();
 	const name = getDisplayName(card);
 	const onlineStatus = getOnlineStatusMeta(card.lastOnline, card.onlineUntil);
 	const age = typeof card.age === "number" && card.age > 0 ? card.age : null;
@@ -88,7 +93,8 @@ function BrowseCardTileImpl({
 				<div className="relative w-full h-0 pb-[100%] bg-[var(--surface-2)] z-10 rounded-[inherit] overflow-hidden">
 					<div className="absolute inset-0">
 					<ProfileImage
-						src={card.primaryImageUrl}
+						// A photo the detector called explicit is drawn as the hidden tile.
+						src={isExplicitProfilePhotoUrl(card.primaryImageUrl) ? HIDDEN_MEDIA_PLACEHOLDER : card.primaryImageUrl}
 						alt={t("browse_page.profile_photo_alt", { name })}
 						className={cn(
 							isDemoCard && "blur-xl scale-110",

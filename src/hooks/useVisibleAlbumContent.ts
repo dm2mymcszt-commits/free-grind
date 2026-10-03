@@ -1,26 +1,29 @@
-import { useEffect, useMemo, useState } from "react";
-import { filterAlbumContent, refreshAlbumChecks } from "../services/albumContentCheck";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { coverAlbumContent, refreshAlbumChecks } from "../services/albumContentCheck";
 import {
 	EXPLICIT_FILTER_UPDATED_EVENT,
 	isExplicitFilterEnabled,
 	subscribeToContentChecks,
 } from "../services/contentCheck";
+import type { AlbumContentItem } from "../types/chat-page";
 
 /**
- * The items of an open album that the explicit-photo filter lets through, and
- * how many it holds back. Listens for checks only while an album is open, and
- * asks for the album's items to be checked when it opens.
+ * An open album as the explicit-photo filter lets it be seen: every item
+ * still in its place, with the ones not cleared swapped for the hidden tile.
+ * `showHidden` puts the real ones back for as long as this album stays open.
  *
- * The result is what both the album grid and the full-screen viewer should be
- * given: the viewer swipes through the list, so an item that is not in it
- * cannot be swiped onto.
+ * Listens for checks only while an album is open, and asks for the album's
+ * items to be checked when it opens. The result is what both the album grid
+ * and the full-screen viewer should be given, so positions match and a
+ * hidden item is hidden in both.
  */
-export function useVisibleAlbumContent<T extends { contentId: number }>(
+export function useVisibleAlbumContent(
 	albumId: number | null,
-	content: readonly T[] | null | undefined,
+	content: readonly AlbumContentItem[] | null | undefined,
 	isOwn: boolean,
-): { content: T[]; hiddenCount: number } {
+): { content: AlbumContentItem[]; hiddenCount: number; showHidden: () => void } {
 	const [tick, setTick] = useState(0);
+	const [shownAlbumId, setShownAlbumId] = useState<number | null>(null);
 	const watching = albumId != null && !isOwn;
 
 	useEffect(() => {
@@ -41,10 +44,16 @@ export function useVisibleAlbumContent<T extends { contentId: number }>(
 		}
 	}, [watching, albumId, itemCount]);
 
-	return useMemo(() => {
+	// Remembered per album, so opening another one starts hidden again.
+	const showHidden = useCallback(() => setShownAlbumId(albumId), [albumId]);
+	const revealed = albumId != null && shownAlbumId === albumId;
+
+	const covered = useMemo(() => {
 		if (albumId == null) return { content: content ? [...content] : [], hiddenCount: 0 };
-		return filterAlbumContent(albumId, content ?? [], isOwn);
+		return coverAlbumContent(albumId, content ?? [], isOwn || revealed);
 		// `tick` is the reason to recompute: a check landed or the filter was switched.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [albumId, content, isOwn, tick]);
+	}, [albumId, content, isOwn, revealed, tick]);
+
+	return useMemo(() => ({ ...covered, showHidden }), [covered, showHidden]);
 }

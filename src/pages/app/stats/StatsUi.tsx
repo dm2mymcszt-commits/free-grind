@@ -2,6 +2,9 @@ import { useState, type ReactNode } from "react";
 import { ChevronRight, Hourglass, Loader2, TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ProfileImage } from "../../../components/ui/profile-image";
+import { useExplicitProfilePhotos } from "../../../hooks/useExplicitProfilePhotos";
+import { isExplicitProfilePhoto } from "../../../services/explicitProfilePhotos";
+import { HIDDEN_MEDIA_PLACEHOLDER } from "../../../utils/hiddenMediaPlaceholder";
 import { getThumbImageUrl, validateMediaHash } from "../../../utils/media";
 import { cn } from "../../../utils/cn";
 import { personDisplayName, personStateLabel, usePerson } from "./statsPeople";
@@ -649,6 +652,7 @@ export function PeopleList({
 function PersonRow({ row, rank }: { row: PersonRowItem; rank: number | null }) {
 	const { t } = useTranslation();
 	const person = usePerson(row.profileId, row.name, row.imageHash);
+	useExplicitProfilePhotos();
 	const status = personStateLabel(t, person.lookup?.state);
 	const imageHash = row.imageHash ?? person.lookup?.imageHash ?? null;
 	return (
@@ -673,7 +677,9 @@ function PersonRow({ row, rank }: { row: PersonRowItem; rank: number | null }) {
 					<ProfileImage
 						src={
 							imageHash && validateMediaHash(imageHash)
-								? getThumbImageUrl(imageHash)
+								? isExplicitProfilePhoto(imageHash)
+									? HIDDEN_MEDIA_PLACEHOLDER
+									: getThumbImageUrl(imageHash)
 								: null
 						}
 						alt=""

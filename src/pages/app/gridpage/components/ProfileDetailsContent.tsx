@@ -54,6 +54,8 @@ import { formatRelativeTime } from "../../../../utils/relativeTime";
 import { usePreferences } from "../../../../contexts/PreferencesContext";
 import { formatTravelDateRange } from "../utils";
 import { PastContactNote } from "../../../../components/PastContactNote";
+import { isExplicitProfilePhoto } from "../../../../services/explicitProfilePhotos";
+import { HIDDEN_MEDIA_PLACEHOLDER } from "../../../../utils/hiddenMediaPlaceholder";
 
 type LabelMap = Record<number, string>;
 
@@ -365,7 +367,7 @@ export function ProfileDetailsContent({
 													aria-label={t("profile_details.open_photo", { index: index + 1 })}
 												/>
 												<img
-													src={getProfileImageUrl(hash, "1024x1024")}
+													src={isExplicitProfilePhoto(hash) ? HIDDEN_MEDIA_PLACEHOLDER : getProfileImageUrl(hash, "1024x1024")}
 													alt={t("profile_details.photo_alt", { name: activeProfileName })}
 													className="h-full w-full object-cover"
 												/>
@@ -400,7 +402,7 @@ export function ProfileDetailsContent({
 										>
 											<div className="relative">
 												<img
-													src={getThumbImageUrl(hash, "320x320")}
+													src={isExplicitProfilePhoto(hash) ? HIDDEN_MEDIA_PLACEHOLDER : getThumbImageUrl(hash, "320x320")}
 													alt={t("profile_details.photo_alt", { name: activeProfileName })}
 													className="aspect-square w-full object-cover"
 												/>
@@ -422,7 +424,7 @@ export function ProfileDetailsContent({
 									>
 										<div className="relative">
 											<img
-												src={getThumbImageUrl(hash, "320x320")}
+												src={isExplicitProfilePhoto(hash) ? HIDDEN_MEDIA_PLACEHOLDER : getThumbImageUrl(hash, "320x320")}
 												alt={t("profile_details.photo_alt", { name: activeProfileName })}
 												className="aspect-square w-full object-cover"
 											/>

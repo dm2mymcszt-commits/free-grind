@@ -9,6 +9,8 @@ import { PhotoViewer, type PhotoViewerMedia } from "../../../components/PhotoVie
 import { useApiFunctions } from "../../../hooks/useApiFunctions";
 import { useContentChecks } from "../../../hooks/useContentChecks";
 import { getAlbumCover } from "../../../services/albumContentCheck";
+import { ShowAnywayButton } from "../../../components/ui/ShowAnywayButton";
+import { HIDDEN_MEDIA_PLACEHOLDER } from "../../../utils/hiddenMediaPlaceholder";
 import {
 	checkMediaBytes,
 	getCachedCheckForMediaKey,
@@ -57,6 +59,8 @@ type LocalMediaItem = {
 	dataUri: string;
 	mimeType: string | null;
 	base64: string;
+	/** Held back by the explicit-photo filter: `dataUri` is the hidden tile, not the item. */
+	hidden?: boolean;
 };
 
 type Props = {
@@ -165,10 +169,17 @@ export function ChatMediaSheet({
 	// covered: the viewer swipes through this list, and "Save all" exports it.
 	const isClearedMedia = (item: LocalMediaItem): boolean =>
 		verdictOf(getCachedCheckForMessage(item.messageId) ?? getCachedCheckForMediaKey(item.mediaKey)) === "clear";
-	const media = explicitFilterOn
-		? allMedia.filter((item) => isOwnMedia(item) || isClearedMedia(item))
-		: allMedia;
-	const hiddenMediaCount = allMedia.length - media.length;
+	// Asked for by the user for this sheet; closing it hides them again.
+	const [showHiddenMedia, setShowHiddenMedia] = useState(false);
+	const isHiddenMedia = (item: LocalMediaItem): boolean =>
+		explicitFilterOn && !showHiddenMedia && !isOwnMedia(item) && !isClearedMedia(item);
+	// Every item keeps its place; a hidden one is drawn as the hidden tile.
+	const media: LocalMediaItem[] = allMedia.map((item) =>
+		isHiddenMedia(item)
+			? { ...item, kind: "image", dataUri: HIDDEN_MEDIA_PLACEHOLDER, hidden: true }
+			: item,
+	);
+	const hiddenMediaCount = media.filter((item) => item.hidden).length;
 
 	// Anything received and not yet checked gets checked from the copy already
 	// loaded here.
@@ -190,7 +201,8 @@ export function ChatMediaSheet({
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [allMedia, explicitFilterOn, senderByMessageId, userId, conversationId]);
 
-	const pickedMedia = () => media.filter((item) => selected?.has(item.mediaKey));
+	// A hidden item is neither saved nor deleted from here: what would go out is the real file.
+	const pickedMedia = () => media.filter((item) => !item.hidden && selected?.has(item.mediaKey));
 
 	const handleSaveSelected = async () => {
 		const picked = pickedMedia();
@@ -242,18 +254,19 @@ export function ChatMediaSheet({
 	};
 
 	const handleSaveAll = async () => {
-		if (media.length === 0) {
+		const savable = media.filter((item) => !item.hidden);
+		if (savable.length === 0) {
 			toast.error(t("profile_details.save_all_empty"));
 			return;
 		}
 
 		setIsSavingAll(true);
 		const toastId = toast.loading(
-			t("profile_details.save_all_progress", { done: 0, total: media.length }),
+			t("profile_details.save_all_progress", { done: 0, total: savable.length }),
 		);
 		try {
 			const result = await saveMediaBytesBatch(
-				media.map((m) => ({ base64: m.base64, mimeType: m.mimeType, type: m.kind })),
+				savable.map((m) => ({ base64: m.base64, mimeType: m.mimeType, type: m.kind })),
 				(done, total) => {
 					toast.loading(t("profile_details.save_all_progress", { done, total }), {
 						id: toastId,
@@ -688,24 +701,22 @@ export function ChatMediaSheet({
 							<Images className="h-10 w-10 opacity-30" />
 							<p className="text-sm font-medium">{t("chat.media_sheet.media_empty_title")}</p>
 							<p className="text-xs opacity-60">
-								{hiddenMediaCount > 0
-									? t("chat.media_sheet.hidden_by_filter", {
-											defaultValue: "{{count}} not shown: explicit, or not checked yet.",
-											count: hiddenMediaCount,
-										})
-									: t("chat.media_sheet.media_empty_desc")}
+								{t("chat.media_sheet.media_empty_desc")}
 							</p>
 						</div>
 					) : (
 						<>
 						{hiddenMediaCount > 0 ? (
-							<p className="mb-3 flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+							<div className="mb-3 flex items-center gap-2 text-xs text-[var(--text-muted)]">
 								<EyeOff className="h-3.5 w-3.5 shrink-0" />
-								{t("chat.media_sheet.hidden_by_filter", {
-									defaultValue: "{{count}} not shown: explicit, or not checked yet.",
-									count: hiddenMediaCount,
-								})}
-							</p>
+								<span className="min-w-0 flex-1">
+									{t("chat.media_sheet.hidden_by_filter", {
+										defaultValue: "{{count}} hidden: explicit, or not checked yet.",
+										count: hiddenMediaCount,
+									})}
+								</span>
+								<ShowAnywayButton onShow={() => setShowHiddenMedia(true)} />
+							</div>
 						) : null}
 						<div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
 							{media.map((item, idx) => {

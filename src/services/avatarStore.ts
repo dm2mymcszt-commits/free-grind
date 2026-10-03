@@ -14,6 +14,7 @@ import { getProfileImageUrl, validateMediaHash } from "../utils/media";
 import { appLog } from "../utils/logger";
 import { limitChatDbBlobRead } from "../utils/chatDbBlobLimiter";
 import { BoundedStringCache, cacheBudget } from "../utils/boundedCache";
+import { HIDDEN_MEDIA_PLACEHOLDER } from "../utils/hiddenMediaPlaceholder";
 import {
 	backfillExplicitProfilePhotos,
 	isExplicitProfilePhoto,
@@ -100,11 +101,11 @@ export function resolveAvatarSrc(
 ): string | null {
 	// A profile photo the detector called explicit is not drawn as an avatar
 	// anywhere in chat: the person is blocked over it, and their archived
-	// chat would otherwise keep showing it. Callers already handle having no
-	// picture.
+	// chat would otherwise keep showing it. The hidden tile takes its place,
+	// which unlike an empty avatar says there is a photo.
 	backfillExplicitProfilePhotos();
 	if (isExplicitProfilePhoto(mediaHash)) {
-		return null;
+		return HIDDEN_MEDIA_PLACEHOLDER;
 	}
 	if (!mediaHash || !validateMediaHash(mediaHash)) {
 		return fallbackUrl;

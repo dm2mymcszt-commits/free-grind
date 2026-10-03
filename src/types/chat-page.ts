@@ -20,6 +20,8 @@ export type AlbumContentItem = {
 	url: string | null;
 	coverUrl: string | null;
 	processing: boolean;
+	/** Held back by the explicit-photo filter: its links point at the hidden tile, not at the item. */
+	hidden?: boolean;
 };
 
 export type AlbumViewerState = {
@@ -28,7 +30,7 @@ export type AlbumViewerState = {
 	content: AlbumContentItem[];
 	/** Whether the message that opened this album belongs to the current user — reacting/replying to your own album doesn't make sense, so callers use this to hide those controls. */
 	isOwn?: boolean;
-	/** Items of the album the explicit-photo filter is holding back; they are not in `content`. */
+	/** How many items of `content` the explicit-photo filter is holding back. */
 	hiddenCount?: number;
 };
 

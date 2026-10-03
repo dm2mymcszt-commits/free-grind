@@ -1,4 +1,4 @@
-import { Ban, Check, ChevronLeft, Ellipsis, Flame, MessageCircle, Pencil, Phone, ShieldCheck, StickyNote, Star, Trash2, Triangle, X, Zap } from "lucide-react";
+import { Ban, Check, ChevronLeft, Ellipsis, EyeOff, Flame, MessageCircle, Pencil, Phone, ShieldCheck, StickyNote, Star, Trash2, Triangle, X, Zap } from "lucide-react";
 import { BanWordDialog } from "../../../../components/ui/BanWordDialog";
 import { useBanOnSelect } from "../../../../hooks/useBanOnSelect";
 import toast from "react-hot-toast";
@@ -52,6 +52,10 @@ import { ProfileDetailsContent } from "./ProfileDetailsContent";
 import { ProfileActivityBadges } from "./ProfileActivityBadges";
 import type { ChatContactIndexRecord } from "../../../../types/chat-contact-index";
 import { PhotoViewer } from "../../../../components/PhotoViewer";
+import { ShowAnywayButton } from "../../../../components/ui/ShowAnywayButton";
+import { useExplicitProfilePhotos } from "../../../../hooks/useExplicitProfilePhotos";
+import { isExplicitProfilePhoto, showProfilePhotosAnyway } from "../../../../services/explicitProfilePhotos";
+import { HIDDEN_MEDIA_PLACEHOLDER } from "../../../../utils/hiddenMediaPlaceholder";
 import { PhotoActionBar } from "../../../../components/PhotoActionBar";
 
 type OwnProfileData = { tags: string[] };
@@ -913,14 +917,37 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 		() => (hasRightNowSlide ? [RIGHT_NOW_SLIDE_HASH, ...activeProfilePhotoHashes] : activeProfilePhotoHashes),
 		[hasRightNowSlide, activeProfilePhotoHashes],
 	);
+	// A photo the detector called explicit keeps its place in the carousel and
+	// the full-screen viewer, drawn as the hidden tile.
+	useExplicitProfilePhotos();
+	const hiddenPhotoHashes = activeProfilePhotoHashes.filter((hash) => isExplicitProfilePhoto(hash));
+	const hiddenPhotosKey = hiddenPhotoHashes.join(",");
 	const getSlideImageUrl = (hash: string) =>
-		hash === RIGHT_NOW_SLIDE_HASH ? (rightNowSlideUrl ?? "") : getProfileImageUrl(hash, "1024x1024");
+		hash === RIGHT_NOW_SLIDE_HASH
+			? (rightNowSlideUrl ?? "")
+			: isExplicitProfilePhoto(hash)
+				? HIDDEN_MEDIA_PLACEHOLDER
+				: getProfileImageUrl(hash, "1024x1024");
+	const hiddenPhotosNote =
+		hiddenPhotoHashes.length > 0 ? (
+			<div className="mb-4 flex items-center gap-2 rounded-2xl bg-[var(--surface)] px-3 py-2 text-xs leading-relaxed text-[var(--text-muted)] ring-1 ring-inset ring-[var(--border)]">
+				<EyeOff className="h-3.5 w-3.5 shrink-0" />
+				<span className="min-w-0 flex-1">
+					{t("profile_details.photos_hidden", {
+						defaultValue: "{{count}} hidden: explicit.",
+						count: hiddenPhotoHashes.length,
+					})}
+				</span>
+				<ShowAnywayButton onShow={() => showProfilePhotosAnyway(hiddenPhotoHashes)} />
+			</div>
+		) : null;
 	const isRightNowSlideActive = carouselHashes[mobileCarouselPhotoIndex] === RIGHT_NOW_SLIDE_HASH;
 	carouselTotalRef.current = carouselHashes.length;
 
 	const photoUrls = useMemo(() => {
 		return carouselHashes.map((hash) => getSlideImageUrl(hash));
-	}, [carouselHashes, rightNowSlideUrl]);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [carouselHashes, rightNowSlideUrl, hiddenPhotosKey]);
 
 	const renderPhotoExtraInfo = useCallback(
 		(index: number) => {
@@ -1265,6 +1292,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 					</div>
 				)}
 				<div className={`p-4 sm:p-5 ${variant === "page" ? "pb-[calc(env(safe-area-inset-bottom,0px)+6rem)] sm:pb-[calc(env(safe-area-inset-bottom,0px)+6rem)]" : "pb-28"}`}>
+					{hiddenPhotosNote}
 					{isLoadingActiveProfile ? (
 						<ProfileDetailsSkeleton label={t("profile_details.loading")} />
 					) : activeProfileError ? (
@@ -1657,6 +1685,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 							{/* Split-mode content */}
 							<div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain" data-lenis-prevent>
 								<div className="p-4 pb-28 sm:p-5 sm:pb-28">
+									{hiddenPhotosNote}
 									{isLoadingActiveProfile ? (
 										<ProfileDetailsSkeleton label={t("profile_details.loading")} />
 									) : activeProfileError ? (

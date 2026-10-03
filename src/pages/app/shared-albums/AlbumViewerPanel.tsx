@@ -14,6 +14,7 @@ import {
 import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
 import { AlbumMediaTile } from "../../../components/AlbumMediaTile";
+import { ShowAnywayButton } from "../../../components/ui/ShowAnywayButton";
 import { Button } from "../../../components/ui/button";
 import { ProfileImage } from "../../../components/ui/profile-image";
 import { saveMediaBatch } from "../../../services/saveMedia";
@@ -29,6 +30,8 @@ type AlbumViewerPanelProps = {
 	fullScreenIndex: number | null;
 	closeViewer: () => void;
 	openFullScreen: (index: number) => void;
+	/** Puts the items the explicit-photo filter is holding back on show, for this album. */
+	onShowHidden: () => void;
 	onRetry: () => void;
 	onDelete: () => void;
 	onMessageProfile: (profileId: number) => void;
@@ -45,6 +48,7 @@ export function AlbumViewerPanel({
 	fullScreenIndex,
 	closeViewer,
 	openFullScreen,
+	onShowHidden,
 	onRetry,
 	onDelete,
 	onMessageProfile,
@@ -65,6 +69,8 @@ export function AlbumViewerPanel({
 
 	const handleSaveAll = async () => {
 		const items = content
+			// A hidden item's link is the hidden tile, not the item.
+			.filter((entry) => !entry.hidden)
 			.map((entry) => ({
 				url: entry.url || entry.coverUrl || "",
 				type: (entry.contentType?.startsWith("video/") ? "video" : "image") as "image" | "video",
@@ -244,13 +250,16 @@ export function AlbumViewerPanel({
 					) : null}
 
 					{(viewer.hiddenCount ?? 0) > 0 ? (
-						<p className="mt-3 flex items-center gap-1.5 rounded-2xl bg-[var(--surface)] px-3 py-2 text-xs leading-relaxed text-[var(--text-muted)] ring-1 ring-inset ring-[var(--border)]">
+						<div className="mt-3 flex items-center gap-2 rounded-2xl bg-[var(--surface)] px-3 py-2 text-xs leading-relaxed text-[var(--text-muted)] ring-1 ring-inset ring-[var(--border)]">
 							<EyeOff className="h-3.5 w-3.5 shrink-0" />
-							{t("shared_albums.hidden_by_filter", {
-								defaultValue: "{{count}} not shown: explicit, or not checked yet.",
-								count: viewer.hiddenCount,
-							})}
-						</p>
+							<span className="min-w-0 flex-1">
+								{t("shared_albums.hidden_by_filter", {
+									defaultValue: "{{count}} hidden: explicit, or not checked yet.",
+									count: viewer.hiddenCount,
+								})}
+							</span>
+							<ShowAnywayButton onShow={onShowHidden} />
+						</div>
 					) : null}
 				</header>
 
