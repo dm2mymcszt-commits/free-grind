@@ -14,6 +14,11 @@ import { getProfileImageUrl, validateMediaHash } from "../utils/media";
 import { appLog } from "../utils/logger";
 import { limitChatDbBlobRead } from "../utils/chatDbBlobLimiter";
 import { BoundedStringCache, cacheBudget } from "../utils/boundedCache";
+import {
+	backfillExplicitProfilePhotos,
+	isExplicitProfilePhoto,
+	subscribeToExplicitProfilePhotos,
+} from "./explicitProfilePhotos";
 
 const inFlight = new Map<string, Promise<void>>();
 const memoryCache = new BoundedStringCache<string>("Avatars", cacheBudget(8, 32));
@@ -25,6 +30,13 @@ function setCachedAvatarUri(mediaHash: string, uri: string): void {
 		listener();
 	}
 }
+
+// A photo newly found explicit has to come off the screens showing it.
+subscribeToExplicitProfilePhotos(() => {
+	for (const listener of cacheListeners) {
+		listener();
+	}
+});
 
 /** Subscribe to avatar cache updates; returns an unsubscribe function. */
 export function subscribeToAvatarCache(listener: () => void): () => void {
@@ -86,6 +98,14 @@ export function resolveAvatarSrc(
 	mediaHash: string | null | undefined,
 	fallbackUrl: string | null,
 ): string | null {
+	// A profile photo the detector called explicit is not drawn as an avatar
+	// anywhere in chat: the person is blocked over it, and their archived
+	// chat would otherwise keep showing it. Callers already handle having no
+	// picture.
+	backfillExplicitProfilePhotos();
+	if (isExplicitProfilePhoto(mediaHash)) {
+		return null;
+	}
 	if (!mediaHash || !validateMediaHash(mediaHash)) {
 		return fallbackUrl;
 	}

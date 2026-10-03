@@ -30,6 +30,7 @@ import {
 	scoresOf,
 	verdictOf,
 } from "./contentCheck";
+import { rememberExplicitProfilePhoto } from "./explicitProfilePhotos";
 import { fetchAndEncode } from "./mediaStore";
 import { faceVerdict, profileFaceVerdict, type FaceVerdict } from "../utils/explicitContentRules";
 import { appLog } from "../utils/logger";
@@ -68,7 +69,10 @@ async function checkProfilePhoto(hash: string): Promise<StoredContentCheck | nul
 	const mediaKey = `profile:${hash}`;
 	const stored =
 		getCachedCheckForMediaKey(mediaKey) ?? (await chatDb.getContentCheck(mediaKey).catch(() => null));
-	if (stored?.model === MODEL) return stored;
+	if (stored?.model === MODEL) {
+		if (verdictOf(stored) === "explicit") rememberExplicitProfilePhoto(hash);
+		return stored;
+	}
 
 	const fetched = await fetchAndEncode(getProfileImageUrl(hash, "1024x1024"));
 	if (!fetched) return null;
@@ -88,6 +92,8 @@ async function checkProfilePhoto(hash: string): Promise<StoredContentCheck | nul
 			checkedAt: Date.now(),
 		};
 		await saveContentCheck(check);
+		// So the photo stops being drawn as their avatar in chat.
+		if (verdictOf(check) === "explicit") rememberExplicitProfilePhoto(hash);
 		return check;
 	} catch (error) {
 		appLog.warn(`[profile-photo] could not check photo ${hash}`, error);

@@ -2371,6 +2371,21 @@ export async function getContentChecksForMessages(
 	return checks;
 }
 
+/**
+ * The hashes of profile photos whose check found something explicit, at or
+ * above `minScore`. Only checks of the whole photo: an older kind, made piece
+ * by piece, overstated what it saw.
+ */
+export async function getExplicitProfilePhotoHashes(minScore: number): Promise<string[]> {
+	const db = await getDb();
+	const rows = await db.select<{ media_key: string }[]>(
+		`SELECT media_key FROM content_checks
+		 WHERE media_key LIKE 'profile:%' AND model LIKE 'nudenet-320n-profile%' AND explicit_score >= $1`,
+		[minScore],
+	);
+	return rows.map((row) => row.media_key.slice("profile:".length));
+}
+
 /** Who sent a stored message and when: what a block needs before it can name anyone. */
 export async function getMessageSenderAndTime(
 	messageId: string,
