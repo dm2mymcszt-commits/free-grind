@@ -3,6 +3,7 @@ import {
 	Clock3,
 	CloudOff,
 	Download,
+	EyeOff,
 	HardDriveDownload,
 	MessageCircle,
 	RotateCw,
@@ -239,6 +240,16 @@ export function AlbumViewerPanel({
 					{viewer.isSavedCopy && !item.localOnly ? (
 						<p className="mt-3 rounded-2xl bg-[var(--surface)] px-3 py-2 text-xs leading-relaxed text-[var(--text-muted)] ring-1 ring-inset ring-[var(--border)]">
 							{t("shared_albums.saved_copy_note")}
+						</p>
+					) : null}
+
+					{(viewer.hiddenCount ?? 0) > 0 ? (
+						<p className="mt-3 flex items-center gap-1.5 rounded-2xl bg-[var(--surface)] px-3 py-2 text-xs leading-relaxed text-[var(--text-muted)] ring-1 ring-inset ring-[var(--border)]">
+							<EyeOff className="h-3.5 w-3.5 shrink-0" />
+							{t("shared_albums.hidden_by_filter", {
+								defaultValue: "{{count}} not shown: explicit, or not checked yet.",
+								count: viewer.hiddenCount,
+							})}
 						</p>
 					) : null}
 				</header>

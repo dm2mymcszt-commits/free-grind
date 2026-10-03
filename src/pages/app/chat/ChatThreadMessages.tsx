@@ -20,6 +20,7 @@ import { usePreferences } from "../../../contexts/PreferencesContext";
 import { useLocalMediaCache } from "../../../hooks/useLocalMediaCache";
 import { useContentChecks } from "../../../hooks/useContentChecks";
 import { getContentCoverForMessage, requestChecksForMessages } from "../../../services/contentCheck";
+import { getAlbumCover, getAlbumItemCover } from "../../../services/albumContentCheck";
 import type { ContentCover } from "../../../utils/explicitContentRules";
 import { banSelectableProps, useBanOnSelectEnabled } from "../../../hooks/useBanOnSelect";
 import {
@@ -1126,9 +1127,14 @@ export function ChatThreadMessages({
                     // refreshes the cover, every older message referencing the
                     // same album immediately shows that same, freshest cover —
                     // not just the message that triggered the refresh.
-                    const albumCover =
-                        (albumId != null ? getCachedAlbumCoverUri(albumId) : null) ??
-                        getMessageAlbumCoverUrl(message);
+                    // Somebody else's album shows no cover until every item in it has
+                    // been checked and cleared.
+                    const albumCoverHidden =
+                        explicitFilterOn && !mine && albumId != null && getAlbumCover(albumId) != null;
+                    const albumCover = albumCoverHidden
+                        ? null
+                        : (albumId != null ? getCachedAlbumCoverUri(albumId) : null) ??
+                          getMessageAlbumCoverUrl(message);
                     const messageText = getMessageText(message, t);
                     const replyPreviewRaw = message.replyPreview as {
                         text?: string; type?: string; chat1Type?: string;
@@ -1187,19 +1193,36 @@ export function ChatThreadMessages({
                     const ownAlbumContentTarget = message.type === "AlbumContentReply"
                         ? getAlbumContentReplyTarget(message)
                         : null;
-                    const cachedAlbumContentThumbUri = ownAlbumContentTarget
+                    // The small picture of one item of an album follows that item's
+                    // check, when the album is the other person's. A reply or a
+                    // reaction is about the album of whoever did not send it.
+                    const isTheirAlbumItemHidden = (
+                        target: { albumId: number; contentId: number } | null,
+                        albumIsTheirs: boolean,
+                    ) => {
+                        if (!explicitFilterOn || !albumIsTheirs || target == null) return false;
+                        ensureAlbumCacheChecked(target.albumId);
+                        return getAlbumItemCover(target.albumId, target.contentId) != null;
+                    };
+                    const ownAlbumContentHidden = isTheirAlbumItemHidden(ownAlbumContentTarget, mine);
+                    const cachedAlbumContentThumbUri = ownAlbumContentTarget && !ownAlbumContentHidden
                         ? getCachedAlbumContentThumbUri(ownAlbumContentTarget.albumId, ownAlbumContentTarget.contentId)
                         : null;
-                    const albumContentThumbUrl = message.type === "AlbumContentReply" && typeof replyMsgBody?.previewUrl === "string"
+                    const albumContentThumbUrl = message.type === "AlbumContentReply" && !ownAlbumContentHidden && typeof replyMsgBody?.previewUrl === "string"
                         ? replyMsgBody.previewUrl
                         : null;
                     const referencedAlbumContentTarget = replyToMsg
                         ? getAlbumContentReplyTarget(replyToMsg)
                         : (message.replyToMessage ? getAlbumContentReplyTarget(message.replyToMessage as unknown as UiMessage) : null);
-                    const cachedReplyToMsgThumbUri = referencedAlbumContentTarget
+                    const referencedAlbumContentHidden = isTheirAlbumItemHidden(
+                        referencedAlbumContentTarget,
+                        replySenderId != null && Number(replySenderId) === Number(userId),
+                    );
+                    const cachedReplyToMsgThumbUri = referencedAlbumContentTarget && !referencedAlbumContentHidden
                         ? getCachedAlbumContentThumbUri(referencedAlbumContentTarget.albumId, referencedAlbumContentTarget.contentId)
                         : null;
                     const replyToMsgThumbUrl = (() => {
+                        if (referencedAlbumContentHidden) return null;
                         const embedded = message.replyToMessage as Record<string, unknown> | null | undefined;
                         const src = embedded ?? (replyToMsg as Record<string, unknown> | null | undefined);
                         if (!src) return null;
@@ -1966,11 +1989,20 @@ export function ChatThreadMessages({
                                     {isAlbumReactionBubble ? (() => {
                                         const rxBody = message.body as Record<string, unknown> | null | undefined;
                                         const rxTarget = getAlbumContentReplyTarget(message);
-                                        const rxCachedThumbUri = rxTarget
+                                        // A reaction of mine is to one of their album's items.
+                                        const rxHidden =
+                                            explicitFilterOn &&
+                                            mine &&
+                                            rxTarget != null &&
+                                            getAlbumItemCover(rxTarget.albumId, rxTarget.contentId) != null;
+                                        if (rxTarget && explicitFilterOn && mine) ensureAlbumCacheChecked(rxTarget.albumId);
+                                        const rxCachedThumbUri = rxTarget && !rxHidden
                                             ? getCachedAlbumContentThumbUri(rxTarget.albumId, rxTarget.contentId)
                                             : null;
-                                        const rxPreviewUrl = rxCachedThumbUri
-                                            ?? (typeof rxBody?.previewUrl === "string" ? rxBody.previewUrl : null);
+                                        const rxPreviewUrl = rxHidden
+                                            ? null
+                                            : rxCachedThumbUri
+                                              ?? (typeof rxBody?.previewUrl === "string" ? rxBody.previewUrl : null);
                                         const rxAlbumId = typeof rxBody?.albumId === "number" ? rxBody.albumId : null;
                                         const rxLabel = mine
                                             ? t("chat.preview.tapped_album_photo_theirs")

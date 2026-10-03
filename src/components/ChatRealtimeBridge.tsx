@@ -90,13 +90,14 @@ import { isExplicitBlockEnabled, isExplicitProfileBlockEnabled, scoresOf } from 
 import {
 	checkLiveMessageMedia,
 	decideLiveExplicitBlock,
+	explicitReasonFor,
 	explicitStatsReason,
 	releaseLiveMessage,
 	startExplicitMediaGuard,
 } from "../services/explicitMediaGuard";
 import { findExplicitProfilePhoto } from "../services/profilePhotoCheck";
 import { logDetectorDecision } from "../services/detectorLog";
-import { EXPLICIT_PROFILE_PHOTO_REASON, explicitBlockReason, explicitNotice } from "../utils/explicitContentRules";
+import { EXPLICIT_PROFILE_PHOTO_REASON, explicitNotice } from "../utils/explicitContentRules";
 
 let cachedIsAndroid: boolean | null = null;
 
@@ -936,12 +937,12 @@ export function ChatRealtimeBridge() {
 							// fails or runs out of time blocks nobody: the message goes
 							// through with its photo covered.
 							if (!blockReason && isExplicitBlockEnabled()) {
-								const explicitCheck = await checkLiveMessageMedia(m);
+								const explicitCheck = await checkLiveMessageMedia(m, (albumId) => apiFunctions.getAlbum(albumId));
 								if (
 									explicitCheck &&
 									decideLiveExplicitBlock(m, explicitCheck, userIdRef.current, isWhitelisted).block
 								) {
-									blockReason = explicitBlockReason(explicitCheck.kind);
+									blockReason = explicitReasonFor(explicitCheck);
 									blockStatsReason = explicitStatsReason(explicitCheck);
 									blockNotice = explicitNotice(blockReason, scoresOf(explicitCheck));
 								}

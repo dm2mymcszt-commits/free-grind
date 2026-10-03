@@ -105,6 +105,7 @@ import {
 import { loadChatFiltersDraft, saveChatFiltersDraft } from "./chat/chat-filters-storage";
 import { fetchAndStoreMedia, getCachedMediaUri, hydrateMediaByMessageId, isSignedUrlExpired } from "../../services/mediaStore";
 import { getContentCoverForMessage, isExplicitFilterEnabled } from "../../services/contentCheck";
+import { useVisibleAlbumContent } from "../../hooks/useVisibleAlbumContent";
 import { saveMediaBytesToDevice, saveMediaToDevice } from "../../services/saveMedia";
 import {
 	deletionNeedsConfirmation,
@@ -762,7 +763,22 @@ export function ChatPage() {
 		albumId: number;
 		albumName: string;
 	} | null>(null);
-	const [albumViewer, setAlbumViewer] = useState<AlbumViewerState | null>(null);
+	const [openedAlbum, setAlbumViewer] = useState<AlbumViewerState | null>(null);
+	// What the explicit-photo filter lets through of it. Everything below works
+	// from this, the grid and the full-screen viewer alike, so an item that is
+	// held back can be neither tapped nor swiped onto.
+	const visibleAlbum = useVisibleAlbumContent(
+		openedAlbum?.albumId ?? null,
+		openedAlbum?.content,
+		openedAlbum?.isOwn === true,
+	);
+	const albumViewer = useMemo<AlbumViewerState | null>(
+		() =>
+			openedAlbum
+				? { ...openedAlbum, content: visibleAlbum.content, hiddenCount: visibleAlbum.hiddenCount }
+				: null,
+		[openedAlbum, visibleAlbum],
+	);
 	const [albumViewerMediaIndex, setAlbumViewerMediaIndex] = useState<
 		number | null
 	>(null);

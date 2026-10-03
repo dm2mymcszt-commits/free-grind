@@ -18,6 +18,7 @@ import { preserveAndAutoBlockConversation } from "../services/autoBlockConversat
 import * as chatDb from "../services/chatDb";
 import { getExplicitFilterSince, isExplicitBlockEnabled } from "../services/contentCheck";
 import { fetchAndStoreMedia } from "../services/mediaStore";
+import { captureAlbumsForMessagesNow } from "../services/albumStore";
 import { findExplicitProfilePhoto, profileFaceVerdictFor } from "../services/profilePhotoCheck";
 import { explicitStatsReason } from "../services/explicitMediaGuard";
 import { isExplicitProfileBlockEnabled, scoresOf, verdictOf } from "../services/contentCheck";
@@ -81,6 +82,7 @@ function previewIsMedia(conversation: ConversationEntry): boolean {
         type === "video" ||
         type === "nonexpiringvideo" ||
         type === "privatevideo" ||
+        type.includes("album") ||
         chat1Type === "image" ||
         chat1Type === "expiring_image" ||
         chat1Type === "video" ||
@@ -869,6 +871,11 @@ export function BackgroundInboxScanner() {
                                 if (Number(msg.senderId) === Number(userId)) continue;
                                 const sentAt = msg.timestamp < SECONDS_THRESHOLD ? msg.timestamp * 1000 : msg.timestamp;
                                 if (sentAt < since) continue;
+                                if (msg.type?.toLowerCase().includes("album")) {
+                                    // Downloads the album, which checks every item in it.
+                                    await captureAlbumsForMessagesNow([msg], conversationId, (albumId) => api.getAlbum(albumId));
+                                    continue;
+                                }
                                 const target = getMediaCaptureTarget(msg);
                                 if (!target || target.kind === "audio") continue;
                                 await fetchAndStoreMedia({

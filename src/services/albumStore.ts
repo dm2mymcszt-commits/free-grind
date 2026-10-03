@@ -28,6 +28,8 @@ import { appLog } from "../utils/logger";
 import { isAutoDownloadMediaEnabled } from "../utils/mediaSettings";
 import { limitChatDbBlobRead } from "../utils/chatDbBlobLimiter";
 import { isPictureUrl, sniffMediaMime } from "../utils/mediaMime";
+import { checkAlbumItem, isOwnAlbumOwner, refreshAlbumChecks } from "./albumContentCheck";
+import { isExplicitFilterEnabled, verdictOf, type MediaSender } from "./contentCheck";
 
 /**
  * Mirrors newly-downloaded album content into the device's Downloads
@@ -175,6 +177,11 @@ async function refreshAlbumCacheState(albumId: number): Promise<StoredAlbumMedia
 	// whereas a missed notification leaves a bubble showing stale state.
 	for (const listener of albumCacheListeners) {
 		listener();
+	}
+	// What the explicit-photo filter makes of this album follows the same
+	// stored state, including items saved before the filter was switched on.
+	if (isExplicitFilterEnabled()) {
+		void refreshAlbumChecks(albumId);
 	}
 	return summaries;
 }
@@ -391,6 +398,12 @@ export type CaptureAlbumParams = {
 	sharedViaMessageId: string | null;
 	remainingViews: number | null;
 	isViewable: boolean | null;
+	/**
+	 * Who sent the sharing message and when, for callers that hold it. An
+	 * explicit item can only block its sender when both are known, and a
+	 * message that just arrived is not in chatDb yet to be looked up.
+	 */
+	sender?: MediaSender | null;
 };
 
 async function captureAlbumContent(
@@ -400,6 +413,9 @@ async function captureAlbumContent(
 	remainingViews: number | null,
 	isViewable: boolean | null,
 	conversationId: string | null,
+	ownerProfileId: string | null,
+	sharedViaMessageId: string | null,
+	sender: MediaSender | null,
 ): Promise<void> {
 	const compositeId = `${albumId}:${item.contentId}`;
 	try {
@@ -426,6 +442,26 @@ async function captureAlbumContent(
 			remainingViews,
 			isViewable,
 		});
+
+		// Checked here, with the bytes in hand, like any other received photo.
+		// Awaited, so a caller waiting for the album is waiting for the verdict
+		// on its items too. Only an item found clear is copied out to the
+		// device's gallery.
+		if (isExplicitFilterEnabled() && !isOwnAlbumOwner(ownerProfileId)) {
+			const check = await checkAlbumItem({
+				albumId,
+				contentId: item.contentId,
+				contentType: item.contentType ?? null,
+				main: main ? { base64: main.base64, mimeType: main.mimeType } : null,
+				preview: thumb ? { base64: thumb.base64, mimeType: thumb.mimeType } : null,
+				messageId: sharedViaMessageId,
+				conversationId,
+				sender,
+			});
+			if (verdictOf(check) !== "clear") {
+				return;
+			}
+		}
 
 		if (main?.base64) {
 			void maybeAutoDownloadToDevice(main.base64, main.mimeType, item.contentType, conversationId);
@@ -454,6 +490,7 @@ export async function captureAlbum(
 		remainingViews,
 		isViewable,
 	} = params;
+	const sender = params.sender ?? null;
 
 	await chatDb.upsertAlbum({
 		albumId: String(albumId),
@@ -474,6 +511,9 @@ export async function captureAlbum(
 			remainingViews,
 			isViewable,
 			conversationId,
+			ownerProfileId,
+			sharedViaMessageId,
+			sender,
 		),
 	);
 
@@ -611,6 +651,7 @@ async function captureAlbumFromMessageIfNeeded(
 				sharedViaMessageId: message.messageId,
 				remainingViews: info.remainingViews,
 				isViewable: info.isViewable,
+				sender: { senderId: message.senderId, timestamp: message.timestamp },
 			});
 
 			// Per-item downloads inside captureAlbum swallow their own errors so

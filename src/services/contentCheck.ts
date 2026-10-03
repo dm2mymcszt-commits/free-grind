@@ -165,6 +165,20 @@ export function getContentCoverForMessage(messageId: string): ContentCover | nul
 	return coverForVerdict(verdictOf(byMessageId.get(messageId)));
 }
 
+/** The check for a media key: from memory, else from the database (and then remembered). */
+export async function loadContentCheck(mediaKey: string): Promise<StoredContentCheck | null> {
+	const cached = byMediaKey.get(mediaKey);
+	if (cached) return cached;
+	const stored = await chatDb.getContentCheck(mediaKey).catch(() => null);
+	if (stored) remember(stored);
+	return stored;
+}
+
+/** For state worked out from checks elsewhere (an album's cover): re-renders whoever is listening. */
+export function notifyContentChecksChanged(): void {
+	for (const listener of listeners) listener();
+}
+
 /** Subscribe to checks landing; returns an unsubscribe function. */
 export function subscribeToContentChecks(listener: () => void): () => void {
 	listeners.add(listener);

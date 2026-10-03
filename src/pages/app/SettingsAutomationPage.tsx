@@ -613,7 +613,7 @@ export function SettingsAutomationPage() {
                             icon={<EyeOff className="h-5 w-5" />}
                             iconClass="bg-rose-500/15 text-rose-400"
                             label="Hide photos until they are checked"
-                            description="Every photo and video you receive is checked on this device before it is shown. Explicit ones, ones the detector is unsure about and ones it could not check stay covered. Nothing is uploaded anywhere."
+                            description="Every photo and video you receive is checked on this device before it is shown, including the ones inside shared albums. Explicit ones, ones the detector is unsure about and ones it could not check stay covered. Nothing is uploaded anywhere."
                             checked={explicitFilter}
                             onChange={(val) => void handleToggleExplicitFilter(val)}
                         />
@@ -623,7 +623,7 @@ export function SettingsAutomationPage() {
                                 icon={<Ban className="h-5 w-5" />}
                                 iconClass="bg-red-500/15 text-red-400"
                                 label="Block whoever sends an explicit photo"
-                                description="Blocks someone as soon as a photo or video they send shows genitals, anus or bare buttocks, before you are notified. Shirtless photos are left alone. Only blocks when the detector is sure; a photo it is unsure about stays covered and nobody is blocked. People on your whitelist are never blocked by this. Only applies to messages received from now on."
+                                description="Blocks someone as soon as a photo or video they send, or one inside an album they share, shows genitals, anus or bare buttocks, before you are notified. Shirtless photos are left alone. Only blocks when the detector is sure; a photo it is unsure about stays covered and nobody is blocked. People on your whitelist are never blocked by this. Only applies to messages received from now on."
                                 checked={explicitBlock}
                                 onChange={handleToggleExplicitBlock}
                             />
@@ -1057,7 +1057,7 @@ export function SettingsAutomationPage() {
                                                     className="h-4 w-4 accent-[var(--accent)] shrink-0"
                                                 />
                                                 <span className="text-xs text-[var(--text-muted)] leading-relaxed">
-                                                    <strong className="text-[var(--text)]">Only a photo or video of their face saves them.</strong> Applies to both rules above. Without this, any media they send is enough. With it, photos that show no face do not count, in whatever order they come. A shared album, or anything that could not be checked, still counts in their favour. Only for chats that start after you switch this on.
+                                                    <strong className="text-[var(--text)]">Only a photo or video of their face saves them.</strong> Applies to both rules above. Without this, any media they send is enough. With it, photos that show no face do not count, in whatever order they come. A shared album counts when one of its photos shows a face. Anything that could not be checked still counts in their favour. Only for chats that start after you switch this on.
                                                 </span>
                                             </label>
                                         )}

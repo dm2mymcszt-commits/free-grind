@@ -26,13 +26,16 @@ import { notifyAutoBlock } from "../utils/autoblock";
 import {
 	decideExplicitBlock,
 	describeExplicitScores,
+	EXPLICIT_ALBUM_REASON,
 	explicitBlockReason,
 	explicitNotice,
 	type ExplicitBlockDecision,
 } from "../utils/explicitContentRules";
 import { appLog } from "../utils/logger";
 import { checkAndAutoWhitelistActiveChat, isProfileAutoblockWhitelisted } from "../utils/privacy";
-import { getMediaCaptureTarget } from "../pages/app/chat/chatUtils";
+import { getMediaCaptureTarget, getMessageAlbumId } from "../pages/app/chat/chatUtils";
+import { worstAlbumCheck } from "./albumContentCheck";
+import { captureAlbumsForMessagesNow } from "./albumStore";
 import { isAutoBlockInFlight, preserveAndAutoBlockProfile } from "./autoBlockConversation";
 import * as chatDb from "./chatDb";
 import {
@@ -49,11 +52,16 @@ import { logDetectorDecision } from "./detectorLog";
 import { fetchAndStoreMedia } from "./mediaStore";
 import type { StatsBlockReason } from "./statsLog";
 
+/** The reason for a block over this check: an album item says so, the rest go by photo or video. */
+export function explicitReasonFor(check: StoredContentCheck): string {
+	return check.mediaKey.startsWith("album:") ? EXPLICIT_ALBUM_REASON : explicitBlockReason(check.kind);
+}
+
 /** What the Stats log records for an explicit-photo block. */
 export function explicitStatsReason(check: StoredContentCheck, label?: string): StatsBlockReason {
 	return {
 		kind: "explicit_media",
-		label: label ?? explicitBlockReason(check.kind),
+		label: label ?? explicitReasonFor(check),
 		detail: describeExplicitScores(scoresOf(check)),
 	};
 }
@@ -84,23 +92,35 @@ export function releaseLiveMessage(messageId: string): void {
  * A message this returns a check for stays claimed: the caller decides what
  * to do about it and calls releaseLiveMessage when it is done.
  */
-export async function checkLiveMessageMedia(message: Message): Promise<StoredContentCheck | null> {
+export async function checkLiveMessageMedia(
+	message: Message,
+	getAlbum: (albumId: number) => Promise<AlbumDetailsResponse>,
+): Promise<StoredContentCheck | null> {
 	if (!isExplicitFilterEnabled()) return null;
 	const target = getMediaCaptureTarget(message);
-	if (!target || target.kind === "audio") return null;
+	// An album is several photos behind one message: all of them are
+	// downloaded and checked, and the worst one speaks for the message.
+	const albumId =
+		message.type === "Album" || message.type === "ExpiringAlbum" || message.type === "ExpiringAlbumV2"
+			? getMessageAlbumId(message)
+			: null;
+	if (albumId == null && (!target || target.kind === "audio")) return null;
 
 	liveClaims.add(message.messageId);
 	let timer: ReturnType<typeof setTimeout> | undefined;
-	const download = fetchAndStoreMedia({
-		mediaKey: target.mediaKey,
-		kind: target.kind,
-		url: target.url,
-		conversationId: message.conversationId,
-		messageId: message.messageId,
-		viewOnce: target.viewOnce,
-		isOwnMessage: false,
-		sender: { senderId: message.senderId, timestamp: message.timestamp },
-	});
+	const download: Promise<unknown> =
+		albumId != null
+			? captureAlbumsForMessagesNow([message], message.conversationId, getAlbum)
+			: fetchAndStoreMedia({
+					mediaKey: target!.mediaKey,
+					kind: target!.kind,
+					url: target!.url,
+					conversationId: message.conversationId,
+					messageId: message.messageId,
+					viewOnce: target!.viewOnce,
+					isOwnMessage: false,
+					sender: { senderId: message.senderId, timestamp: message.timestamp },
+				});
 	const finished = await Promise.race([
 		download.then(() => true),
 		new Promise<false>((resolve) => {
@@ -109,7 +129,11 @@ export async function checkLiveMessageMedia(message: Message): Promise<StoredCon
 	]);
 	if (timer) clearTimeout(timer);
 
-	const check = finished ? getCachedCheckForMessage(message.messageId) : null;
+	const check = !finished
+		? null
+		: albumId != null
+			? await worstAlbumCheck(albumId)
+			: getCachedCheckForMessage(message.messageId);
 	if (!check) {
 		// Nothing to act on yet. Released, so a verdict that lands later is
 		// handled below instead of being dropped.
@@ -217,7 +241,7 @@ async function handleExplicitVerdict(
 	}
 
 	handledMessages.add(messageId);
-	const reason = explicitBlockReason(check.kind);
+	const reason = explicitReasonFor(check);
 	appLog.info(
 		`[explicit-guard] blocking ${profileId} for an explicit ${check.kind} (${describeExplicitScores(scoresOf(check)) ?? "no detail"})`,
 	);

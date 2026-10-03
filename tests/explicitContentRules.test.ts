@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
+	albumCoverFor,
+	albumFaceVerdict,
 	combineContentScores,
 	coverForVerdict,
 	decideExplicitBlock,
@@ -246,6 +248,42 @@ describe("sentMediaSaves", () => {
 	test("anything that could not be judged saves: an album, a failed check, an unsure face", () => {
 		expect(sentMediaSaves(["no_face", "unknown"], true)).toBe(true);
 		expect(sentMediaSaves(["unsure"], true)).toBe(true);
+	});
+});
+
+describe("albumCoverFor", () => {
+	test("an album whose items are all clear is shown", () => {
+		expect(albumCoverFor(["clear", "clear"])).toBeNull();
+	});
+
+	test("one explicit item covers the whole album", () => {
+		expect(albumCoverFor(["clear", "explicit", "unsure"])).toBe("explicit");
+	});
+
+	test("an unsure item covers it too", () => {
+		expect(albumCoverFor(["clear", "unsure"])).toBe("unsure");
+	});
+
+	test("an item nobody has checked, or an album nobody has opened, stays covered", () => {
+		expect(albumCoverFor(["clear", null])).toBe("unchecked");
+		expect(albumCoverFor([])).toBe("unchecked");
+	});
+});
+
+describe("albumFaceVerdict", () => {
+	test("one item with a face is enough", () => {
+		expect(albumFaceVerdict(["no_face", "face"])).toBe("face");
+	});
+
+	test("no face only when every item was checked and none shows one", () => {
+		expect(albumFaceVerdict(["no_face", "no_face"])).toBe("no_face");
+	});
+
+	test("anything less is unknown, which counts in their favour", () => {
+		expect(albumFaceVerdict(["no_face", null])).toBe("unknown");
+		expect(albumFaceVerdict(["no_face", "unsure"])).toBe("unknown");
+		expect(albumFaceVerdict([])).toBe("unknown");
+		expect(sentMediaSaves([albumFaceVerdict(["no_face", null])], true)).toBe(true);
 	});
 });
 

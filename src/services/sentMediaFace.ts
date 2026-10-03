@@ -2,14 +2,16 @@
  * sentMediaFace.ts — what something somebody sent says about their face.
  *
  * Backs the faceless rules' "only a photo that shows their face saves them".
- * A photo or video gets the detector's verdict. Anything that cannot be
- * judged — a shared album, a photo that would not download, a detector error
- * — is "unknown", and "unknown" counts in their favour: nobody is blocked
- * for something this could not look at.
+ * A photo or video gets the detector's verdict, and so does a shared album,
+ * from its items. Anything that cannot be judged — an album not fully
+ * checked, a photo that would not download, a detector error — is "unknown",
+ * and "unknown" counts in their favour: nobody is blocked for something this
+ * could not look at.
  */
 
 import type { Message } from "../types/messages";
-import { getMediaCaptureTarget } from "../pages/app/chat/chatUtils";
+import { getMediaCaptureTarget, getMessageAlbumId } from "../pages/app/chat/chatUtils";
+import { albumFaceFor } from "./albumContentCheck";
 import { faceVerdict, type SentMediaFace } from "../utils/explicitContentRules";
 import * as chatDb from "./chatDb";
 import { checkMediaBytes, getCachedCheckForMessage, scoresOf } from "./contentCheck";
@@ -45,7 +47,12 @@ function mediaKindOf(message: Message): "photo_or_video" | "album" | null {
 export async function sentMediaFaceFor(message: Message, conversationId: string): Promise<SentMediaFace | null> {
 	const kind = mediaKindOf(message);
 	if (kind == null) return null;
-	if (kind === "album") return "unknown";
+	if (kind === "album") {
+		// Its items, as far as they were downloaded and checked. An album
+		// that was not, or not fully, cannot be judged.
+		const albumId = getMessageAlbumId(message);
+		return albumId == null ? "unknown" : albumFaceFor(albumId);
+	}
 
 	try {
 		let check = getCachedCheckForMessage(message.messageId);

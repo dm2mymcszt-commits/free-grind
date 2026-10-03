@@ -199,6 +199,7 @@
         "phrase_display_name_suffix_not": " "
     },
     "shared_albums": {
+        "hidden_by_filter": "{{count}} not shown: explicit, or not checked yet.",
         "title": "Shared Albums",
         "subtitle": "Browse all albums shared by people in your chats.",
         "albums_count_one": "{{count}} album",
@@ -1225,7 +1226,16 @@
             "no_messages_yet": "No messages yet",
             "send_first_message_hint": "Send a message below to start the conversation."
         },
+        "content_cover": {
+            "explicit_photo": "Explicit photo hidden",
+            "explicit_video": "Explicit video hidden",
+            "unsure": "Possibly explicit",
+            "unchecked": "Not checked yet",
+            "tap_to_show": "Tap to show anyway",
+            "tap_again": "Tap again to show"
+        },
         "media_sheet": {
+            "hidden_by_filter": "{{count}} not shown: explicit, or not checked yet.",
             "title": "Received Media",
             "tab_albums": "Albums",
             "tab_media": "Media",

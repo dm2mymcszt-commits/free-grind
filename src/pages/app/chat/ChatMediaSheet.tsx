@@ -8,6 +8,7 @@ import { BottomSheet, SheetClose } from "../../../components/ui/bottom-sheet";
 import { PhotoViewer, type PhotoViewerMedia } from "../../../components/PhotoViewer";
 import { useApiFunctions } from "../../../hooks/useApiFunctions";
 import { useContentChecks } from "../../../hooks/useContentChecks";
+import { getAlbumCover } from "../../../services/albumContentCheck";
 import {
 	checkMediaBytes,
 	getCachedCheckForMediaKey,
@@ -635,7 +636,12 @@ export function ChatMediaSheet({
 							<div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
 								{albums.map((album) => {
 									const coverFailed = failedCovers.has(album.albumId);
-									const showCover = !!album.coverUrl && !coverFailed;
+									// These are the other person's albums: no cover until
+									// every item has been checked and cleared.
+									const showCover =
+										!!album.coverUrl &&
+										!coverFailed &&
+										!(explicitFilterOn && getAlbumCover(album.albumId) != null);
 									return (
 										<button
 											key={album.albumId}

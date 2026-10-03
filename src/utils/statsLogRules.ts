@@ -89,7 +89,7 @@ export function classifyBlockReason(label: string | null | undefined): Classifie
 		return { kind: "left_on_seen", detail: match[1] };
 	}
 	if (/^faceless/i.test(text)) return { kind: "faceless", detail: null };
-	if ((match = text.match(/^explicit (?:photo|video|profile photo)(?::\s*(.*))?$/i))) {
+	if ((match = text.match(/^explicit (?:photo|video|profile photo|album)(?::\s*(.*))?$/i))) {
 		return { kind: "explicit_media", detail: unquote(match[1]) };
 	}
 	return { kind: "other", detail: null };

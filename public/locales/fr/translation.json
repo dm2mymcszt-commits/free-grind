@@ -62,6 +62,7 @@
         "check_updates_desc": "Télécharger et installer la dernière version de GrindFlopr."
     },
     "shared_albums": {
+        "hidden_by_filter": "{{count}} masqué(s) : explicite, ou pas encore vérifié.",
         "subtitle": "Explorez tous les albums partagés par les autres dans vos chats.",
         "albums_count_one": "{{count}} album",
         "albums_count_many": "{{count}} albums",
@@ -699,7 +700,16 @@
             "no_messages_yet": "",
             "send_first_message_hint": ""
         },
+        "content_cover": {
+            "explicit_photo": "Photo explicite masquée",
+            "explicit_video": "Vidéo explicite masquée",
+            "unsure": "Peut-être explicite",
+            "unchecked": "Pas encore vérifiée",
+            "tap_to_show": "Touchez pour afficher quand même",
+            "tap_again": "Touchez encore pour afficher"
+        },
         "media_sheet": {
+            "hidden_by_filter": "{{count}} masqué(s) : explicite, ou pas encore vérifié.",
             "title": "Médias reçus",
             "tab_albums": "Albums",
             "tab_media": "Médias",

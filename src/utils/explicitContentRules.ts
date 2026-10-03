@@ -225,6 +225,18 @@ export function profileFaceVerdict(photos: readonly (FaceVerdict | null)[]): Fac
 }
 
 /**
+ * What a shared album says about a face, from the verdict on each of its
+ * items (null for an item that could not be checked). One face is enough.
+ * "no_face" needs every item checked and every one a definite no; anything
+ * less is "unknown", which counts in the sender's favour.
+ */
+export function albumFaceVerdict(items: readonly (FaceVerdict | null)[]): SentMediaFace {
+	if (items.some((item) => item === "face")) return "face";
+	if (items.length === 0 || items.some((item) => item !== "no_face")) return "unknown";
+	return "no_face";
+}
+
+/**
  * What one thing somebody sent says about their face: a verdict for a photo
  * or video that was checked, or "unknown" for anything that could not be
  * (an album, a failed download, a detector error).
@@ -315,6 +327,18 @@ export function coverForVerdict(verdict: ContentVerdict | null | undefined): Con
 	return "unchecked";
 }
 
+/**
+ * What covers an album as a whole, from the verdict on each of its items
+ * (null for an item with no check): the worst of them. An album nobody has
+ * looked into, or with a single unchecked item, stays covered.
+ */
+export function albumCoverFor(items: readonly (ContentVerdict | null)[]): ContentCover | null {
+	if (items.some((item) => item === "explicit")) return "explicit";
+	if (items.some((item) => item === "unsure")) return "unsure";
+	if (items.length === 0 || items.some((item) => item == null)) return "unchecked";
+	return null;
+}
+
 const LABEL_WORDS: Record<string, string> = {
 	MALE_GENITALIA_EXPOSED: "genitals",
 	FEMALE_GENITALIA_EXPOSED: "genitals",
@@ -336,6 +360,8 @@ export function explicitBlockReason(kind: "image" | "video"): string {
 
 /** The same, for an explicit photo on someone's profile rather than one they sent. */
 export const EXPLICIT_PROFILE_PHOTO_REASON = "Explicit profile photo";
+/** And for an explicit photo or video inside an album they shared. */
+export const EXPLICIT_ALBUM_REASON = "Explicit album";
 
 /**
  * The reason with what was actually seen: "Explicit profile photo: bare

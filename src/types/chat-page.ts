@@ -28,6 +28,8 @@ export type AlbumViewerState = {
 	content: AlbumContentItem[];
 	/** Whether the message that opened this album belongs to the current user — reacting/replying to your own album doesn't make sense, so callers use this to hide those controls. */
 	isOwn?: boolean;
+	/** Items of the album the explicit-photo filter is holding back; they are not in `content`. */
+	hiddenCount?: number;
 };
 
 export type InboxFilterKey =

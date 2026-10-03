@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, Loader2, X } from "lucide-react";
+import { Download, EyeOff, Loader2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { AlbumMediaTile } from "../../../components/AlbumMediaTile";
 import toast from "react-hot-toast";
@@ -114,6 +114,16 @@ export function ChatAlbumSheet({
 					</SheetClose>
 				</div>
 			</div>
+
+			{viewer && (viewer.hiddenCount ?? 0) > 0 ? (
+				<p className="flex items-center gap-1.5 px-4 pb-2 text-xs text-[var(--text-muted)]">
+					<EyeOff className="h-3.5 w-3.5 shrink-0" />
+					{t("shared_albums.hidden_by_filter", {
+						defaultValue: "{{count}} not shown: explicit, or not checked yet.",
+						count: viewer.hiddenCount,
+					})}
+				</p>
+			) : null}
 
 			{/* Body */}
 			{isLoading ? (

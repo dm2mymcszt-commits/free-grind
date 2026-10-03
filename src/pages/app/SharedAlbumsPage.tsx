@@ -34,6 +34,10 @@ import { getLocalNicknamesForProfiles } from "../../services/chatContactIndex";
 import { toDataUri } from "../../services/mediaStore";
 import { PullToRefreshContainer } from "./components/PullToRefreshContainer";
 import { AlbumViewerPanel } from "./shared-albums/AlbumViewerPanel";
+import { getAlbumCover, refreshAlbumChecks } from "../../services/albumContentCheck";
+import { isExplicitFilterEnabled } from "../../services/contentCheck";
+import { useContentChecks } from "../../hooks/useContentChecks";
+import { useVisibleAlbumContent } from "../../hooks/useVisibleAlbumContent";
 import { formatAlbumCounts, formatTimeLeft, formatTimeLeftShort } from "./shared-albums/albumFormat";
 import { type AlbumOwner, mediaHashFromUrl, readAlbumOwners, rememberAlbumOwners } from "./shared-albums/albumOwners";
 import { hideAlbums, readHiddenAlbumIds } from "./shared-albums/hiddenAlbums";
@@ -49,6 +53,9 @@ function toMs(value: number | null | undefined): number | null {
 }
 
 function albumCover(item: SharedAlbumItem): string | null {
+	// Every album here is somebody else's. With the explicit-photo filter on,
+	// its cover is only shown once all of its items have been checked and cleared.
+	if (isExplicitFilterEnabled() && getAlbumCover(item.album.albumId) != null) return null;
 	return (
 		getCachedAlbumCoverUri(item.album.albumId) ??
 		item.album.content?.thumbUrl ??
@@ -274,7 +281,30 @@ export function SharedAlbumsPage() {
 	/** Album ids picked for deletion; null when not selecting. */
 	const [selectedIds, setSelectedIds] = useState<ReadonlySet<number> | null>(null);
 	const isSelecting = selectedIds !== null;
-	const [viewer, setViewer] = useState<AlbumViewer | null>(null);
+	const [openedViewer, setViewer] = useState<AlbumViewer | null>(null);
+	// The opened album as the explicit-photo filter lets it through: the grid
+	// and the full-screen viewer both work from this.
+	const visibleAlbum = useVisibleAlbumContent(
+		openedViewer?.item.album.albumId ?? null,
+		openedViewer?.content,
+		openedViewer != null && openedViewer.item.profileId === userId,
+	);
+	const viewer = useMemo<AlbumViewer | null>(
+		() =>
+			openedViewer
+				? { ...openedViewer, content: visibleAlbum.content, hiddenCount: visibleAlbum.hiddenCount }
+				: null,
+		[openedViewer, visibleAlbum],
+	);
+	// Covers on this page follow the checks too, so they are worked out for
+	// every album with something saved, and the page redraws as they land.
+	const explicitFilterOn = useContentChecks();
+	useEffect(() => {
+		if (!explicitFilterOn) return;
+		for (const item of items) {
+			if (item.savedCount > 0) void refreshAlbumChecks(item.album.albumId);
+		}
+	}, [explicitFilterOn, items]);
 	const [fullScreenIndex, setFullScreenIndex] = useState<number | null>(null);
 	const [, setAlbumCacheTick] = useState(0);
 	const feedContainerRef = useRef<HTMLDivElement>(null);
