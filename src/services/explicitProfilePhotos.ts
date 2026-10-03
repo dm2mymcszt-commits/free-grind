@@ -13,7 +13,7 @@
 import { EXPLICIT_BLOCK_SCORE } from "../utils/explicitContentRules";
 import { appLog } from "../utils/logger";
 import * as chatDb from "./chatDb";
-import { isExplicitFilterEnabled } from "./contentCheck";
+import { isExplicitFilterEnabled, isExplicitProfilePhotoHidingEnabled } from "./contentCheck";
 
 const STORAGE_KEY = "fg-explicit-profile-photos";
 /** Newest kept; an avatar this old has long scrolled out of any list. */
@@ -44,9 +44,9 @@ function persist(): void {
 // restart they are hidden again.
 const shownAnyway = new Set<string>();
 
-/** Whether this photo is one to hide. Never, with the filter off or once shown anyway. */
+/** Whether this photo is one to hide. Never, with the filter or its own switch off, or once shown anyway. */
 export function isExplicitProfilePhoto(hash: string | null | undefined): boolean {
-	return !!hash && hashes.has(hash) && !shownAnyway.has(hash) && isExplicitFilterEnabled();
+	return !!hash && hashes.has(hash) && !shownAnyway.has(hash) && isExplicitProfilePhotoHidingEnabled();
 }
 
 /** The photo's hash, read out of its link: the last part of the path. */

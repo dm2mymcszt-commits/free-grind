@@ -36,6 +36,7 @@ import {
 	checkMediaBytes,
 	getCachedCheckForMediaKey,
 	isExplicitFilterEnabled,
+	isExplicitGalleryHidingEnabled,
 	loadContentCheck,
 	notifyContentChecksChanged,
 	scoresOf,
@@ -68,13 +69,13 @@ const ownAlbums = new Set<number>();
 
 /** What covers this album's cover picture right now, or null to show it. */
 export function getAlbumCover(albumId: number): ContentCover | null {
-	if (ownAlbums.has(albumId)) return null;
+	if (ownAlbums.has(albumId) || !isExplicitGalleryHidingEnabled()) return null;
 	return albumCovers.has(albumId) ? (albumCovers.get(albumId) ?? null) : "unchecked";
 }
 
 /** What covers one item of an album right now, or null to show it. */
 export function getAlbumItemCover(albumId: number, contentId: number): ContentCover | null {
-	if (ownAlbums.has(albumId)) return null;
+	if (ownAlbums.has(albumId) || !isExplicitGalleryHidingEnabled()) return null;
 	return coverForVerdict(verdictOf(getCachedCheckForMediaKey(albumItemKey(albumId, contentId))));
 }
 
@@ -90,7 +91,7 @@ export function coverAlbumContent(
 	content: readonly AlbumContentItem[],
 	showAll: boolean,
 ): { content: AlbumContentItem[]; hiddenCount: number } {
-	if (showAll || !isExplicitFilterEnabled()) return { content: [...content], hiddenCount: 0 };
+	if (showAll || !isExplicitGalleryHidingEnabled()) return { content: [...content], hiddenCount: 0 };
 	let hiddenCount = 0;
 	const covered = content.map((item) => {
 		if (getAlbumItemCover(albumId, item.contentId) == null) return item;

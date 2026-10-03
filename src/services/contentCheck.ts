@@ -44,6 +44,8 @@ const FILTER_STORAGE_KEY = "fg-explicit-filter";
 const BLOCK_STORAGE_KEY = "fg-explicit-block";
 const PROFILE_BLOCK_STORAGE_KEY = "fg-explicit-block-profile";
 const FILTER_SINCE_STORAGE_KEY = "fg-explicit-filter-since";
+const HIDE_GALLERIES_STORAGE_KEY = "fg-explicit-hide-galleries";
+const HIDE_PROFILE_PHOTOS_STORAGE_KEY = "fg-explicit-hide-profile-photos";
 export const EXPLICIT_FILTER_UPDATED_EVENT = "fg-explicit-filter-updated";
 
 /** Received photos and videos stay covered until checked. Off outside the app, where there is no detector. */
@@ -69,6 +71,26 @@ export function isExplicitProfileBlockEnabled(): boolean {
 }
 
 /**
+ * Whether what is not cleared is also hidden inside shared albums and in a
+ * chat's media list. Only what is drawn: checking and blocking go on either
+ * way. A switch of its own, on unless switched off.
+ */
+export function isExplicitGalleryHidingEnabled(): boolean {
+	return isExplicitFilterEnabled() && window.localStorage.getItem(HIDE_GALLERIES_STORAGE_KEY) !== "false";
+}
+
+/**
+ * Whether a profile photo the detector called explicit is drawn as the
+ * hidden tile. Only what is drawn: blocking over it goes on either way. A
+ * switch of its own, on unless switched off.
+ */
+export function isExplicitProfilePhotoHidingEnabled(): boolean {
+	return (
+		isExplicitFilterEnabled() && window.localStorage.getItem(HIDE_PROFILE_PHOTOS_STORAGE_KEY) !== "false"
+	);
+}
+
+/**
  * When the filter was last switched on. Only photos received after this can
  * block anyone: opening an old chat must not block someone over history.
  */
@@ -91,6 +113,18 @@ export function setExplicitFilterEnabled(enabled: boolean): void {
 export function setExplicitProfileBlockEnabled(enabled: boolean): void {
 	if (typeof window === "undefined") return;
 	window.localStorage.setItem(PROFILE_BLOCK_STORAGE_KEY, String(enabled));
+	window.dispatchEvent(new Event(EXPLICIT_FILTER_UPDATED_EVENT));
+}
+
+export function setExplicitGalleryHidingEnabled(enabled: boolean): void {
+	if (typeof window === "undefined") return;
+	window.localStorage.setItem(HIDE_GALLERIES_STORAGE_KEY, String(enabled));
+	window.dispatchEvent(new Event(EXPLICIT_FILTER_UPDATED_EVENT));
+}
+
+export function setExplicitProfilePhotoHidingEnabled(enabled: boolean): void {
+	if (typeof window === "undefined") return;
+	window.localStorage.setItem(HIDE_PROFILE_PHOTOS_STORAGE_KEY, String(enabled));
 	window.dispatchEvent(new Event(EXPLICIT_FILTER_UPDATED_EVENT));
 }
 

@@ -40,9 +40,8 @@ globalScope.window = {
 	},
 };
 
-const { setExplicitFilterEnabled, setExplicitVerdictHandler, verdictOf } = await import(
-	"../src/services/contentCheck"
-);
+const { setExplicitFilterEnabled, setExplicitGalleryHidingEnabled, setExplicitVerdictHandler, verdictOf } =
+	await import("../src/services/contentCheck");
 const { albumItemKey, checkAlbumItem, coverAlbumContent, getAlbumCover, getAlbumItemCover } = await import(
 	"../src/services/albumContentCheck"
 );
@@ -167,6 +166,19 @@ describe("coverAlbumContent", () => {
 		const result = coverAlbumContent(nextAlbum, content, true);
 		expect(result.content).toEqual(content);
 		expect(result.hiddenCount).toBe(0);
+	});
+
+	test("with the albums switch off everything is shown, and the check still says explicit", async () => {
+		detectorAnswer = EXPLICIT;
+		const check = await checkAlbumItem(item(nextAlbum, 1));
+		setExplicitGalleryHidingEnabled(false);
+		const result = coverAlbumContent(nextAlbum, content, false);
+		expect(result.content).toEqual(content);
+		expect(result.hiddenCount).toBe(0);
+		expect(getAlbumItemCover(nextAlbum, 1)).toBeNull();
+		expect(getAlbumCover(nextAlbum)).toBeNull();
+		// Only what is drawn changes: the verdict blocking works from is untouched.
+		expect(verdictOf(check)).toBe("explicit");
 	});
 
 	test("with the filter off everything is shown", () => {

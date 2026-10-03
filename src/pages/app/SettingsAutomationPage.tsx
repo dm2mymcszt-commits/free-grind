@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-    AtSign, Ban, Crosshair, Eye, EyeOff, Image as ImageIcon, MessageSquare, Radar, Save,
+    AtSign, Ban, CircleUser, Crosshair, Eye, EyeOff, Image as ImageIcon, Images, MessageSquare, Radar, Save,
     ShieldAlert, ShieldCheck, SlidersHorizontal, Tag, TextCursorInput, Trash2, Users, UserX, Zap,
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -38,10 +38,14 @@ import { useAuth } from "../../contexts/useAuth";
 import {
     isExplicitBlockEnabled,
     isExplicitFilterEnabled,
+    isExplicitGalleryHidingEnabled,
     isExplicitProfileBlockEnabled,
+    isExplicitProfilePhotoHidingEnabled,
     setExplicitBlockEnabled,
     setExplicitFilterEnabled,
+    setExplicitGalleryHidingEnabled,
     setExplicitProfileBlockEnabled,
+    setExplicitProfilePhotoHidingEnabled,
     testDetector,
 } from "../../services/contentCheck";
 import {
@@ -124,6 +128,8 @@ export function SettingsAutomationPage() {
     const [explicitFilter, setExplicitFilter] = useState(() => isExplicitFilterEnabled());
     const [explicitBlock, setExplicitBlock] = useState(() => isExplicitBlockEnabled());
     const [explicitProfileBlock, setExplicitProfileBlock] = useState(() => isExplicitProfileBlockEnabled());
+    const [explicitGalleryHiding, setExplicitGalleryHiding] = useState(() => isExplicitGalleryHidingEnabled());
+    const [explicitProfilePhotoHiding, setExplicitProfilePhotoHiding] = useState(() => isExplicitProfilePhotoHidingEnabled());
     const [detectorStatus, setDetectorStatus] = useState<string | null>(null);
     const [detectorLog, setDetectorLog] = useState<DetectorLogEntry[]>(() => getDetectorLog());
     useEffect(() => {
@@ -407,6 +413,8 @@ export function SettingsAutomationPage() {
             setExplicitFilter(false);
             setExplicitBlock(false);
             setExplicitProfileBlock(false);
+            setExplicitGalleryHiding(false);
+            setExplicitProfilePhotoHiding(false);
             setDetectorStatus(null);
             toast.success("Explicit photo filter off", { id: "explicit-filter-toggle" });
             return;
@@ -421,6 +429,8 @@ export function SettingsAutomationPage() {
         setExplicitFilter(true);
         setExplicitBlock(isExplicitBlockEnabled());
         setExplicitProfileBlock(isExplicitProfileBlockEnabled());
+        setExplicitGalleryHiding(isExplicitGalleryHidingEnabled());
+        setExplicitProfilePhotoHiding(isExplicitProfilePhotoHidingEnabled());
         window.dispatchEvent(new Event("fg-trigger-inbox-scan"));
         toast.success("Explicit photo filter on", { id: "explicit-filter-toggle" });
     };
@@ -435,6 +445,16 @@ export function SettingsAutomationPage() {
         setExplicitProfileBlockEnabled(val);
         setExplicitProfileBlock(val);
         if (val) window.dispatchEvent(new Event("fg-trigger-inbox-scan"));
+    };
+
+    const handleToggleExplicitGalleryHiding = (val: boolean) => {
+        setExplicitGalleryHidingEnabled(val);
+        setExplicitGalleryHiding(val);
+    };
+
+    const handleToggleExplicitProfilePhotoHiding = (val: boolean) => {
+        setExplicitProfilePhotoHidingEnabled(val);
+        setExplicitProfilePhotoHiding(val);
     };
 
     // Opens the chat with them, which for someone blocked is the archived
@@ -637,6 +657,28 @@ export function SettingsAutomationPage() {
                                 description="When someone messages you, their profile photos are checked too, and an explicit one blocks them the same way, even if all they sent was a hello. Same rules: only when the detector is sure, never your whitelist, only for messages received from now on."
                                 checked={explicitProfileBlock}
                                 onChange={handleToggleExplicitProfileBlock}
+                            />
+                        )}
+
+                        {explicitFilter && (
+                            <ToggleRow
+                                icon={<Images className="h-5 w-5" />}
+                                iconClass="bg-rose-500/15 text-rose-400"
+                                label="Hide them in albums and the media list too"
+                                description="Inside an album someone shares, on album covers and in a chat's media list, anything not cleared is drawn as a hidden tile, with Show anyway next to it. Off, those are shown as they are. Photos in the conversation itself stay covered, and blocking is not affected."
+                                checked={explicitGalleryHiding}
+                                onChange={handleToggleExplicitGalleryHiding}
+                            />
+                        )}
+
+                        {explicitFilter && (
+                            <ToggleRow
+                                icon={<CircleUser className="h-5 w-5" />}
+                                iconClass="bg-rose-500/15 text-rose-400"
+                                label="Hide explicit profile photos"
+                                description="A profile photo the detector called explicit is drawn as a hidden tile wherever it would appear: chats, Interest, the Grid, Stats and profile screens, with Show anyway on the profile. Off, those photos are shown as they are. Blocking is not affected."
+                                checked={explicitProfilePhotoHiding}
+                                onChange={handleToggleExplicitProfilePhotoHiding}
                             />
                         )}
 

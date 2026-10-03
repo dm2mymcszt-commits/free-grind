@@ -42,6 +42,7 @@ const OTHER = "c".repeat(40);
 describe("explicit profile photos", () => {
 	beforeEach(() => {
 		store.set("fg-explicit-filter", "true");
+		store.delete("fg-explicit-hide-profile-photos");
 	});
 
 	test("a photo on record from an earlier session is left out from the first render", () => {
@@ -92,6 +93,12 @@ describe("explicit profile photos", () => {
 		expect(isExplicitProfilePhotoUrl(url)).toBe(true);
 		showProfilePhotoUrlAnyway(url);
 		expect(isExplicitProfilePhotoUrl(url)).toBe(false);
+	});
+
+	test("with its own switch off nothing is hidden, though the filter is on", () => {
+		store.set("fg-explicit-hide-profile-photos", "false");
+		expect(isExplicitProfilePhoto(REMEMBERED)).toBe(false);
+		expect(isExplicitProfilePhotoUrl(`https://cdns.grindr.com/images/thumb/320x320/${REMEMBERED}`)).toBe(false);
 	});
 
 	test("with the filter off nothing is left out", () => {

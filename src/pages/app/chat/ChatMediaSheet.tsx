@@ -15,6 +15,7 @@ import {
 	checkMediaBytes,
 	getCachedCheckForMediaKey,
 	getCachedCheckForMessage,
+	isExplicitGalleryHidingEnabled,
 	verdictOf,
 } from "../../../services/contentCheck";
 import { saveMediaBytesBatch } from "../../../services/saveMedia";
@@ -172,7 +173,11 @@ export function ChatMediaSheet({
 	// Asked for by the user for this sheet; closing it hides them again.
 	const [showHiddenMedia, setShowHiddenMedia] = useState(false);
 	const isHiddenMedia = (item: LocalMediaItem): boolean =>
-		explicitFilterOn && !showHiddenMedia && !isOwnMedia(item) && !isClearedMedia(item);
+		explicitFilterOn &&
+		isExplicitGalleryHidingEnabled() &&
+		!showHiddenMedia &&
+		!isOwnMedia(item) &&
+		!isClearedMedia(item);
 	// Every item keeps its place; a hidden one is drawn as the hidden tile.
 	const media: LocalMediaItem[] = allMedia.map((item) =>
 		isHiddenMedia(item)
