@@ -140,6 +140,7 @@ import {
 	SAVED_PHRASES_UPDATED_EVENT,
 } from "../../../services/savedPhrases";
 import { PastContactNote } from "../../../components/PastContactNote";
+import { ArchivedBlockExplanation } from "./ArchivedBlockExplanation";
 import { getContentCoverForMessage, isExplicitFilterEnabled } from "../../../services/contentCheck";
 
 type ChatThreadPanelProps = {
@@ -2049,9 +2050,21 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 															defaultValue: "This person blocked you, so there is nothing to unblock on your side. You can still read the history.",
 														})
 													: t("chat.archived.blocked_or_deleted", {
-															defaultValue: "This conversation is archived. You can still read the history, but can no longer send messages or view this person's profile.",
+															defaultValue: "This conversation is archived. You can still read the history, but can no longer send messages.",
 														})}
 									</p>
+									{/* How and why, for a block of this account's: an automatic
+										one made by mistake should be visible right here. */}
+									{archivedReason !== "not_found" && archivedBlockState === "blocked_by_me" && (
+										<ArchivedBlockExplanation
+											profileId={
+												selectedConversation
+													? getOtherParticipant(selectedConversation, userId)?.profileId
+													: null
+											}
+											className="mt-1 grid gap-0.5"
+										/>
+									)}
 								</div>
 							</div>
 						</div>

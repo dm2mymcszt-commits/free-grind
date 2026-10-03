@@ -76,10 +76,14 @@ function describeReason(t: TFunction, reason: NonNullable<BlockExplanation["reas
 export function BlockExplanationLines({
 	explanation,
 	className,
+	compact = false,
 }: {
 	explanation: BlockExplanation;
 	className?: string;
+	/** The smaller text of the chat's archived banner. */
+	compact?: boolean;
 }) {
+	const lineClassName = `${compact ? "text-xs" : "text-sm leading-relaxed"} text-[var(--text)]`;
 	const { t } = useTranslation();
 	const how = t(`profile_unavailable.how.${explanation.trigger}`, {
 		defaultValue: HOW_DEFAULTS[explanation.trigger],
@@ -89,9 +93,9 @@ export function BlockExplanationLines({
 
 	return (
 		<div className={className}>
-			<p className="text-sm leading-relaxed text-[var(--text)]">{how}</p>
+			<p className={lineClassName}>{how}</p>
 			{why && (
-				<p className="text-sm leading-relaxed text-[var(--text)]">
+				<p className={lineClassName}>
 					<span className="font-semibold">
 						{t("profile_unavailable.why.label", { defaultValue: "Why:" })}
 					</span>{" "}
