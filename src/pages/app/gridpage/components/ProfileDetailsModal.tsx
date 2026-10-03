@@ -1,4 +1,4 @@
-import { Ban, Check, ChevronLeft, Ellipsis, Flame, MessageCircle, Pencil, Phone, StickyNote, Star, Trash2, Triangle, X, Zap } from "lucide-react";
+import { Ban, Check, ChevronLeft, Ellipsis, Flame, MessageCircle, Pencil, Phone, ShieldCheck, StickyNote, Star, Trash2, Triangle, X, Zap } from "lucide-react";
 import { BanWordDialog } from "../../../../components/ui/BanWordDialog";
 import { useBanOnSelect } from "../../../../hooks/useBanOnSelect";
 import toast from "react-hot-toast";
@@ -1137,14 +1137,17 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 									type="button"
 									onClick={() => isBlocked ? onUnblockProfile?.(String(messageProfileId)) : (messageProfileId && onBlockProfile?.(String(messageProfileId)))}
 									disabled={isBlockingProfile}
+									// Blocked: the same green shield the chat header shows
+									// for Unblock, so the button says what it will do.
 									className={`inline-flex shrink-0 items-center justify-center rounded-xl border p-2 transition-colors disabled:opacity-60 ${
 										isBlocked
-											? inlineScrolled ? "border-red-500/50 bg-red-500/10 text-red-400" : "border-red-400/60 bg-red-500/20 text-red-300 backdrop-blur-md"
+											? inlineScrolled ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20" : "border-emerald-400/60 bg-emerald-500/20 text-emerald-200 backdrop-blur-md hover:bg-emerald-500/30"
 											: inlineScrolled ? "border-red-500/40 bg-red-500/8 text-red-400 hover:border-red-500/70 hover:bg-red-500/15" : "border-red-400/50 bg-red-500/15 text-red-300 backdrop-blur-md hover:border-red-400/80"
 									}`}
+									title={isBlocked ? t("profile_details.unblock") : t("profile_details.block")}
 									aria-label={isBlocked ? t("profile_details.unblock") : t("profile_details.block")}
 								>
-									<Ban className="h-4 w-4" />
+									{isBlocked ? <ShieldCheck className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
 								</button>
 							)}
 							{hasActionsMenuItems && (
@@ -1627,9 +1630,10 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 											)}
 											{(onBlockProfile || onUnblockProfile) && (
 												<button type="button" onClick={() => isBlocked ? onUnblockProfile?.(String(messageProfileId)) : (messageProfileId && onBlockProfile?.(String(messageProfileId)))} disabled={isBlockingProfile}
-													className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-colors disabled:opacity-60 ${isBlocked ? "border-red-500/50 bg-red-500/10 text-red-400" : "border-red-500/40 bg-red-500/8 text-red-400 hover:border-red-500/70 hover:bg-red-500/15"}`}
+													className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-colors disabled:opacity-60 ${isBlocked ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20" : "border-red-500/40 bg-red-500/8 text-red-400 hover:border-red-500/70 hover:bg-red-500/15"}`}
+													title={isBlocked ? t("profile_details.unblock") : t("profile_details.block")}
 													aria-label={isBlocked ? t("profile_details.unblock") : t("profile_details.block")}>
-													<Ban className="h-4 w-4" />
+													{isBlocked ? <ShieldCheck className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
 												</button>
 											)}
 											{hasActionsMenuItems && (

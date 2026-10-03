@@ -1,4 +1,4 @@
-import { Ban, ChevronLeft, Loader2, MessageCircle, RotateCw, UserX, X } from "lucide-react";
+import { Ban, ChevronLeft, Loader2, MessageCircle, RotateCw, ShieldCheck, UserX, X } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -137,7 +137,7 @@ function UnavailableProfileActions({
 					{isUnblocking ? (
 						<Loader2 className="h-4 w-4 animate-spin" />
 					) : (
-						<Ban className="h-4 w-4" />
+						<ShieldCheck className="h-4 w-4" />
 					)}
 					{isUnblocking
 						? t("profile_details.unblock_in_progress")
