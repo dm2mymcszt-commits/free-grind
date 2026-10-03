@@ -24,6 +24,11 @@ import {
 	rememberBlockChange,
 	rememberFullBlockList,
 } from "../blockListSnapshot";
+import {
+	keepProfileCopy,
+	profileCopyOwner,
+	rememberProfileAnswer,
+} from "../profileCopyStore";
 
 export function createProfileMethods(fetchRest: RestFetcher, t: (key: string, options?: any) => string) {
 	return {
@@ -74,6 +79,8 @@ export function createProfileMethods(fetchRest: RestFetcher, t: (key: string, op
 			);
 			await assertSuccess(response, t("profile_details.block_failed"));
 			rememberBlockChange(owner, profileId, true);
+			// Their profile can't be read from here on; the saved copy stays.
+			keepProfileCopy(owner, profileId);
 			return { ok: true };
 		},
 
@@ -274,12 +281,17 @@ export function createProfileMethods(fetchRest: RestFetcher, t: (key: string, op
 		},
 
 		async getProfileDetail(profileId: string): Promise<ProfileDetail> {
+			// Taken before the request, like blockListOwner above.
+			const copyOwner = profileCopyOwner();
 			const response = await fetchRest(`/v7/profiles/${profileId}`);
 			await assertSuccess(response, t("api.errors.load_profile_details"));
 			const parsed = profileDetailResponseSchema.parse(
 				await parseJsonSafe(response),
 			);
 
+			// Every real answer is kept on this device: once there is a block,
+			// or the account is gone, this endpoint only returns an empty stub.
+			rememberProfileAnswer(copyOwner, parsed.profiles[0]);
 			return parsed.profiles[0];
 		},
 

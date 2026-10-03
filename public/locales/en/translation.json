@@ -1302,7 +1302,8 @@
         "blocked_unknown": "This profile can't be opened right now",
         "blocked_unknown_detail": "There is a block between you and this person, and the app can't tell yet which side set it.",
         "open_chat": "Open your chat",
-        "retry": "Check again"
+        "retry": "Check again",
+        "saved_copy": "This is their profile as it was on {{date}}. It is no longer updated."
     },
     "profile_details": {
         "title": "Profile details",

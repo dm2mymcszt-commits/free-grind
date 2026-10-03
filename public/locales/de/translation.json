@@ -1198,7 +1198,8 @@
         "blocked_unknown": "Dieses Profil kann gerade nicht geöffnet werden",
         "blocked_unknown_detail": "Zwischen dir und dieser Person besteht eine Blockierung, und die App kann noch nicht sagen, von welcher Seite sie kommt.",
         "open_chat": "Deinen Chat öffnen",
-        "retry": "Erneut prüfen"
+        "retry": "Erneut prüfen",
+        "saved_copy": "So sah das Profil am {{date}} aus. Es wird nicht mehr aktualisiert."
     },
     "profile_details": {
         "title": "Profildetails",

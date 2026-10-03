@@ -1790,11 +1790,17 @@ export function GridPage() {
 				onClose={() => setActiveProfileId(null)}
 				onUnblock={handleUnblockProfile}
 				isUnblocking={isUnblockingProfile}
+				onBlock={handleBlockProfile}
+				isBlocking={isBlockingProfile}
 				onOpenChat={(conversationId) => {
 					navigate(`/chat/${encodeURIComponent(conversationId)}`);
 				}}
 				onRetry={() => setProfileReloadToken((token) => token + 1)}
 				isRetrying={isLoadingActiveProfile}
+				onTagClick={handleTagClick}
+				chatContactStatus={selectedProfileChatContact}
+				genderOptions={genderOptions}
+				pronounOptions={pronounOptions}
 			/>
 			) : (
 			<ProfileDetailsModal

@@ -1305,6 +1305,12 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 				// screen *is* that bannable name — not a nickname, not a placeholder.
 				const isHeaderNameBannable =
 					bannableProfileName !== "" && displayName === bannableProfileName;
+				// Handed to the profile page, which may only get Grindr's empty
+				// stub for someone who is blocked or gone.
+				const knownProfileForNavigation = {
+					name: bannableProfileName || null,
+					imageHash: avatarHash ?? null,
+				};
 
 				// Blocking a chat with a live conversation archives it — that's why
 				// the existing-conversation case keys off isArchived. There's no
@@ -1432,10 +1438,12 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 										nextParams.set("returnTo", returnTo);
 										navigate(
 											`/profile/${profileId}?${nextParams.toString()}`,
-											{ state: { returnTo } },
+											{ state: { returnTo, knownProfile: knownProfileForNavigation } },
 										);
 									}}
-									disabled={profileId == null || isArchived}
+									// An archived chat opens too: the profile page shows the
+									// saved copy of someone who is blocked or gone.
+									disabled={profileId == null}
 									aria-label="Open profile"
 									title={onlineMeta.label}
 									className={`h-10 w-10 shrink-0 overflow-hidden rounded-full border-2 bg-[var(--surface-2)] transition disabled:cursor-default disabled:opacity-80 ${
@@ -1576,7 +1584,6 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 									</button>
 									{isHeaderActionsMenuOpen ? (
 										<div className="absolute right-0 top-full z-30 mt-2 flex min-w-[210px] flex-col gap-1 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-2 shadow-lg">
-											{!isArchived && (
 											<button
 												type="button"
 												onClick={() => {
@@ -1585,7 +1592,7 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 													const returnTo = getProfileReturnToChatPath(profileId);
 													const nextParams = new URLSearchParams();
 													nextParams.set("returnTo", returnTo);
-													navigate(`/profile/${profileId}?${nextParams.toString()}`, { state: { returnTo } });
+													navigate(`/profile/${profileId}?${nextParams.toString()}`, { state: { returnTo, knownProfile: knownProfileForNavigation } });
 												}}
 												disabled={profileId == null}
 												className="flex items-center rounded-lg px-2 py-2 text-left text-sm text-[var(--text)] transition hover:bg-[var(--surface-2)] disabled:opacity-60"
@@ -1593,7 +1600,6 @@ export function ChatThreadPanel(props: ChatThreadPanelProps) {
 												<User className="mr-2 h-4 w-4 opacity-70" />
 												{t("chat.view_profile")}
 											</button>
-											)}
 											{!isDesktop && onOpenMediaSheet && (
 												<button
 													type="button"

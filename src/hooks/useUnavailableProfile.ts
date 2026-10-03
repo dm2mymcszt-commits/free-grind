@@ -6,6 +6,7 @@ import {
 	readProfileCard,
 	type LocalProfileKnowledge,
 } from "../services/knownProfile";
+import type { ProfileCopy } from "../services/profileCopyStore";
 import { getThumbImageUrl, validateMediaHash } from "../utils/media";
 import type { ProfileAccessStatus } from "../utils/profileAccessStatus";
 import {
@@ -27,6 +28,8 @@ export type UnavailableProfile = {
 	photoUrl: string | null;
 	/** Their chat on this device, if there is one to go back to. */
 	conversationId: string | null;
+	/** Their whole profile as this device last read it, when it was saved. */
+	savedCopy: ProfileCopy | null;
 };
 
 /**
@@ -59,7 +62,7 @@ export function useUnavailableProfile(input: {
 		}
 		let cancelled = false;
 		void lookUpLocalProfile(profileId)
-			.catch(() => ({ conversationId: null, blockState: null, candidates: [] }))
+			.catch(() => ({ conversationId: null, blockState: null, candidates: [], savedCopy: null }))
 			.then((knowledge) => {
 				if (!cancelled) setLocal({ ...knowledge, profileId });
 			});
@@ -125,5 +128,6 @@ export function useUnavailableProfile(input: {
 				? getThumbImageUrl(known.imageHash, "320x320")
 				: known.imageUrl,
 		conversationId: localForProfile?.conversationId ?? null,
+		savedCopy: localForProfile?.savedCopy ?? null,
 	};
 }

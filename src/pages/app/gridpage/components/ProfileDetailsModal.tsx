@@ -2,7 +2,7 @@ import { Ban, Check, ChevronLeft, Ellipsis, Flame, MessageCircle, Pencil, Phone,
 import { BanWordDialog } from "../../../../components/ui/BanWordDialog";
 import { useBanOnSelect } from "../../../../hooks/useBanOnSelect";
 import toast from "react-hot-toast";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -95,6 +95,13 @@ type ProfileDetailsModalProps = {
 	variant?: "modal" | "page";
 	onPrevProfile?: () => void;
 	onNextProfile?: () => void;
+	/**
+	 * Set when `activeProfile` is a copy saved on this device of a profile
+	 * Grindr no longer shows (a block, a deleted account). Rendered above the
+	 * details; the message bar and the live status are left out, since nothing
+	 * can be sent to this person and nothing about "now" is known.
+	 */
+	savedCopyNotice?: ReactNode;
 };
 
 /**
@@ -169,6 +176,7 @@ export function ProfileDetailsModal({
 	variant = "modal",
 	onPrevProfile,
 	onNextProfile,
+	savedCopyNotice,
 }: ProfileDetailsModalProps) {
 	const { t } = useTranslation();
 	const { unitsPreset } = usePreferences();
@@ -205,8 +213,11 @@ export function ProfileDetailsModal({
 		return t("profile_details.anonymous", "Someone");
 	}, [activeProfile, t]);
 
-	const profileDistance =
-		activeProfile?.distance ?? selectedBrowseCard?.distanceMeters ?? null;
+	// A saved copy says nothing about now: no distance, no online status.
+	const isSavedCopy = savedCopyNotice != null;
+	const profileDistance = isSavedCopy
+		? null
+		: (activeProfile?.distance ?? selectedBrowseCard?.distanceMeters ?? null);
 	const profileOnlineUntil =
 		activeProfile?.onlineUntil ?? selectedBrowseCard?.onlineUntil ?? null;
 	const profileLastSeen = activeProfile?.seen ?? selectedBrowseCard?.lastOnline ?? null;
@@ -214,22 +225,24 @@ export function ProfileDetailsModal({
 		profileLastSeen,
 		profileOnlineUntil,
 	);
-	const profileStatusLabel = profileStatusMeta.isOnline
-		? t(profileStatusMeta.labelKey, { count: profileStatusMeta.count })
-		: profileStatusMeta.labelKey === "browse_page.status_offline"
-			? t(profileStatusMeta.labelKey)
-			: t("profile_details.last_online", {
-					value: t(profileStatusMeta.labelKey, {
-						count: profileStatusMeta.count,
-					}),
-				});
+	const profileStatusLabel = isSavedCopy
+		? ""
+		: profileStatusMeta.isOnline
+			? t(profileStatusMeta.labelKey, { count: profileStatusMeta.count })
+			: profileStatusMeta.labelKey === "browse_page.status_offline"
+				? t(profileStatusMeta.labelKey)
+				: t("profile_details.last_online", {
+						value: t(profileStatusMeta.labelKey, {
+							count: profileStatusMeta.count,
+						}),
+					});
 	const profileStatusLevel: "online" | "recent" | "offline" =
 		profileStatusMeta.isOnline ? "online"
 		: profileStatusMeta.labelKey === "browse_page.status_minutes_ago" && (profileStatusMeta.count ?? 99) <= 10 ? "recent"
 		: "offline";
 	const estimatedCreatedAt = formatEstimatedAccountCreation(activeProfile?.profileId, t);
 	const messageProfileId = activeProfile?.profileId ?? selectedBrowseCard?.profileId ?? null;
-	const { data: travelPlans } = useTravelPlans(activeProfile?.profileId);
+	const { data: travelPlans } = useTravelPlans(isSavedCopy ? null : activeProfile?.profileId);
 	const isOwnProfile = userId != null && messageProfileId != null && String(userId) === String(messageProfileId);
 	// "How many times has this person viewed me?" — the same signal the Interest
 	// page's Views tab shows, surfaced here alongside the tap badge. Skipped on
@@ -588,6 +601,13 @@ export function ProfileDetailsModal({
 			)}
 		</div>
 	) : null;
+
+	const topSectionJsx = savedCopyNotice ? (
+		<>
+			{savedCopyNotice}
+			{notesSectionJsx}
+		</>
+	) : notesSectionJsx;
 
 	const barTapEmoji = (id: number) => id === 0 ? "👋" : id === 2 ? "😈" : "🔥";
     const barTapParticleColor = (id: number) => id === 0 ? "rgba(234,179,8,0.9)" : id === 2 ? "rgba(168,85,247,0.9)" : "rgba(249,115,22,0.9)";
@@ -1293,7 +1313,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 							bodyTypeLabels={bodyTypeLabels}
 							ethnicityLabels={ethnicityLabels}
 							relationshipStatusLabels={relationshipStatusLabels}
-							extraTopSection={notesSectionJsx}
+							extraTopSection={topSectionJsx}
 							hidePicturesSection={true}
 						/>
 					) : null}
@@ -1301,7 +1321,7 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 			</div>
 
 			{/* Floating footer with gradient */}
-			{messageProfileId && !isOwnProfile && (
+			{messageProfileId && !isOwnProfile && !isSavedCopy && (
 				<div
 					className="pointer-events-none absolute inset-x-0 bottom-0 z-30"
 					style={{
@@ -1682,14 +1702,14 @@ const barTapGlow = (id: number) => id === 0 ? "drop-shadow(0 0 10px rgba(234,179
 											bodyTypeLabels={bodyTypeLabels}
 											ethnicityLabels={ethnicityLabels}
 											relationshipStatusLabels={relationshipStatusLabels}
-											extraTopSection={notesSectionJsx}
+											extraTopSection={topSectionJsx}
 											hidePicturesSection={true}
 										/>
 									) : null}
 								</div>
 							</div>
 							{/* Split-mode footer */}
-							{messageProfileId && !isOwnProfile && (
+							{messageProfileId && !isOwnProfile && !isSavedCopy && (
 								<div className="pointer-events-none absolute inset-x-0 bottom-0 z-30" style={{ paddingTop: "5rem", paddingBottom: "0.75rem", background: "linear-gradient(to top, rgba(0,0,0,0.80) 0%, rgba(0,0,0,0.7) 45%, transparent 100%)" }}>
 									<div ref={controlsBarRef} className="pointer-events-auto flex items-center gap-1 px-3" onPointerDown={(e) => e.stopPropagation()}>
 										<div className="relative min-w-0 flex-1" style={{ pointerEvents: barInputVisible ? "auto" : "none" }}>

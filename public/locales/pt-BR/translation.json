@@ -856,7 +856,8 @@
         "blocked_unknown": "Este perfil não pode ser aberto no momento",
         "blocked_unknown_detail": "Há um bloqueio entre você e esta pessoa, e o app ainda não consegue saber de que lado ele vem.",
         "open_chat": "Abrir sua conversa",
-        "retry": "Verificar novamente"
+        "retry": "Verificar novamente",
+        "saved_copy": "Este é o perfil como estava em {{date}}. Ele não é mais atualizado."
     },
     "profile_details": {
         "title": "Detalhes do perfil",

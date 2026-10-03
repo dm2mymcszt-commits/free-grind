@@ -1,28 +1,39 @@
 /**
  * What this device still remembers about someone whose profile Grindr will
- * not show: their chat, and their row in the saved viewers. Read-only, and
- * every source is optional — a miss just means that source knew nothing.
+ * not show: the saved copy of their profile, their chat, and their row in the
+ * saved viewers. Read-only, and every source is optional — a miss just means
+ * that source knew nothing.
  */
 
 import type { BlockState } from "../types/chat-db";
 import type { KnownProfile } from "../utils/unavailableProfile";
 import { findConversationByProfileId } from "./chatDb";
 import { interestViewsStore } from "./interestViewsStore";
+import { getProfileCopy, type ProfileCopy } from "./profileCopyStore";
 
 export type LocalProfileKnowledge = {
 	conversationId: string | null;
 	blockState: BlockState | null;
 	/** Most trusted first — see pickKnownProfile. */
 	candidates: KnownProfile[];
+	/** Their whole profile as last read, if it was ever saved. */
+	savedCopy: ProfileCopy | null;
 };
 
 export async function lookUpLocalProfile(profileId: string): Promise<LocalProfileKnowledge> {
-	const [stored, view] = await Promise.all([
+	const [stored, view, savedCopy] = await Promise.all([
 		findConversationByProfileId(profileId).catch(() => null),
 		interestViewsStore.getByProfileId(profileId).catch(() => null),
+		getProfileCopy(profileId).catch(() => null),
 	]);
 
 	const candidates: KnownProfile[] = [];
+	if (savedCopy) {
+		candidates.push({
+			name: savedCopy.profile.displayName,
+			imageHash: savedCopy.profile.profileImageMediaHash,
+		});
+	}
 	if (stored) {
 		const participant = stored.entry.data.participants.find(
 			(entry) => String(entry.profileId) === profileId,
@@ -40,6 +51,7 @@ export async function lookUpLocalProfile(profileId: string): Promise<LocalProfil
 		conversationId: stored?.conversationId ?? null,
 		blockState: stored?.blockState ?? null,
 		candidates,
+		savedCopy,
 	};
 }
 
